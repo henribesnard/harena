@@ -1,5 +1,5 @@
 # user_service/api/endpoints/users.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import Any, List, Optional
@@ -122,11 +122,32 @@ async def get_bridge_access_token(
 @router.post("/bridge/connect-session", response_model=dict)
 async def create_bridge_connect_session(
     callback_url: Optional[str] = None,
+    country_code: Optional[str] = "FR",
+    account_types: Optional[str] = "payment",
+    context: Optional[str] = None,
+    provider_id: Optional[int] = None,
+    item_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
     Create a Bridge API connect session to link bank accounts.
+    
+    - **callback_url**: URL optionnelle pour rediriger l'utilisateur après la session
+    - **country_code**: Code pays pour la sélection des banques (défaut: FR)
+    - **account_types**: Types de comptes requis (défaut: payment)
+    - **context**: Contexte à ajouter à l'URL de callback (max 100 caractères)
+    - **provider_id**: ID du fournisseur pour aller directement à la page d'authentification
+    - **item_id**: ID de l'item pour gérer une connexion existante
     """
-    session_url = await bridge.create_connect_session(db, current_user.id, callback_url)
+    session_url = await bridge.create_connect_session(
+        db, 
+        current_user.id, 
+        callback_url=callback_url,
+        country_code=country_code,
+        account_types=account_types,
+        context=context,
+        provider_id=provider_id,
+        item_id=item_id
+    )
     return {"connect_url": session_url}

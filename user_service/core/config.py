@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     BRIDGE_CLIENT_ID: str
     BRIDGE_CLIENT_SECRET: str
     
+    # Configuration logging
+    LOG_LEVEL: str = "INFO"
+    
     class Config:
         case_sensitive = True
         env_file = ".env"

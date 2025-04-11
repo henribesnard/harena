@@ -53,7 +53,7 @@ class UserPreferenceInDB(UserPreferenceBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # Bridge connections
@@ -75,7 +75,7 @@ class BridgeConnectionInDB(BridgeConnectionBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # User in DB
@@ -86,7 +86,7 @@ class UserInDBBase(UserBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class UserInDB(UserInDBBase):

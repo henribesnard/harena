@@ -17,7 +17,7 @@ class User(Base, TimestampMixin):
     # Relations
     bridge_connections = relationship("BridgeConnection", back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
-
+    sync_items = relationship("SyncItem", back_populates="user", cascade="all, delete-orphan")
 
 class BridgeConnection(Base, TimestampMixin):
     __tablename__ = "bridge_connections"

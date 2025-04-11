@@ -14,6 +14,14 @@ from user_service.models.base import Base
 from user_service.models.user import User, BridgeConnection, UserPreference
 from user_service.core.config import settings
 
+# Importer les modèles sync_service si disponibles
+try:
+    from sync_service.models.sync import WebhookEvent, SyncItem, SyncAccount
+    sync_models_imported = True
+except ImportError:
+    sync_models_imported = False
+    print("Avertissement: Les modèles sync_service n'ont pas pu être importés.")
+
 # this is the Alembic Config object
 config = context.config
 

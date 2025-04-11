@@ -150,4 +150,18 @@ async def create_bridge_connect_session(
         provider_id=provider_id,
         item_id=item_id
     )
+    
+    # Dans le cas d'une nouvelle connexion (pas item_id), préparer les structures de suivi
+    # Cette partie sera principalement gérée par les webhooks, mais on peut initialiser ici
+    # si nécessaire pour une meilleure expérience utilisateur
+    if not item_id:
+        try:
+            # Import uniquement ici pour éviter les dépendances circulaires
+            from sync_service.services import sync_manager
+            # On pourrait pré-initialiser des structures si nécessaire
+            # Mais généralement, cela sera géré par le webhook item.created
+        except ImportError:
+            # Si le module sync_service n'est pas encore disponible, on ignore simplement
+            pass
+            
     return {"connect_url": session_url}

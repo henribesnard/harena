@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     BRIDGE_CLIENT_ID: str
     BRIDGE_CLIENT_SECRET: str
     
+    # Configuration des webhooks
+    BRIDGE_WEBHOOK_SECRET: str
+    WEBHOOK_BASE_URL: str = "https://api.harena.app"  # URL de base pour les webhooks
+    
+    # Configuration d'alertes
+    ALERT_EMAIL_ENABLED: bool = False
+    ALERT_EMAIL_FROM: str = "alerts@harena.app"
+    ALERT_EMAIL_TO: str = "admin@harena.app"
+    SMTP_SERVER: str = "smtp.example.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    
     # Configuration logging
     LOG_LEVEL: str = "INFO"
     

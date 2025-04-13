@@ -9,7 +9,7 @@ import uuid
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..db.models import Conversation, ConversationState
 from ..models.conversation import ConversationCreate, ConversationUpdate
@@ -138,7 +138,7 @@ class ConversationRepository:
             setattr(db_conversation, key, value)
         
         # Mettre à jour la date d'activité
-        db_conversation.last_activity = datetime.utcnow()
+        db_conversation.last_activity = datetime.now(timezone.utc)
         
         # Persister en base
         self.db.add(db_conversation)
@@ -164,7 +164,7 @@ class ConversationRepository:
         
         # Marquer comme archivée
         db_conversation.state = ConversationState.ARCHIVED
-        db_conversation.last_activity = datetime.utcnow()
+        db_conversation.last_activity = datetime.now(timezone.utc)
         
         # Persister en base
         self.db.add(db_conversation)
@@ -190,7 +190,7 @@ class ConversationRepository:
         
         # Marquer comme supprimée
         db_conversation.state = ConversationState.DELETED
-        db_conversation.last_activity = datetime.utcnow()
+        db_conversation.last_activity = datetime.now(timezone.utc)
         
         # Persister en base
         self.db.add(db_conversation)
@@ -236,7 +236,7 @@ class ConversationRepository:
             return None
         
         # Mettre à jour la date d'activité
-        db_conversation.last_activity = datetime.utcnow()
+        db_conversation.last_activity = datetime.now(timezone.utc)
         
         # Persister en base
         self.db.add(db_conversation)

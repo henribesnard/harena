@@ -61,6 +61,7 @@ coverage.xml
 *.key
 secrets.json
 config.json
+alembic/*
 alembic/versions/*
 !alembic/versions/.gitkeep
 *.md

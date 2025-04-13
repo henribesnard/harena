@@ -14,6 +14,21 @@ MERCHANT_COLLECTION = "merchants"
 DEFAULT_SEARCH_LIMIT = 50
 MAX_SEARCH_LIMIT = 200
 SIMILARITY_THRESHOLD = 0.75
+BM25_THRESHOLD = 0.2
+
+# Poids par défaut pour la recherche hybride
+SEARCH_WEIGHTS = {
+    "bm25": 0.3,            # Poids pour la recherche lexicale BM25
+    "vector": 0.3,          # Poids pour la recherche vectorielle
+    "cross_encoder": 0.4    # Poids pour le reranking cross-encoder
+}
+
+# Paramètres BM25
+BM25_K1 = 1.5  # Paramètre de saturation des termes
+BM25_B = 0.75  # Paramètre de normalisation de longueur
+
+# Taille des batches de recherche
+SEARCH_BATCH_SIZE = 100  # Nombre de résultats initiaux à récupérer
 
 # Category hierarchy constants
 CATEGORY_LEVELS = {

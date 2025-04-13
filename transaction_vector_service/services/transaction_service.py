@@ -1,4 +1,3 @@
-# transaction_vector_service/services/transaction_service.py
 """
 Service for managing financial transactions.
 
@@ -15,13 +14,14 @@ from datetime import datetime, date
 from uuid import UUID, uuid4
 
 from ..config.logging_config import get_logger
-from ..config.constants import SIMILARITY_THRESHOLD
-from ..models.transaction import Transaction, TransactionCreate, TransactionVector, TransactionSearch
+from ..config.constants import SIMILARITY_THRESHOLD, SEARCH_WEIGHTS
+from ..models.transaction import Transaction, TransactionCreate, TransactionVector, TransactionSearch, TransactionRead
 from ..utils.text_processors import clean_transaction_description
 from .embedding_service import EmbeddingService
 from .qdrant_client import QdrantService
 from .merchant_service import MerchantService
 from .category_service import CategoryService
+from ..search.hybrid_search import HybridSearch
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,8 @@ class TransactionService:
         embedding_service: Optional[EmbeddingService] = None,
         qdrant_service: Optional[QdrantService] = None,
         merchant_service: Optional[MerchantService] = None,
-        category_service: Optional[CategoryService] = None
+        category_service: Optional[CategoryService] = None,
+        search_service: Optional[HybridSearch] = None
     ):
         """
         Initialize the transaction service.
@@ -44,11 +45,17 @@ class TransactionService:
             qdrant_service: Optional Qdrant service instance
             merchant_service: Optional merchant service instance
             category_service: Optional category service instance
+            search_service: Optional hybrid search service
         """
         self.embedding_service = embedding_service or EmbeddingService()
         self.qdrant_service = qdrant_service or QdrantService()
         self.merchant_service = merchant_service or MerchantService(self.embedding_service, self.qdrant_service)
         self.category_service = category_service or CategoryService()
+        self.search_service = search_service or HybridSearch(
+            bm25_weight=SEARCH_WEIGHTS.get("bm25", 0.3),
+            vector_weight=SEARCH_WEIGHTS.get("vector", 0.3),
+            cross_encoder_weight=SEARCH_WEIGHTS.get("cross_encoder", 0.4)
+        )
         
         logger.info("Transaction service initialized")
 
@@ -444,7 +451,17 @@ class TransactionService:
             Tuple of (list of transactions, total count)
         """
         try:
-            # Convert search parameters to filter conditions
+            # Si une requête textuelle est présente, utiliser la recherche hybride
+            if search_params.query:
+                return await self.search_service.search(
+                    user_id=user_id,
+                    query=search_params.query,
+                    search_params=search_params,
+                    top_k_initial=min(100, search_params.limit * 3),
+                    top_k_final=search_params.limit
+                )
+            
+            # Pas de requête textuelle, utiliser le filtrage standard
             filter_conditions = {"user_id": user_id}
             
             # Handle date range
@@ -497,32 +514,13 @@ class TransactionService:
                 filter_conditions["is_deleted"] = False
             
             # Execute the search
-            results, total_count = await self.qdrant_service.filter_transactions(
+            return await self.qdrant_service.filter_transactions(
                 user_id=user_id,
                 filter_conditions=filter_conditions,
                 limit=search_params.limit,
                 offset=search_params.offset
             )
             
-            # If there's a text query, use vector search instead
-            if search_params.query:
-                # Generate embedding for the query
-                query_embedding = await self.embedding_service.get_embedding(search_params.query)
-                
-                # Search using the embedding
-                vector_results = await self.qdrant_service.search_similar_transactions(
-                    embedding=query_embedding,
-                    user_id=user_id,
-                    limit=search_params.limit,
-                    score_threshold=0.5,  # Lower threshold for text search
-                    filter_conditions=filter_conditions
-                )
-                
-                # If we got vector results, use them instead
-                if vector_results:
-                    return vector_results, len(vector_results)
-            
-            return results, total_count
         except Exception as e:
             logger.error(f"Error searching transactions: {str(e)}")
             return [], 0
@@ -595,3 +593,110 @@ class TransactionService:
         """
         tasks = [self.process_transaction(tx) for tx in transactions]
         return await asyncio.gather(*tasks)
+
+    async def explain_search_results(
+        self,
+        query: str,
+        results: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Generate an explanation of search results.
+        
+        Args:
+            query: Search query
+            results: Search results
+            
+        Returns:
+            Explanation data
+        """
+        explanation = {
+            "query": query,
+            "result_count": len(results),
+            "search_method": "hybrid",
+            "matching_terms": [],
+            "top_categories": [],
+            "date_range": {},
+            "merchant_distribution": {},
+            "relevance_factors": {
+                "lexical_match": "Correspondance des termes exacts de la requête",
+                "semantic_similarity": "Similarité sémantique avec les transactions",
+                "contextual_relevance": "Pertinence contextuelle globale"
+            }
+        }
+        
+        # Extraire les termes de la requête
+        query_terms = set(re.findall(r'\b\w+\b', query.lower()))
+        
+        # Analyser les résultats
+        if results:
+            # Trouver les termes correspondants
+            all_terms = []
+            for result in results[:5]:  # Analyser les 5 premiers résultats
+                desc = result.get("clean_description", "") or result.get("description", "")
+                if desc:
+                    desc_terms = set(re.findall(r'\b\w+\b', desc.lower()))
+                    matching = desc_terms.intersection(query_terms)
+                    all_terms.extend(matching)
+            
+            # Compter les occurrences
+            term_counts = {}
+            for term in all_terms:
+                if term in term_counts:
+                    term_counts[term] += 1
+                else:
+                    term_counts[term] = 1
+            
+            # Trier par fréquence
+            explanation["matching_terms"] = sorted(
+                term_counts.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]  # 5 termes les plus fréquents
+            
+            # Analyser les catégories
+            categories = {}
+            for result in results:
+                cat_id = result.get("category_id")
+                cat_name = result.get("category_name") or "Inconnue"
+                if cat_id:
+                    key = f"{cat_id}:{cat_name}"
+                    if key in categories:
+                        categories[key] += 1
+                    else:
+                        categories[key] = 1
+            
+            # Top 3 catégories
+            explanation["top_categories"] = sorted(
+                categories.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:3]
+            
+            # Période couverte
+            dates = [
+                result.get("transaction_date")
+                for result in results
+                if "transaction_date" in result
+            ]
+            if dates:
+                explanation["date_range"] = {
+                    "min": min(dates),
+                    "max": max(dates)
+                }
+            
+            # Distribution des marchands
+            merchants = {}
+            for result in results:
+                merchant = result.get("normalized_merchant") or "Inconnu"
+                if merchant in merchants:
+                    merchants[merchant] += 1
+                else:
+                    merchants[merchant] = 1
+            
+            explanation["merchant_distribution"] = sorted(
+                merchants.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]  # Top 5 marchands
+        
+        return explanation

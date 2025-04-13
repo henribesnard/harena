@@ -1,4 +1,3 @@
-# transaction_vector_service/models/transaction.py
 """
 Transaction data models.
 
@@ -6,12 +5,39 @@ This module defines the data structures for banking transactions,
 including raw transaction data, vectorized transactions, and search models.
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional, List, Dict, Any, Set, Tuple
 from datetime import datetime, date
 from uuid import UUID, uuid4
+from enum import Enum
 
 from .schema import VectorizedData, AuditInfo, Metadata
+
+
+class SearchMode(str, Enum):
+    """Search mode for hybrid search."""
+    BM25 = "bm25"
+    VECTOR = "vector"
+    HYBRID = "hybrid"
+
+
+class SearchWeights(BaseModel):
+    """Weights for hybrid search components."""
+    bm25_weight: float = Field(0.3, ge=0, le=1)
+    vector_weight: float = Field(0.3, ge=0, le=1)
+    cross_encoder_weight: float = Field(0.4, ge=0, le=1)
+
+    @model_validator(mode='after')
+    def check_weights_sum(self) -> 'SearchWeights':
+        """Validate that weights sum to 1."""
+        weights_sum = (
+            self.bm25_weight + 
+            self.vector_weight + 
+            self.cross_encoder_weight
+        )
+        if abs(weights_sum - 1.0) > 0.001:  # Allow small floating point errors
+            raise ValueError("Search weights must sum to 1.0")
+        return self
 
 
 class TransactionBase(BaseModel):
@@ -46,8 +72,7 @@ class Transaction(TransactionBase, AuditInfo):
     geo_info: Optional[Dict[str, Any]] = None
     metadata: Metadata = Field(default_factory=Metadata)
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class TransactionVector(Transaction, VectorizedData):
@@ -56,6 +81,8 @@ class TransactionVector(Transaction, VectorizedData):
     fingerprint: Optional[str] = None
     similar_transactions: Optional[List[UUID]] = None
     similarity_score: Optional[float] = None
+    is_recurring: bool = False
+    recurring_pattern_id: Optional[UUID] = None
 
 
 class TransactionRead(BaseModel):
@@ -76,9 +103,14 @@ class TransactionRead(BaseModel):
     is_recurring: bool = False
     recurring_group_id: Optional[UUID] = None
     created_at: datetime
+    # Relevance scores for search results
+    relevance_score: Optional[float] = None
+    bm25_score: Optional[float] = None
+    vector_score: Optional[float] = None
+    cross_encoder_score: Optional[float] = None
+    matched_terms: Optional[List[str]] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class TransactionDetail(TransactionRead):
@@ -110,18 +142,25 @@ class TransactionSearch(BaseModel):
     offset: int = Field(0, ge=0)
     sort_by: str = "transaction_date"
     sort_order: str = "desc"
+    # Search options for hybrid search
+    search_mode: SearchMode = SearchMode.HYBRID
+    search_weights: Optional[SearchWeights] = None
+    min_relevance: Optional[float] = Field(None, ge=0, le=1)
+    include_explanation: bool = False
 
-    @validator('end_date')
-    def end_date_must_be_after_start_date(cls, v, values):
+    @field_validator('end_date')
+    @classmethod
+    def end_date_must_be_after_start_date(cls, v: Optional[date], info: Dict[str, Any]) -> Optional[date]:
         """Validate date range."""
-        if v and 'start_date' in values and values['start_date'] and v < values['start_date']:
+        if v and 'start_date' in info.data and info.data['start_date'] and v < info.data['start_date']:
             raise ValueError('end_date must be after start_date')
         return v
 
-    @validator('max_amount')
-    def max_amount_must_be_greater_than_min_amount(cls, v, values):
+    @field_validator('max_amount')
+    @classmethod
+    def max_amount_must_be_greater_than_min_amount(cls, v: Optional[float], info: Dict[str, Any]) -> Optional[float]:
         """Validate amount range."""
-        if v and 'min_amount' in values and values['min_amount'] is not None and v < values['min_amount']:
+        if v and 'min_amount' in info.data and info.data['min_amount'] is not None and v < info.data['min_amount']:
             raise ValueError('max_amount must be greater than min_amount')
         return v
 
@@ -142,3 +181,42 @@ class TransactionStats(BaseModel):
     date_range: Dict[str, date]
     by_category: Dict[str, Dict[str, Any]]
     by_month: Dict[str, Dict[str, Any]]
+
+
+class TransactionRelevanceExplanation(BaseModel):
+    """Explanation of search result relevance for a transaction."""
+    matched_terms: List[str] = Field(default_factory=list)
+    term_matches: Dict[str, int] = Field(default_factory=dict)
+    semantic_similarity: float = 0.0
+    contextual_relevance: float = 0.0
+    relevance_factors: Dict[str, float] = Field(default_factory=dict)
+    position_boost: float = 0.0
+
+
+class TransactionSearchResults(BaseModel):
+    """Model for search results with metadata."""
+    results: List[TransactionRead]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool
+    query: Optional[str] = None
+    search_mode: Optional[str] = None
+    execution_time_ms: Optional[int] = None
+    explanation: Optional[Dict[str, Any]] = None
+    filters_applied: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TransactionSearchExplanation(BaseModel):
+    """Explanation of search results for debugging and transparency."""
+    query: str
+    query_analysis: Dict[str, Any] = Field(default_factory=dict)
+    search_mode: str
+    weights: Dict[str, float] = Field(default_factory=dict)
+    top_matching_terms: List[Tuple[str, int]] = Field(default_factory=list)
+    category_distribution: List[Tuple[str, int]] = Field(default_factory=list)
+    merchant_distribution: List[Tuple[str, int]] = Field(default_factory=list)
+    date_range: Dict[str, Any] = Field(default_factory=dict)
+    relevance_factors: Dict[str, str] = Field(default_factory=dict)
+    
+    model_config = {"arbitrary_types_allowed": True}  # Pour permettre l'utilisation de Tuple

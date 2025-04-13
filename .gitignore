@@ -63,6 +63,8 @@ secrets.json
 config.json
 alembic/versions/*
 !alembic/versions/.gitkeep
+*.md
+
 
 # Dossiers de données locales ou volumineuses
 data/

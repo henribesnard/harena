@@ -28,34 +28,35 @@ app.add_middleware(
 # Inclusion du routeur API
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# Configuration des tâches planifiées
-if settings.ENABLE_SCHEDULED_TASKS:
-    from apscheduler.schedulers.background import BackgroundScheduler
-    from .tasks.generate_insights import generate_all_insights
-    from .tasks.detect_recurrings import detect_all_recurrings
-    
-    scheduler = BackgroundScheduler()
-    
-    # Générer des insights tous les jours à 3h du matin
-    scheduler.add_job(
-        generate_all_insights,
-        "cron",
-        hour=3,
-        minute=0
-    )
-    
-    # Détecter les transactions récurrentes toutes les semaines
-    scheduler.add_job(
-        detect_all_recurrings,
-        "cron",
-        day_of_week="mon",
-        hour=4,
-        minute=0
-    )
-    
-    # Démarrer le planificateur
-    scheduler.start()
-    logger.info("Scheduled tasks enabled and configured")
+# Configuration des tâches planifiées (désactivées pour le moment)
+# Uncomment this when task modules are implemented
+# if settings.ENABLE_SCHEDULED_TASKS:
+#     from apscheduler.schedulers.background import BackgroundScheduler
+#     from .tasks.generate_insights import generate_all_insights
+#     from .tasks.detect_recurrings import detect_all_recurrings
+#     
+#     scheduler = BackgroundScheduler()
+#     
+#     # Générer des insights tous les jours à 3h du matin
+#     scheduler.add_job(
+#         generate_all_insights,
+#         "cron",
+#         hour=3,
+#         minute=0
+#     )
+#     
+#     # Détecter les transactions récurrentes toutes les semaines
+#     scheduler.add_job(
+#         detect_all_recurrings,
+#         "cron",
+#         day_of_week="mon",
+#         hour=4,
+#         minute=0
+#     )
+#     
+#     # Démarrer le planificateur
+#     scheduler.start()
+#     logger.info("Scheduled tasks enabled and configured")
 
 
 @app.get("/health")

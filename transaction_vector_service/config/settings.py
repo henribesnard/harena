@@ -38,8 +38,15 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # JWT settings
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    JWT_ALGORITHM: str = "HS256"
+    
+    # Paramètres additionnels pour permettre la compatibilité avec d'autres services
+    model_config = {
+        "extra": "ignore",  # Permet d'ignorer les variables d'environnement non définies dans cette classe
+        "env_file": ".env",
+        "case_sensitive": True
+    }
 
 settings = Settings()

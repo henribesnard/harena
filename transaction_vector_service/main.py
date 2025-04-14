@@ -1,3 +1,10 @@
+"""
+Point d'entrée principal pour le Transaction Vector Service.
+
+Ce module initialise et démarre le service de vecteurs de transactions,
+configurant les middlewares, les routes, et les tâches planifiées.
+"""
+
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config.settings import settings
 from .config.logging_config import setup_logging
 from .api.router import api_router
+from .api.dependencies import initialize_services
 
 # Configuration du logging
 logger = setup_logging()
@@ -13,7 +21,10 @@ logger = setup_logging()
 app = FastAPI(
     title=settings.PROJECT_NAME,
     debug=settings.DEBUG,
-    description="Service de gestion des transactions vectorisées pour Harena"
+    description="Service de gestion des transactions vectorisées pour Harena",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # Configuration CORS
@@ -81,6 +92,13 @@ async def health_check():
 async def startup_event():
     """Actions à exécuter au démarrage de l'application."""
     logger.info(f"Starting {settings.PROJECT_NAME}")
+    
+    # Initialiser tous les services
+    try:
+        initialize_services()
+        logger.info("All services initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing services: {str(e)}")
     
     # Initialiser les collections Qdrant si nécessaire
     from .services.qdrant_client import QdrantService

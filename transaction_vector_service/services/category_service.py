@@ -1,4 +1,3 @@
-# transaction_vector_service/services/category_service.py
 """
 Service for managing transaction categories.
 
@@ -13,21 +12,23 @@ from datetime import datetime, timedelta
 
 from ..config.settings import settings
 from ..config.logging_config import get_logger
-from ..config.constants import CATEGORY_CACHE_TTL, CATEGORY_LEVELS
-from ..models.category import Category, CategoryCreate, CategoryHierarchy
-from .bridge_client import BridgeClient
+from ..common.types import CATEGORY_CACHE_TTL, CATEGORY_LEVELS
+from ..models.interfaces import CategoryServiceInterface
 
 logger = get_logger(__name__)
 
 
-class CategoryService:
+class CategoryService(CategoryServiceInterface):
     """Service for managing transaction categories."""
 
     def __init__(self):
         """Initialize the category service."""
+        # Self-import to avoid circular imports
+        from .bridge_client import BridgeClient
         self.bridge_client = BridgeClient()
+        
         self._categories_cache: Dict[int, Dict[str, Any]] = {}
-        self._category_hierarchy_cache: Optional[List[CategoryHierarchy]] = None
+        self._category_hierarchy_cache: Optional[List[Dict[str, Any]]] = None
         self._last_cache_update: Optional[datetime] = None
         self._category_keywords: Dict[int, List[str]] = {}
         self._category_name_to_id: Dict[str, int] = {}
@@ -214,157 +215,6 @@ class CategoryService:
         
         return None
 
-    async def get_all_categories(self) -> List[Dict[str, Any]]:
-        """
-        Get all categories.
-        
-        Returns:
-            List of all categories
-        """
-        # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        return list(self._categories_cache.values())
-
-    async def get_category_hierarchy(self) -> List[Dict[str, Any]]:
-        """
-        Get the full category hierarchy.
-        
-        Returns:
-            Nested structure of categories
-        """
-        # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        return self._category_hierarchy_cache or []
-
-    async def get_parent_category(self, category_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Get the parent category of a given category.
-        
-        Args:
-            category_id: Child category ID
-            
-        Returns:
-            Parent category or None if not found or no parent
-        """
-        # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        category = self._categories_cache.get(category_id)
-        if not category:
-            return None
-            
-        parent_id = category.get("parent_id")
-        if parent_id:
-            return self._categories_cache.get(parent_id)
-            
-        return None
-
-    async def get_category_children(self, category_id: int) -> List[Dict[str, Any]]:
-        """
-        Get all child categories of a given category.
-        
-        Args:
-            category_id: Parent category ID
-            
-        Returns:
-            List of child categories
-        """
-         # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        category = self._categories_cache.get(category_id)
-        if not category:
-            return []
-            
-        children = []
-        for child_id in category.get("children", []):
-            child = self._categories_cache.get(child_id)
-            if child:
-                children.append(child)
-                
-        return children
-
-    async def get_category_path(self, category_id: int) -> List[Dict[str, Any]]:
-        """
-        Get the full path of ancestors for a category.
-        
-        Args:
-            category_id: Category ID to get path for
-            
-        Returns:
-            List of ancestor categories from root to the given category
-        """
-        # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        category = self._categories_cache.get(category_id)
-        if not category:
-            return []
-            
-        path = []
-        for ancestor_id in category.get("path", []):
-            ancestor = self._categories_cache.get(ancestor_id)
-            if ancestor:
-                path.append(ancestor)
-                
-        # Add the category itself
-        path.append(category)
-        return path
-
-    async def get_category_keywords(self, category_id: int) -> List[str]:
-        """
-        Get keywords associated with a category.
-        
-        Args:
-            category_id: Category ID to get keywords for
-            
-        Returns:
-            List of keywords for the category
-        """
-        # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        return self._category_keywords.get(category_id, [])
-
-    async def search_categories(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Search for categories by name or keyword.
-        
-        Args:
-            query: Search query
-            
-        Returns:
-            List of matching categories
-        """
-        # Ensure cache is loaded
-        if not self._categories_cache:
-            await self.preload_categories()
-            
-        query_lower = query.lower()
-        results = []
-        
-        for category_id, category in self._categories_cache.items():
-            # Check if query matches category name
-            if query_lower in category.get("name", "").lower():
-                results.append(category)
-                continue
-                
-            # Check if query matches any keywords
-            for keyword in self._category_keywords.get(category_id, []):
-                if query_lower in keyword:
-                    results.append(category)
-                    break
-        
-        return results
-
     async def predict_category(self, description: str, amount: float) -> Optional[int]:
         """
         Predict the most likely category for a transaction based on description and amount.
@@ -399,6 +249,48 @@ class CategoryService:
                     best_match = category_id
         
         return best_match
+
+    async def get_all_categories(self) -> List[Dict[str, Any]]:
+        """
+        Get all categories.
+        
+        Returns:
+            List of all categories
+        """
+        # Ensure cache is loaded
+        if not self._categories_cache:
+            await self.preload_categories()
+            
+        return list(self._categories_cache.values())
+
+    async def get_category_hierarchy(self) -> List[Dict[str, Any]]:
+        """
+        Get the full category hierarchy.
+        
+        Returns:
+            Nested structure of categories
+        """
+        # Ensure cache is loaded
+        if not self._categories_cache:
+            await self.preload_categories()
+            
+        return self._category_hierarchy_cache or []
+
+    async def get_category_keywords(self, category_id: int) -> List[str]:
+        """
+        Get keywords associated with a category.
+        
+        Args:
+            category_id: Category ID to get keywords for
+            
+        Returns:
+            List of keywords for the category
+        """
+        # Ensure cache is loaded
+        if not self._categories_cache:
+            await self.preload_categories()
+            
+        return self._category_keywords.get(category_id, [])
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """

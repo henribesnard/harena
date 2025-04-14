@@ -1,11 +1,11 @@
 """
 Point d'entrée principal pour l'application Harena.
 
-Ce module initialise et démarre tous les services :
-- User Service
-- Sync Service
-- Transaction Vector Service
-- Conversation Service
+Ce module initialise et démarre tous les services de la plateforme financière Harena:
+- User Service: Gestion des utilisateurs et authentification
+- Sync Service: Synchronisation des données bancaires via Bridge API
+- Transaction Vector Service: Recherche et analyse vectorielle des transactions
+- Conversation Service: Interface conversationnelle intelligente
 """
 
 import logging
@@ -14,6 +14,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing import Dict, List, Optional
 
 # Configuration du logging
 logging.basicConfig(
@@ -26,7 +27,10 @@ logger = logging.getLogger("harena")
 app = FastAPI(
     title="Harena Finance API",
     description="API pour les services financiers Harena",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # Configuration CORS
@@ -38,140 +42,166 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Importation des routeurs de chaque service
+# Liste pour suivre les services disponibles
+available_services = {}
+
+# ======== IMPORTATION DES SERVICES ========
+
+# User Service
 try:
     from user_service.main import app as user_app
     from user_service.core.config import settings as user_settings
     logger.info("User Service importé avec succès")
+    available_services["user_service"] = {
+        "app": user_app,
+        "settings": user_settings,
+        "api_prefix": user_settings.API_V1_STR
+    }
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du User Service: {e}")
-    user_app = None
+    available_services["user_service"] = None
 
+# Sync Service
 try:
-    from sync_service.api.endpoints.sync import router as sync_router
-    from sync_service.api.endpoints.webhooks import router as webhooks_router
+    from sync_service.main import app as sync_app
     logger.info("Sync Service importé avec succès")
+    available_services["sync_service"] = {
+        "app": sync_app,
+        "api_prefix": "/api/v1/sync"
+    }
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du Sync Service: {e}")
-    sync_router = None
-    webhooks_router = None
+    available_services["sync_service"] = None
 
+# Transaction Vector Service
 try:
     from transaction_vector_service.main import app as transaction_vector_app
     from transaction_vector_service.config.settings import settings as transaction_settings
     logger.info("Transaction Vector Service importé avec succès")
+    available_services["transaction_vector_service"] = {
+        "app": transaction_vector_app,
+        "settings": transaction_settings,
+        "api_prefix": transaction_settings.API_V1_STR
+    }
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du Transaction Vector Service: {e}")
-    transaction_vector_app = None
+    available_services["transaction_vector_service"] = None
 
+# Conversation Service
 try:
     from conversation_service.main import app as conversation_app
     from conversation_service.config.settings import settings as conversation_settings
     logger.info("Conversation Service importé avec succès")
+    available_services["conversation_service"] = {
+        "app": conversation_app,
+        "settings": conversation_settings,
+        "api_prefix": conversation_settings.API_PREFIX
+    }
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du Conversation Service: {e}")
-    conversation_app = None
+    available_services["conversation_service"] = None
 
-# Inclure les routeurs de User Service
-if user_app:
-    # Monter l'application User Service
-    app.mount("/user", user_app)
-    # Rendre les routes User Service disponibles à la racine aussi
-    app.mount(user_settings.API_V1_STR, user_app)
+# ======== MONTAGE DES APPLICATIONS ========
 
-# Inclure les routeurs de Sync Service
-if sync_router and webhooks_router:
-    app.include_router(sync_router, prefix="/api/v1/sync", tags=["synchronization"])
-    app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
+# Monter les applications sur des préfixes spécifiques
+mount_paths = {
+    "user_service": "/user",
+    "sync_service": "/sync",
+    "transaction_vector_service": "/transactions",
+    "conversation_service": "/conversations"
+}
 
-# Inclure Transaction Vector Service
-if transaction_vector_app:
-    app.mount("/transactions", transaction_vector_app)
-    # Monter les endpoints à la racine API aussi
-    app.mount(transaction_settings.API_V1_STR, transaction_vector_app)
+# Monter les applications et leurs API
+for service_name, service_info in available_services.items():
+    if service_info is not None:
+        # Monter l'application sur son chemin dédié
+        service_path = mount_paths.get(service_name)
+        if service_path:
+            app.mount(service_path, service_info["app"])
+            logger.info(f"Service {service_name} monté sur {service_path}")
+        
+        # Monter également l'API à la racine API pour un accès unifié
+        if "api_prefix" in service_info:
+            api_prefix = service_info["api_prefix"]
+            app.mount(api_prefix, service_info["app"])
+            logger.info(f"API {service_name} montée sur {api_prefix}")
 
-# Inclure Conversation Service
-if conversation_app:
-    app.mount("/conversations", conversation_app)
-    # Monter les endpoints à la racine API aussi
-    app.mount(conversation_settings.API_PREFIX, conversation_app)
+# ======== ENDPOINTS DE BASE ========
 
-# Point d'entrée de base pour vérifier que l'application fonctionne
 @app.get("/", tags=["health"])
 async def root():
     """
     Point d'entrée racine pour vérifier que l'application est en ligne.
+    Retourne un statut et des informations basiques sur l'application.
     """
     return {
         "status": "ok",
         "application": "Harena Finance API",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "services": list(filter(None, available_services.keys()))
     }
 
-# Point d'entrée pour vérifier la santé de tous les services
 @app.get("/health", tags=["health"])
 async def health_check():
     """
     Vérification de l'état de santé de tous les services.
-    Renvoie le statut de chaque service.
+    Interroge chaque service et renvoie leur état.
     """
     services_status = {
         "main": "ok",
     }
     
-    # Vérifier User Service
-    if user_app:
-        services_status["user_service"] = "ok"
-    else:
-        services_status["user_service"] = "unavailable"
-        
-    # Vérifier Sync Service
-    if sync_router and webhooks_router:
-        services_status["sync_service"] = "ok"
-    else:
-        services_status["sync_service"] = "unavailable"
-        
-    # Vérifier Transaction Vector Service
-    if transaction_vector_app:
-        services_status["transaction_vector_service"] = "ok"
-    else:
-        services_status["transaction_vector_service"] = "unavailable"
-        
-    # Vérifier Conversation Service
-    if conversation_app:
-        services_status["conversation_service"] = "ok"
-    else:
-        services_status["conversation_service"] = "unavailable"
+    # Vérifier l'état de chaque service
+    for service_name, service_info in available_services.items():
+        if service_info:
+            services_status[service_name] = "ok"
+        else:
+            services_status[service_name] = "unavailable"
+    
+    # Déterminer l'état global
+    overall_status = "ok" if all(status == "ok" for status in services_status.values()) else "degraded"
         
     return {
-        "status": "ok" if all(status == "ok" for status in services_status.values()) else "degraded",
+        "status": overall_status,
         "services": services_status,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "timestamp": str(datetime.now())
     }
 
-# Gestionnaire d'exceptions global
+# ======== GESTIONNAIRE D'EXCEPTIONS ========
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
     Gestionnaire global d'exceptions pour toute l'application.
+    Capture et formate les erreurs non gérées.
     """
     logger.error(f"Exception non gérée: {str(exc)}", exc_info=True)
+    
+    debug_mode = os.getenv("DEBUG", "False").lower() == "true"
+    error_detail = str(exc) if debug_mode else "Contactez l'administrateur pour plus d'informations."
+    
     return JSONResponse(
         status_code=500,
         content={
             "status": "error",
             "message": "Une erreur interne est survenue",
-            "detail": str(exc) if os.getenv("DEBUG", "False").lower() == "true" else None
+            "detail": error_detail
         }
     )
 
-# Pour exécuter l'application en mode développement
+# ======== LANCEMENT DE L'APPLICATION ========
+
+# Importer datetime maintenant pour éviter l'erreur de référence
+from datetime import datetime
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
     host = os.getenv("HOST", "0.0.0.0")
     debug = os.getenv("DEBUG", "False").lower() == "true"
     
     logger.info(f"Démarrage de l'application Harena sur {host}:{port} (debug={debug})")
+    logger.info(f"Services disponibles: {list(filter(lambda k: available_services[k] is not None, available_services.keys()))}")
     
     uvicorn.run(
         "main:app",

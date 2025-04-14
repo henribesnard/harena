@@ -1,4 +1,3 @@
-# transaction_vector_service/services/merchant_service.py
 """
 Service for managing merchant data.
 
@@ -14,27 +13,25 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from ..config.logging_config import get_logger
-from ..config.constants import MERCHANT_CACHE_TTL, SIMILARITY_THRESHOLD
-from ..models.merchant import Merchant, MerchantCreate, MerchantVector
-from .embedding_service import EmbeddingService
-from .qdrant_client import QdrantService
+from ..common.types import MERCHANT_CACHE_TTL, SIMILARITY_THRESHOLD
+from ..models.interfaces import MerchantServiceInterface, EmbeddingServiceInterface, QdrantServiceInterface
 
 logger = get_logger(__name__)
 
 
-class MerchantService:
+class MerchantService(MerchantServiceInterface):
     """Service for managing merchant data and detection."""
 
-    def __init__(self, embedding_service: Optional[EmbeddingService] = None, qdrant_service: Optional[QdrantService] = None):
+    def __init__(self, embedding_service: EmbeddingServiceInterface, qdrant_service: QdrantServiceInterface):
         """
         Initialize the merchant service.
         
         Args:
-            embedding_service: Optional embedding service instance
-            qdrant_service: Optional Qdrant service instance
+            embedding_service: Embedding service instance
+            qdrant_service: Qdrant service instance
         """
-        self.embedding_service = embedding_service or EmbeddingService()
-        self.qdrant_service = qdrant_service or QdrantService()
+        self.embedding_service = embedding_service
+        self.qdrant_service = qdrant_service
         self._merchant_cache: Dict[str, Dict[str, Any]] = {}
         self._last_cache_update: Optional[datetime] = None
         
@@ -187,92 +184,46 @@ class MerchantService:
         
         return None
 
-    async def create_merchant(self, merchant_data: MerchantCreate) -> Optional[Merchant]:
+    async def add_transaction_to_merchant(self, merchant_id: Union[str, UUID], transaction_id: Union[str, UUID]) -> bool:
         """
-        Create a new merchant and store it in the vector database.
+        Associate a transaction with a merchant and update stats.
         
         Args:
-            merchant_data: Merchant data to create
+            merchant_id: Merchant ID
+            transaction_id: Transaction ID to associate
             
         Returns:
-            Created merchant or None if creation failed
+            True if association was successful
         """
         try:
-            # Generate a UUID for the new merchant
-            merchant_id = uuid4()
+            # Get current merchant data
+            merchant = await self.get_merchant(merchant_id)
+            if not merchant:
+                logger.error(f"Merchant not found: {merchant_id}")
+                return False
             
-            # Create the merchant model
-            merchant = Merchant(
-                id=merchant_id,
-                name=merchant_data.name,
-                display_name=merchant_data.display_name or merchant_data.name,
-                description=merchant_data.description,
-                category_id=merchant_data.category_id,
-                website=merchant_data.website,
-                country_code=merchant_data.country_code,
-                patterns=merchant_data.raw_patterns
-            )
+            # Update transaction count
+            transaction_count = merchant.get("transaction_count", 0) + 1
             
-            # Generate embedding for the merchant name
-            name_embedding = await self.embedding_service.get_embedding(merchant.name)
+            # Store transaction ID if tracking individual transactions
+            transaction_ids = merchant.get("transaction_ids", [])
+            if isinstance(transaction_id, UUID):
+                transaction_id = str(transaction_id)
             
-            # Generate embeddings for patterns if any
-            pattern_embeddings = {}
-            if merchant.patterns:
-                for pattern in merchant.patterns:
-                    pattern_embedding = await self.embedding_service.get_embedding(pattern)
-                    pattern_embeddings[pattern] = pattern_embedding
+            if transaction_id not in transaction_ids:
+                transaction_ids.append(transaction_id)
             
-            # Prepare the merchant payload for Qdrant
-            merchant_payload = {
-                "name": merchant.name,
-                "display_name": merchant.display_name,
-                "normalized_name": merchant.name.lower(),
-                "description": merchant.description,
-                "category_id": merchant.category_id,
-                "website": merchant.website,
-                "country_code": merchant.country_code,
-                "patterns": merchant.patterns,
-                "created_at": datetime.now().isoformat(),
+            # Update merchant
+            updates = {
+                "transaction_count": transaction_count,
+                "transaction_ids": transaction_ids,
                 "updated_at": datetime.now().isoformat()
             }
             
-            # Store in Qdrant
-            success = await self.qdrant_service.upsert_merchant(
-                merchant_id=merchant_id,
-                embedding=name_embedding,
-                payload=merchant_payload
-            )
-            
-            if success:
-                # Add to local cache
-                self._merchant_cache[merchant.name.lower()] = {
-                    "id": str(merchant_id),
-                    "name": merchant.name,
-                    "display_name": merchant.display_name,
-                    "category_id": merchant.category_id,
-                    "score": 1.0  # Perfect match for exact name
-                }
-                
-                # If there are patterns, also add them to cache
-                for pattern in merchant.patterns:
-                    pattern_lower = pattern.lower()
-                    if pattern_lower != merchant.name.lower():
-                        self._merchant_cache[pattern_lower] = {
-                            "id": str(merchant_id),
-                            "name": merchant.name,
-                            "display_name": merchant.display_name,
-                            "category_id": merchant.category_id,
-                            "score": 0.9  # High match for explicit patterns
-                        }
-                
-                return merchant
-            else:
-                logger.error(f"Failed to store merchant in Qdrant: {merchant.name}")
-                return None
+            return await self.update_merchant(merchant_id, updates)
         except Exception as e:
-            logger.error(f"Error creating merchant: {str(e)}")
-            return None
+            logger.error(f"Error adding transaction to merchant: {str(e)}")
+            return False
 
     async def get_merchant(self, merchant_id: Union[str, UUID]) -> Optional[Dict[str, Any]]:
         """
@@ -355,103 +306,3 @@ class MerchantService:
         except Exception as e:
             logger.error(f"Error updating merchant {merchant_id}: {str(e)}")
             return False
-
-    async def delete_merchant(self, merchant_id: Union[str, UUID]) -> bool:
-        """
-        Delete a merchant.
-        
-        Args:
-            merchant_id: Merchant ID to delete
-            
-        Returns:
-            True if deletion was successful
-        """
-        try:
-            # Get merchant data first (to update cache)
-            merchant = await self.get_merchant(merchant_id)
-            if merchant:
-                # Remove from cache if present
-                merchant_name = merchant.get("name", "").lower()
-                if merchant_name in self._merchant_cache:
-                    del self._merchant_cache[merchant_name]
-                
-                # Also remove any patterns from cache
-                patterns = merchant.get("patterns", [])
-                for pattern in patterns:
-                    pattern_lower = pattern.lower()
-                    if pattern_lower in self._merchant_cache:
-                        del self._merchant_cache[pattern_lower]
-            
-            # Delete from Qdrant
-            return await self.qdrant_service.delete_merchant(merchant_id)
-        except Exception as e:
-            logger.error(f"Error deleting merchant {merchant_id}: {str(e)}")
-            return False
-
-    async def add_transaction_to_merchant(self, merchant_id: Union[str, UUID], transaction_id: Union[str, UUID]) -> bool:
-        """
-        Associate a transaction with a merchant and update stats.
-        
-        Args:
-            merchant_id: Merchant ID
-            transaction_id: Transaction ID to associate
-            
-        Returns:
-            True if association was successful
-        """
-        try:
-            # Get current merchant data
-            merchant = await self.get_merchant(merchant_id)
-            if not merchant:
-                logger.error(f"Merchant not found: {merchant_id}")
-                return False
-            
-            # Update transaction count
-            transaction_count = merchant.get("transaction_count", 0) + 1
-            
-            # Store transaction ID if tracking individual transactions
-            transaction_ids = merchant.get("transaction_ids", [])
-            if isinstance(transaction_id, UUID):
-                transaction_id = str(transaction_id)
-            
-            if transaction_id not in transaction_ids:
-                transaction_ids.append(transaction_id)
-            
-            # Update merchant
-            updates = {
-                "transaction_count": transaction_count,
-                "transaction_ids": transaction_ids,
-                "updated_at": datetime.now().isoformat()
-            }
-            
-            return await self.update_merchant(merchant_id, updates)
-        except Exception as e:
-            logger.error(f"Error adding transaction to merchant: {str(e)}")
-            return False
-
-    async def search_merchants(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search for merchants by name or pattern.
-        
-        Args:
-            query: Search query
-            limit: Maximum number of results
-            
-        Returns:
-            List of matching merchants
-        """
-        try:
-            # Generate embedding for the query
-            query_embedding = await self.embedding_service.get_embedding(query)
-            
-            # Search for similar merchants
-            similar_merchants = await self.qdrant_service.search_merchants_by_pattern(
-                embedding=query_embedding,
-                limit=limit,
-                score_threshold=0.5  # Lower threshold for search
-            )
-            
-            return similar_merchants
-        except Exception as e:
-            logger.error(f"Error searching merchants: {str(e)}")
-            return []

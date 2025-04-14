@@ -1,22 +1,23 @@
-# transaction_vector_service/search/hybrid_search.py
 """
 Module de recherche hybride combinant recherche lexicale (BM25), 
 vectorielle et reranking pour les transactions.
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
 
 from ..config.logging_config import get_logger
-from ..models.transaction import TransactionSearch
-from .bm25_search import BM25Search
-from .vector_search import VectorSearch
-from .cross_encoder import CrossEncoderRanker
-from ..utils.text_processors import clean_transaction_description
+from ..models.interfaces import SearchServiceInterface
+from ..common.types import SIMILARITY_THRESHOLD, DEFAULT_SEARCH_LIMIT
+
+# Importation de types seulement pour les annotations, pas d'importation circulaire
+if TYPE_CHECKING:
+    from ..models.transaction import TransactionSearch
 
 logger = get_logger(__name__)
 
-class HybridSearch:
+
+class HybridSearch(SearchServiceInterface):
     """
     Service de recherche hybride qui combine recherche lexicale BM25,
     recherche vectorielle et reranking via cross-encoder.
@@ -24,9 +25,6 @@ class HybridSearch:
 
     def __init__(
         self,
-        bm25_search: Optional[BM25Search] = None,
-        vector_search: Optional[VectorSearch] = None,
-        cross_encoder: Optional[CrossEncoderRanker] = None,
         bm25_weight: float = 0.3,
         vector_weight: float = 0.3,
         cross_encoder_weight: float = 0.4
@@ -35,16 +33,15 @@ class HybridSearch:
         Initialise le service de recherche hybride.
         
         Args:
-            bm25_search: Service de recherche BM25
-            vector_search: Service de recherche vectorielle
-            cross_encoder: Service de reranking cross-encoder
             bm25_weight: Poids des scores BM25 dans le score final
             vector_weight: Poids des scores vectoriels dans le score final
             cross_encoder_weight: Poids des scores cross-encoder dans le score final
         """
-        self.bm25_search = bm25_search or BM25Search()
-        self.vector_search = vector_search or VectorSearch()
-        self.cross_encoder = cross_encoder or CrossEncoderRanker()
+        # On n'importe pas les implémentations concrètes ici
+        # On les recevra via l'injection de dépendances
+        self.bm25_search = None
+        self.vector_search = None
+        self.cross_encoder = None
         
         # Poids pour la combinaison finale des scores
         self.bm25_weight = bm25_weight
@@ -56,11 +53,25 @@ class HybridSearch:
             f"BM25={bm25_weight}, Vectoriel={vector_weight}, CrossEncoder={cross_encoder_weight}"
         )
 
+    def set_search_components(self, bm25_search, vector_search, cross_encoder):
+        """
+        Définit les composants de recherche à utiliser.
+        Cette méthode permet l'injection de dépendances.
+        
+        Args:
+            bm25_search: Service de recherche BM25
+            vector_search: Service de recherche vectorielle
+            cross_encoder: Service de reranking cross-encoder
+        """
+        self.bm25_search = bm25_search
+        self.vector_search = vector_search
+        self.cross_encoder = cross_encoder
+
     async def search(
         self, 
         user_id: int,
         query: str,
-        search_params: TransactionSearch,
+        search_params: Any,
         top_k_initial: int = 100,
         top_k_final: int = 20
     ) -> Tuple[List[Dict[str, Any]], int]:
@@ -77,12 +88,18 @@ class HybridSearch:
         Returns:
             Tuple de (résultats de recherche, nombre total)
         """
+        # Vérifier que les composants sont définis
+        if not all([self.bm25_search, self.vector_search, self.cross_encoder]):
+            logger.error("Search components not initialized. Call set_search_components first.")
+            return [], 0
+        
         if not query.strip():
             # Si la requête est vide, utiliser les filtres standards sans recherche textuelle
             logger.info(f"Requête vide, exécution d'une recherche par filtres pour l'utilisateur {user_id}")
             return await self.vector_search.filter_transactions(user_id, search_params)
         
         # Prétraiter la requête
+        from ..utils.text_processors import clean_transaction_description
         clean_query = clean_transaction_description(query)
         logger.info(f"Exécution d'une recherche hybride pour '{clean_query}' (utilisateur {user_id})")
         

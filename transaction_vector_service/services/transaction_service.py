@@ -9,57 +9,58 @@ import logging
 import asyncio
 import re
 import hashlib
-from typing import Dict, List, Optional, Any, Tuple, Union, Set
+from typing import Dict, List, Optional, Any, Tuple, Union, TYPE_CHECKING
 from datetime import datetime, date
 from uuid import UUID, uuid4
 
 from ..config.logging_config import get_logger
-from ..config.constants import SIMILARITY_THRESHOLD, SEARCH_WEIGHTS
-from ..models.transaction import Transaction, TransactionCreate, TransactionVector, TransactionSearch, TransactionRead
-from ..utils.text_processors import clean_transaction_description
-from .embedding_service import EmbeddingService
-from .qdrant_client import QdrantService
-from .merchant_service import MerchantService
-from .category_service import CategoryService
-from ..search.hybrid_search import HybridSearch
+from ..models.interfaces import (
+    TransactionServiceInterface,
+    EmbeddingServiceInterface,
+    QdrantServiceInterface,
+    MerchantServiceInterface,
+    CategoryServiceInterface,
+    SearchServiceInterface
+)
+from ..common.types import SIMILARITY_THRESHOLD
+
+# Import types only for type checking
+if TYPE_CHECKING:
+    from ..models.transaction import Transaction, TransactionCreate, TransactionVector, TransactionSearch, TransactionRead
 
 logger = get_logger(__name__)
 
 
-class TransactionService:
+class TransactionService(TransactionServiceInterface):
     """Service for managing financial transactions."""
 
     def __init__(
         self, 
-        embedding_service: Optional[EmbeddingService] = None,
-        qdrant_service: Optional[QdrantService] = None,
-        merchant_service: Optional[MerchantService] = None,
-        category_service: Optional[CategoryService] = None,
-        search_service: Optional[HybridSearch] = None
+        embedding_service: EmbeddingServiceInterface,
+        qdrant_service: QdrantServiceInterface,
+        merchant_service: MerchantServiceInterface,
+        category_service: CategoryServiceInterface,
+        search_service: Optional[SearchServiceInterface] = None
     ):
         """
         Initialize the transaction service.
         
         Args:
-            embedding_service: Optional embedding service instance
-            qdrant_service: Optional Qdrant service instance
-            merchant_service: Optional merchant service instance
-            category_service: Optional category service instance
-            search_service: Optional hybrid search service
+            embedding_service: Embedding service instance
+            qdrant_service: Qdrant service instance
+            merchant_service: Merchant service instance
+            category_service: Category service instance
+            search_service: Optional search service instance
         """
-        self.embedding_service = embedding_service or EmbeddingService()
-        self.qdrant_service = qdrant_service or QdrantService()
-        self.merchant_service = merchant_service or MerchantService(self.embedding_service, self.qdrant_service)
-        self.category_service = category_service or CategoryService()
-        self.search_service = search_service or HybridSearch(
-            bm25_weight=SEARCH_WEIGHTS.get("bm25", 0.3),
-            vector_weight=SEARCH_WEIGHTS.get("vector", 0.3),
-            cross_encoder_weight=SEARCH_WEIGHTS.get("cross_encoder", 0.4)
-        )
+        self.embedding_service = embedding_service
+        self.qdrant_service = qdrant_service
+        self.merchant_service = merchant_service
+        self.category_service = category_service
+        self.search_service = search_service
         
         logger.info("Transaction service initialized")
 
-    async def process_transaction(self, transaction_data: TransactionCreate) -> Optional[Transaction]:
+    async def process_transaction(self, transaction_data: Any) -> Optional[Dict[str, Any]]:
         """
         Process and store a new transaction.
         
@@ -72,6 +73,9 @@ class TransactionService:
         try:
             # Generate a UUID for the transaction
             transaction_id = uuid4()
+            
+            # Import the actual model class here to avoid circular imports
+            from ..models.transaction import Transaction
             
             # Create the transaction model
             transaction = Transaction(
@@ -99,6 +103,9 @@ class TransactionService:
             description_for_embedding = transaction.clean_description or transaction.description
             description_embedding = await self.embedding_service.get_embedding(description_for_embedding)
             
+            # Import the vector model here
+            from ..models.transaction import TransactionVector
+            
             # Create transaction vector
             transaction_vector = TransactionVector(
                 **transaction.dict(),
@@ -108,8 +115,8 @@ class TransactionService:
             
             # Find similar transactions
             similar_transactions = await self.find_similar_transactions(
-                transaction=transaction,
-                embedding=description_embedding
+                embedding=description_embedding,
+                user_id=transaction.user_id
             )
             
             if similar_transactions:
@@ -142,7 +149,7 @@ class TransactionService:
                         transaction_id=transaction_id
                     )
                 
-                return transaction
+                return transaction.dict()
             else:
                 logger.error(f"Failed to store transaction in Qdrant: {transaction_id}")
                 return None
@@ -150,7 +157,7 @@ class TransactionService:
             logger.error(f"Error processing transaction: {str(e)}")
             return None
 
-    async def _enrich_transaction(self, transaction: Transaction) -> None:
+    async def _enrich_transaction(self, transaction: Any) -> None:
         """
         Enrich a transaction with additional information.
         
@@ -160,6 +167,7 @@ class TransactionService:
         try:
             # Clean description if not already cleaned
             if not transaction.clean_description:
+                from ..utils.text_processors import clean_transaction_description
                 transaction.clean_description = clean_transaction_description(transaction.description)
             
             # Find merchant
@@ -235,7 +243,7 @@ class TransactionService:
         
         return geo_info
 
-    def _generate_transaction_fingerprint(self, transaction: Transaction) -> str:
+    def _generate_transaction_fingerprint(self, transaction: Any) -> str:
         """
         Generate a fingerprint for a transaction to identify duplicates.
         
@@ -340,7 +348,6 @@ class TransactionService:
         ]
         
         fingerprint = "_".join(components)
-        import hashlib
         return hashlib.md5(fingerprint.encode()).hexdigest()
 
     async def delete_transaction(self, transaction_id: Union[str, UUID]) -> bool:
@@ -377,19 +384,17 @@ class TransactionService:
 
     async def find_similar_transactions(
         self,
-        transaction: Optional[Transaction] = None,
-        description: Optional[str] = None,
         embedding: Optional[List[float]] = None,
+        description: Optional[str] = None,
         user_id: Optional[int] = None,
         limit: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Find transactions similar to the given transaction or description.
+        Find transactions similar to the given embedding or description.
         
         Args:
-            transaction: Optional transaction to find similar transactions for
-            description: Optional description to find similar transactions for
             embedding: Optional pre-computed embedding to use
+            description: Optional description to find similar transactions for
             user_id: Optional user ID to filter results
             limit: Maximum number of results to return
             
@@ -397,29 +402,17 @@ class TransactionService:
             List of similar transactions with similarity scores
         """
         try:
-            # Determine user_id
-            if transaction and user_id is None:
-                user_id = transaction.user_id
-            
             # Get embedding if not provided
             if embedding is None:
-                if transaction:
-                    text = transaction.clean_description or transaction.description
-                elif description:
-                    text = description
+                if description:
+                    embedding = await self.embedding_service.get_embedding(description)
                 else:
-                    raise ValueError("Either transaction, description, or embedding must be provided")
-                
-                embedding = await self.embedding_service.get_embedding(text)
+                    raise ValueError("Either embedding or description must be provided")
             
             # Set up filter conditions
             filter_conditions = {}
             if user_id is not None:
                 filter_conditions["user_id"] = user_id
-            
-            # If we have a transaction ID, exclude it from the results
-            if transaction and transaction.id:
-                filter_conditions["id"] = {"$ne": str(transaction.id)}
             
             # Search for similar transactions
             similar_transactions = await self.qdrant_service.search_similar_transactions(
@@ -438,7 +431,7 @@ class TransactionService:
     async def search_transactions(
         self,
         user_id: int,
-        search_params: TransactionSearch
+        search_params: Any
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Search for transactions based on various criteria.
@@ -452,7 +445,7 @@ class TransactionService:
         """
         try:
             # Si une requête textuelle est présente, utiliser la recherche hybride
-            if search_params.query:
+            if search_params.query and self.search_service:
                 return await self.search_service.search(
                     user_id=user_id,
                     query=search_params.query,
@@ -581,7 +574,7 @@ class TransactionService:
                 "by_month": {}
             }
 
-    async def process_transactions_batch(self, transactions: List[TransactionCreate]) -> List[Optional[Transaction]]:
+    async def process_transactions_batch(self, transactions: List[Any]) -> List[Optional[Dict[str, Any]]]:
         """
         Process and store a batch of transactions.
         
@@ -671,8 +664,8 @@ class TransactionService:
                 key=lambda x: x[1],
                 reverse=True
             )[:3]
-            
-            # Période couverte
+
+# Période couverte
             dates = [
                 result.get("transaction_date")
                 for result in results

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 
-from sync_service.models.sync import SyncAccount
+from sync_service.models.sync import SyncAccount, SyncItem
 from user_service.services import bridge as bridge_service
 from user_service.core.config import settings
 
@@ -13,39 +13,43 @@ logger = logging.getLogger(__name__)
 
 async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> Dict[str, Any]:
     """Synchroniser les transactions d'un compte depuis la dernière mise à jour."""
-    # Récupérer l'utilisateur via l'item
-    user_id = db.query(SyncAccount.item).filter(
-        SyncAccount.id == sync_account.id
-    ).join(SyncAccount.item).scalar().user_id
-    
-    # Récupérer le token Bridge
-    token_data = await bridge_service.get_bridge_token(db, user_id)
-    access_token = token_data["access_token"]
-    
-    # Construire la requête avec le paramètre since
-    url = f"{settings.BRIDGE_API_URL}/aggregation/transactions?account_id={sync_account.bridge_account_id}"
-    
-    # Ajouter le paramètre since si on a une date de dernière synchronisation
-    if sync_account.last_sync_timestamp:
-        since_param = sync_account.last_sync_timestamp.isoformat()
-        url += f"&since={since_param}"
-    
-    headers = {
-        "accept": "application/json",
-        "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "authorization": f"Bearer {access_token}",
-        "Client-Id": settings.BRIDGE_CLIENT_ID,    
-        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-    }
-    
-    result = {
-        "new_transactions": 0,
-        "updated_transactions": 0,
-        "deleted_transactions": 0,
-        "errors": None
-    }
-    
     try:
+        # Récupérer l'utilisateur via l'item de manière robuste
+        item = db.query(SyncItem).filter(SyncItem.id == sync_account.item_id).first()
+        
+        if not item:
+            logger.error(f"Item not found for account {sync_account.id}")
+            return {"errors": "Item not found for account"}
+        
+        user_id = item.user_id
+        
+        # Récupérer le token Bridge
+        token_data = await bridge_service.get_bridge_token(db, user_id)
+        access_token = token_data["access_token"]
+        
+        # Construire la requête avec le paramètre since
+        url = f"{settings.BRIDGE_API_URL}/aggregation/transactions?account_id={sync_account.bridge_account_id}"
+        
+        # Ajouter le paramètre since si on a une date de dernière synchronisation
+        if sync_account.last_sync_timestamp:
+            since_param = sync_account.last_sync_timestamp.isoformat()
+            url += f"&since={since_param}"
+        
+        headers = {
+            "accept": "application/json",
+            "Bridge-Version": settings.BRIDGE_API_VERSION,
+            "authorization": f"Bearer {access_token}",
+            "Client-Id": settings.BRIDGE_CLIENT_ID,    
+            "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
+        }
+        
+        result = {
+            "new_transactions": 0,
+            "updated_transactions": 0,
+            "deleted_transactions": 0,
+            "errors": None
+        }
+        
         # Récupérer les transactions
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
@@ -63,8 +67,6 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
                 return result
             
             # Traiter les transactions
-            # Ici, on simplifie en comptant simplement les transactions
-            # Dans une implémentation réelle, il faudrait les stocker dans la base
             transactions = transactions_data["resources"]
             
             for transaction in transactions:
@@ -77,14 +79,15 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
                     result["new_transactions"] += 1
             
             # Mettre à jour le timestamp de dernière synchronisation
-            last_updated = max(
-                [datetime.fromisoformat(t["updated_at"].replace('Z', '+00:00')) 
-                 for t in transactions if "updated_at" in t],
-                default=None
-            )
-            
-            if last_updated:
-                sync_account.last_transaction_date = last_updated
+            if transactions:
+                last_updated_dates = [
+                    datetime.fromisoformat(t["updated_at"].replace('Z', '+00:00')) 
+                    for t in transactions if "updated_at" in t
+                ]
+                
+                if last_updated_dates:
+                    last_updated = max(last_updated_dates)
+                    sync_account.last_transaction_date = last_updated
             
             sync_account.last_sync_timestamp = datetime.now(timezone.utc)
             db.add(sync_account)
@@ -94,5 +97,9 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
             return result
     except Exception as e:
         logger.error(f"Error syncing transactions: {str(e)}")
-        result["errors"] = str(e)
-        return result
+        return {
+            "new_transactions": 0,
+            "updated_transactions": 0,
+            "deleted_transactions": 0,
+            "errors": str(e)
+        }

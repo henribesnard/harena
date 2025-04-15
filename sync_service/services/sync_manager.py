@@ -122,6 +122,8 @@ async def fetch_item_accounts(db: Session, sync_item: SyncItem, access_token: st
     headers = {
         "accept": "application/json",
         "Bridge-Version": settings.BRIDGE_API_VERSION,
+        "Client-Id": settings.BRIDGE_CLIENT_ID,       # Ajout de Client-Id
+        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
         "authorization": f"Bearer {access_token}"
     }
     

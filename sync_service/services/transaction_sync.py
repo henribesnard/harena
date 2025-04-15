@@ -33,7 +33,9 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
     headers = {
         "accept": "application/json",
         "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "authorization": f"Bearer {access_token}"
+        "authorization": f"Bearer {access_token}",
+        "Client-Id": settings.BRIDGE_CLIENT_ID,    
+        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
     }
     
     result = {

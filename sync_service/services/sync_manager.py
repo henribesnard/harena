@@ -1,4 +1,3 @@
-# sync_service/services/sync_manager.py
 import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
@@ -7,6 +6,7 @@ from typing import Dict, Any, List, Optional
 from sync_service.models.sync import SyncItem, SyncAccount
 from user_service.models.user import User, BridgeConnection
 from user_service.services import bridge as bridge_service
+
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ async def fetch_item_accounts(db: Session, sync_item: SyncItem, access_token: st
     headers = {
         "accept": "application/json",
         "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "Client-Id": settings.BRIDGE_CLIENT_ID,       # Ajout de Client-Id
+        "Client-Id": settings.BRIDGE_CLIENT_ID,
         "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
         "authorization": f"Bearer {access_token}"
     }
@@ -188,29 +188,58 @@ async def get_user_sync_status(db: Session, user_id: int) -> Dict[str, Any]:
     
     sync_accounts = db.query(SyncAccount).filter(SyncAccount.id.in_(account_ids)).all() if account_ids else []
     
+    # Récupérer les comptes par item pour inclusion dans la réponse
+    item_accounts = {}
+    for account in sync_accounts:
+        if account.item_id not in item_accounts:
+            item_accounts[account.item_id] = []
+        item_accounts[account.item_id].append({
+            "id": account.id,
+            "bridge_account_id": account.bridge_account_id,
+            "name": account.account_name,
+            "type": account.account_type,
+            "last_sync": account.last_sync_timestamp
+        })
+    
     # Déterminer l'état global
     needs_action = any(item.needs_user_action for item in sync_items)
     last_sync = max([item.last_successful_refresh for item in sync_items if item.last_successful_refresh], default=None)
+    
+    # Préparer les informations sur tous les items
+    all_items = [
+        {
+            "id": item.id,
+            "bridge_item_id": item.bridge_item_id,
+            "status": item.status,
+            "status_code_info": item.status_code_info,
+            "status_description": item.status_description,
+            "provider_id": item.provider_id,
+            "account_types": item.account_types,
+            "needs_user_action": item.needs_user_action,
+            "last_successful_refresh": item.last_successful_refresh,
+            "last_try_refresh": item.last_try_refresh,
+            "accounts": item_accounts.get(item.id, [])
+        }
+        for item in sync_items
+    ]
+    
+    # Filtrer les items nécessitant une action
+    items_needing_action = [
+        item for item in all_items if item["needs_user_action"]
+    ]
     
     return {
         "total_items": len(sync_items),
         "total_accounts": len(sync_accounts),
         "needs_user_action": needs_action,
-        "items_needing_action": [
-            {
-                "id": item.id,
-                "bridge_item_id": item.bridge_item_id,
-                "status": item.status,
-                "status_code_info": item.status_code_info,
-                "status_description": item.status_description
-            }
-            for item in sync_items if item.needs_user_action
-        ],
+        "items_needing_action": items_needing_action,
+        "items": all_items,
         "last_successful_sync": last_sync,
     }
 
 async def create_reconnect_session(db: Session, user_id: int, bridge_item_id: int) -> str:
     """Créer une session de reconnexion pour un item."""
+    from user_service.core.config import settings
     # Vérifier que l'item appartient bien à l'utilisateur
     sync_item = db.query(SyncItem).filter(
         SyncItem.user_id == user_id,
@@ -220,10 +249,14 @@ async def create_reconnect_session(db: Session, user_id: int, bridge_item_id: in
     if not sync_item:
         raise ValueError(f"Item {bridge_item_id} not found for user {user_id}")
     
+    # Utiliser l'URL de base de l'application depuis les paramètres
+    base_url = settings.WEBHOOK_BASE_URL or "https://harenabackend-ab1b255e55c6.herokuapp.com"
+    callback_url = f"{base_url}/reconnect-callback"
+    
     # Créer une session Connect avec l'item_id
     return await bridge_service.create_connect_session(
         db,
         user_id,
         item_id=bridge_item_id,
-        callback_url="https://app.harena.io/reconnect-callback"
+        callback_url=callback_url,
     )

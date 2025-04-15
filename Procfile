@@ -1,1 +1,1 @@
-web: gunicorn main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
+web: gunicorn heroku_app:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT

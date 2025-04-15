@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 
 from ..config.settings import settings
 from ..config.logging_config import get_logger
-from ..common.types import CATEGORY_CACHE_TTL, CATEGORY_LEVELS
+from ..common.types import CATEGORY_CACHE_TTL
+from ..config.constants import CATEGORY_LEVELS
 from ..models.interfaces import CategoryServiceInterface
 
 logger = get_logger(__name__)

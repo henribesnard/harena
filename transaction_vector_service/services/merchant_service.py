@@ -13,7 +13,8 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from ..config.logging_config import get_logger
-from ..common.types import MERCHANT_CACHE_TTL, SIMILARITY_THRESHOLD
+from ..common.types import SIMILARITY_THRESHOLD
+from ..config.constants import MERCHANT_CACHE_TTL 
 from ..models.interfaces import MerchantServiceInterface, EmbeddingServiceInterface, QdrantServiceInterface
 
 logger = get_logger(__name__)

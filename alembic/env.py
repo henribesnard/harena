@@ -1,4 +1,3 @@
-# alembic/env.py
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, MetaData
 from sqlalchemy import pool
@@ -37,8 +36,18 @@ config = context.config
 # Interpret the config file for Python logging
 fileConfig(config.config_file_name)
 
-# Définir l'URL de la base de données depuis les settings
-config.set_main_option("sqlalchemy.url", str(settings.SQLALCHEMY_DATABASE_URI))
+# Gestion de DATABASE_URL fourni par Heroku
+database_url = os.environ.get("DATABASE_URL")
+if database_url:
+    # Heroku utilise "postgres://" mais SQLAlchemy 1.4+ requiert "postgresql://"
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # Utiliser DATABASE_URL de Heroku au lieu de la configuration locale
+    config.set_main_option("sqlalchemy.url", database_url)
+else:
+    # Utiliser la configuration locale
+    config.set_main_option("sqlalchemy.url", str(settings.SQLALCHEMY_DATABASE_URI))
 
 # Combiner les métadonnées des différents modèles
 combined_metadata = MetaData()
@@ -98,4 +107,4 @@ def run_migrations_online():
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()    
+    run_migrations_online()

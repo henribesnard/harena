@@ -5,9 +5,10 @@ Intégration de tous les services via inclusion directe des routeurs.
 
 import logging
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
 # Configuration du logging
 logging.basicConfig(
@@ -45,15 +46,23 @@ service_status = {
 
 # ======== USER SERVICE ========
 try:
+    # Importer les dépendances de base de données
+    from user_service.db.session import get_db
+    
+    # Importer les routes utilisateur
     from user_service.api.endpoints import users as users_endpoints
     from user_service.core.config import settings as user_settings
     
-    # Inclure les routes utilisateur
+    # Inclure les routes utilisateur avec le bon préfixe 
     app.include_router(
         users_endpoints.router, 
         prefix=f"{user_settings.API_V1_STR}/users", 
         tags=["users"]
     )
+    
+    # Vérifier si les utilisateurs reçoivent aussi les dépendances de base de données
+    # Get_db est disponible pour les routes utilisateur
+    logger.info(f"Dépendances DB importées avec succès")
     
     service_status["user_service"] = True
     logger.info("User Service routes intégrées avec succès")
@@ -157,24 +166,32 @@ async def debug_info():
     Endpoint de débogage pour vérifier les configurations.
     """
     import sys
-    import os
     
     # Récupérer les routeurs FastAPI
     routes_info = []
     for route in app.routes:
+        methods = getattr(route, "methods", set())
+        if methods:
+            methods_str = list(methods)
+        else:
+            methods_str = []
+            
         route_info = {
             "path": getattr(route, "path", "unknown"),
             "name": getattr(route, "name", "unnamed"),
-            "methods": getattr(route, "methods", set()),
+            "methods": methods_str,
         }
         routes_info.append(route_info)
+    
+    # Trier les routes par chemin
+    routes_info.sort(key=lambda x: x["path"])
     
     return {
         "python_version": sys.version,
         "service_status": service_status,
-        "environment_variables": dict(os.environ),
-        "sys_path": sys.path,
-        "routes": routes_info
+        "routes_count": len(routes_info),
+        "routes": routes_info,
+        "database_available": "get_db" in globals()
     }
 
 # ======== GESTIONNAIRE D'EXCEPTIONS ========

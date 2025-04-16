@@ -1,3 +1,4 @@
+# sync_service/services/vector_storage.py
 
 """
 Service pour le stockage vectoriel des données financières Harena.
@@ -126,10 +127,10 @@ class VectorStorageService:
 
         except UnexpectedResponse as e:
             # Gérer le cas où la collection existe déjà (code 400 ou 409 typiquement)
-            if e.status_code == 400 and "already exists" in str(e.content):
-                logger.info(f"Collection Qdrant existante: {collection_name}")
+            if e.status_code == 400 and "already exists" in str(e.content).lower():
+                logger.info(f"Collection Qdrant existante (400): {collection_name}")
             elif e.status_code == 409: # Conflit, peut aussi signifier existe déjà
-                 logger.info(f"Collection Qdrant existante (conflit): {collection_name}")
+                 logger.info(f"Collection Qdrant existante (conflit 409): {collection_name}")
             else:
                 logger.error(f"Erreur inattendue lors de la création de la collection {collection_name}: {e.status_code} {e.content}")
                 raise # Renvoyer l'erreur si ce n'est pas une erreur "existe déjà"
@@ -150,12 +151,12 @@ class VectorStorageService:
             # --- Collection Transactions ---
             if self.TRANSACTIONS_COLLECTION not in existing_collections:
                 indexes = [
-                    ("user_id", "integer"), # Assurez-vous que user_id est bien un entier
-                    ("account_id", "integer"), # Assurez-vous que account_id est bien un entier
-                    ("bridge_transaction_id", "keyword"), # ID Bridge comme keyword
+                    ("user_id", "integer"),
+                    ("account_id", "integer"),
+                    ("bridge_transaction_id", "keyword"),
                     ("transaction_date", "datetime"),
-                    ("category_id", "integer"), # ID catégorie comme entier
-                    ("merchant_id", "keyword"), # ID du marchand (si utilisé)
+                    ("category_id", "integer"),
+                    ("merchant_id", "keyword"),
                     ("amount", "float"),
                     ("operation_type", "keyword"),
                     ("is_recurring", "boolean"),
@@ -175,8 +176,8 @@ class VectorStorageService:
                     ("currency_code", "keyword"),
                     ("provider_id", "integer"),
                     ("pro", "boolean"),
-                    ("balance", "float"), # Pour requêtes de plage de solde
-                    ("iban", "keyword"), # Pour recherche exacte
+                    ("balance", "float"),
+                    ("iban", "keyword"),
                 ]
                 self._create_collection_with_indexes(self.ACCOUNTS_COLLECTION, indexes)
             else:
@@ -187,7 +188,7 @@ class VectorStorageService:
                 indexes = [
                     ("bridge_category_id", "integer"),
                     ("parent_id", "integer"),
-                    ("name", "keyword"), # Pour recherche exacte par nom
+                    ("name", "keyword"),
                 ]
                 self._create_collection_with_indexes(self.CATEGORIES_COLLECTION, indexes)
             else:
@@ -196,11 +197,9 @@ class VectorStorageService:
             # --- Collection Merchants ---
             if self.MERCHANTS_COLLECTION not in existing_collections:
                 indexes = [
-                    # Attention: Si les marchands sont globaux, pas de user_id ici.
-                    # Si spécifiques à l'enrichissement par user, ajouter: ("user_id", "integer"),
                     ("normalized_name", "keyword"),
                     ("category_id", "integer"),
-                    ("display_name", "text"), # Pour recherche textuelle
+                    ("display_name", "text"),
                 ]
                 self._create_collection_with_indexes(self.MERCHANTS_COLLECTION, indexes)
             else:
@@ -211,7 +210,7 @@ class VectorStorageService:
                 indexes = [
                     ("user_id", "integer"),
                     ("category_id", "integer"),
-                    ("period_type", "keyword"), # 'monthly', 'global', etc.
+                    ("period_type", "keyword"),
                     ("period_start", "datetime"),
                     ("period_end", "datetime"),
                 ]
@@ -240,19 +239,42 @@ class VectorStorageService:
                     ("user_id", "integer"),
                     ("status", "keyword"),
                 ]
-                # Pas besoin de vecteurs pour les métadonnées pures
+                # Pas besoin de vecteurs pour les métadonnées pures, mais vectors_config est requis.
                 try:
-                    self.client.create_collection(collection_name=self.USER_METADATA_COLLECTION)
+                    self.client.create_collection(
+                        collection_name=self.USER_METADATA_COLLECTION,
+                        vectors_config={} # <-- CORRECTION ICI: Fournir une config vide
+                        # Si votre version de qdrant-client le permet, None pourrait aussi fonctionner :
+                        # vectors_config=None
+                    )
                     logger.info(f"Collection Qdrant créée: {self.USER_METADATA_COLLECTION}")
-                    for field, ftype in indexes:
-                        self.client.create_payload_index(
-                             collection_name=self.USER_METADATA_COLLECTION,
-                             field_name=field,
-                             field_schema=qmodels.PayloadSchemaType.KEYWORD if ftype == 'keyword' else qmodels.PayloadSchemaType.INTEGER
-                        )
+                    # Créer les index de payload
+                    for field_name, field_type in indexes:
+                        try:
+                            schema_type = qmodels.PayloadSchemaType.KEYWORD if field_type == 'keyword' else qmodels.PayloadSchemaType.INTEGER
+                            self.client.create_payload_index(
+                                collection_name=self.USER_METADATA_COLLECTION,
+                                field_name=field_name,
+                                field_schema=schema_type
+                            )
+                            logger.debug(f"Index créé pour {field_name} ({field_type}) dans {self.USER_METADATA_COLLECTION}")
+                        except Exception as index_error:
+                            logger.error(f"Erreur lors de la création de l'index {field_name} dans {self.USER_METADATA_COLLECTION}: {index_error}")
                     logger.info(f"Index créés pour la collection: {self.USER_METADATA_COLLECTION}")
+                except UnexpectedResponse as e:
+                     # Gérer le cas où la collection existe déjà (code 400 ou 409 typiquement)
+                     if e.status_code == 400 and "already exists" in str(e.content).lower():
+                         logger.info(f"Collection Qdrant existante (400): {self.USER_METADATA_COLLECTION}")
+                     elif e.status_code == 409: # Conflit, peut aussi signifier existe déjà
+                         logger.info(f"Collection Qdrant existante (conflit 409): {self.USER_METADATA_COLLECTION}")
+                     else:
+                         # Log et potentiellement lever d'autres erreurs UnexpectedResponse
+                         logger.error(f"Erreur inattendue lors de la création de la collection {self.USER_METADATA_COLLECTION}: {e.status_code} {e.content}")
+                         raise # Renvoyer l'erreur si ce n'est pas une erreur "existe déjà"
                 except Exception as meta_e:
-                     logger.error(f"Erreur lors de la création de la collection {self.USER_METADATA_COLLECTION}: {meta_e}")
+                     # La ligne ci-dessous correspond à la ligne 255 de l'erreur initiale
+                     logger.error(f"Erreur générale lors de la création de la collection {self.USER_METADATA_COLLECTION}: {meta_e}", exc_info=True)
+                     # Ne pas lever d'exception ici pour permettre au reste de l'initialisation de continuer si possible
             else:
                 logger.info(f"Collection Qdrant existante: {self.USER_METADATA_COLLECTION}")
 
@@ -266,8 +288,14 @@ class VectorStorageService:
         payload = {}
         for key, value in data.items():
             if isinstance(value, datetime):
+                # S'assurer que la date est timezone-aware avant isoformat, sinon Qdrant peut rejeter
+                if value.tzinfo is None:
+                    # Assumer UTC si non spécifié (ou choisir une autre logique)
+                    value = value.replace(tzinfo=datetime.timezone.utc)
+                # Convertir en string ISO 8601 attendu par Qdrant
                 payload[key] = value.isoformat()
-            # Ajouter d'autres conversions si nécessaire (ex: Enum en string)
+            elif isinstance(value, UUID):
+                payload[key] = str(value) # Convertir UUID en string
             elif value is not None: # Exclure les clés avec valeur None
                 payload[key] = value
         return payload
@@ -298,7 +326,7 @@ class VectorStorageService:
                 "currency_code": transaction.get("currency_code", "EUR"),
                 "description": transaction.get("description", ""),
                 "clean_description": description,
-                "transaction_date": transaction.get("transaction_date"),
+                "transaction_date": transaction.get("transaction_date"), # Assumer que c'est un objet datetime
                 "category_id": transaction.get("category_id"),
                 "operation_type": transaction.get("operation_type"),
                 "is_recurring": transaction.get("is_recurring", False),
@@ -401,16 +429,15 @@ class VectorStorageService:
         """Vérifie si une transaction existe déjà pour cet utilisateur."""
         if not self.client: return False
         try:
-            filter_query = qmodels.Filter(
-                must=[
-                    qmodels.FieldCondition(key="bridge_transaction_id", match=qmodels.MatchValue(value=str(bridge_transaction_id))),
-                    qmodels.FieldCondition(key="user_id", match=qmodels.MatchValue(value=user_id))
-                ]
+            # Générer l'ID de point déterministe
+            point_id = hashlib.sha256(f"user_{user_id}_tx_{str(bridge_transaction_id)}".encode()).hexdigest()
+            results = self.client.retrieve(
+                collection_name=self.TRANSACTIONS_COLLECTION,
+                ids=[point_id],
+                with_payload=False,
+                with_vectors=False
             )
-            results = self.client.scroll(
-                collection_name=self.TRANSACTIONS_COLLECTION, scroll_filter=filter_query, limit=1, with_payload=False, with_vectors=False
-            )
-            return len(results[0]) > 0
+            return len(results) > 0
         except Exception as e:
             logger.error(f"Erreur lors de la vérification de l'existence de la transaction {bridge_transaction_id} pour user {user_id}: {e}", exc_info=True)
             return False # Prudence en cas d'erreur
@@ -540,7 +567,7 @@ class VectorStorageService:
         if not self.client: return False
         try:
             point_id = f"user_{user_id}_account_{bridge_account_id}"
-            # Utiliser fetch qui est plus direct pour vérifier l'existence par ID
+            # Utiliser retrieve qui est plus direct pour vérifier l'existence par ID
             results = self.client.retrieve(
                 collection_name=self.ACCOUNTS_COLLECTION,
                 ids=[point_id],
@@ -833,7 +860,7 @@ class VectorStorageService:
 
             # Créer un texte descriptif pour l'embedding
             category_name = insight_data.get("category_name", "Toutes catégories") # Assumer qu'on a le nom
-            text_to_embed = f"Résumé {period_type} pour {category_name} démarrant le {period_start.strftime('%Y-%m-%d')}"
+            text_to_embed = f"Résumé {period_type} pour {category_name} démarrant le period_start.strftime('%Y-%m-%d')"
             embedding = await self.embedding_service.get_embedding(text_to_embed)
 
             payload = self._prepare_payload({
@@ -1065,20 +1092,32 @@ class VectorStorageService:
         """Vérifie si un stock existe déjà pour cet utilisateur/compte."""
         if not self.client or not (isin or ticker): return False
         try:
-            filters = [
-                qmodels.FieldCondition(key="user_id", match=qmodels.MatchValue(value=user_id)),
-                qmodels.FieldCondition(key="account_id", match=qmodels.MatchValue(value=account_id)),
-            ]
-            if isin:
-                filters.append(qmodels.FieldCondition(key="isin", match=qmodels.MatchValue(value=isin)))
-            if ticker:
-                 filters.append(qmodels.FieldCondition(key="ticker", match=qmodels.MatchValue(value=ticker)))
+            # Tenter de générer un ID déterministe si possible, sinon filtrer
+            point_id = None
+            if isin: # Préférer ISIN si disponible pour ID
+                 point_id = f"user_{user_id}_stock_{account_id}_{isin}"
+            elif ticker:
+                 point_id = f"user_{user_id}_stock_{account_id}_{ticker}"
 
-            filter_query = qmodels.Filter(must=filters)
-            results = self.client.scroll(
-                collection_name=self.STOCKS_COLLECTION, scroll_filter=filter_query, limit=1, with_payload=False, with_vectors=False
-            )
-            return len(results[0]) > 0
+            if point_id:
+                 results = self.client.retrieve(
+                     collection_name=self.STOCKS_COLLECTION, ids=[point_id], with_payload=False, with_vectors=False
+                 )
+                 return len(results) > 0
+            else:
+                 # Fallback sur filtre si pas d'identifiant unique clair
+                 filters = [
+                     qmodels.FieldCondition(key="user_id", match=qmodels.MatchValue(value=user_id)),
+                     qmodels.FieldCondition(key="account_id", match=qmodels.MatchValue(value=account_id)),
+                 ]
+                 if isin: filters.append(qmodels.FieldCondition(key="isin", match=qmodels.MatchValue(value=isin)))
+                 if ticker: filters.append(qmodels.FieldCondition(key="ticker", match=qmodels.MatchValue(value=ticker)))
+
+                 filter_query = qmodels.Filter(must=filters)
+                 results = self.client.scroll(
+                     collection_name=self.STOCKS_COLLECTION, scroll_filter=filter_query, limit=1, with_payload=False, with_vectors=False
+                 )
+                 return len(results[0]) > 0
         except Exception as e:
             logger.error(f"Erreur lors de la vérification de l'existence du stock {ticker or isin} pour user {user_id}, account {account_id}: {e}", exc_info=True)
             return False
@@ -1099,7 +1138,7 @@ class VectorStorageService:
             # Upsert sans vecteur car c'est juste un marqueur
             self.client.upsert(
                 collection_name=self.USER_METADATA_COLLECTION,
-                points=[qmodels.PointStruct(id=point_id, payload=payload)], # Pas de vecteur
+                points=[qmodels.PointStruct(id=point_id, payload=payload)], # Pas de vecteur ici
                 wait=True # Attendre confirmation pour la métadonnée
             )
             logger.info(f"Stockage vectoriel initialisé (métadata) pour l'utilisateur {user_id}")
@@ -1117,7 +1156,7 @@ class VectorStorageService:
                 collection_name=self.USER_METADATA_COLLECTION,
                 ids=[point_id],
                 with_payload=False,
-                with_vectors=False
+                with_vectors=False # Pas besoin de vecteur pour vérifier l'existence
             )
             return len(results) > 0
         except Exception as e:
@@ -1143,16 +1182,21 @@ class VectorStorageService:
                 self.INSIGHTS_COLLECTION
             ]:
                 try:
-                    count_response = self.client.count(
-                        collection_name=collection_name,
-                        count_filter=user_filter,
-                        exact=False # Utiliser estimation pour performance
-                    )
-                    stats[f"{collection_name}_count"] = count_response.count
+                    # Vérifier si la collection existe avant de compter
+                    if collection_name in {col.name for col in self.client.get_collections().collections}:
+                        count_response = self.client.count(
+                            collection_name=collection_name,
+                            count_filter=user_filter,
+                            exact=False # Utiliser estimation pour performance
+                        )
+                        stats[f"{collection_name}_count"] = count_response.count
+                    else:
+                        logger.debug(f"La collection {collection_name} n'existe pas, compte mis à 0 pour user {user_id}")
+                        stats[f"{collection_name}_count"] = 0
                 except Exception as count_e:
-                    # La collection n'existe peut-être pas encore ou erreur
+                    # Gérer d'autres erreurs potentielles de count
                     logger.warning(f"Impossible de compter les points dans {collection_name} pour user {user_id}: {count_e}")
-                    stats[f"{collection_name}_count"] = 0
+                    stats[f"{collection_name}_count"] = -1 # Mettre une valeur indiquant une erreur
 
             return stats
         except Exception as e:
@@ -1168,7 +1212,7 @@ class VectorStorageService:
             results = self.client.retrieve(
                 collection_name=self.USER_METADATA_COLLECTION,
                 ids=[point_id],
-                with_payload=True
+                with_payload=True # On veut le payload
             )
             if results:
                 return results[0].payload
@@ -1235,17 +1279,23 @@ class VectorStorageService:
         # Supprimer les points filtrés dans chaque collection
         for collection_name in collections_to_clean:
             try:
-                 # Compter avant pour log
-                 # count_before = self.client.count(collection_name=collection_name, count_filter=user_filter, exact=True).count
-                 # logger.info(f"Suppression de {count_before} points de {collection_name} pour user {user_id}")
-
-                 # Supprimer par filtre
-                 self.client.delete(
-                     collection_name=collection_name,
-                     points_selector=qmodels.FilterSelector(filter=user_filter),
-                     wait=True # Attendre la fin de la suppression
-                 )
-                 logger.info(f"Points supprimés de {collection_name} pour user {user_id}")
+                 # Vérifier si la collection existe avant de supprimer
+                 if collection_name in {col.name for col in self.client.get_collections().collections}:
+                     # Compter avant pour log (estimation OK ici)
+                     count_before = self.client.count(collection_name=collection_name, count_filter=user_filter, exact=False).count
+                     if count_before > 0:
+                         logger.info(f"Suppression de ~{count_before} points de {collection_name} pour user {user_id}")
+                         # Supprimer par filtre
+                         delete_result = self.client.delete(
+                             collection_name=collection_name,
+                             points_selector=qmodels.FilterSelector(filter=user_filter),
+                             wait=True # Attendre la fin de la suppression
+                         )
+                         logger.info(f"Points supprimés de {collection_name} pour user {user_id}. Résultat: {delete_result.status}")
+                     else:
+                          logger.info(f"Aucun point à supprimer dans {collection_name} pour user {user_id}")
+                 else:
+                      logger.debug(f"Collection {collection_name} n'existe pas, suppression ignorée pour user {user_id}")
             except Exception as e:
                  # Ne pas bloquer si une collection n'existe pas ou autre erreur
                  logger.error(f"Erreur lors de la suppression des points de {collection_name} pour user {user_id}: {e}")
@@ -1253,16 +1303,23 @@ class VectorStorageService:
 
         # Supprimer les métadonnées utilisateur
         try:
-            point_id = f"user_meta_{user_id}"
-            self.client.delete(
-                collection_name=self.USER_METADATA_COLLECTION,
-                points_selector=qmodels.PointIdsList(points=[point_id]),
-                wait=True
-            )
-            logger.info(f"Métadonnées supprimées pour user {user_id}")
+            if self.USER_METADATA_COLLECTION in {col.name for col in self.client.get_collections().collections}:
+                 point_id = f"user_meta_{user_id}"
+                 # Vérifier si le point existe avant de supprimer
+                 if await self.check_user_storage_initialized(user_id):
+                     delete_result = self.client.delete(
+                         collection_name=self.USER_METADATA_COLLECTION,
+                         points_selector=qmodels.PointIdsList(points=[point_id]),
+                         wait=True
+                     )
+                     logger.info(f"Métadonnées supprimées pour user {user_id}. Résultat: {delete_result.status}")
+                 else:
+                     logger.info(f"Aucune métadonnée à supprimer pour user {user_id}")
+            else:
+                 logger.debug(f"Collection {self.USER_METADATA_COLLECTION} n'existe pas, suppression métadata ignorée.")
         except Exception as e:
             logger.error(f"Erreur lors de la suppression des métadonnées pour user {user_id}: {e}")
             success = False
 
-        logger.warning(f"Suppression des données Qdrant pour user_id={user_id} terminée avec succès: {success}")
+        logger.warning(f"Suppression des données Qdrant pour user_id={user_id} terminée avec succès global: {success}")
         return success

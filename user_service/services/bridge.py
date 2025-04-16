@@ -2,7 +2,7 @@
 import logging
 import traceback
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta 
 from typing import Optional, Dict, Any, List, Union
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -189,7 +189,7 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
 
     now = datetime.now(timezone.utc)
     # Vérifier l'expiration avec une petite marge (ex: 60 secondes)
-    if bridge_connection.token_expires_at and bridge_connection.token_expires_at > (now + timezone.timedelta(seconds=60)) and bridge_connection.last_token:
+    if bridge_connection.token_expires_at and bridge_connection.token_expires_at > (now + timedelta(seconds=60)) and bridge_connection.last_token:
         logger.debug(f"Using existing valid token for user {user_id}, expires at {bridge_connection.token_expires_at}")
         return {
             "access_token": bridge_connection.last_token,

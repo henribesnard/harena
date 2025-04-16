@@ -143,7 +143,9 @@ try:
     try:
         if engine:
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                # Utiliser text() pour encapsuler la requête SQL
+                from sqlalchemy import text
+                conn.execute(text("SELECT 1"))
             logger.info("Connexion à la base de données établie")
     except Exception as e:
         logger.error(f"Erreur de connexion à la base de données: {str(e)}")
@@ -162,42 +164,104 @@ except Exception as e:
 
 # ======== IMPORTATION ET MONTAGE DES SERVICES ========
 
-# Import et montage des services transaction_vector et conversation en premier
-# car ils ont moins de dépendances vers les autres services
-
 # ======== TRANSACTION VECTOR SERVICE ========
 try:
-    # Importer les composants nécessaires
-    transactions_router_module = safe_import("transaction_vector_service.api.endpoints.transactions")
+    # Importer les dépendances de base d'abord
+    logging_config_module = safe_import("transaction_vector_service.config.logging_config")
+    settings_module = safe_import("transaction_vector_service.config.settings")
+    constants_module = safe_import("transaction_vector_service.config.constants")
     
-    if transactions_router_module:
-        # Inclure les routes
-        app.include_router(
-            transactions_router_module.router,
-            prefix="/api/v1/transactions",
-            tags=["transactions"]
-        )
+    # Importer les utilitaires
+    text_processors_module = safe_import("transaction_vector_service.utils.text_processors")
+    
+    # Importer les services principaux
+    embedding_service_module = safe_import("transaction_vector_service.services.embedding_service")
+    qdrant_client_module = safe_import("transaction_vector_service.services.qdrant_client")
+    category_service_module = safe_import("transaction_vector_service.services.category_service")
+    merchant_service_module = safe_import("transaction_vector_service.services.merchant_service")
+    transaction_service_module = safe_import("transaction_vector_service.services.transaction_service")
+    
+    # Importer les modèles
+    transaction_model_module = safe_import("transaction_vector_service.models.transaction")
+    interfaces_module = safe_import("transaction_vector_service.models.interfaces")
+    
+    # Importer les modules de recherche
+    bm25_search_module = safe_import("transaction_vector_service.search.bm25_search")
+    vector_search_module = safe_import("transaction_vector_service.search.vector_search")
+    cross_encoder_module = safe_import("transaction_vector_service.search.cross_encoder")
+    hybrid_search_module = safe_import("transaction_vector_service.search.hybrid_search")
+    
+    # Vérifier que tous les modules essentiels sont correctement importés
+    essential_modules = [
+        logging_config_module, settings_module,
+        embedding_service_module, qdrant_client_module,
+        category_service_module, merchant_service_module, 
+        transaction_service_module
+    ]
+    
+    essential_search_modules = [
+        bm25_search_module, vector_search_module,
+        cross_encoder_module, hybrid_search_module
+    ]
+    
+    if all(essential_modules) and all(essential_search_modules):
+        # Importer les composants nécessaires pour le routage
+        dependencies_module = safe_import("transaction_vector_service.api.dependencies")
+        transactions_router_module = safe_import("transaction_vector_service.api.endpoints.transactions")
         
-        # Initialiser les services
-        try:
-            dependencies_module = safe_import("transaction_vector_service.api.dependencies")
-            if dependencies_module:
+        if transactions_router_module and dependencies_module:
+            # Inclure les routes
+            app.include_router(
+                transactions_router_module.router,
+                prefix="/api/v1/transactions",
+                tags=["transactions"]
+            )
+            
+            # Initialiser les services
+            try:
                 dependencies_module.initialize_services()
                 logger.info("Services Transaction Vector initialisés avec succès")
-        except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation des services Transaction Vector: {str(e)}")
-        
-        service_status["transaction_vector_service"] = True
-        logger.info("Transaction Vector Service intégré avec succès")
+                service_status["transaction_vector_service"] = True
+            except Exception as e:
+                logger.error(f"Erreur lors de l'initialisation des services Transaction Vector: {str(e)}")
+                logger.error(traceback.format_exc())
+        else:
+            missing = []
+            if not transactions_router_module:
+                missing.append("transactions_router_module")
+            if not dependencies_module:
+                missing.append("dependencies_module")
+            logger.error(f"Modules Transaction Vector introuvables: {', '.join(missing)}")
     else:
-        logger.error("Module de routage Transaction Vector introuvable")
+        # Identifier les modules manquants
+        missing_modules = []
+        modules_to_check = {
+            "logging_config": logging_config_module,
+            "settings": settings_module,
+            "embedding_service": embedding_service_module,
+            "qdrant_client": qdrant_client_module,
+            "category_service": category_service_module,
+            "merchant_service": merchant_service_module,
+            "transaction_service": transaction_service_module,
+            "bm25_search": bm25_search_module,
+            "vector_search": vector_search_module,
+            "cross_encoder": cross_encoder_module,
+            "hybrid_search": hybrid_search_module
+        }
+        
+        for name, module in modules_to_check.items():
+            if not module:
+                missing_modules.append(name)
+        
+        logger.error(f"Modules Transaction Vector manquants: {', '.join(missing_modules)}")
 except Exception as e:
     logger.error(f"Erreur lors de l'intégration du Transaction Vector Service: {str(e)}")
+    logger.error(traceback.format_exc())
 
 # ======== CONVERSATION SERVICE ========
 try:
     # Importer les composants nécessaires
-    conversation_router_module = safe_import("conversation_service.api.endpoints")
+    conversation_router_module = safe_import("conversation_service.api.router")
     
     if conversation_router_module:
         # Inclure les routes
@@ -248,7 +312,7 @@ try:
         logger.error("Impossible de charger les modèles utilisateur")
 except Exception as e:
     logger.error(f"Erreur lors de l'intégration du User Service: {str(e)}")
-    traceback.print_exc()
+    logger.error(traceback.format_exc())
 
 # ======== SYNC SERVICE ========
 try:
@@ -309,7 +373,8 @@ async def health_check():
     try:
         if 'engine' in globals():
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                from sqlalchemy import text
+                conn.execute(text("SELECT 1"))
             db_status = "connected"
         else:
             db_status = "engine not initialized"
@@ -346,7 +411,7 @@ async def debug_modules():
         "transaction_vector_service",
         "transaction_vector_service.api.endpoints.transactions",
         "conversation_service",
-        "conversation_service.api.endpoints"
+        "conversation_service.api.router"
     ]
     
     results = {}
@@ -438,7 +503,8 @@ async def debug_test_user_service():
         user_db_session = safe_import("user_service.db.session")
         if user_db_session and hasattr(user_db_session, 'engine'):
             with user_db_session.engine.connect() as conn:
-                conn.execute("SELECT 1")
+                from sqlalchemy import text
+                conn.execute(text("SELECT 1"))
             results["db_connection"] = "success"
         else:
             results["db_connection"] = "module not properly loaded"
@@ -468,6 +534,63 @@ async def debug_test_user_service():
         results["router_routes"] = f"error: {str(e)}"
     
     return results
+
+@app.get("/debug-transaction-vector", tags=["debug"])
+async def debug_transaction_vector():
+    """
+    Diagnostic spécifique pour le service transaction_vector.
+    """
+    try:
+        results = {
+            "modules": {},
+            "dependencies": {}
+        }
+        
+        # Vérifier les modules clés
+        modules_to_check = [
+            "transaction_vector_service.config.settings",
+            "transaction_vector_service.services.embedding_service",
+            "transaction_vector_service.services.qdrant_client",
+            "transaction_vector_service.services.transaction_service",
+            "transaction_vector_service.search.bm25_search",
+            "transaction_vector_service.search.vector_search",
+            "transaction_vector_service.search.hybrid_search",
+            "transaction_vector_service.api.dependencies",
+            "transaction_vector_service.api.endpoints.transactions"
+        ]
+        
+        for module_name in modules_to_check:
+            if module_name in sys.modules:
+                module = sys.modules[module_name]
+                results["modules"][module_name] = {
+                    "loaded": True,
+                    "path": getattr(module, "__file__", "unknown")
+                }
+            else:
+                results["modules"][module_name] = {
+                    "loaded": False
+                }
+        
+        # Vérifier les dépendances
+        if 'dependencies_module' in globals() and dependencies_module:
+            cache = getattr(dependencies_module, '_service_cache', {})
+            for key in cache:
+                results["dependencies"][key] = "initialized"
+            
+            # Vérifier les services critiques
+            critical_services = ["transaction_service", "bm25_search", "vector_search", "search_service"]
+            for service in critical_services:
+                if service not in cache:
+                    results["dependencies"][service] = "missing"
+        else:
+            results["dependencies"]["status"] = "dependencies_module not available"
+        
+        return results
+    except Exception as e:
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 # ======== GESTIONNAIRE D'EXCEPTIONS ========
 

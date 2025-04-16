@@ -1,6 +1,6 @@
 """
 Application Harena complète pour le déploiement Heroku.
-Intégration optimisée de tous les services bancaires.
+Intégration optimisée de tous les services bancaires avec gestion améliorée des dépendances.
 """
 
 import logging
@@ -11,14 +11,17 @@ import traceback
 from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI, Request, Depends
+from typing import Dict, Any, List, Optional
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+# ======== CONFIGURATION INITIALE ========
+
 # Configuration du logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Augmenter le niveau de détail des logs
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
 )
 logger = logging.getLogger("harena")
 logger.info("Initialisation de l'application Harena avec niveau de log DEBUG")
@@ -26,21 +29,20 @@ logger.info("Initialisation de l'application Harena avec niveau de log DEBUG")
 # Définir la variable d'environnement pour propager aux autres modules
 os.environ["LOG_LEVEL"] = "DEBUG"
 
-# Vérifier et configurer les variables d'environnement
+# Correction de l'URL de base de données pour Heroku
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    # Heroku utilise "postgres://" mais SQLAlchemy 1.4+ requiert "postgresql://"
     os.environ["DATABASE_URL"] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     logger.info("DATABASE_URL corrigé pour SQLAlchemy 1.4+")
-
-# Désactiver la gestion des dépendances circulaires
-os.environ["DEFERRED_RELATIONSHIP_LOADING"] = "True"
 
 # S'assurer que tous les modules sont accessibles
 current_dir = Path(__file__).parent.absolute()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
     logger.info(f"Ajout du répertoire courant {current_dir} au PYTHONPATH")
+
+# Cache des modules importés
+imported_modules = {}
 
 # Suivi des services intégrés
 service_status = {
@@ -50,11 +52,17 @@ service_status = {
     "conversation_service": False
 }
 
-# Fonction pour importer un module avec gestion d'erreur détaillée
-def safe_import(module_name, required=False):
+# ======== FONCTIONS UTILITAIRES ========
+
+def safe_import(module_name: str, required: bool = False) -> Any:
+    """Importe un module avec gestion d'erreur détaillée."""
+    if module_name in imported_modules:
+        return imported_modules[module_name]
+        
     try:
-        logger.info(f"Tentative d'importation du module: {module_name}")
+        logger.info(f"Importation du module: {module_name}")
         module = importlib.import_module(module_name)
+        imported_modules[module_name] = module
         logger.info(f"Module {module_name} importé avec succès")
         return module
     except Exception as e:
@@ -65,53 +73,335 @@ def safe_import(module_name, required=False):
         if required:
             logger.critical(f"Module requis {module_name} n'a pas pu être importé. Application peut être instable.")
         
+        imported_modules[module_name] = None
         return None
 
-# Fonction pour réinitialiser un module s'il est déjà chargé
-def reload_module(module_name):
+def reload_module(module_name: str) -> Any:
+    """Recharge un module en le supprimant du cache si nécessaire."""
     if module_name in sys.modules:
         logger.debug(f"Suppression du module {module_name} du cache sys.modules")
         del sys.modules[module_name]
+    if module_name in imported_modules:
+        del imported_modules[module_name]
     return safe_import(module_name)
 
-# Gestionnaire de cycle de vie de l'application
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Code exécuté au démarrage
-    logger.info("Démarrage de l'application Harena...")
-    
+def init_database() -> bool:
+    """Initialise la connexion à la base de données et vérifie si elle fonctionne."""
     try:
-        # Initialiser les composants critiques
-        logger.info("Initialisation des composants de l'application")
+        # Importer les modules nécessaires
+        db_session = safe_import("user_service.db.session", required=True)
+        if not db_session:
+            logger.error("Échec de l'initialisation de la base de données: module de session introuvable")
+            return False
+            
+        # Extraire les références importantes
+        engine = getattr(db_session, "engine", None)
+        get_db = getattr(db_session, "get_db", None)
         
-        # Ici vous pourriez ajouter du code pour initialiser des ressources
-        # comme une connexion à une base de données, configuration de cache, etc.
+        if not engine or not get_db:
+            logger.error("Échec de l'initialisation de la base de données: engine ou get_db introuvable")
+            return False
+            
+        # Vérifier la connexion
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            
+        logger.info("Connexion à la base de données établie avec succès")
+        
+        # Créer les tables si demandé
+        if os.environ.get("CREATE_TABLES", "false").lower() == "true":
+            base_module = safe_import("user_service.models.base", required=True)
+            if base_module and hasattr(base_module, "Base"):
+                Base = base_module.Base
+                Base.metadata.create_all(bind=engine)
+                logger.info("Tables créées avec succès")
+        
+        return True
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'initialisation des composants: {str(e)}")
+        logger.error(f"Erreur lors de l'initialisation de la base de données: {str(e)}")
         logger.error(traceback.format_exc())
+        return False
+
+def load_core_modules() -> bool:
+    """Charge les modules de base nécessaires au fonctionnement de l'application."""
+    try:
+        # Liste des modules centraux à charger
+        core_modules = [
+            "user_service.core.config",
+            "user_service.models.base",
+            "user_service.models.user",
+            "sync_service.models.sync", 
+            "transaction_vector_service.config.settings",
+            "transaction_vector_service.config.constants"
+        ]
+        
+        success = True
+        for module_name in core_modules:
+            module = safe_import(module_name, required=True)
+            if not module:
+                logger.error(f"Échec du chargement du module central: {module_name}")
+                success = False
+                
+        return success
+        
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement des modules centraux: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+def create_required_objects() -> bool:
+    """Crée et initialise les objets partagés nécessaires."""
+    try:
+        # Configurer les objets partagés si nécessaire
+        return True
+    except Exception as e:
+        logger.error(f"Erreur lors de la création des objets partagés: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+# ======== INITIALISATION DES SERVICES ========
+
+def init_user_service(app: FastAPI) -> bool:
+    """Initialise et monte le service utilisateur."""
+    try:
+        # Charger les dépendances du service utilisateur
+        deps_module = safe_import("user_service.api.deps")
+        if not deps_module:
+            logger.error("Échec de l'initialisation du service utilisateur: module deps introuvable")
+            return False
+            
+        # Charger les endpoints utilisateur
+        users_module = safe_import("user_service.api.endpoints.users")
+        if not users_module or not hasattr(users_module, "router"):
+            logger.error("Échec de l'initialisation du service utilisateur: router introuvable")
+            return False
+            
+        # Monter les routes
+        app.include_router(
+            users_module.router,
+            prefix="/api/v1/users",
+            tags=["users"]
+        )
+        
+        logger.info("Service utilisateur initialisé et monté avec succès")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation du service utilisateur: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+def init_sync_service(app: FastAPI) -> bool:
+    """Initialise et monte le service de synchronisation."""
+    try:
+        # Charger les services requis
+        required_services = [
+            "sync_service.services.webhook_handler",
+            "sync_service.services.sync_manager",
+            "sync_service.services.transaction_sync"
+        ]
+        
+        for service_name in required_services:
+            service = safe_import(service_name, required=True)
+            if not service:
+                logger.error(f"Échec de l'initialisation du service de synchronisation: module {service_name} introuvable")
+                return False
+                
+        # Charger les endpoints
+        sync_router_module = safe_import("sync_service.api.endpoints.sync")
+        webhooks_router_module = safe_import("sync_service.api.endpoints.webhooks")
+        
+        if not sync_router_module or not hasattr(sync_router_module, "router"):
+            logger.error("Échec de l'initialisation du service de synchronisation: sync router introuvable")
+            return False
+            
+        if not webhooks_router_module or not hasattr(webhooks_router_module, "router"):
+            logger.error("Échec de l'initialisation du service de synchronisation: webhooks router introuvable")
+            return False
+        
+        # Monter les routes
+        app.include_router(
+            sync_router_module.router,
+            prefix="/api/v1/sync",
+            tags=["synchronization"]
+        )
+        
+        app.include_router(
+            webhooks_router_module.router,
+            prefix="/webhooks",
+            tags=["webhooks"]
+        )
+        
+        logger.info("Service de synchronisation initialisé et monté avec succès")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation du service de synchronisation: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+def init_transaction_vector_service(app: FastAPI) -> bool:
+    """Initialise et monte le service de vecteurs de transactions."""
+    try:
+        # Charger d'abord les configurations essentielles
+        configs = [
+            "transaction_vector_service.config.logging_config",
+            "transaction_vector_service.config.settings",
+            "transaction_vector_service.config.constants"
+        ]
+        
+        for config_name in configs:
+            config = safe_import(config_name, required=True)
+            if not config:
+                logger.error(f"Échec de l'initialisation du service de vecteurs: config {config_name} introuvable")
+                return False
+        
+        # Précharger les modèles et interfaces
+        models = [
+            "transaction_vector_service.models.interfaces",
+            "transaction_vector_service.models.transaction",
+            "transaction_vector_service.models.merchant",
+            "transaction_vector_service.models.category"
+        ]
+        
+        for model_name in models:
+            model = safe_import(model_name)
+            if not model:
+                logger.warning(f"Module de modèle non critique non chargé: {model_name}")
+        
+        # Charger les services dans l'ordre des dépendances
+        services = [
+            "transaction_vector_service.services.embedding_service",  # Pas de dépendances
+            "transaction_vector_service.services.qdrant_client",      # Pas de dépendances
+            "transaction_vector_service.services.category_service",   # Dépend des précédents
+            "transaction_vector_service.services.merchant_service",   # Dépend des précédents
+            "transaction_vector_service.services.transaction_service", # Dépend de tous les précédents
+            "transaction_vector_service.services.sync_service"        # Dépend de tous les précédents
+        ]
+        
+        for service_name in services:
+            service = reload_module(service_name)
+            if not service:
+                logger.error(f"Échec de l'initialisation du service de vecteurs: module {service_name} introuvable")
+                return False
+                
+        # Charger les modules de recherche
+        search_modules = [
+            "transaction_vector_service.search.bm25_search",
+            "transaction_vector_service.search.vector_search",
+            "transaction_vector_service.search.cross_encoder",
+            "transaction_vector_service.search.hybrid_search"
+        ]
+        
+        for module_name in search_modules:
+            module = safe_import(module_name)
+            if not module:
+                logger.warning(f"Module de recherche non critique non chargé: {module_name}")
+                
+        # Charger les dépendances API
+        api_deps = reload_module("transaction_vector_service.api.dependencies")
+        if not api_deps:
+            logger.error("Échec de l'initialisation du service de vecteurs: module dependencies introuvable")
+            return False
+            
+        # Initialiser les services
+        if hasattr(api_deps, "initialize_services"):
+            try:
+                api_deps.initialize_services()
+                logger.info("Services de vecteurs initialisés avec succès")
+            except Exception as e:
+                logger.error(f"Erreur lors de l'initialisation des services de vecteurs: {str(e)}")
+                logger.error(traceback.format_exc())
+                return False
+        
+        # Charger les endpoints
+        transactions_endpoint = safe_import("transaction_vector_service.api.endpoints.transactions")
+        if not transactions_endpoint or not hasattr(transactions_endpoint, "router"):
+            logger.error("Échec de l'initialisation du service de vecteurs: router transactions introuvable")
+            return False
+            
+        # Monter les routes
+        app.include_router(
+            transactions_endpoint.router,
+            prefix="/api/v1/transactions",
+            tags=["transactions"]
+        )
+        
+        logger.info("Service de vecteurs de transactions initialisé et monté avec succès")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation du service de vecteurs: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+def init_conversation_service(app: FastAPI) -> bool:
+    """Initialise et monte le service de conversation."""
+    try:
+        # Charger les modules requis
+        router_module = safe_import("conversation_service.api.router")
+        if not router_module or not hasattr(router_module, "router"):
+            logger.error("Échec de l'initialisation du service de conversation: router introuvable")
+            return False
+            
+        # Monter les routes
+        app.include_router(
+            router_module.router,
+            prefix="/api/v1/conversations",
+            tags=["conversations"]
+        )
+        
+        logger.info("Service de conversation initialisé et monté avec succès")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation du service de conversation: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+# ======== GESTIONNAIRE DE CYCLE DE VIE ========
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gestionnaire du cycle de vie de l'application."""
+    # ===== DÉMARRAGE =====
+    logger.info("Démarrage de l'application Harena...")
     
-    # Résumé des services
-    active_count = sum(1 for status in service_status.values() if status)
-    logger.info(f"{active_count}/{len(service_status)} services actifs")
+    # Initialiser la base de données
+    db_ok = init_database()
+    if not db_ok:
+        logger.error("Problèmes lors de l'initialisation de la base de données")
     
-    for service, status in service_status.items():
-        status_txt = "ACTIF" if status else "INACTIF"
-        logger.info(f"Service {service}: {status_txt}")
+    # Charger les modules centraux
+    core_ok = load_core_modules()
+    if not core_ok:
+        logger.warning("Problèmes lors du chargement des modules centraux")
     
-    yield  # Ici l'application s'exécute
+    # Créer les objets partagés
+    objects_ok = create_required_objects()
+    if not objects_ok:
+        logger.warning("Problèmes lors de la création des objets partagés")
     
-    # Code exécuté à l'arrêt
+    yield  # L'application s'exécute ici
+    
+    # ===== ARRÊT =====
     logger.info("Arrêt de l'application Harena...")
     
-    # Fermeture propre des ressources
-    logger.info("Fermeture des ressources de l'application")
+    # Effectuer le nettoyage nécessaire
+    try:
+        # Fermeture des connexions BD, etc.
+        pass
+    except Exception as e:
+        logger.error(f"Erreur lors de l'arrêt: {str(e)}")
 
-# Création de l'application FastAPI avec lifespan
+# ======== CRÉATION DE L'APPLICATION ========
+
 app = FastAPI(
     title="Harena Finance API",
-    description="API pour les services financiers Harena",
-    version="1.0.0",
+    description="API pour les services financiers Harena - Version Optimisée",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -127,284 +417,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ======== IMPORTATION DES MODULES DE BASE ========
+# ======== INITIALISATION ET MONTAGE DES SERVICES ========
 
-# Préparation des configurations et modèles de base
-try:
-    # Liste des modules de base à charger en premier
-    base_modules = [
-        "user_service.core.config",
-        "user_service.models.base",
-        "user_service.db.session"
-    ]
-    
-    # Charger les modules de base dans l'ordre
-    loaded_modules = {}
-    for module_name in base_modules:
-        loaded_modules[module_name] = safe_import(module_name, required=True)
-    
-    # Extraire les références importantes
-    if loaded_modules["user_service.core.config"]:
-        user_settings = loaded_modules["user_service.core.config"].settings
-        logger.info("Configuration utilisateur chargée")
-    
-    if loaded_modules["user_service.models.base"]:
-        Base = loaded_modules["user_service.models.base"].Base
-        logger.info("Modèle de base chargé")
-    
-    if loaded_modules["user_service.db.session"]:
-        engine = loaded_modules["user_service.db.session"].engine
-        get_db = loaded_modules["user_service.db.session"].get_db
-        logger.info("Session de base de données initialisée")
-    
-    # Vérifier la connexion BD
-    try:
-        if 'engine' in locals():
-            with engine.connect() as conn:
-                # Utiliser text() pour encapsuler la requête SQL
-                from sqlalchemy import text
-                conn.execute(text("SELECT 1"))
-            logger.info("Connexion à la base de données établie")
-    except Exception as e:
-        logger.error(f"Erreur de connexion à la base de données: {str(e)}")
-    
-    # Initialiser les tables si demandé
-    if os.environ.get("CREATE_TABLES", "false").lower() == "true":
-        try:
-            if 'Base' in locals() and 'engine' in locals():
-                Base.metadata.create_all(bind=engine)
-                logger.info("Tables créées avec succès")
-        except Exception as e:
-            logger.error(f"Erreur lors de la création des tables: {str(e)}")
+# Service utilisateur
+service_status["user_service"] = init_user_service(app)
 
-except Exception as e:
-    logger.error(f"Erreur lors de l'initialisation des modules de base: {str(e)}")
-    logger.error(traceback.format_exc())
+# Service de synchronisation - dépend du service utilisateur
+if service_status["user_service"]:
+    service_status["sync_service"] = init_sync_service(app)
+else:
+    logger.error("Impossible d'initialiser le service de synchronisation: service utilisateur non disponible")
 
-# ======== IMPORTATION ET MONTAGE DES SERVICES ========
+# Service de vecteurs de transactions - dépend des services précédents
+if service_status["user_service"]:
+    service_status["transaction_vector_service"] = init_transaction_vector_service(app)
+else:
+    logger.error("Impossible d'initialiser le service de vecteurs: dépendances non disponibles")
 
-# ======== USER SERVICE ========
-try:
-    # Réimporter le module modèle utilisateur
-    user_model_module = reload_module("user_service.models.user")
-    
-    if user_model_module:
-        logger.info("Modèles utilisateur chargés correctement")
-        
-        # Vérifier les dépendances d'authentification
-        deps_module = safe_import("user_service.api.deps")
-        
-        if deps_module:
-            logger.info("Dépendances utilisateur chargées correctement")
-            
-            # Charger les endpoints
-            users_endpoints_module = safe_import("user_service.api.endpoints.users")
-            
-            if users_endpoints_module and hasattr(users_endpoints_module, 'router'):
-                # Inclure les routes utilisateur
-                app.include_router(
-                    users_endpoints_module.router, 
-                    prefix="/api/v1/users", 
-                    tags=["users"]
-                )
-                service_status["user_service"] = True
-                logger.info("User Service intégré avec succès")
-            else:
-                logger.error("Module endpoints utilisateur invalide")
-        else:
-            logger.error("Impossible de charger les dépendances utilisateur")
-    else:
-        logger.error("Impossible de charger les modèles utilisateur")
-except Exception as e:
-    logger.error(f"Erreur lors de l'intégration du User Service: {str(e)}")
-    logger.error(traceback.format_exc())
+# Service de conversation - relativement indépendant
+service_status["conversation_service"] = init_conversation_service(app)
 
-# ======== SYNC SERVICE ========
-try:
-    # Charger les modèles de synchronisation d'abord
-    sync_model_module = safe_import("sync_service.models.sync")
-    
-    if sync_model_module:
-        logger.info("Modèles de synchronisation chargés correctement")
-        
-        # Charger les services de gestion de synchronisation
-        webhook_handler_module = safe_import("sync_service.services.webhook_handler")
-        sync_manager_module = safe_import("sync_service.services.sync_manager")
-        transaction_sync_module = safe_import("sync_service.services.transaction_sync")
-        
-        if webhook_handler_module and sync_manager_module and transaction_sync_module:
-            logger.info("Services de synchronisation chargés correctement")
-            
-            # Charger les modules de routage
-            sync_router_module = safe_import("sync_service.api.endpoints.sync")
-            webhooks_router_module = safe_import("sync_service.api.endpoints.webhooks")
-            
-            # Monter les routeurs si disponibles
-            if sync_router_module and hasattr(sync_router_module, 'router'):
-                app.include_router(
-                    sync_router_module.router, 
-                    prefix="/api/v1/sync", 
-                    tags=["synchronization"]
-                )
-                logger.info("Routes de synchronisation montées avec succès")
-            else:
-                logger.error("Module de routage sync introuvable ou invalide")
-                
-            if webhooks_router_module and hasattr(webhooks_router_module, 'router'):
-                app.include_router(
-                    webhooks_router_module.router,
-                    prefix="/webhooks",
-                    tags=["webhooks"]
-                )
-                logger.info("Routes de webhooks montées avec succès")
-                
-                # Service considéré actif si les deux routeurs sont montés
-                if sync_router_module and hasattr(sync_router_module, 'router'):
-                    service_status["sync_service"] = True
-                    logger.info("Sync Service intégré avec succès")
-            else:
-                logger.error("Module de routage webhooks introuvable ou invalide")
-        else:
-            missing_modules = []
-            if not webhook_handler_module:
-                missing_modules.append("webhook_handler")
-            if not sync_manager_module:
-                missing_modules.append("sync_manager")
-            if not transaction_sync_module:
-                missing_modules.append("transaction_sync")
-            
-            logger.error(f"Modules de service manquants: {', '.join(missing_modules)}")
-    else:
-        logger.error("Impossible de charger les modèles de synchronisation")
-except Exception as e:
-    logger.error(f"Erreur lors de l'intégration du Sync Service: {str(e)}")
-    logger.error(traceback.format_exc())
-
-# ======== TRANSACTION VECTOR SERVICE ========
-try:
-    # Importer d'abord les modules de configuration
-    vector_config_modules = [
-        "transaction_vector_service.config.logging_config",
-        "transaction_vector_service.config.settings",
-        "transaction_vector_service.config.constants"
-    ]
-    
-    vector_configs = {}
-    for module_name in vector_config_modules:
-        vector_configs[module_name] = safe_import(module_name)
-    
-    # Vérifier si les configurations sont chargées correctement
-    if all(vector_configs.values()):
-        logger.info("Configurations Vector Service chargées correctement")
-        
-        # Charger les services essentiels dans l'ordre
-        vector_services = [
-            "transaction_vector_service.services.embedding_service",
-            "transaction_vector_service.services.qdrant_client",
-            "transaction_vector_service.services.category_service",
-            "transaction_vector_service.services.merchant_service",
-            "transaction_vector_service.services.transaction_service",
-            "transaction_vector_service.services.sync_service"
-        ]
-        
-        vector_service_modules = {}
-        for module_name in vector_services:
-            vector_service_modules[module_name] = safe_import(module_name)
-        
-        # Vérifier si les services essentiels sont chargés
-        if all(vector_service_modules.values()):
-            logger.info("Services Vector chargés correctement")
-            
-            # Charger les dépendances API
-            vector_api_deps = safe_import("transaction_vector_service.api.dependencies")
-            
-            if vector_api_deps:
-                logger.info("Dépendances API Vector chargées correctement")
-                
-                # Charger les endpoints
-                vector_transactions_endpoint = safe_import("transaction_vector_service.api.endpoints.transactions")
-                
-                if vector_transactions_endpoint and hasattr(vector_transactions_endpoint, 'router'):
-                    # Inclure les routes
-                    app.include_router(
-                        vector_transactions_endpoint.router,
-                        prefix="/api/v1/transactions",
-                        tags=["transactions"]
-                    )
-                    
-                    # Initialiser les services
-                    try:
-                        vector_api_deps.initialize_services()
-                        service_status["transaction_vector_service"] = True
-                        logger.info("Transaction Vector Service intégré avec succès")
-                    except Exception as e:
-                        logger.error(f"Erreur lors de l'initialisation des services Vector: {str(e)}")
-                        logger.error(traceback.format_exc())
-                else:
-                    logger.error("Module d'endpoints transactions introuvable ou invalide")
-            else:
-                logger.error("Impossible de charger les dépendances API Vector")
-        else:
-            missing_services = [name for name, module in vector_service_modules.items() if not module]
-            logger.error(f"Services Vector manquants: {', '.join(missing_services)}")
-    else:
-        missing_configs = [name for name, module in vector_configs.items() if not module]
-        logger.error(f"Configurations Vector manquantes: {', '.join(missing_configs)}")
-except Exception as e:
-    logger.error(f"Erreur lors de l'intégration du Transaction Vector Service: {str(e)}")
-    logger.error(traceback.format_exc())
-
-# ======== CONVERSATION SERVICE ========
-try:
-    # Charger le routeur de conversation
-    conversation_router_module = safe_import("conversation_service.api.router")
-    
-    if conversation_router_module and hasattr(conversation_router_module, 'router'):
-        # Inclure les routes
-        app.include_router(
-            conversation_router_module.router,
-            prefix="/api/v1/conversations",
-            tags=["conversations"]
-        )
-        
-        service_status["conversation_service"] = True
-        logger.info("Conversation Service intégré avec succès")
-    else:
-        logger.error("Module de routage Conversation introuvable ou invalide")
-except Exception as e:
-    logger.error(f"Erreur lors de l'intégration du Conversation Service: {str(e)}")
-    logger.error(traceback.format_exc())
+# Journaliser le statut des services
+active_services = sum(1 for status in service_status.values() if status)
+logger.info(f"{active_services}/{len(service_status)} services actifs")
+for name, status in service_status.items():
+    logger.info(f"Service {name}: {'ACTIF' if status else 'INACTIF'}")
 
 # ======== ENDPOINTS DE BASE ========
 
 @app.get("/", tags=["health"])
 async def root():
-    """
-    Point d'entrée racine pour vérifier que l'application est en ligne.
-    """
-    # Collecter les services actifs
+    """Point d'entrée racine pour vérifier que l'application est en ligne."""
     active_services = [name for name, status in service_status.items() if status]
     
     return {
         "status": "ok",
         "application": "Harena Finance API",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "environment": os.environ.get("ENVIRONMENT", "production"),
         "active_services": active_services
     }
 
 @app.get("/health", tags=["health"])
 async def health_check():
-    """
-    Vérification de l'état de santé de tous les services.
-    """
+    """Vérification de l'état de santé de tous les services."""
     # Vérifier la connexion à la base de données
     db_status = "unknown"
     
     try:
-        if 'engine' in globals():
+        db_session = imported_modules.get("user_service.db.session")
+        if db_session and hasattr(db_session, "engine"):
+            engine = db_session.engine
+            from sqlalchemy import text
             with engine.connect() as conn:
-                from sqlalchemy import text
                 conn.execute(text("SELECT 1"))
             db_status = "connected"
         else:
@@ -416,122 +481,53 @@ async def health_check():
         "status": "ok",
         "services": service_status,
         "database": db_status,
-        "version": "1.0.0",
+        "version": "1.1.0",
         "timestamp": str(datetime.now())
     }
 
-@app.get("/debug-init", tags=["debug"])
-async def debug_init():
-    """
-    Re-initialisation des services en échec
-    """
-    results = {}
+@app.post("/services/restart/{service_name}", tags=["admin"])
+async def restart_service(service_name: str):
+    """Redémarre un service spécifique."""
+    if service_name not in service_status:
+        raise HTTPException(status_code=404, detail=f"Service '{service_name}' not found")
     
-    # Réinitialiser le service Vector si nécessaire
-    if not service_status["transaction_vector_service"]:
-        logger.info("Tentative de réinitialisation du Transaction Vector Service...")
-        try:
-            # Réimporter et initialiser les modules clés
-            vector_modules = [
-                "transaction_vector_service.services.sync_service",
-                "transaction_vector_service.services.qdrant_client",
-                "transaction_vector_service.services.transaction_service"
-            ]
-            
-            for module_name in vector_modules:
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
-                    logger.debug(f"Module {module_name} supprimé du cache")
-            
-            # Réimporter le module de dépendances
-            deps_module = reload_module("transaction_vector_service.api.dependencies")
-            
-            if deps_module:
-                # Réinitialiser les services
-                deps_module.initialize_services()
-                service_status["transaction_vector_service"] = True
-                results["transaction_vector_service"] = "reinitialized"
-                logger.info("Transaction Vector Service réinitialisé avec succès")
-            else:
-                results["transaction_vector_service"] = "failed to reload dependencies"
-        except Exception as e:
-            results["transaction_vector_service"] = f"error: {str(e)}"
-            logger.error(f"Erreur lors de la réinitialisation du Vector Service: {str(e)}")
-    else:
-        results["transaction_vector_service"] = "already active"
+    result = {"service": service_name, "status": "unknown"}
     
-    # Réinitialiser le service Sync si nécessaire
-    if not service_status["sync_service"]:
-        logger.info("Tentative de réinitialisation du Sync Service...")
-        try:
-            # Réimporter les modules clés
-            sync_modules = [
-                "sync_service.services.webhook_handler",
-                "sync_service.services.sync_manager",
-                "sync_service.services.transaction_sync"
-            ]
+    try:
+        if service_name == "user_service":
+            service_status["user_service"] = init_user_service(app)
+            result["status"] = "restarted" if service_status["user_service"] else "failed"
             
-            reloaded = True
-            for module_name in sync_modules:
-                module = reload_module(module_name)
-                if not module:
-                    reloaded = False
-                    results["sync_service"] = f"failed to reload {module_name}"
+        elif service_name == "sync_service":
+            service_status["sync_service"] = init_sync_service(app)
+            result["status"] = "restarted" if service_status["sync_service"] else "failed"
             
-            if reloaded:
-                # Réimporter les routeurs
-                sync_router = reload_module("sync_service.api.endpoints.sync")
-                webhooks_router = reload_module("sync_service.api.endpoints.webhooks")
-                
-                if sync_router and webhooks_router:
-                    # Monter les routeurs
-                    try:
-                        app.include_router(
-                            sync_router.router, 
-                            prefix="/api/v1/sync", 
-                            tags=["synchronization"]
-                        )
-                        
-                        app.include_router(
-                            webhooks_router.router,
-                            prefix="/webhooks",
-                            tags=["webhooks"]
-                        )
-                        
-                        service_status["sync_service"] = True
-                        results["sync_service"] = "reinitialized"
-                        logger.info("Sync Service réinitialisé avec succès")
-                    except Exception as e:
-                        results["sync_service"] = f"router mounting error: {str(e)}"
-                else:
-                    results["sync_service"] = "failed to reload routers"
-        except Exception as e:
-            results["sync_service"] = f"error: {str(e)}"
-            logger.error(f"Erreur lors de la réinitialisation du Sync Service: {str(e)}")
-    else:
-        results["sync_service"] = "already active"
+        elif service_name == "transaction_vector_service":
+            service_status["transaction_vector_service"] = init_transaction_vector_service(app)
+            result["status"] = "restarted" if service_status["transaction_vector_service"] else "failed"
+            
+        elif service_name == "conversation_service":
+            service_status["conversation_service"] = init_conversation_service(app)
+            result["status"] = "restarted" if service_status["conversation_service"] else "failed"
+            
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = str(e)
+        logger.error(f"Erreur lors du redémarrage du service {service_name}: {str(e)}")
+        logger.error(traceback.format_exc())
     
-    return {
-        "status": "completed",
-        "results": results,
-        "services_status": service_status
-    }
+    return result
 
 @app.get("/debug", tags=["debug"])
 async def debug_info():
-    """
-    Endpoint de débogage pour vérifier les configurations.
-    """
+    """Endpoint de débogage pour vérifier les configurations."""
     import pkg_resources
     
     # Récupérer les routeurs FastAPI
     routes_info = []
     for route in app.routes:
         methods = getattr(route, "methods", set())
-        if methods:
-            methods_str = list(methods)
-        else:
-            methods_str = []
+        methods_str = list(methods) if methods else []
             
         route_info = {
             "path": getattr(route, "path", "unknown"),
@@ -560,7 +556,9 @@ async def debug_info():
     # Vérifier les tables de la base de données si possible
     db_tables = []
     try:
-        if 'engine' in globals():
+        db_session = imported_modules.get("user_service.db.session")
+        if db_session and hasattr(db_session, "engine"):
+            engine = db_session.engine
             from sqlalchemy import inspect
             inspector = inspect(engine)
             db_tables = inspector.get_table_names()
@@ -573,58 +571,63 @@ async def debug_info():
         "routes_count": len(routes_info),
         "routes": routes_info[:20],  # Limiter le nombre de routes affichées
         "database_tables": db_tables,
-        "modules_count": len(sys.modules),
+        "modules_loaded": len(imported_modules),
         "env_vars_count": len(safe_env_vars),
-        "installed_packages_count": len(installed_packages),
-        "python_path": sys.path
+        "installed_packages_count": len(installed_packages)
     }
 
 @app.get("/debug-modules", tags=["debug"])
 async def debug_modules():
-    """
-    Diagnostic détaillé des modules chargés.
-    """
+    """Liste des modules chargés pour diagnostiquer les problèmes d'importation."""
     modules_to_check = [
-        "user_service",
         "user_service.core.config",
         "user_service.models.base",
         "user_service.models.user",
         "user_service.db.session",
-        "user_service.services.users",
-        "user_service.services.bridge",
         "user_service.api.deps",
         "user_service.api.endpoints.users",
-        "sync_service",
         "sync_service.models.sync",
         "sync_service.services.webhook_handler",
         "sync_service.services.sync_manager",
         "sync_service.services.transaction_sync",
         "sync_service.api.endpoints.sync",
         "sync_service.api.endpoints.webhooks",
-        "transaction_vector_service",
         "transaction_vector_service.config.logging_config",
         "transaction_vector_service.config.settings",
         "transaction_vector_service.services.embedding_service",
         "transaction_vector_service.services.qdrant_client",
+        "transaction_vector_service.services.category_service",
+        "transaction_vector_service.services.merchant_service",
+        "transaction_vector_service.services.transaction_service",
         "transaction_vector_service.services.sync_service",
         "transaction_vector_service.api.dependencies",
         "transaction_vector_service.api.endpoints.transactions",
-        "conversation_service",
         "conversation_service.api.router"
     ]
     
     results = {}
     
     for module_name in modules_to_check:
-        if module_name in sys.modules:
+        if module_name in imported_modules:
+            module = imported_modules[module_name]
+            if module:
+                results[module_name] = {
+                    "status": "loaded",
+                    "path": getattr(module, "__file__", "unknown")
+                }
+            else:
+                results[module_name] = {
+                    "status": "import_failed"
+                }
+        elif module_name in sys.modules:
             module = sys.modules[module_name]
             results[module_name] = {
-                "loaded": True,
+                "status": "loaded_by_system",
                 "path": getattr(module, "__file__", "unknown")
             }
         else:
             results[module_name] = {
-                "loaded": False
+                "status": "not_loaded"
             }
     
     return results
@@ -633,14 +636,11 @@ async def debug_modules():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Gestionnaire global d'exceptions pour toute l'application.
-    Capture et formate les erreurs non gérées.
-    """
+    """Gestionnaire global d'exceptions pour toute l'application."""
     logger.error(f"Exception non gérée: {str(exc)}", exc_info=True)
     
     debug_mode = os.getenv("DEBUG", "False").lower() == "true"
-    error_detail = str(exc) if debug_mode else "Contactez l'administrateur pour plus d'informations."
+    error_detail = str(exc) if debug_mode else "Une erreur interne est survenue."
     
     if debug_mode:
         error_detail += "\n\n" + traceback.format_exc()
@@ -654,3 +654,9 @@ async def global_exception_handler(request: Request, exc: Exception):
             "path": request.url.path
         }
     )
+
+# Point d'entrée pour démarrer directement l'application
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("heroku_app:app", host="0.0.0.0", port=port)

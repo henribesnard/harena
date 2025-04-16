@@ -93,6 +93,34 @@ def get_merchant_service() -> MerchantServiceInterface:
     return _service_cache['merchant_service']
 
 
+def get_transaction_service() -> TransactionServiceInterface:
+    """
+    Obtient une instance du service de transaction.
+    
+    Returns:
+        Instance du service de transaction
+    """
+    if 'transaction_service' not in _service_cache:
+        # Initialiser les services nécessaires
+        embedding_service = get_embedding_service()
+        qdrant_service = get_qdrant_service()
+        merchant_service = get_merchant_service()
+        category_service = get_category_service()
+        
+        # Créer le service de transaction sans search_service pour éviter la dépendance circulaire
+        transaction_service = TransactionService(
+            embedding_service=embedding_service,
+            qdrant_service=qdrant_service,
+            merchant_service=merchant_service,
+            category_service=category_service,
+            search_service=None  # Sera défini plus tard
+        )
+        
+        _service_cache['transaction_service'] = transaction_service
+    
+    return _service_cache['transaction_service']
+
+
 def get_bm25_search():
     """
     Obtient une instance du service de recherche BM25.
@@ -101,6 +129,7 @@ def get_bm25_search():
         Instance du service de recherche BM25
     """
     if 'bm25_search' not in _service_cache:
+        # Créer l'instance sans transaction_service
         _service_cache['bm25_search'] = BM25Search()
     return _service_cache['bm25_search']
 
@@ -115,9 +144,11 @@ def get_vector_search():
     if 'vector_search' not in _service_cache:
         embedding_service = get_embedding_service()
         qdrant_service = get_qdrant_service()
+        transaction_service = get_transaction_service()
         _service_cache['vector_search'] = VectorSearch(
             embedding_service=embedding_service,
-            qdrant_service=qdrant_service
+            qdrant_service=qdrant_service,
+            transaction_service=transaction_service
         )
     return _service_cache['vector_search']
 
@@ -144,146 +175,16 @@ def get_search_service() -> SearchServiceInterface:
     if 'search_service' not in _service_cache:
         hybrid_search = HybridSearch()
         
-        # Injecter les composants de recherche
+        # Obtenir les composants de recherche
         bm25_search = get_bm25_search()
         vector_search = get_vector_search()
         cross_encoder = get_cross_encoder()
         
+        # Injecter les composants de recherche
         hybrid_search.set_search_components(bm25_search, vector_search, cross_encoder)
         _service_cache['search_service'] = hybrid_search
     
     return _service_cache['search_service']
-
-
-def get_transaction_service() -> TransactionServiceInterface:
-    """
-    Dépendance pour l'injection du service de transaction.
-    
-    Returns:
-        Instance initialisée de TransactionService
-    """
-    if 'transaction_service' not in _service_cache:
-        # Initialiser les services nécessaires
-        embedding_service = get_embedding_service()
-        qdrant_service = get_qdrant_service()
-        merchant_service = get_merchant_service()
-        category_service = get_category_service()
-        search_service = get_search_service()
-        
-        # Créer et retourner le service de transaction
-        transaction_service = TransactionService(
-            embedding_service=embedding_service,
-            qdrant_service=qdrant_service,
-            merchant_service=merchant_service,
-            category_service=category_service,
-            search_service=search_service
-        )
-        
-        _service_cache['transaction_service'] = transaction_service
-    
-    return _service_cache['transaction_service']
-
-
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
-    """
-    Valide le token JWT et retourne les informations utilisateur.
-    
-    Args:
-        token: Token JWT depuis l'en-tête d'autorisation
-        
-    Returns:
-        Dictionnaire d'informations utilisateur
-    
-    Raises:
-        HTTPException: Si le token est invalide ou expiré
-    """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        # Décode le token JWT
-        payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
-            algorithms=[settings.JWT_ALGORITHM]
-        )
-        
-        user_id: Optional[str] = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-            
-        # Convertir en entier car c'est ce qui est utilisé dans user_service
-        return {"user_id": int(user_id)}
-    except JWTError:
-        raise credentials_exception
-
-
-async def get_current_active_user(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, Any]:
-    """
-    Vérifie que l'utilisateur est actif.
-    
-    Dans une implémentation complète, cette fonction vérifierait
-    le statut de l'utilisateur dans la base de données.
-    
-    Args:
-        current_user: Information de l'utilisateur courant
-        
-    Returns:
-        Information de l'utilisateur si actif
-        
-    Raises:
-        HTTPException: Si l'utilisateur est inactif
-    """
-    # Dans une implémentation complète, on vérifierait si l'utilisateur est actif
-    # Pour l'instant, on suppose que tous les utilisateurs sont actifs
-    return current_user
-
-
-async def get_rate_limiter():
-    """
-    Dépendance pour limiter les requêtes et éviter les abus.
-    
-    Returns:
-        Fonction de limitation de débit
-    """
-    async def rate_limit(request: Request):
-        # Récupérer l'IP client
-        client_ip = request.client.host
-        
-        # Obtenir le timestamp actuel
-        current_time = time.time()
-        
-        # Créer/mettre à jour l'entrée pour ce client
-        if client_ip not in rate_limit_store:
-            rate_limit_store[client_ip] = {
-                "count": 1,
-                "reset_at": current_time + API_RATE_LIMIT_PERIOD
-            }
-        else:
-            # Vérifier si la période a été réinitialisée
-            if current_time > rate_limit_store[client_ip]["reset_at"]:
-                # Réinitialiser le compteur
-                rate_limit_store[client_ip] = {
-                    "count": 1,
-                    "reset_at": current_time + API_RATE_LIMIT_PERIOD
-                }
-            else:
-                # Incrémenter le compteur
-                rate_limit_store[client_ip]["count"] += 1
-                
-                # Vérifier si la limite est dépassée
-                if rate_limit_store[client_ip]["count"] > API_RATE_LIMIT:
-                    raise HTTPException(
-                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail="Rate limit exceeded. Try again later."
-                    )
-    
-    return rate_limit
 
 
 # Fonction pour initialiser tous les services au démarrage
@@ -292,12 +193,26 @@ def initialize_services():
     Initialise tous les services nécessaires.
     Cette fonction est appelée lors du démarrage de l'application.
     """
-    get_embedding_service()
-    get_qdrant_service()
-    get_category_service()
-    get_merchant_service()
-    get_bm25_search()
-    get_vector_search()
-    get_cross_encoder()
-    get_search_service()
-    get_transaction_service()
+    # Obtenir d'abord les services de base
+    embedding_service = get_embedding_service()
+    qdrant_service = get_qdrant_service()
+    category_service = get_category_service()
+    merchant_service = get_merchant_service()
+    
+    # Obtenir le service de transaction
+    transaction_service = get_transaction_service()
+    
+    # Obtenir les services de recherche
+    bm25_search = get_bm25_search()
+    vector_search = get_vector_search()
+    cross_encoder = get_cross_encoder()
+    
+    # Injecter le service de transaction dans BM25Search
+    bm25_search.set_transaction_service(transaction_service)
+    
+    # Obtenir le service de recherche hybride
+    search_service = get_search_service()
+    
+    # Injecter le service de recherche dans le service de transaction
+    if hasattr(transaction_service, 'set_search_service'):
+        transaction_service.set_search_service(search_service)

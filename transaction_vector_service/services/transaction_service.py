@@ -328,6 +328,17 @@ class TransactionService(TransactionServiceInterface):
         except Exception as e:
             logger.error(f"Error updating transaction {transaction_id}: {str(e)}")
             return False
+        
+    def set_search_service(self, search_service):
+        """
+    Définit le service de recherche à utiliser.
+    Cette méthode permet l'injection de dépendances après construction.
+    
+    Args:
+        search_service: Service de recherche
+    """
+        self.search_service = search_service      
+
 
     def _generate_transaction_fingerprint_from_dict(self, transaction: Dict[str, Any]) -> str:
         """

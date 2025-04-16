@@ -11,7 +11,6 @@ import asyncio
 from ..config.logging_config import get_logger
 from ..models.transaction import TransactionSearch
 from ..utils.text_processors import clean_transaction_description
-from ..services.transaction_service import TransactionService
 
 logger = get_logger(__name__)
 
@@ -22,7 +21,7 @@ class BM25Search:
 
     def __init__(
         self,
-        transaction_service: Optional[TransactionService] = None,
+        transaction_service=None,
         k1: float = 1.5,
         b: float = 0.75
     ):
@@ -34,7 +33,8 @@ class BM25Search:
             k1: Paramètre k1 de BM25 (saturation de fréquence des termes)
             b: Paramètre b de BM25 (normalisation de longueur)
         """
-        self.transaction_service = transaction_service or TransactionService()
+        # Ne pas initialiser transaction_service ici, il sera injecté plus tard
+        self.transaction_service = transaction_service
         self.k1 = k1
         self.b = b
         
@@ -47,6 +47,16 @@ class BM25Search:
         
         logger.info("Service de recherche BM25 initialisé")
 
+    def set_transaction_service(self, transaction_service):
+        """
+        Définit le service de transaction à utiliser.
+        Cette méthode permet l'injection de dépendances après construction.
+        
+        Args:
+            transaction_service: Service de transaction
+        """
+        self.transaction_service = transaction_service
+
     async def ensure_user_indexed(self, user_id: int) -> None:
         """
         S'assure que les transactions de l'utilisateur sont indexées.
@@ -54,7 +64,7 @@ class BM25Search:
         Args:
             user_id: ID de l'utilisateur
         """
-        if user_id in self._indexed_users:
+        if user_id in self._indexed_users or not self.transaction_service:
             return
             
         logger.info(f"Indexation des transactions pour l'utilisateur {user_id}")
@@ -149,6 +159,11 @@ class BM25Search:
         Returns:
             Tuple de (résultats de recherche, nombre total)
         """
+        # Vérifier que transaction_service est défini
+        if not self.transaction_service:
+            logger.error("Transaction service not initialized. Call set_transaction_service first.")
+            return [], 0
+            
         # S'assurer que les transactions de l'utilisateur sont indexées
         await self.ensure_user_indexed(user_id)
         

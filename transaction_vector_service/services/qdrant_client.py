@@ -261,7 +261,6 @@ class QdrantService:
             # Convert filter dict to Qdrant filter
             qdrant_filter = None
             if filter_dict:
-                # Renommage de la variable pour éviter les confusions
                 field_conditions = []
                 for field, value in filter_dict.items():
                     field_conditions.append(qmodels.FieldCondition(
@@ -270,7 +269,7 @@ class QdrantService:
                     ))
                 qdrant_filter = qmodels.Filter(must=field_conditions)
             
-            # Perform the search
+            # Perform the search - CORRECTION: utiliser query_filter au lieu de filter
             search_results = self.client.search(
                 collection_name=TRANSACTION_COLLECTION,
                 query_vector=embedding,
@@ -278,7 +277,7 @@ class QdrantService:
                 score_threshold=score_threshold,
                 with_payload=True,
                 with_vectors=False,
-                filter=qdrant_filter
+                query_filter=qdrant_filter  # Paramètre corrigé
             )
             
             # Process the results
@@ -535,14 +534,14 @@ class QdrantService:
             # Get total count first
             count_response = self.client.count(
                 collection_name=TRANSACTION_COLLECTION,
-                count_filter=qdrant_filter
+                count_filter=qdrant_filter  # Ici aussi, utilisez count_filter au lieu de filter
             )
             total_count = count_response.count
             
-            # Perform the search
+            # Perform the search - CORRECTION: utiliser scroll_filter au lieu de filter
             scroll_response = self.client.scroll(
                 collection_name=TRANSACTION_COLLECTION,
-                filter=qdrant_filter,
+                scroll_filter=qdrant_filter,  # Paramètre corrigé
                 limit=limit,
                 offset=offset,
                 with_payload=True,
@@ -597,10 +596,10 @@ class QdrantService:
             # Create the filter
             qdrant_filter = qmodels.Filter(must=must_conditions)
             
-            # Get the data
+            # Get the data - CORRECTION: utiliser scroll_filter au lieu de filter
             scroll_response = self.client.scroll(
                 collection_name=TRANSACTION_COLLECTION,
-                filter=qdrant_filter,
+                scroll_filter=qdrant_filter,  # Paramètre corrigé
                 limit=10000,  # Use a large limit to get all data
                 with_payload=True,
                 with_vectors=False

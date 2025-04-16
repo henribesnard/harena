@@ -1,9 +1,28 @@
+# user_service/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import os
 
 from user_service.api.endpoints import users
 from user_service.core.config import settings
+
+# Configuration du logging - changé à DEBUG
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+
+# Définir la variable d'environnement pour propager aux autres modules
+os.environ["LOG_LEVEL"] = "DEBUG"
+
+logger = logging.getLogger("user_service")
+logger.info("User service starting with DEBUG log level")
+
+# Réduire les logs bruyants même en mode DEBUG
+logging.getLogger("httpx").setLevel(logging.INFO)
+logging.getLogger("httpcore").setLevel(logging.INFO)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
 # Importation des endpoints de synchronisation
 try:
@@ -12,12 +31,6 @@ try:
 except ImportError:
     sync_module_available = False
     logging.warning("Sync service module not found, synchronization endpoints will not be available")
-
-# Configuration du logging
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
 
 # Création de l'application FastAPI
 app = FastAPI(
@@ -66,7 +79,8 @@ def health_check():
         "status": "ok",
         "service": settings.PROJECT_NAME,
         "version": "1.0.0",
-        "sync_service_available": sync_module_available
+        "sync_service_available": sync_module_available,
+        "log_level": "DEBUG"
     }
 
 

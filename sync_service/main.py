@@ -7,14 +7,16 @@ des données bancaires via l'API Bridge et la mise à jour des transactions.
 """
 
 import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from user_service.core.config import settings
 from sync_service.utils.logging import setup_structured_logging
 
-# Configuration du logging structuré
-logger = setup_structured_logging()
+# Configuration du logging structuré - changé à DEBUG
+os.environ["LOG_LEVEL"] = "DEBUG"
+logger = setup_structured_logging(level="DEBUG")
 
 # Création de l'application FastAPI
 app = FastAPI(
@@ -57,7 +59,8 @@ async def health_check():
     return {
         "status": "ok",
         "service": "Harena Sync Service",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "log_level": "DEBUG"
     }
 
 @app.on_event("startup")
@@ -65,7 +68,7 @@ async def startup_event():
     """
     Actions à exécuter au démarrage du service.
     """
-    logger.info("Starting Harena Sync Service")
+    logger.info("Starting Harena Sync Service with DEBUG log level")
     
     # Vérifier les configurations essentielles
     if not settings.BRIDGE_CLIENT_ID or not settings.BRIDGE_CLIENT_SECRET:

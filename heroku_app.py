@@ -1,6 +1,6 @@
 """
 Application Harena complète pour le déploiement Heroku.
-Intégration optimisée de tous les services bancaires avec gestion améliorée des dépendances.
+Intégration optimisée des services bancaires avec gestion améliorée des dépendances.
 """
 
 import logging
@@ -47,9 +47,7 @@ imported_modules = {}
 # Suivi des services intégrés
 service_status = {
     "user_service": False,
-    "sync_service": False,
-    "transaction_vector_service": False,
-    "conversation_service": False
+    "sync_service": False
 }
 
 # ======== FONCTIONS UTILITAIRES ========
@@ -132,9 +130,7 @@ def load_core_modules() -> bool:
             "user_service.core.config",
             "user_service.models.base",
             "user_service.models.user",
-            "sync_service.models.sync", 
-            "transaction_vector_service.config.settings",
-            "transaction_vector_service.config.constants"
+            "sync_service.models.sync"
         ]
         
         success = True
@@ -200,7 +196,9 @@ def init_sync_service(app: FastAPI) -> bool:
         required_services = [
             "sync_service.services.webhook_handler",
             "sync_service.services.sync_manager",
-            "sync_service.services.transaction_sync"
+            "sync_service.services.transaction_sync",
+            "sync_service.services.vector_storage", 
+            "sync_service.services.embedding_service"
         ]
         
         for service_name in required_services:
@@ -239,125 +237,6 @@ def init_sync_service(app: FastAPI) -> bool:
         
     except Exception as e:
         logger.error(f"Erreur lors de l'initialisation du service de synchronisation: {str(e)}")
-        logger.error(traceback.format_exc())
-        return False
-
-def init_transaction_vector_service(app: FastAPI) -> bool:
-    """Initialise et monte le service de vecteurs de transactions."""
-    try:
-        # Charger d'abord les configurations essentielles
-        configs = [
-            "transaction_vector_service.config.logging_config",
-            "transaction_vector_service.config.settings",
-            "transaction_vector_service.config.constants"
-        ]
-        
-        for config_name in configs:
-            config = safe_import(config_name, required=True)
-            if not config:
-                logger.error(f"Échec de l'initialisation du service de vecteurs: config {config_name} introuvable")
-                return False
-        
-        # Précharger les modèles et interfaces
-        models = [
-            "transaction_vector_service.models.interfaces",
-            "transaction_vector_service.models.transaction",
-            "transaction_vector_service.models.merchant",
-            "transaction_vector_service.models.category"
-        ]
-        
-        for model_name in models:
-            model = safe_import(model_name)
-            if not model:
-                logger.warning(f"Module de modèle non critique non chargé: {model_name}")
-        
-        # Charger les services dans l'ordre des dépendances
-        services = [
-            "transaction_vector_service.services.embedding_service",  # Pas de dépendances
-            "transaction_vector_service.services.qdrant_client",      # Pas de dépendances
-            "transaction_vector_service.services.category_service",   # Dépend des précédents
-            "transaction_vector_service.services.merchant_service",   # Dépend des précédents
-            "transaction_vector_service.services.transaction_service", # Dépend de tous les précédents
-            "transaction_vector_service.services.sync_service"        # Dépend de tous les précédents
-        ]
-        
-        for service_name in services:
-            service = reload_module(service_name)
-            if not service:
-                logger.error(f"Échec de l'initialisation du service de vecteurs: module {service_name} introuvable")
-                return False
-                
-        # Charger les modules de recherche
-        search_modules = [
-            "transaction_vector_service.search.bm25_search",
-            "transaction_vector_service.search.vector_search",
-            "transaction_vector_service.search.cross_encoder",
-            "transaction_vector_service.search.hybrid_search"
-        ]
-        
-        for module_name in search_modules:
-            module = safe_import(module_name)
-            if not module:
-                logger.warning(f"Module de recherche non critique non chargé: {module_name}")
-                
-        # Charger les dépendances API
-        api_deps = reload_module("transaction_vector_service.api.dependencies")
-        if not api_deps:
-            logger.error("Échec de l'initialisation du service de vecteurs: module dependencies introuvable")
-            return False
-            
-        # Initialiser les services
-        if hasattr(api_deps, "initialize_services"):
-            try:
-                api_deps.initialize_services()
-                logger.info("Services de vecteurs initialisés avec succès")
-            except Exception as e:
-                logger.error(f"Erreur lors de l'initialisation des services de vecteurs: {str(e)}")
-                logger.error(traceback.format_exc())
-                return False
-        
-        # Charger les endpoints
-        transactions_endpoint = safe_import("transaction_vector_service.api.endpoints.transactions")
-        if not transactions_endpoint or not hasattr(transactions_endpoint, "router"):
-            logger.error("Échec de l'initialisation du service de vecteurs: router transactions introuvable")
-            return False
-            
-        # Monter les routes
-        app.include_router(
-            transactions_endpoint.router,
-            prefix="/api/v1/transactions",
-            tags=["transactions"]
-        )
-        
-        logger.info("Service de vecteurs de transactions initialisé et monté avec succès")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Erreur lors de l'initialisation du service de vecteurs: {str(e)}")
-        logger.error(traceback.format_exc())
-        return False
-
-def init_conversation_service(app: FastAPI) -> bool:
-    """Initialise et monte le service de conversation."""
-    try:
-        # Charger les modules requis
-        router_module = safe_import("conversation_service.api.router")
-        if not router_module or not hasattr(router_module, "router"):
-            logger.error("Échec de l'initialisation du service de conversation: router introuvable")
-            return False
-            
-        # Monter les routes
-        app.include_router(
-            router_module.router,
-            prefix="/api/v1/conversations",
-            tags=["conversations"]
-        )
-        
-        logger.info("Service de conversation initialisé et monté avec succès")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Erreur lors de l'initialisation du service de conversation: {str(e)}")
         logger.error(traceback.format_exc())
         return False
 
@@ -428,15 +307,6 @@ if service_status["user_service"]:
 else:
     logger.error("Impossible d'initialiser le service de synchronisation: service utilisateur non disponible")
 
-# Service de vecteurs de transactions - dépend des services précédents
-if service_status["user_service"]:
-    service_status["transaction_vector_service"] = init_transaction_vector_service(app)
-else:
-    logger.error("Impossible d'initialiser le service de vecteurs: dépendances non disponibles")
-
-# Service de conversation - relativement indépendant
-service_status["conversation_service"] = init_conversation_service(app)
-
 # Journaliser le statut des services
 active_services = sum(1 for status in service_status.values() if status)
 logger.info(f"{active_services}/{len(service_status)} services actifs")
@@ -477,10 +347,22 @@ async def health_check():
     except Exception as e:
         db_status = f"error: {str(e)}"
     
+    # Vérifier l'état du stockage vectoriel
+    vector_status = "unknown"
+    try:
+        # Essayer d'initialiser le service vectoriel pour vérifier sa disponibilité
+        vector_module = imported_modules.get("sync_service.services.vector_storage")
+        if vector_module:
+            vector_service = vector_module.VectorStorageService()
+            vector_status = "available"
+    except Exception as e:
+        vector_status = f"error: {str(e)}"
+    
     return {
         "status": "ok",
         "services": service_status,
         "database": db_status,
+        "vector_storage": vector_status,
         "version": "1.1.0",
         "timestamp": str(datetime.now())
     }
@@ -501,15 +383,6 @@ async def restart_service(service_name: str):
         elif service_name == "sync_service":
             service_status["sync_service"] = init_sync_service(app)
             result["status"] = "restarted" if service_status["sync_service"] else "failed"
-            
-        elif service_name == "transaction_vector_service":
-            service_status["transaction_vector_service"] = init_transaction_vector_service(app)
-            result["status"] = "restarted" if service_status["transaction_vector_service"] else "failed"
-            
-        elif service_name == "conversation_service":
-            service_status["conversation_service"] = init_conversation_service(app)
-            result["status"] = "restarted" if service_status["conversation_service"] else "failed"
-            
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
@@ -590,19 +463,10 @@ async def debug_modules():
         "sync_service.services.webhook_handler",
         "sync_service.services.sync_manager",
         "sync_service.services.transaction_sync",
+        "sync_service.services.vector_storage",
+        "sync_service.services.embedding_service",
         "sync_service.api.endpoints.sync",
-        "sync_service.api.endpoints.webhooks",
-        "transaction_vector_service.config.logging_config",
-        "transaction_vector_service.config.settings",
-        "transaction_vector_service.services.embedding_service",
-        "transaction_vector_service.services.qdrant_client",
-        "transaction_vector_service.services.category_service",
-        "transaction_vector_service.services.merchant_service",
-        "transaction_vector_service.services.transaction_service",
-        "transaction_vector_service.services.sync_service",
-        "transaction_vector_service.api.dependencies",
-        "transaction_vector_service.api.endpoints.transactions",
-        "conversation_service.api.router"
+        "sync_service.api.endpoints.webhooks"
     ]
     
     results = {}

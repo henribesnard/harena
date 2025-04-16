@@ -10,12 +10,10 @@ from sync_service.models.sync import SyncAccount, SyncItem
 from user_service.models.user import User, BridgeConnection  
 from user_service.services import bridge as bridge_service
 from user_service.core.config import settings
-from transaction_vector_service.services.sync_service import SyncService
-from transaction_vector_service.config.logging_config import get_logger
+from sync_service.services.vector_storage import VectorStorageService
 
 # Configuration du logger
 logger = logging.getLogger(__name__)
-vector_logger = get_logger(__name__)
 
 async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> Dict[str, Any]:
     """Synchroniser les transactions d'un compte depuis la dernière mise à jour."""
@@ -113,38 +111,57 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
             total_transactions = len(transactions)
             logger.info(f"Nombre de transactions récupérées: {total_transactions}")
             
+            # Si des transactions ont été trouvées, les stocker dans la base vectorielle
             if total_transactions > 0:
-                # Intégrer les transactions dans la base de données vectorielle
-                try:
-                    # Initialiser le service de synchronisation des vecteurs
-                    vector_sync_service = SyncService()
-                    
-                    # Synchroniser toutes les transactions récupérées
-                    logger.info(f"Démarrage de la synchronisation vectorielle pour {total_transactions} transactions")
-                    
-                    sync_result = await vector_sync_service.sync_user_transactions(
-                        user_id=user_id,
-                        bridge_user_uuid=user_bridge_connection.bridge_user_uuid,
-                        incremental=True,
-                        account_id=sync_account.bridge_account_id,
-                        since=since_date
-                    )
-                    
-                    logger.info(f"Résultat de la synchronisation vectorielle: {sync_result}")
-                    
-                    # Mettre à jour le résultat avec les informations de la synchro vectorielle
-                    if sync_result.get("status") == "success":
-                        result["new_transactions"] = sync_result.get("new_transactions", 0)
-                        result["processed_transactions"] = sync_result.get("total_transactions", 0)
-                    else:
-                        result["status"] = "partial"
-                        result["errors"] = sync_result.get("reason", "Unknown error in vector synchronization")
+                # Initialiser le service de stockage vectoriel
+                vector_storage = VectorStorageService()
                 
-                except Exception as vector_error:
-                    error_details = traceback.format_exc()
-                    logger.error(f"Error during vector synchronization: {str(vector_error)}\n{error_details}")
-                    result["status"] = "error"
-                    result["errors"] = f"Vector sync error: {str(vector_error)}"
+                # Préparer les transactions pour le stockage vectoriel
+                vector_transactions = []
+                for tx in transactions:
+                    # Extraire les dates de la transaction
+                    tx_date = None
+                    if "date" in tx:
+                        try:
+                            if isinstance(tx["date"], str):
+                                tx_date = tx["date"]
+                            else:
+                                tx_date = tx["date"].isoformat()
+                        except (ValueError, AttributeError):
+                            tx_date = datetime.now().date().isoformat()
+                    else:
+                        tx_date = datetime.now().date().isoformat()
+                    
+                    # Préparer la transaction pour la vectorisation
+                    vector_tx = {
+                        "user_id": user_id,
+                        "account_id": sync_account.bridge_account_id,
+                        "bridge_transaction_id": tx.get("id"),
+                        "amount": tx.get("amount", 0.0),
+                        "currency_code": tx.get("currency_code", "EUR"),
+                        "description": tx.get("description", ""),
+                        "clean_description": tx.get("clean_description", ""),
+                        "transaction_date": tx_date,
+                        "category_id": tx.get("category_id"),
+                        "operation_type": tx.get("operation_type"),
+                        "is_recurring": False  # Valeur par défaut
+                    }
+                    
+                    vector_transactions.append(vector_tx)
+                
+                # Stocker les transactions dans la base vectorielle
+                logger.info(f"Stockage de {len(vector_transactions)} transactions dans la base vectorielle")
+                vector_result = await vector_storage.batch_store_transactions(vector_transactions)
+                
+                # Mettre à jour le résultat avec les informations du stockage vectoriel
+                result["new_transactions"] = vector_result.get("successful", 0)
+                result["processed_transactions"] = vector_result.get("total", 0)
+                
+                if vector_result.get("status") != "success":
+                    result["status"] = "partial"
+                    result["errors"] = f"Erreurs pendant le stockage vectoriel: {vector_result.get('failed', 0)} échecs"
+                
+                logger.info(f"Résultat du stockage vectoriel: {vector_result}")
             
             # Mettre à jour le timestamp de dernière synchronisation, même en cas d'erreur partielle
             current_time = datetime.now(timezone.utc)
@@ -247,12 +264,10 @@ async def check_and_sync_missing_transactions(db: Session, user_id: int) -> Dict
     logger.info(f"Vérification des transactions manquantes pour l'utilisateur {user_id}")
     
     try:
-        # Initialiser le service de synchronisation des vecteurs pour vérifier l'état
-        vector_sync_service = SyncService()
-        
         # Récupérer l'état de synchronisation
-        sync_status = await vector_sync_service.get_sync_status(user_id)
-        logger.info(f"État actuel de la synchronisation: {sync_status}")
+        vector_storage = VectorStorageService()
+        sync_status = await vector_storage.get_user_sync_status(user_id)
+        logger.info(f"État actuel de la synchronisation vectorielle: {sync_status}")
         
         # Récupérer la connexion Bridge de l'utilisateur
         bridge_connection = db.query(BridgeConnection).filter(
@@ -273,10 +288,10 @@ async def check_and_sync_missing_transactions(db: Session, user_id: int) -> Dict
         
         logger.info(f"Nombre total de comptes: {len(accounts)}")
         
-        # Si aucun compte ou peu de transactions, forcer une synchronisation complète
-        if len(accounts) == 0 or sync_status.get("is_syncing") == True:
-            logger.warning(f"Pas de comptes ou synchronisation en cours, pas d'action")
-            return {"status": "warning", "message": "No accounts found or sync already in progress"}
+        # Si aucun compte, ou si la synchronisation est incomplète, forcer une synchronisation complète
+        if len(accounts) == 0:
+            logger.warning(f"Pas de comptes trouvés, pas d'action")
+            return {"status": "warning", "message": "No accounts found"}
         
         # Lancer une synchronisation complète
         result = await force_sync_all_accounts(db, user_id)
@@ -288,3 +303,24 @@ async def check_and_sync_missing_transactions(db: Session, user_id: int) -> Dict
         error_details = traceback.format_exc()
         logger.error(f"Error checking for missing transactions: {str(e)}\n{error_details}")
         return {"status": "error", "message": str(e)}
+
+async def get_user_vector_stats(db: Session, user_id: int) -> Dict[str, Any]:
+    """Récupère les statistiques vectorielles pour un utilisateur."""
+    logger.info(f"Récupération des statistiques vectorielles pour l'utilisateur {user_id}")
+    
+    try:
+        # Initialiser le service de stockage vectoriel
+        vector_storage = VectorStorageService()
+        
+        # Récupérer les statistiques
+        stats = await vector_storage.get_user_statistics(user_id)
+        logger.info(f"Statistiques récupérées: {stats}")
+        
+        return stats
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des statistiques vectorielles: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "user_id": user_id
+        }

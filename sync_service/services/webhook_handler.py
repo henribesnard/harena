@@ -10,6 +10,7 @@ from typing import Dict, Any
 from sync_service.models.sync import WebhookEvent, SyncItem, SyncAccount
 from user_service.models.user import User, BridgeConnection
 from sync_service.services import sync_manager, transaction_sync
+from sync_service.services.vector_storage import VectorStorageService
 from user_service.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,10 @@ async def handle_item_created(db: Session, event: WebhookEvent) -> None:
     # Créer ou mettre à jour le SyncItem
     sync_item = await sync_manager.create_or_update_sync_item(db, bridge_connection.user_id, item_id, content)
     logger.info(f"SyncItem créé/mis à jour: id={sync_item.id}, bridge_item_id={sync_item.bridge_item_id}")
+    
+    # Initialiser la vectorisation pour cet utilisateur
+    vector_storage = VectorStorageService()
+    await vector_storage.initialize_user_storage(bridge_connection.user_id)
 
 async def handle_item_refreshed(db: Session, event: WebhookEvent) -> None:
     """Gérer le rafraîchissement d'un item."""
@@ -126,6 +131,7 @@ async def handle_item_refreshed(db: Session, event: WebhookEvent) -> None:
     status = content.get("status", 0)
     status_code_info = content.get("status_code_info")
     full_refresh = content.get("full_refresh", False)
+    user_uuid = content.get("user_uuid")
     
     if not item_id:
         logger.error(f"Missing item_id in webhook: {content}")
@@ -137,7 +143,24 @@ async def handle_item_refreshed(db: Session, event: WebhookEvent) -> None:
     sync_item = db.query(SyncItem).filter(SyncItem.bridge_item_id == item_id).first()
     if not sync_item:
         logger.warning(f"SyncItem not found for item_id: {item_id}")
-        return
+        
+        # Si item_id n'est pas trouvé mais user_uuid est présent, essayer de créer l'item
+        if user_uuid:
+            bridge_connection = db.query(BridgeConnection).filter(
+                BridgeConnection.bridge_user_uuid == user_uuid
+            ).first()
+            
+            if bridge_connection:
+                logger.info(f"Création d'un nouvel item: item_id={item_id}, user_id={bridge_connection.user_id}")
+                sync_item = await sync_manager.create_or_update_sync_item(
+                    db, bridge_connection.user_id, item_id, content
+                )
+            else:
+                logger.error(f"No bridge connection found for user_uuid: {user_uuid}")
+                return
+        else:
+            logger.error("Impossible de créer l'item: user_uuid manquant")
+            return
     
     logger.info(f"SyncItem trouvé: id={sync_item.id}, user_id={sync_item.user_id}")
     
@@ -146,7 +169,16 @@ async def handle_item_refreshed(db: Session, event: WebhookEvent) -> None:
     # Si rafraîchissement complet et statut OK, déclencher la synchronisation
     if status == 0:
         logger.info(f"Item {item_id} a un statut OK, déclenchement de la synchronisation")
-        await sync_manager.trigger_full_sync_for_item(db, sync_item)
+        sync_result = await sync_manager.trigger_full_sync_for_item(db, sync_item)
+        
+        # Vérifier si le stockage vectoriel a besoin d'être mis à jour
+        vector_storage = VectorStorageService()
+        vector_stats = await vector_storage.get_user_statistics(sync_item.user_id)
+        
+        if vector_stats.get("transaction_count", 0) == 0 or full_refresh:
+            # Soit aucune transaction vectorisée, soit refresh complet demandé
+            logger.info(f"Déclenchement de la mise à jour complète du stockage vectoriel pour l'utilisateur {sync_item.user_id}")
+            await transaction_sync.check_and_sync_missing_transactions(db, sync_item.user_id)
     else:
         logger.warning(f"Item {item_id} a un statut non-OK ({status}), pas de synchronisation déclenchée")
 
@@ -154,6 +186,8 @@ async def handle_account_updated(db: Session, event: WebhookEvent) -> None:
     """Gérer la mise à jour d'un compte."""
     content = event.event_content
     account_id = content.get("account_id")
+    user_uuid = content.get("user_uuid")
+    item_id = content.get("item_id")
     
     if not account_id:
         logger.error(f"Missing account_id in webhook: {content}")
@@ -168,13 +202,44 @@ async def handle_account_updated(db: Session, event: WebhookEvent) -> None:
     
     if not sync_account:
         logger.warning(f"SyncAccount not found for account_id: {account_id}")
-        return
+        
+        # Essayer de trouver l'item et de créer le compte
+        if item_id:
+            sync_item = db.query(SyncItem).filter(SyncItem.bridge_item_id == item_id).first()
+            if sync_item:
+                logger.info(f"Création d'un nouveau SyncAccount pour bridge_account_id={account_id}, item_id={sync_item.id}")
+                sync_account = SyncAccount(
+                    item_id=sync_item.id,
+                    bridge_account_id=account_id,
+                    account_name=content.get("name", f"Account {account_id}")
+                )
+                db.add(sync_account)
+                db.commit()
+                db.refresh(sync_account)
+            else:
+                logger.error(f"SyncItem not found for item_id: {item_id}")
+                return
+        else:
+            logger.error(f"Item_id missing for account_id: {account_id}")
+            return
     
     logger.info(f"SyncAccount trouvé: id={sync_account.id}, item_id={sync_account.item_id}")
     
     # Déclencher la synchronisation des transactions
     result = await transaction_sync.sync_account_transactions(db, sync_account)
     logger.info(f"Résultat de la synchronisation du compte {account_id}: {result}")
+    
+    # Mettre à jour les statistiques de stockage vectoriel
+    if user_uuid:
+        bridge_connection = db.query(BridgeConnection).filter(
+            BridgeConnection.bridge_user_uuid == user_uuid
+        ).first()
+        
+        if bridge_connection:
+            user_id = bridge_connection.user_id
+            vector_storage = VectorStorageService()
+            vector_stats = await vector_storage.get_user_statistics(user_id)
+            logger.info(f"Statistiques de stockage vectoriel après synchronisation: {vector_stats}")
 
 async def handle_account_created(db: Session, event: WebhookEvent) -> None:
     """Gérer la création d'un nouveau compte."""
@@ -238,3 +303,24 @@ async def handle_account_created(db: Session, event: WebhookEvent) -> None:
     logger.info(f"Déclenchement de la synchronisation pour le nouveau compte: id={sync_account.id}")
     result = await transaction_sync.sync_account_transactions(db, sync_account)
     logger.info(f"Résultat de la synchronisation du compte {account_id}: {result}")
+    
+    # Initialiser ou mettre à jour le stockage vectoriel
+    if user_uuid:
+        bridge_connection = db.query(BridgeConnection).filter(
+            BridgeConnection.bridge_user_uuid == user_uuid
+        ).first()
+        
+        if bridge_connection:
+            user_id = bridge_connection.user_id
+            vector_storage = VectorStorageService()
+            
+            # Vérifier si l'utilisateur a un stockage vectoriel initialisé
+            is_initialized = await vector_storage.check_user_storage_initialized(user_id)
+            
+            if not is_initialized:
+                logger.info(f"Initialisation du stockage vectoriel pour l'utilisateur {user_id}")
+                await vector_storage.initialize_user_storage(user_id)
+            
+            # Mettre à jour les statistiques
+            vector_stats = await vector_storage.get_user_statistics(user_id)
+            logger.info(f"Statistiques de stockage vectoriel après synchronisation: {vector_stats}")

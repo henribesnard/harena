@@ -261,13 +261,14 @@ class QdrantService:
             # Convert filter dict to Qdrant filter
             qdrant_filter = None
             if filter_dict:
-                filter_conditions = []
+                # Renommage de la variable pour éviter les confusions
+                field_conditions = []
                 for field, value in filter_dict.items():
-                    filter_conditions.append(qmodels.FieldCondition(
+                    field_conditions.append(qmodels.FieldCondition(
                         key=field,
                         match=qmodels.MatchValue(value=value)
                     ))
-                qdrant_filter = qmodels.Filter(must=filter_conditions)
+                qdrant_filter = qmodels.Filter(must=field_conditions)
             
             # Perform the search
             search_results = self.client.search(
@@ -348,13 +349,13 @@ class QdrantService:
         """
         try:
             # Convert UUID to string if needed
-            if isinstance(merchant_id, UUID):
-                merchant_id = str(merchant_id)
+            if isinstance(transaction_id, UUID):
+                transaction_id = str(transaction_id)
                 
             # Get the point
             result = self.client.retrieve(
-                collection_name=MERCHANT_COLLECTION,
-                ids=[merchant_id],
+                collection_name=TRANSACTION_COLLECTION,
+                ids=[transaction_id],
                 with_payload=True,
                 with_vectors=True
             )
@@ -369,7 +370,7 @@ class QdrantService:
             
             return None
         except Exception as e:
-            logger.error(f"Error getting merchant {merchant_id}: {str(e)}")
+            logger.error(f"Error getting transaction {transaction_id}: {str(e)}")
             return None
 
     async def delete_transaction(self, transaction_id: Union[str, UUID]) -> bool:

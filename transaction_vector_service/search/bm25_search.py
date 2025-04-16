@@ -73,7 +73,7 @@ class BM25Search:
         transactions, _ = await self.transaction_service.search_transactions(
             user_id=user_id,
             search_params=TransactionSearch(
-                limit=10000,  # Limiter à un nombre raisonnable
+                limit=200,  
                 include_future=False,
                 include_deleted=False
             )

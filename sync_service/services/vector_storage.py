@@ -12,7 +12,7 @@ import os
 import logging
 import json
 from typing import List, Dict, Any, Optional, Union, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 import hashlib # Pour générer des ID marchands potentiels
 
@@ -291,7 +291,7 @@ class VectorStorageService:
                 # S'assurer que la date est timezone-aware avant isoformat, sinon Qdrant peut rejeter
                 if value.tzinfo is None:
                     # Assumer UTC si non spécifié (ou choisir une autre logique)
-                    value = value.replace(tzinfo=datetime.timezone.utc)
+                    value = value.replace(tzinfo=timezone.utc)
                 # Convertir en string ISO 8601 attendu par Qdrant
                 payload[key] = value.isoformat()
             elif isinstance(value, UUID):
@@ -331,8 +331,8 @@ class VectorStorageService:
                 "operation_type": transaction.get("operation_type"),
                 "is_recurring": transaction.get("is_recurring", False),
                 "merchant_id": transaction.get("merchant_id"), # Si l'enrichissement est fait
-                "created_at": datetime.now(datetime.timezone.utc),
-                "updated_at": datetime.now(datetime.timezone.utc)
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
             })
 
             self.client.upsert(
@@ -382,8 +382,8 @@ class VectorStorageService:
                     "operation_type": transaction.get("operation_type"),
                     "is_recurring": transaction.get("is_recurring", False),
                     "merchant_id": transaction.get("merchant_id"),
-                    "created_at": datetime.now(datetime.timezone.utc),
-                    "updated_at": datetime.now(datetime.timezone.utc)
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc)
                 })
 
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
@@ -473,7 +473,7 @@ class VectorStorageService:
                 "pro": account_data.get("pro", False),
                 "loan_details": account_data.get("loan_details"), # Peut être un dict/JSON
                 "bridge_updated_at": account_data.get("bridge_updated_at"), # Date de Bridge
-                "last_synced_at": datetime.now(datetime.timezone.utc) # Date de notre synchro
+                "last_synced_at": datetime.now(timezone.utc) # Date de notre synchro
             })
 
             self.client.upsert(
@@ -524,7 +524,7 @@ class VectorStorageService:
                     "pro": account.get("pro", False),
                     "loan_details": account.get("loan_details"),
                     "bridge_updated_at": account.get("bridge_updated_at"),
-                    "last_synced_at": datetime.now(datetime.timezone.utc)
+                    "last_synced_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
             except Exception as e:
@@ -586,7 +586,7 @@ class VectorStorageService:
             point_id = f"user_{user_id}_account_{bridge_account_id}"
             # Préparer le payload de mise à jour
             update_payload = self._prepare_payload(updates)
-            update_payload["last_synced_at"] = datetime.now(datetime.timezone.utc).isoformat() # Toujours màj la date
+            update_payload["last_synced_at"] = datetime.now(timezone.utc).isoformat() # Toujours màj la date
 
             # Utiliser set_payload pour ne mettre à jour que certains champs
             self.client.set_payload(
@@ -621,7 +621,7 @@ class VectorStorageService:
                 "name": text_to_embed,
                 "parent_id": category_data.get("parent_id"),
                 # Ajouter d'autres métadonnées si fournies par Bridge
-                "last_synced_at": datetime.now(datetime.timezone.utc)
+                "last_synced_at": datetime.now(timezone.utc)
             })
 
             self.client.upsert(
@@ -662,7 +662,7 @@ class VectorStorageService:
                      "bridge_category_id": category_id,
                      "name": text_to_embed,
                      "parent_id": category.get("parent_id"),
-                     "last_synced_at": datetime.now(datetime.timezone.utc)
+                     "last_synced_at": datetime.now(timezone.utc)
                  })
                  points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
              except Exception as e:
@@ -740,8 +740,8 @@ class VectorStorageService:
                 "category_id": merchant_data.get("category_id"), # Catégorie associée
                 # "user_id": merchant_data.get("user_id"), # Si spécifique à l'utilisateur
                 "source": merchant_data.get("source", "inferred"), # D'où vient ce marchand?
-                "created_at": datetime.now(datetime.timezone.utc),
-                "updated_at": datetime.now(datetime.timezone.utc)
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
             })
 
             self.client.upsert(
@@ -777,8 +777,8 @@ class VectorStorageService:
                     "display_name": merchant.get("display_name"),
                     "category_id": merchant.get("category_id"),
                     "source": merchant.get("source", "inferred"),
-                    "created_at": datetime.now(datetime.timezone.utc),
-                    "updated_at": datetime.now(datetime.timezone.utc)
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
             except Exception as e:
@@ -872,7 +872,7 @@ class VectorStorageService:
                 "period_end": insight_data.get("period_end"),
                 "aggregates": insight_data.get("aggregates"), # Dict des agrégats (sum, avg, etc.)
                 "kpi_data": insight_data.get("kpi_data"), # Autres KPIs spécifiques
-                "generated_at": datetime.now(datetime.timezone.utc)
+                "generated_at": datetime.now(timezone.utc)
             })
 
             self.client.upsert(
@@ -921,7 +921,7 @@ class VectorStorageService:
                     "period_end": insight.get("period_end"),
                     "aggregates": insight.get("aggregates"),
                     "kpi_data": insight.get("kpi_data"),
-                    "generated_at": datetime.now(datetime.timezone.utc)
+                    "generated_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
             except Exception as e:
@@ -996,7 +996,7 @@ class VectorStorageService:
                 "value_date": stock_data.get("value_date"),
                 "average_purchase_price": stock_data.get("average_purchase_price"),
                 "bridge_updated_at": stock_data.get("bridge_updated_at"), # Date de Bridge
-                "last_synced_at": datetime.now(datetime.timezone.utc)
+                "last_synced_at": datetime.now(timezone.utc)
             })
 
             self.client.upsert(
@@ -1050,7 +1050,7 @@ class VectorStorageService:
                     "value_date": stock.get("value_date"),
                     "average_purchase_price": stock.get("average_purchase_price"),
                     "bridge_updated_at": stock.get("bridge_updated_at"),
-                    "last_synced_at": datetime.now(datetime.timezone.utc)
+                    "last_synced_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
             except Exception as e:
@@ -1131,7 +1131,7 @@ class VectorStorageService:
             point_id = f"user_meta_{user_id}"
             payload = {
                 "user_id": user_id,
-                "initialized_at": datetime.now(datetime.timezone.utc).isoformat(),
+                "initialized_at": datetime.now(timezone.utc).isoformat(),
                 "version": "1.1", # Version de la structure de données user
                 "status": "active"
             }
@@ -1233,7 +1233,7 @@ class VectorStorageService:
                 # Initialiser avec les updates si non trouvé
                 init_payload = {
                     "user_id": user_id,
-                    "initialized_at": datetime.now(datetime.timezone.utc).isoformat(),
+                    "initialized_at": datetime.now(timezone.utc).isoformat(),
                     "status": "active",
                     **metadata_updates # Ajouter les updates
                 }
@@ -1245,7 +1245,7 @@ class VectorStorageService:
                 return True
 
             # Mettre à jour le payload existant
-            updated_payload = {**current_metadata, **metadata_updates, "updated_at": datetime.now(datetime.timezone.utc).isoformat()}
+            updated_payload = {**current_metadata, **metadata_updates, "updated_at": datetime.now(timezone.utc).isoformat()}
 
             self.client.set_payload(
                 collection_name=self.USER_METADATA_COLLECTION,

@@ -1,14 +1,20 @@
 # sync_service/api/endpoints/webhooks.py
+"""
+Endpoints pour la réception des webhooks Bridge.
+
+Ce module définit les routes pour recevoir et traiter les webhooks envoyés par Bridge API.
+"""
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 
 from user_service.db.session import get_db
 from user_service.core.config import settings
-from sync_service.services import webhook_handler
+from sync_service.services.webhook_handler import process_webhook, verify_webhook_signature
 
 router = APIRouter()
 
+# Récupérer le secret webhook de la configuration
 WEBHOOK_SECRET = settings.BRIDGE_WEBHOOK_SECRET
 
 @router.post("/bridge", status_code=status.HTTP_200_OK)
@@ -20,47 +26,56 @@ async def receive_bridge_webhook(
     """
     Endpoint pour recevoir les webhooks de Bridge API.
     Vérifie la signature et traite les événements.
+    
+    Args:
+        request: La requête HTTP entrante
+        db: Session de base de données
+        bridge_signature: Signature du webhook Bridge pour vérification
+        
+    Returns:
+        Dict: Statut de réception du webhook
     """
     # Récupérer le corps de la requête
     raw_payload = await request.body()
     
-    # Pour le débogage, imprimez les en-têtes et le payload
-    print("Headers:", dict(request.headers))
-    print("Payload:", raw_payload.decode())
-    
     try:
         payload = await request.json()
     except Exception as e:
-        print(f"Erreur de parsing JSON: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON payload"
+            detail=f"Invalid JSON payload: {str(e)}"
         )
     
-    # Vérifier la signature si fournie
-    if bridge_signature:
-        try:
-            if not webhook_handler.verify_webhook_signature(
-                raw_payload.decode(), bridge_signature, WEBHOOK_SECRET
-            ):
-                print(f"Signature invalide. Fournie: {bridge_signature}, Secret: {WEBHOOK_SECRET[:5]}...")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid webhook signature"
-                )
-        except Exception as e:
-            print(f"Erreur lors de la vérification de signature: {str(e)}")
-            # Pour le débogage, acceptez quand même le webhook
-            # En production, il faudrait lever une exception ici
+    # Vérifier la signature si on est en production
+    is_production = settings.ENVIRONMENT.lower() == "production"
+    
+    if is_production:
+        if not bridge_signature:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing webhook signature in production environment"
+            )
+            
+        if not verify_webhook_signature(raw_payload.decode(), bridge_signature, WEBHOOK_SECRET):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid webhook signature"
+            )
     else:
-        print("Aucune signature trouvée dans les en-têtes")
+        # En environnement de développement, on accepte les webhooks sans signature
+        # mais on les vérifie quand même si la signature est fournie
+        if bridge_signature and not verify_webhook_signature(raw_payload.decode(), bridge_signature, WEBHOOK_SECRET):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid webhook signature"
+            )
     
-    # Traiter l'événement (même sans signature pour le débogage)
+    # Traiter l'événement
     try:
-        await webhook_handler.process_webhook(db, payload, bridge_signature)
+        webhook_event = await process_webhook(db, payload, bridge_signature)
+        return {"status": "received", "event_id": webhook_event.id, "type": webhook_event.event_type}
     except Exception as e:
-        print(f"Erreur de traitement du webhook: {str(e)}")
-        # Renvoyer quand même 200 OK pour éviter les réessais
-    
-    # Renvoyer 200 OK rapidement pour éviter les tentatives
-    return {"status": "received"}
+        # Log l'erreur mais retourner quand même un statut 200
+        # pour ne pas déclencher de réessais côté Bridge
+        # Les erreurs sont déjà enregistrées dans la table WebhookEvent
+        return {"status": "received_with_errors", "message": str(e)}

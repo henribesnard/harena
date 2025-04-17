@@ -1,5 +1,4 @@
 # sync_service/services/vector_storage.py
-
 """
 Service pour le stockage vectoriel des données financières Harena.
 
@@ -13,10 +12,8 @@ import logging
 import json
 from typing import List, Dict, Any, Optional, Union, Tuple
 from datetime import datetime, timezone
-# CORRECTION: Importer uuid
 import uuid
-from uuid import UUID , uuid4 # uuid4() pour générer des UUIDs aléatoires
-import hashlib # Pour générer des ID marchands potentiels
+from uuid import UUID, uuid4
 
 # Import des dépendances Qdrant
 from qdrant_client import QdrantClient, models as qmodels
@@ -27,15 +24,14 @@ from sync_service.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
-# --- Namespaces UUID pour la génération d'ID déterministes ---
-# Générer ces UUIDs une seule fois (par exemple avec `import uuid; print(uuid.uuid4())`)
-# et les coller ici pour qu'ils soient constants à travers les exécutions.
-# REMPLACEZ CES VALEURS PAR VOS PROPRES UUIDs GÉNÉRÉS !
-HARENA_NAMESPACE = uuid.UUID('f81d4fae-7dec-11d0-a765-00a0c91e6bf6') # Exemple, utilisez le vôtre
-HARENA_TRANSACTION_NAMESPACE = uuid.uuid5(HARENA_NAMESPACE, 'harena_transactions')
-HARENA_USER_METADATA_NAMESPACE = uuid.uuid5(HARENA_NAMESPACE, 'harena_user_metadata')
-# Note: Les ID pour accounts et categories utilisent déjà des ID numériques uniques de Bridge, pas besoin de UUID ici.
-# Note: Les ID pour merchants et insights utilisent uuid4() pour être uniques mais non-déterministes. C'est ok pour ces collections.
+# --- Namespaces UUID constants pour la génération d'ID déterministes ---
+# UUIDs fixes pour garantir que les mêmes données produisent les mêmes IDs
+HARENA_NAMESPACE = UUID('f81d4fae-7dec-11d0-a765-00a0c91e6bf6')
+HARENA_TRANSACTION_NAMESPACE = UUID('a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e5e6')
+HARENA_ACCOUNT_NAMESPACE = UUID('b1b2b3b4-c1c2-d1d2-e1e2-f1f2f3f4f5f6')
+HARENA_USER_METADATA_NAMESPACE = UUID('c1c2c3c4-d1d2-e1e2-f1f2-a1a2a3a4a5a6')
+HARENA_MERCHANT_NAMESPACE = UUID('d1d2d3d4-e1e2-f1f2-a1a2-b1b2b3b4b5b6')
+
 
 class VectorStorageService:
     """Service pour le stockage et la recherche vectorielle des données Harena."""
@@ -169,7 +165,6 @@ class VectorStorageService:
                     ("ticker", "keyword"), ("isin", "keyword"), ("currency_code", "keyword"),
                     ("value_date", "datetime"),
                 ],
-                # USER_METADATA traité séparément ci-dessous
             }
 
             # Créer les collections standards avec vecteurs
@@ -227,11 +222,19 @@ class VectorStorageService:
                 payload[key] = value
         return payload
 
-    # --- Méthodes pour générer les IDs de points Qdrant ---
+    # --- Méthodes pour générer les IDs de points Qdrant de façon cohérente ---
 
     def _get_transaction_point_id(self, user_id: int, bridge_transaction_id: str) -> str:
         """Génère un ID de point UUID déterministe pour une transaction."""
         return str(uuid.uuid5(HARENA_TRANSACTION_NAMESPACE, f"user_{user_id}_tx_{bridge_transaction_id}"))
+
+    def _get_account_point_id(self, user_id: int, bridge_account_id: int) -> str:
+        """Génère un ID de point UUID déterministe pour un compte."""
+        return str(uuid.uuid5(HARENA_ACCOUNT_NAMESPACE, f"user_{user_id}_account_{bridge_account_id}"))
+
+    def _get_merchant_point_id(self, normalized_name: str) -> str:
+        """Génère un ID de point UUID déterministe pour un marchand basé sur son nom normalisé."""
+        return str(uuid.uuid5(HARENA_MERCHANT_NAMESPACE, normalized_name))
 
     def _get_user_metadata_point_id(self, user_id: int) -> str:
         """Génère un ID de point UUID déterministe pour les métadonnées utilisateur."""
@@ -249,7 +252,7 @@ class VectorStorageService:
                 logger.error("ID transaction Bridge ou User ID manquant.")
                 return False
 
-            # CORRECTION: Utiliser l'ID UUID déterministe
+            # Utiliser l'ID UUID déterministe
             point_id_str = self._get_transaction_point_id(user_id, transaction_id_str)
 
             description = transaction.get("clean_description") or transaction.get("description", "")
@@ -274,7 +277,7 @@ class VectorStorageService:
 
             self.client.upsert(
                 collection_name=self.TRANSACTIONS_COLLECTION,
-                points=[qmodels.PointStruct(id=point_id_str, vector=embedding, payload=payload)], # Utiliser ID UUID
+                points=[qmodels.PointStruct(id=point_id_str, vector=embedding, payload=payload)],
                 wait=False
             )
             logger.debug(f"Transaction upserted: {point_id_str}")
@@ -302,7 +305,7 @@ class VectorStorageService:
                     failed_ids.append(transaction.get("bridge_transaction_id", "unknown"))
                     continue
 
-                # CORRECTION: Utiliser l'ID UUID déterministe
+                # Utiliser l'ID UUID déterministe
                 point_id_str = self._get_transaction_point_id(user_id, transaction_id_str)
                 description = transaction.get("clean_description") or transaction.get("description", "")
                 embedding = await self.embedding_service.get_embedding(description)
@@ -324,10 +327,10 @@ class VectorStorageService:
                     "updated_at": datetime.now(timezone.utc)
                 })
 
-                points_to_upsert.append(qmodels.PointStruct(id=point_id_str, vector=embedding, payload=payload)) # Utiliser ID UUID
+                points_to_upsert.append(qmodels.PointStruct(id=point_id_str, vector=embedding, payload=payload))
 
             except Exception as e:
-                logger.error(f"Erreur lors de la préparation de la transaction {transaction.get('bridge_transaction_id')} pour le batch: {e}") # Line 392 était ici
+                logger.error(f"Erreur lors de la préparation de la transaction {transaction.get('bridge_transaction_id')} pour le batch: {e}")
                 failed_ids.append(transaction.get("bridge_transaction_id", "unknown"))
 
         successful_count = 0
@@ -343,18 +346,17 @@ class VectorStorageService:
                     )
                     successful_count += len(chunk)
                 logger.info(f"Batch upsert de {successful_count} transactions terminé.")
-            except UnexpectedResponse as e: # Gérer explicitement l'erreur Qdrant
-                 logger.error(f"Erreur Qdrant lors du batch upsert des transactions: {e.status_code} - {e.content}") # Line 410 était ici
-                 logger.error(f"Erreur lors du batch upsert des transactions: {e}", exc_info=True) # Garder le traceback complet
-                 # Dans ce cas, difficile de savoir lesquels ont échoué, on considère le batch entier comme échoué
-                 failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
-                 successful_count = 0 # Reset car le batch a échoué
+            except UnexpectedResponse as e:
+                logger.error(f"Erreur Qdrant lors du batch upsert des transactions: {e.status_code} - {e.content}")
+                logger.error(f"Erreur lors du batch upsert des transactions: {e}", exc_info=True)
+                failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
+                successful_count = 0
             except Exception as e:
                 logger.error(f"Erreur générale lors du batch upsert des transactions: {e}", exc_info=True)
                 failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
                 successful_count = 0
             else:
-                 failed_count = len(failed_ids)
+                failed_count = len(failed_ids)
         else:
             failed_count = len(failed_ids)
 
@@ -366,30 +368,7 @@ class VectorStorageService:
             "failed_ids": failed_ids[:10]
         }
 
-    async def check_transaction_exists(self, bridge_transaction_id: str, user_id: int) -> bool:
-        """Vérifie si une transaction existe déjà pour cet utilisateur."""
-        if not self.client: return False
-        try:
-            # CORRECTION: Utiliser l'ID UUID déterministe
-            point_id_str = self._get_transaction_point_id(user_id, str(bridge_transaction_id))
-            results = self.client.retrieve(
-                collection_name=self.TRANSACTIONS_COLLECTION,
-                ids=[point_id_str], # Utiliser l'ID UUID
-                with_payload=False,
-                with_vectors=False
-            )
-            return len(results) > 0
-        except Exception as e:
-            logger.error(f"Erreur lors de la vérification de l'existence de la transaction {bridge_transaction_id} pour user {user_id}: {e}", exc_info=True)
-            return False
-
     # --- Méthodes de Stockage (Comptes) ---
-    # Les IDs de comptes (bridge_account_id) sont numériques et uniques, pas besoin d'UUID ici.
-    # L'ID de point peut être `f"user_{user_id}_account_{account_id}"` mais Qdrant
-    # recommande des entiers ou UUIDs. Utilisons l'ID bridge directement si > 0.
-    # Si Qdrant requiert strictement UUID/int, on peut mapper bridge_account_id à un int/UUID.
-    # Pour l'instant, on garde le bridge_account_id comme ID (supposé > 0).
-    # Si Qdrant le rejette, il faudra ajuster.
 
     async def store_account(self, account_data: Dict[str, Any]) -> bool:
         """Stocke un compte unique."""
@@ -398,14 +377,11 @@ class VectorStorageService:
             account_id = account_data.get("bridge_account_id")
             user_id = account_data.get("user_id")
             if account_id is None or user_id is None:
-                 logger.error("ID compte Bridge ou User ID manquant.")
-                 return False
+                logger.error("ID compte Bridge ou User ID manquant.")
+                return False
 
-            point_id = account_id # Utiliser l'ID Bridge comme ID de point (doit être >= 0)
-            if not isinstance(point_id, int) or point_id < 0:
-                 logger.error(f"ID de compte Bridge invalide pour Qdrant point ID: {point_id}")
-                 # Fallback vers un UUID si l'ID numérique n'est pas valide
-                 point_id = str(uuid.uuid5(HARENA_NAMESPACE, f"user_{user_id}_account_{account_id}"))
+            # Générer un ID UUID déterministe
+            point_id = self._get_account_point_id(user_id, account_id)
 
             text_to_embed = f"{account_data.get('name', '')} {account_data.get('type', '')}"
             embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
@@ -456,11 +432,8 @@ class VectorStorageService:
                     failed_ids.append(account.get("bridge_account_id", "unknown"))
                     continue
 
-                point_id = account_id
-                if not isinstance(point_id, int) or point_id < 0:
-                    logger.warning(f"ID de compte Bridge invalide {point_id}, génération d'un UUID.")
-                    point_id = str(uuid.uuid5(HARENA_NAMESPACE, f"user_{user_id}_account_{account_id}"))
-
+                # Générer un ID UUID déterministe
+                point_id = self._get_account_point_id(user_id, account_id)
 
                 text_to_embed = f"{account.get('name', '')} {account.get('type', '')}"
                 embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
@@ -503,7 +476,7 @@ class VectorStorageService:
                 failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
                 successful_count = 0
             else:
-                 failed_count = len(failed_ids)
+                failed_count = len(failed_ids)
         else:
             failed_count = len(failed_ids)
 
@@ -515,82 +488,7 @@ class VectorStorageService:
             "failed_ids": failed_ids[:10]
         }
 
-    async def check_account_exists(self, bridge_account_id: int, user_id: int) -> bool:
-        """Vérifie si un compte existe déjà pour cet utilisateur."""
-        if not self.client: return False
-        try:
-            point_id = bridge_account_id # Utiliser ID Bridge
-            if not isinstance(point_id, int) or point_id < 0:
-                 point_id = str(uuid.uuid5(HARENA_NAMESPACE, f"user_{user_id}_account_{bridge_account_id}"))
-
-            results = self.client.retrieve(
-                collection_name=self.ACCOUNTS_COLLECTION,
-                ids=[point_id],
-                with_payload=False,
-                with_vectors=False
-            )
-            return len(results) > 0
-        except Exception as e:
-            logger.error(f"Erreur lors de la vérification de l'existence du compte {bridge_account_id} pour user {user_id}: {e}", exc_info=True)
-            return False
-
-    async def update_account_payload(self, bridge_account_id: int, user_id: int, updates: Dict[str, Any]) -> bool:
-        """Met à jour le payload d'un compte existant (ex: solde)."""
-        if not self.client: return False
-        try:
-            point_id = bridge_account_id # Utiliser ID Bridge
-            if not isinstance(point_id, int) or point_id < 0:
-                 point_id = str(uuid.uuid5(HARENA_NAMESPACE, f"user_{user_id}_account_{bridge_account_id}"))
-
-            update_payload = self._prepare_payload(updates)
-            update_payload["last_synced_at"] = datetime.now(timezone.utc).isoformat()
-
-            self.client.set_payload(
-                collection_name=self.ACCOUNTS_COLLECTION,
-                payload=update_payload,
-                points=[point_id],
-                wait=False
-            )
-            logger.info(f"Payload du compte {point_id} mis à jour avec: {list(update_payload.keys())}")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour du payload du compte {bridge_account_id}: {e}", exc_info=True)
-            return False
-
     # --- Méthodes de Stockage (Catégories) ---
-    # ID Bridge numérique unique utilisé comme ID de point Qdrant
-
-    async def store_category(self, category_data: Dict[str, Any]) -> bool:
-        """Stocke une catégorie unique."""
-        if not self.client: return False
-        try:
-            category_id = category_data.get("bridge_category_id")
-            if category_id is None or (not isinstance(category_id, int)) or category_id < 0 :
-                 logger.error(f"ID catégorie Bridge invalide ou manquant: {category_id}")
-                 return False
-
-            point_id = category_id # Utiliser ID Bridge comme ID Qdrant
-
-            text_to_embed = category_data.get("name", "")
-            embedding = await self.embedding_service.get_embedding(text_to_embed)
-
-            payload = self._prepare_payload({
-                "bridge_category_id": category_id,
-                "name": text_to_embed,
-                "parent_id": category_data.get("parent_id"),
-                "last_synced_at": datetime.now(timezone.utc)
-            })
-
-            self.client.upsert(
-                collection_name=self.CATEGORIES_COLLECTION,
-                points=[qmodels.PointStruct(id=point_id, vector=embedding, payload=payload)],
-                wait=False
-            )
-            logger.debug(f"Catégorie upserted: {point_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur lors du stockage de la catégorie {category_id}: {e}", exc_info=True)
-            return False
 
     async def batch_store_categories(self, categories_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot de catégories."""
@@ -602,28 +500,29 @@ class VectorStorageService:
         processed_count = 0
 
         for category in categories_list:
-             processed_count += 1
-             try:
-                 category_id = category.get("bridge_category_id")
-                 if category_id is None or (not isinstance(category_id, int)) or category_id < 0 :
-                     logger.warning(f"ID catégorie Bridge invalide ou manquant ({category_id}) dans le lot. Skipping.")
-                     failed_ids.append(category.get("bridge_category_id", "unknown"))
-                     continue
+            processed_count += 1
+            try:
+                category_id = category.get("bridge_category_id")
+                if category_id is None or (not isinstance(category_id, int)) or category_id < 0:
+                    logger.warning(f"ID catégorie Bridge invalide ou manquant ({category_id}) dans le lot. Skipping.")
+                    failed_ids.append(category.get("bridge_category_id", "unknown"))
+                    continue
 
-                 point_id = category_id # Utiliser ID Bridge comme ID Qdrant
-                 text_to_embed = category.get("name", "")
-                 embedding = await self.embedding_service.get_embedding(text_to_embed)
+                # Utiliser directement l'ID numérique bridge_category_id
+                point_id = str(category_id)
+                text_to_embed = category.get("name", "")
+                embedding = await self.embedding_service.get_embedding(text_to_embed)
 
-                 payload = self._prepare_payload({
-                     "bridge_category_id": category_id,
-                     "name": text_to_embed,
-                     "parent_id": category.get("parent_id"),
-                     "last_synced_at": datetime.now(timezone.utc)
-                 })
-                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
-             except Exception as e:
-                 logger.error(f"Erreur lors de la préparation de la catégorie {category.get('bridge_category_id')} pour le batch: {e}")
-                 failed_ids.append(category.get("bridge_category_id", "unknown"))
+                payload = self._prepare_payload({
+                    "bridge_category_id": category_id,
+                    "name": text_to_embed,
+                    "parent_id": category.get("parent_id"),
+                    "last_synced_at": datetime.now(timezone.utc)
+                })
+                points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
+            except Exception as e:
+                logger.error(f"Erreur lors de la préparation de la catégorie {category.get('bridge_category_id')} pour le batch: {e}")
+                failed_ids.append(category.get("bridge_category_id", "unknown"))
 
         successful_count = 0
         if points_to_upsert:
@@ -643,7 +542,7 @@ class VectorStorageService:
                 failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
                 successful_count = 0
             else:
-                 failed_count = len(failed_ids)
+                failed_count = len(failed_ids)
         else:
             failed_count = len(failed_ids)
 
@@ -655,37 +554,25 @@ class VectorStorageService:
             "failed_ids": failed_ids[:10]
         }
 
-    async def check_category_exists(self, bridge_category_id: int) -> bool:
-        """Vérifie si une catégorie existe déjà."""
-        if not self.client: return False
-        try:
-            point_id = bridge_category_id # Utiliser ID Bridge
-            if not isinstance(point_id, int) or point_id < 0: return False # ID invalide
-            results = self.client.retrieve(
-                collection_name=self.CATEGORIES_COLLECTION,
-                ids=[point_id],
-                with_payload=False,
-                with_vectors=False
-            )
-            return len(results) > 0
-        except Exception as e:
-            logger.error(f"Erreur lors de la vérification de l'existence de la catégorie {bridge_category_id}: {e}", exc_info=True)
-            return False
-
     # --- Méthodes de Stockage (Marchands) ---
-    # Utilisation d'UUID générés (uuid4) comme ID Qdrant car pas d'ID Bridge stable
 
     async def store_merchant(self, merchant_data: Dict[str, Any]) -> Optional[str]:
-        """Stocke un marchand unique. Retourne l'ID du point (UUID string) si succès."""
+        """Stocke un marchand unique. Retourne l'ID du point si succès."""
         if not self.client: return None
         try:
-            point_id = str(uuid4()) # Générer un UUID aléatoire
+            normalized_name = merchant_data.get("normalized_name")
+            if not normalized_name:
+                logger.error("Nom normalisé du marchand manquant.")
+                return None
+                
+            # Utiliser un ID UUID déterministe basé sur le nom normalisé
+            point_id = self._get_merchant_point_id(normalized_name)
 
-            text_to_embed = f"{merchant_data.get('display_name', '')} {merchant_data.get('normalized_name', '')}"
+            text_to_embed = f"{merchant_data.get('display_name', '')} {normalized_name}"
             embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
 
             payload = self._prepare_payload({
-                "normalized_name": merchant_data.get("normalized_name"),
+                "normalized_name": normalized_name,
                 "display_name": merchant_data.get("display_name"),
                 "category_id": merchant_data.get("category_id"),
                 "source": merchant_data.get("source", "inferred"),
@@ -698,145 +585,61 @@ class VectorStorageService:
                 points=[qmodels.PointStruct(id=point_id, vector=embedding, payload=payload)],
                 wait=False
             )
-            logger.debug(f"Marchand upserted: {point_id} ({payload.get('normalized_name')})")
+            logger.debug(f"Marchand upserted: {point_id} ({normalized_name})")
             return point_id
         except Exception as e:
             logger.error(f"Erreur lors du stockage du marchand {merchant_data.get('normalized_name')}: {e}", exc_info=True)
             return None
 
-    async def batch_store_merchants(self, merchants_list: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Stocke un lot de marchands."""
-        if not self.client or not merchants_list:
-             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
-
-        points_to_upsert = []
-        failed_items = []
-        processed_count = 0
-
-        for merchant in merchants_list:
-            processed_count += 1
-            try:
-                point_id = str(uuid4()) # Générer UUID aléatoire
-                text_to_embed = f"{merchant.get('display_name', '')} {merchant.get('normalized_name', '')}"
-                embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
-
-                payload = self._prepare_payload({
-                    "normalized_name": merchant.get("normalized_name"),
-                    "display_name": merchant.get("display_name"),
-                    "category_id": merchant.get("category_id"),
-                    "source": merchant.get("source", "inferred"),
-                    "created_at": datetime.now(timezone.utc),
-                    "updated_at": datetime.now(timezone.utc)
-                })
-                points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
-            except Exception as e:
-                logger.error(f"Erreur lors de la préparation du marchand {merchant.get('normalized_name')} pour le batch: {e}")
-                failed_items.append(merchant.get('normalized_name', "unknown"))
-
-        successful_count = 0
-        if points_to_upsert:
-            try:
-                chunk_size = 100
-                for i in range(0, len(points_to_upsert), chunk_size):
-                    chunk = points_to_upsert[i:i + chunk_size]
-                    self.client.upsert(
-                        collection_name=self.MERCHANTS_COLLECTION,
-                        points=chunk,
-                        wait=False
-                    )
-                    successful_count += len(chunk)
-                logger.info(f"Batch upsert de {successful_count} marchands terminé.")
-            except Exception as e:
-                logger.error(f"Erreur lors du batch upsert des marchands: {e}", exc_info=True)
-                failed_count = len(points_to_upsert) - successful_count + len(failed_items)
-                successful_count = 0
-            else:
-                 failed_count = len(failed_items)
-        else:
-            failed_count = len(failed_items)
-
-        return {
-            "status": "success" if failed_count == 0 else ("partial" if successful_count > 0 else "error"),
-            "total": processed_count,
-            "successful": successful_count,
-            "failed": failed_count,
-            "failed_items": failed_items[:10]
-        }
-
     async def find_merchant(self, normalized_name: str) -> Optional[str]:
-        """Trouve un marchand par son nom normalisé. Retourne l'ID du point (UUID string) si trouvé."""
+        """Trouve un marchand par son nom normalisé. Retourne l'ID du point si trouvé."""
         if not self.client: return None
         try:
+            # Utiliser l'ID déterministe directement plutôt que de faire une recherche
+            point_id = self._get_merchant_point_id(normalized_name)
+            
+            # Vérifier que le point existe
+            results = self.client.retrieve(
+                collection_name=self.MERCHANTS_COLLECTION,
+                ids=[point_id],
+                with_payload=False,
+                with_vectors=False
+            )
+            
+            if results:
+                return point_id
+                
+            # Si pas trouvé par ID direct, essayer une recherche par filtrage (fallback)
             filter_query = qmodels.Filter(
                 must=[
                     qmodels.FieldCondition(key="normalized_name", match=qmodels.MatchValue(value=normalized_name))
                 ]
             )
-            # Utiliser search car on n'a pas l'ID, juste une propriété
+            
             search_result = self.client.search(
                  collection_name=self.MERCHANTS_COLLECTION,
                  query_filter=filter_query,
-                 query_vector=[0.0] * self.vector_size, # Vecteur factice car on filtre seulement
+                 query_vector=[0.0] * self.vector_size,  # Vecteur factice car on filtre seulement
                  limit=1,
-                 with_payload=False, # Juste besoin de l'ID
+                 with_payload=False,
                  with_vectors=False
             )
+            
             if search_result:
-                return search_result[0].id # L'ID est un UUID string
+                return search_result[0].id
+                
             return None
+            
         except Exception as e:
             logger.error(f"Erreur lors de la recherche du marchand '{normalized_name}': {e}", exc_info=True)
             return None
 
     # --- Méthodes de Stockage (Insights) ---
-    # Utilisation d'UUID générés (uuid4) comme ID Qdrant
-
-    async def store_insight(self, insight_data: Dict[str, Any]) -> bool:
-        """Stocke un insight unique."""
-        if not self.client: return False
-        try:
-            point_id = str(uuid4()) # Générer un UUID aléatoire
-            user_id = insight_data.get("user_id")
-            category_id = insight_data.get("category_id")
-            period_type = insight_data.get("period_type")
-            period_start = insight_data.get("period_start")
-
-            if not all([user_id, period_type, period_start]):
-                 logger.error("Données manquantes pour l'insight (user, type, start).")
-                 return False
-
-            category_name = insight_data.get("category_name", "Toutes catégories")
-            period_start_str = period_start.strftime('%Y-%m-%d') if isinstance(period_start, datetime) else str(period_start)
-            text_to_embed = f"Résumé {period_type} pour {category_name} démarrant le {period_start_str}"
-            embedding = await self.embedding_service.get_embedding(text_to_embed)
-
-            payload = self._prepare_payload({
-                "user_id": user_id,
-                "category_id": category_id,
-                "category_name": category_name,
-                "period_type": period_type,
-                "period_start": period_start,
-                "period_end": insight_data.get("period_end"),
-                "aggregates": insight_data.get("aggregates"),
-                "kpi_data": insight_data.get("kpi_data"),
-                "generated_at": datetime.now(timezone.utc)
-            })
-
-            self.client.upsert(
-                collection_name=self.INSIGHTS_COLLECTION,
-                points=[qmodels.PointStruct(id=point_id, vector=embedding, payload=payload)],
-                wait=False
-            )
-            logger.debug(f"Insight upserted: {point_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur lors du stockage de l'insight: {e}", exc_info=True)
-            return False
 
     async def batch_store_insights(self, insights_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot d'insights."""
         if not self.client or not insights_list:
-             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
+            return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
 
         points_to_upsert = []
         failed_items = []
@@ -845,14 +648,23 @@ class VectorStorageService:
         for insight in insights_list:
             processed_count += 1
             try:
-                point_id = str(uuid4()) # Générer UUID aléatoire
+                # Générer un ID consistant basé sur les propriétés uniques
                 user_id = insight.get("user_id")
                 period_type = insight.get("period_type")
                 period_start = insight.get("period_start")
+                category_id = insight.get("category_id")
+                
                 if not all([user_id, period_type, period_start]):
                     logger.warning(f"Données manquantes pour insight dans batch. Skipping.")
                     failed_items.append(f"user_{user_id}_{period_type}_{period_start}")
                     continue
+
+                # Créer un ID déterministe pour les insights
+                id_components = f"user_{user_id}_{period_type}_{period_start.isoformat() if isinstance(period_start, datetime) else period_start}"
+                if category_id is not None:
+                    id_components += f"_cat_{category_id}"
+                
+                point_id = str(uuid.uuid5(HARENA_NAMESPACE, id_components))
 
                 category_name = insight.get("category_name", "Toutes catégories")
                 period_start_str = period_start.strftime('%Y-%m-%d') if isinstance(period_start, datetime) else str(period_start)
@@ -861,7 +673,7 @@ class VectorStorageService:
 
                 payload = self._prepare_payload({
                     "user_id": user_id,
-                    "category_id": insight.get("category_id"),
+                    "category_id": category_id,
                     "category_name": category_name,
                     "period_type": period_type,
                     "period_start": period_start,
@@ -893,7 +705,7 @@ class VectorStorageService:
                 failed_count = len(points_to_upsert) - successful_count + len(failed_items)
                 successful_count = 0
             else:
-                 failed_count = len(failed_items)
+                failed_count = len(failed_items)
         else:
             failed_count = len(failed_items)
 
@@ -906,59 +718,11 @@ class VectorStorageService:
         }
 
     # --- Méthodes de Stockage (Stocks) ---
-    # Utilisation d'UUID générés (uuid4) comme ID Qdrant
-
-    async def store_stock(self, stock_data: Dict[str, Any]) -> bool:
-        """Stocke une action/stock unique."""
-        if not self.client: return False
-        try:
-            stock_id = stock_data.get("bridge_stock_id")
-            user_id = stock_data.get("user_id")
-            account_id = stock_data.get("account_id")
-            isin = stock_data.get("isin")
-            ticker = stock_data.get("ticker")
-
-            if user_id is None or account_id is None or not (isin or ticker):
-                 logger.error("Données manquantes pour stock (user, account, isin/ticker).")
-                 return False
-
-            point_id = str(uuid4()) # Générer UUID aléatoire
-
-            text_to_embed = f"{stock_data.get('label', '')} {ticker or ''} {isin or ''}"
-            embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
-
-            payload = self._prepare_payload({
-                "user_id": user_id,
-                "account_id": account_id,
-                "bridge_stock_id": stock_id,
-                "label": stock_data.get("label"),
-                "ticker": ticker,
-                "isin": isin,
-                "quantity": stock_data.get("quantity"),
-                "current_price": stock_data.get("current_price"),
-                "total_value": stock_data.get("total_value"),
-                "currency_code": stock_data.get("currency_code"),
-                "value_date": stock_data.get("value_date"),
-                "average_purchase_price": stock_data.get("average_purchase_price"),
-                "bridge_updated_at": stock_data.get("bridge_updated_at"),
-                "last_synced_at": datetime.now(timezone.utc)
-            })
-
-            self.client.upsert(
-                collection_name=self.STOCKS_COLLECTION,
-                points=[qmodels.PointStruct(id=point_id, vector=embedding, payload=payload)],
-                wait=False
-            )
-            logger.debug(f"Stock upserted: {point_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur lors du stockage du stock {ticker or isin}: {e}", exc_info=True)
-            return False
 
     async def batch_store_stocks(self, stocks_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot d'actions/stocks."""
         if not self.client or not stocks_list:
-             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
+            return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
 
         points_to_upsert = []
         failed_items = []
@@ -967,15 +731,27 @@ class VectorStorageService:
         for stock in stocks_list:
             processed_count += 1
             try:
-                point_id = str(uuid4()) # Générer UUID aléatoire
                 user_id = stock.get("user_id")
                 account_id = stock.get("account_id")
+                bridge_stock_id = stock.get("bridge_stock_id")
                 isin = stock.get("isin")
                 ticker = stock.get("ticker")
-                if user_id is None or account_id is None or not (isin or ticker):
-                    logger.warning(f"Données manquantes pour stock dans batch. Skipping.")
-                    failed_items.append(f"user_{user_id}_acc_{account_id}_{ticker or isin}")
+                
+                if user_id is None or account_id is None or not (isin or ticker or bridge_stock_id):
+                    logger.warning(f"Données d'identification manquantes pour stock dans batch. Skipping.")
+                    failed_items.append(f"user_{user_id}_acc_{account_id}_{ticker or isin or bridge_stock_id}")
                     continue
+
+                # Créer un ID déterministe pour le stock
+                id_components = f"user_{user_id}_account_{account_id}"
+                if bridge_stock_id:
+                    id_components += f"_stock_{bridge_stock_id}"
+                elif isin:
+                    id_components += f"_isin_{isin}"
+                elif ticker:
+                    id_components += f"_ticker_{ticker}"
+                
+                point_id = str(uuid.uuid5(HARENA_NAMESPACE, id_components))
 
                 text_to_embed = f"{stock.get('label', '')} {ticker or ''} {isin or ''}"
                 embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
@@ -983,7 +759,7 @@ class VectorStorageService:
                 payload = self._prepare_payload({
                     "user_id": user_id,
                     "account_id": account_id,
-                    "bridge_stock_id": stock.get("bridge_stock_id"),
+                    "bridge_stock_id": bridge_stock_id,
                     "label": stock.get("label"),
                     "ticker": ticker,
                     "isin": isin,
@@ -1019,7 +795,7 @@ class VectorStorageService:
                 failed_count = len(points_to_upsert) - successful_count + len(failed_items)
                 successful_count = 0
             else:
-                 failed_count = len(failed_items)
+                failed_count = len(failed_items)
         else:
             failed_count = len(failed_items)
 
@@ -1031,34 +807,12 @@ class VectorStorageService:
             "failed_items": failed_items[:10]
         }
 
-    async def check_stock_exists(self, user_id: int, account_id: int, isin: Optional[str] = None, ticker: Optional[str] = None) -> bool:
-        """Vérifie si un stock existe déjà pour cet utilisateur/compte."""
-        if not self.client or not (isin or ticker): return False
-        try:
-             # Filtrer car l'ID est un UUID aléatoire
-             filters = [
-                 qmodels.FieldCondition(key="user_id", match=qmodels.MatchValue(value=user_id)),
-                 qmodels.FieldCondition(key="account_id", match=qmodels.MatchValue(value=account_id)),
-             ]
-             if isin: filters.append(qmodels.FieldCondition(key="isin", match=qmodels.MatchValue(value=isin)))
-             if ticker: filters.append(qmodels.FieldCondition(key="ticker", match=qmodels.MatchValue(value=ticker)))
-
-             filter_query = qmodels.Filter(must=filters)
-             results = self.client.scroll(
-                 collection_name=self.STOCKS_COLLECTION, scroll_filter=filter_query, limit=1, with_payload=False, with_vectors=False
-             )
-             return len(results[0]) > 0
-        except Exception as e:
-            logger.error(f"Erreur lors de la vérification de l'existence du stock {ticker or isin} pour user {user_id}, account {account_id}: {e}", exc_info=True)
-            return False
-
     # --- Méthodes de gestion utilisateur ---
 
     async def initialize_user_storage(self, user_id: int) -> bool:
         """Initialise le stockage pour un utilisateur (marqueur)."""
         if not self.client: return False
         try:
-            # CORRECTION: Utiliser l'ID UUID déterministe
             point_id_str = self._get_user_metadata_point_id(user_id)
             payload = {
                 "user_id": user_id,
@@ -1068,7 +822,7 @@ class VectorStorageService:
             }
             self.client.upsert(
                 collection_name=self.USER_METADATA_COLLECTION,
-                points=[qmodels.PointStruct(id=point_id_str, payload=payload)], # Utiliser ID UUID
+                points=[qmodels.PointStruct(id=point_id_str, payload=payload)],
                 wait=True
             )
             logger.info(f"Stockage vectoriel initialisé (métadata) pour l'utilisateur {user_id} avec ID {point_id_str}")
@@ -1081,21 +835,20 @@ class VectorStorageService:
         """Vérifie si le stockage pour un utilisateur est initialisé."""
         if not self.client: return False
         try:
-            # CORRECTION: Utiliser l'ID UUID déterministe
             point_id_str = self._get_user_metadata_point_id(user_id)
             results = self.client.retrieve(
                 collection_name=self.USER_METADATA_COLLECTION,
-                ids=[point_id_str], # Utiliser ID UUID
+                ids=[point_id_str],
                 with_payload=False,
                 with_vectors=False
             )
             return len(results) > 0
-        except UnexpectedResponse as e: # Gérer l'erreur Qdrant 404 si point non trouvé
+        except UnexpectedResponse as e:
             if e.status_code == 404:
                 logger.debug(f"Point metadata {point_id_str} non trouvé pour user {user_id}. Initialisation non faite.")
                 return False
             logger.error(f"Erreur Qdrant {e.status_code} lors de la vérification de l'initialisation pour user {user_id}: {e.content}")
-            return False # Prudence
+            return False
         except Exception as e:
             logger.error(f"Erreur générale lors de la vérification de l'initialisation pour user {user_id}: {e}", exc_info=True)
             return False
@@ -1138,22 +891,21 @@ class VectorStorageService:
         """Récupère les métadonnées de stockage d'un utilisateur."""
         if not self.client: return None
         try:
-            # CORRECTION: Utiliser l'ID UUID déterministe
             point_id_str = self._get_user_metadata_point_id(user_id)
             results = self.client.retrieve(
                 collection_name=self.USER_METADATA_COLLECTION,
-                ids=[point_id_str], # Utiliser ID UUID
+                ids=[point_id_str],
                 with_payload=True
             )
             if results:
                 return results[0].payload
             return None
-        except UnexpectedResponse as e: # Gérer 404 Not Found
-             if e.status_code == 404:
-                 logger.debug(f"Métadonnées non trouvées pour user {user_id} (point ID: {point_id_str})")
-             else:
-                 logger.error(f"Erreur Qdrant lors de la récupération des métadonnées pour user {user_id}: {e.status_code} - {e.content}")
-             return None
+        except UnexpectedResponse as e:
+            if e.status_code == 404:
+                logger.debug(f"Métadonnées non trouvées pour user {user_id} (point ID: {point_id_str})")
+            else:
+                logger.error(f"Erreur Qdrant lors de la récupération des métadonnées pour user {user_id}: {e.status_code} - {e.content}")
+            return None
         except Exception as e:
             logger.error(f"Erreur générale lors de la récupération des métadonnées pour user {user_id}: {e}", exc_info=True)
             return None
@@ -1162,7 +914,6 @@ class VectorStorageService:
         """Met à jour les métadonnées de stockage d'un utilisateur."""
         if not self.client: return False
         try:
-            # CORRECTION: Utiliser l'ID UUID déterministe
             point_id_str = self._get_user_metadata_point_id(user_id)
             current_metadata = await self.get_user_storage_metadata(user_id)
 
@@ -1176,7 +927,7 @@ class VectorStorageService:
                 }
                 self.client.upsert(
                     collection_name=self.USER_METADATA_COLLECTION,
-                    points=[qmodels.PointStruct(id=point_id_str, payload=init_payload)], # Utiliser ID UUID
+                    points=[qmodels.PointStruct(id=point_id_str, payload=init_payload)],
                     wait=True
                 )
                 return True
@@ -1185,7 +936,7 @@ class VectorStorageService:
             self.client.set_payload(
                 collection_name=self.USER_METADATA_COLLECTION,
                 payload=updated_payload,
-                points=[point_id_str], # Utiliser ID UUID
+                points=[point_id_str],
                 wait=True
             )
             logger.info(f"Métadonnées mises à jour pour l'utilisateur {user_id}")
@@ -1205,44 +956,40 @@ class VectorStorageService:
         collections_to_clean = [
             self.TRANSACTIONS_COLLECTION, self.ACCOUNTS_COLLECTION,
             self.INSIGHTS_COLLECTION, self.STOCKS_COLLECTION,
-            # self.MERCHANTS_COLLECTION, # Si spécifique user
         ]
 
         for collection_name in collections_to_clean:
             try:
-                 if collection_name in collections:
-                     count_before = self.client.count(collection_name=collection_name, count_filter=user_filter, exact=False).count
-                     if count_before > 0:
-                         logger.info(f"Suppression de ~{count_before} points de {collection_name} pour user {user_id}")
-                         delete_result = self.client.delete(
-                             collection_name=collection_name,
-                             points_selector=qmodels.FilterSelector(filter=user_filter),
-                             wait=True
-                         )
-                         logger.info(f"Points supprimés de {collection_name} pour user {user_id}. Résultat: {delete_result.status}")
-                     else:
-                          logger.info(f"Aucun point à supprimer dans {collection_name} pour user {user_id}")
-                 else:
-                      logger.debug(f"Collection {collection_name} n'existe pas, suppression ignorée.")
+                if collection_name in collections:
+                    count_before = self.client.count(collection_name=collection_name, count_filter=user_filter, exact=False).count
+                    if count_before > 0:
+                        logger.info(f"Suppression de ~{count_before} points de {collection_name} pour user {user_id}")
+                        delete_result = self.client.delete(
+                            collection_name=collection_name,
+                            points_selector=qmodels.FilterSelector(filter=user_filter),
+                            wait=True
+                        )
+                        logger.info(f"Points supprimés de {collection_name} pour user {user_id}. Résultat: {delete_result.status}")
+                    else:
+                        logger.info(f"Aucun point à supprimer dans {collection_name} pour user {user_id}")
+                else:
+                    logger.debug(f"Collection {collection_name} n'existe pas, suppression ignorée.")
             except Exception as e:
-                 logger.error(f"Erreur lors de la suppression des points de {collection_name} pour user {user_id}: {e}")
-                 success = False
+                logger.error(f"Erreur lors de la suppression des points de {collection_name} pour user {user_id}: {e}")
+                success = False
 
         # Supprimer les métadonnées utilisateur
         try:
             if self.USER_METADATA_COLLECTION in collections:
-                 # CORRECTION: Utiliser l'ID UUID déterministe
-                 point_id_str = self._get_user_metadata_point_id(user_id)
-                 # Tenter la suppression directement, retrieve échouerait si non trouvé
-                 delete_result = self.client.delete(
-                     collection_name=self.USER_METADATA_COLLECTION,
-                     points_selector=qmodels.PointIdsList(points=[point_id_str]), # Utiliser ID UUID
-                     wait=True
-                 )
-                 # Le résultat peut indiquer 'NotFound' si le point n'existait pas, ce qui n'est pas une erreur ici.
-                 logger.info(f"Tentative de suppression des métadonnées pour user {user_id}. Résultat: {delete_result.status}")
+                point_id_str = self._get_user_metadata_point_id(user_id)
+                delete_result = self.client.delete(
+                    collection_name=self.USER_METADATA_COLLECTION,
+                    points_selector=qmodels.PointIdsList(points=[point_id_str]),
+                    wait=True
+                )
+                logger.info(f"Tentative de suppression des métadonnées pour user {user_id}. Résultat: {delete_result.status}")
             else:
-                 logger.debug(f"Collection {self.USER_METADATA_COLLECTION} n'existe pas, suppression métadata ignorée.")
+                logger.debug(f"Collection {self.USER_METADATA_COLLECTION} n'existe pas, suppression métadata ignorée.")
         except Exception as e:
             logger.error(f"Erreur lors de la suppression des métadonnées pour user {user_id}: {e}")
             success = False

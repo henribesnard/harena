@@ -4,24 +4,54 @@ Point d'entrée principal pour l'application Harena.
 Ce module initialise et démarre tous les services de la plateforme financière Harena:
 - User Service: Gestion des utilisateurs et authentification
 - Sync Service: Synchronisation des données bancaires via Bridge API
-- Transaction Vector Service: Recherche et analyse vectorielle des transactions
-- Conversation Service: Interface conversationnelle intelligente
+- Analytics Service: Analyse des données financières (optionnel)
 """
 
 import logging
 import uvicorn
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional
+from datetime import datetime
+from contextlib import asynccontextmanager
 
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
 )
 logger = logging.getLogger("harena")
+
+# ======== GESTION DU CYCLE DE VIE DE L'APPLICATION ========
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Gestionnaire du cycle de vie de l'application.
+    Initialise les ressources au démarrage et les libère à l'arrêt.
+    """
+    # Initialization code
+    logger.info("Application Harena en démarrage...")
+    
+    # Vérification des variables d'environnement critiques
+    required_env_vars = ["BRIDGE_CLIENT_ID", "BRIDGE_CLIENT_SECRET"]
+    missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+    
+    if missing_vars:
+        logger.warning(f"Variables d'environnement manquantes: {', '.join(missing_vars)}")
+        logger.warning("Certaines fonctionnalités peuvent ne pas fonctionner correctement.")
+    
+    # Tout le code d'initialisation ici
+    
+    yield  # L'application s'exécute ici
+    
+    # Cleanup code
+    logger.info("Application Harena en arrêt...")
+    # Tout le code de nettoyage ici
+
+# ======== CRÉATION DE L'APPLICATION ========
 
 # Création de l'application FastAPI principale
 app = FastAPI(
@@ -30,7 +60,8 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    lifespan=lifespan
 )
 
 # Configuration CORS
@@ -49,7 +80,8 @@ available_services = {}
 
 # User Service
 try:
-    from user_service.main import app as user_app
+    from user_service.main import create_app as create_user_app
+    user_app = create_user_app()
     from user_service.core.config import settings as user_settings
     logger.info("User Service importé avec succès")
     available_services["user_service"] = {
@@ -63,7 +95,8 @@ except ImportError as e:
 
 # Sync Service
 try:
-    from sync_service.main import app as sync_app
+    from sync_service.main import create_app as create_sync_app
+    sync_app = create_sync_app()
     logger.info("Sync Service importé avec succès")
     available_services["sync_service"] = {
         "app": sync_app,
@@ -73,42 +106,12 @@ except ImportError as e:
     logger.error(f"Erreur lors de l'importation du Sync Service: {e}")
     available_services["sync_service"] = None
 
-# Transaction Vector Service
-try:
-    from transaction_vector_service.main import app as transaction_vector_app
-    from transaction_vector_service.config.settings import settings as transaction_settings
-    logger.info("Transaction Vector Service importé avec succès")
-    available_services["transaction_vector_service"] = {
-        "app": transaction_vector_app,
-        "settings": transaction_settings,
-        "api_prefix": transaction_settings.API_V1_STR
-    }
-except ImportError as e:
-    logger.error(f"Erreur lors de l'importation du Transaction Vector Service: {e}")
-    available_services["transaction_vector_service"] = None
-
-# Conversation Service
-try:
-    from conversation_service.main import app as conversation_app
-    from conversation_service.config.settings import settings as conversation_settings
-    logger.info("Conversation Service importé avec succès")
-    available_services["conversation_service"] = {
-        "app": conversation_app,
-        "settings": conversation_settings,
-        "api_prefix": conversation_settings.API_PREFIX
-    }
-except ImportError as e:
-    logger.error(f"Erreur lors de l'importation du Conversation Service: {e}")
-    available_services["conversation_service"] = None
-
 # ======== MONTAGE DES APPLICATIONS ========
 
 # Monter les applications sur des préfixes spécifiques
 mount_paths = {
     "user_service": "/user",
     "sync_service": "/sync",
-    "transaction_vector_service": "/transactions",
-    "conversation_service": "/conversations"
 }
 
 # Monter les applications et leurs API
@@ -134,11 +137,13 @@ async def root():
     Point d'entrée racine pour vérifier que l'application est en ligne.
     Retourne un statut et des informations basiques sur l'application.
     """
+    active_services = [name for name, info in available_services.items() if info is not None]
+    
     return {
         "status": "ok",
         "application": "Harena Finance API",
         "version": "1.0.0",
-        "services": list(filter(None, available_services.keys()))
+        "services": active_services
     }
 
 @app.get("/health", tags=["health"])
@@ -192,16 +197,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ======== LANCEMENT DE L'APPLICATION ========
 
-# Importer datetime maintenant pour éviter l'erreur de référence
-from datetime import datetime
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
     host = os.getenv("HOST", "0.0.0.0")
     debug = os.getenv("DEBUG", "False").lower() == "true"
     
-    logger.info(f"Démarrage de l'application Harena sur {host}:{port} (debug={debug})")
-    logger.info(f"Services disponibles: {list(filter(lambda k: available_services[k] is not None, available_services.keys()))}")
+    # Ajouter l'environnement comme variable globale
+    os.environ["ENVIRONMENT"] = os.getenv("ENVIRONMENT", "development")
+    
+    logger.info(f"Démarrage de l'application Harena sur {host}:{port} (debug={debug}, env={os.environ['ENVIRONMENT']})")
+    logger.info(f"Services disponibles: {[name for name, info in available_services.items() if info is not None]}")
     
     uvicorn.run(
         "main:app",

@@ -1,6 +1,11 @@
 # user_service/services/bridge.py
+"""
+Service de communication avec l'API Bridge.
+
+Ce module fournit les fonctionnalités pour interagir avec l'API Bridge,
+gérer les tokens d'authentification et récupérer les données financières.
+"""
 import logging
-import traceback
 import httpx
 from datetime import datetime, timezone, timedelta 
 from typing import Optional, Dict, Any, List, Union
@@ -10,7 +15,7 @@ from fastapi import HTTPException, status
 from user_service.models.user import User, BridgeConnection
 from user_service.core.config import settings
 
-# Configuration des logs (assumant que le logging est configuré au niveau de l'app)
+# Configuration des logs
 logger = logging.getLogger(__name__)
 
 # --- Fonctions d'aide internes ---
@@ -28,6 +33,7 @@ async def _get_bridge_headers(
         "Client-Id": settings.BRIDGE_CLIENT_ID,
         "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
     }
+    
     if include_auth:
         if db is None or user_id is None:
             raise ValueError("Database session and user_id are required for authenticated headers.")
@@ -47,24 +53,25 @@ async def _get_bridge_headers(
 
     return headers
 
+
 async def _fetch_paginated_resources(
     initial_url: str,
     headers: Dict[str, str],
-    limit: Optional[int] = None # Ajouter un paramètre de limite interne si besoin
+    limit: Optional[int] = None # Paramètre de limite interne
 ) -> List[Dict[str, Any]]:
     """Récupère toutes les ressources d'un endpoint paginé de Bridge."""
     all_resources = []
     next_uri = initial_url
     page_count = 0
-    max_pages = 50 # Sécurité pour éviter boucle infinie
+    max_pages = 50  # Sécurité pour éviter boucle infinie
 
-    async with httpx.AsyncClient(timeout=60.0) as client: # Augmenter le timeout pour les grosses récupérations
+    async with httpx.AsyncClient(timeout=60.0) as client:  # Timeout augmenté pour les grosses récupérations
         while next_uri and page_count < max_pages:
             page_count += 1
             logger.debug(f"Fetching page {page_count} from: {next_uri}")
             try:
                 response = await client.get(next_uri, headers=headers)
-                response.raise_for_status() # Lève une exception pour les status 4xx/5xx
+                response.raise_for_status()  # Lève une exception pour les status 4xx/5xx
 
                 data = response.json()
                 resources = data.get("resources", [])
@@ -94,18 +101,20 @@ async def _fetch_paginated_resources(
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error processing Bridge API response: {e}")
 
     if page_count >= max_pages:
-         logger.warning(f"Pagination stopped after reaching max pages ({max_pages}) for URL: {initial_url}")
+        logger.warning(f"Pagination stopped after reaching max pages ({max_pages}) for URL: {initial_url}")
 
     logger.info(f"Total resources fetched after pagination for {initial_url}: {len(all_resources)}")
     return all_resources
 
-# --- Fonctions existantes (gardées et légèrement adaptées si besoin) ---
+
+# --- Fonctions principales pour Bridge API ---
 
 async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
     """Crée un utilisateur dans Bridge API et enregistre sa connexion"""
     external_user_id = f"harena-user-{user.id}"
     logger.info(f"Attempting to create/retrieve Bridge user with external_user_id: {external_user_id}")
 
+    # Vérifier si une connexion existe déjà
     existing_connection = db.query(BridgeConnection).filter(
         BridgeConnection.user_id == user.id
     ).first()
@@ -116,7 +125,7 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
 
     # Utilisation de _get_bridge_headers sans authentification
     headers = await _get_bridge_headers(include_auth=False)
-    headers["content-type"] = "application/json" # Ajout spécifique pour POST
+    headers["content-type"] = "application/json"  # Ajout spécifique pour POST
 
     payload = {"external_user_id": external_user_id}
 
@@ -128,20 +137,16 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
             response = await client.post(url, json=payload, headers=headers)
 
             logger.info(f"Bridge API user creation response status: {response.status_code}")
-            logger.debug(f"Bridge API response content: {response.text[:500]}...") # Limiter la taille du log
+            logger.debug(f"Bridge API response content: {response.text[:500]}...")  # Limiter la taille du log
 
-            if response.status_code not in [200, 201]: # 200 OK ou 201 Created
-                # Gérer le cas où l'utilisateur existe déjà (peut renvoyer une erreur spécifique ?)
-                # Bridge peut renvoyer 409 Conflict si external_user_id existe déjà.
+            if response.status_code not in [200, 201]:  # 200 OK ou 201 Created
+                # Gestion du cas où l'utilisateur existe déjà
                 if response.status_code == 409:
-                     logger.warning(f"Bridge user with external_id {external_user_id} likely already exists. Attempting to fetch.")
-                     # Essayer de récupérer l'utilisateur existant peut être complexe sans son UUID.
-                     # Alternative : Gérer cette logique en amont ou accepter l'erreur et demander une action manuelle.
-                     # Pour l'instant, on lève une exception pour signaler le problème.
-                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Bridge user conflict: {response.text}")
+                    logger.warning(f"Bridge user with external_id {external_user_id} likely already exists. Attempting to fetch.")
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Bridge user conflict: {response.text}")
                 else:
                     raise HTTPException(
-                        status_code=response.status_code, # Utiliser le code d'erreur de Bridge
+                        status_code=response.status_code,
                         detail=f"Failed to create Bridge user: {response.text}"
                     )
 
@@ -179,6 +184,7 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
         logger.error(f"Unexpected error creating Bridge user for user {user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error creating Bridge user: {e}")
 
+
 async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
     """Récupère ou génère un token d'authentification Bridge"""
     bridge_connection = db.query(BridgeConnection).filter(BridgeConnection.user_id == user_id).first()
@@ -188,7 +194,7 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Bridge connection found for this user")
 
     now = datetime.now(timezone.utc)
-    # Vérifier l'expiration avec une petite marge (ex: 60 secondes)
+    # Vérifier l'expiration avec une marge de sécurité (60 secondes)
     if bridge_connection.token_expires_at and bridge_connection.token_expires_at > (now + timedelta(seconds=60)) and bridge_connection.last_token:
         logger.debug(f"Using existing valid token for user {user_id}, expires at {bridge_connection.token_expires_at}")
         return {
@@ -214,8 +220,8 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
             logger.debug(f"Bridge token API response content: {response.text[:200]}...")
 
             if response.status_code not in [200, 201]:
-                 logger.error(f"Failed to get Bridge token for user {user_id}: {response.status_code} - {response.text}")
-                 raise HTTPException(status_code=response.status_code, detail=f"Failed to get Bridge token: {response.text}")
+                logger.error(f"Failed to get Bridge token for user {user_id}: {response.status_code} - {response.text}")
+                raise HTTPException(status_code=response.status_code, detail=f"Failed to get Bridge token: {response.text}")
 
             token_data = response.json()
 
@@ -252,6 +258,7 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
         logger.error(f"Unexpected error getting Bridge token for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error getting Bridge token: {e}")
 
+
 async def create_connect_session(
     db: Session,
     user_id: int,
@@ -280,7 +287,7 @@ async def create_connect_session(
         logger.debug("Connect session mode: Manage existing item.")
     elif provider_id:
         payload["provider_id"] = provider_id
-        payload["user_email"] = user.email # Nécessaire même avec provider_id ? Docs ambiguës, inclusion par sécurité.
+        payload["user_email"] = user.email  # Nécessaire pour provider_id
         logger.debug("Connect session mode: Pre-selected provider.")
     else:
         payload["user_email"] = user.email
@@ -311,7 +318,7 @@ async def create_connect_session(
                 logger.error(f"Connect session API response missing 'url' field: {session_data}")
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid connect session response: missing url")
 
-            logger.info(f"Connect session created successfully for user {user_id}. URL: {session_data['url']}")
+            logger.info(f"Connect session created successfully for user {user_id}")
             return session_data["url"]
 
     except httpx.RequestError as req_error:
@@ -323,7 +330,6 @@ async def create_connect_session(
         logger.error(f"Unexpected error creating connect session for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error creating connect session: {e}")
 
-# --- Fonctions Modifiées / Nouvelles ---
 
 async def get_bridge_accounts(
     db: Session,
@@ -332,29 +338,24 @@ async def get_bridge_accounts(
 ) -> List[Dict[str, Any]]:
     """
     Récupère les comptes bancaires d'un utilisateur depuis Bridge API via /accounts.
-    Assure la récupération de tous les champs disponibles, y compris loan_details.
-    NOTE: Ne récupère pas les infos de /accounts-information (nom/prénom titulaire) car endpoint spécifique.
     """
     logger.info(f"Getting Bridge accounts for user {user_id}, item_id={item_id}")
     headers = await _get_bridge_headers(db=db, user_id=user_id)
 
-    # Construire l'URL initiale avec filtres optionnels
+    # Construire l'URL avec filtres optionnels
     url = f"{settings.BRIDGE_API_URL}/aggregation/accounts"
     params = {}
     if item_id:
         params["item_id"] = str(item_id)
-    # Ajouter une limite par page pour contrôle (Bridge utilise sa propre limite par défaut)
-    params["limit"] = "200" # Ex: demander 200 par page
+    params["limit"] = "200"  # Demander 200 par page pour optimiser
 
-    # Utiliser une construction d'URL plus sûre
+    # Construction sécurisée de l'URL
     request_url = httpx.URL(url, params=params)
 
     try:
         # Utiliser le helper pour gérer la pagination
         all_accounts = await _fetch_paginated_resources(str(request_url), headers)
         logger.info(f"Successfully retrieved {len(all_accounts)} accounts total for user {user_id}.")
-        # On pourrait ici ajouter un appel à /accounts-information si activé et merger les données.
-        # Pour l'instant, on retourne les données de /accounts.
         return all_accounts
     except HTTPException as http_exc:
         # Renvoyer les exceptions HTTP gérées par les helpers
@@ -369,7 +370,7 @@ async def get_bridge_transactions(
     user_id: int,
     account_id: int,
     since: Optional[datetime] = None,
-    limit: int = 500 # Limite de l'API Bridge
+    limit: int = 500  # Limite raisonnable
 ) -> List[Dict[str, Any]]:
     """Récupère les transactions d'un compte bancaire depuis Bridge API."""
     logger.info(f"Getting Bridge transactions for user {user_id}, account_id={account_id}, since={since}")
@@ -384,8 +385,8 @@ async def get_bridge_transactions(
     request_url = httpx.URL(url, params=params)
 
     try:
-        # Utiliser le helper pour gérer la pagination potentielle (même si on demande une limite fixe)
-        all_transactions = await _fetch_paginated_resources(str(request_url), headers, limit=limit) # Passer la limite au helper
+        # Utiliser le helper pour gérer la pagination
+        all_transactions = await _fetch_paginated_resources(str(request_url), headers, limit=limit)
         logger.info(f"Successfully retrieved {len(all_transactions)} transactions for account {account_id}.")
         return all_transactions
     except HTTPException as http_exc:
@@ -397,22 +398,22 @@ async def get_bridge_transactions(
 
 async def get_bridge_categories(
     db: Session,
-    user_id: int, # Garder user_id pour l'authentification via token user
-    language: str = "fr" # Paramétrer la langue
+    user_id: int,  # Pour l'authentification via token user
+    language: str = "fr"
 ) -> List[Dict[str, Any]]:
     """Récupère la liste des catégories depuis Bridge API."""
     logger.info(f"Getting Bridge categories (language: {language}) using token for user {user_id}")
-    # Utiliser le token utilisateur pour l'authentification, même si les catégories sont globales
     headers = await _get_bridge_headers(db=db, user_id=user_id, language=language)
 
     url = f"{settings.BRIDGE_API_URL}/aggregation/categories"
-    params = {"limit": "200"} # Demander un grand nombre par page
+    params = {"limit": "200"}  # Demander un grand nombre par page
     request_url = httpx.URL(url, params=params)
 
     try:
         all_categories = await _fetch_paginated_resources(str(request_url), headers)
         logger.info(f"Successfully retrieved {len(all_categories)} categories.")
-        # Transformer la structure si nécessaire (ex: aplatir les sous-catégories)
+        
+        # Transformer la structure (aplatir les sous-catégories)
         flat_categories = []
         for parent_cat in all_categories:
             parent_id = parent_cat.get('id')
@@ -423,16 +424,16 @@ async def get_bridge_categories(
                         "bridge_category_id": sub_cat.get('id'),
                         "name": sub_cat.get('name'),
                         "parent_id": parent_id,
-                        "parent_name": parent_name # Ajouter pour contexte si utile
+                        "parent_name": parent_name
                     })
             else:
-                 # Ajouter la catégorie parente elle-même si elle n'a pas de sous-catégories listées
-                  flat_categories.append({
-                        "bridge_category_id": parent_id,
-                        "name": parent_name,
-                        "parent_id": None, # Pas de parent explicite dans ce format
-                        "parent_name": None
-                    })
+                # Ajouter la catégorie parente elle-même
+                flat_categories.append({
+                    "bridge_category_id": parent_id,
+                    "name": parent_name,
+                    "parent_id": None,
+                    "parent_name": None
+                })
 
         logger.info(f"Transformed into {len(flat_categories)} flat categories.")
         return flat_categories
@@ -450,20 +451,18 @@ async def get_bridge_insights(db: Session, user_id: int) -> Optional[Dict[str, A
     url = f"{settings.BRIDGE_API_URL}/aggregation/insights/category"
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client: # Timeout plus long pour les insights
+        async with httpx.AsyncClient(timeout=60.0) as client:  # Timeout plus long pour les insights
             response = await client.get(url, headers=headers)
             response.raise_for_status()
             insights_data = response.json()
             logger.info(f"Successfully retrieved insights for user {user_id}.")
-            # La structure est complexe, la retourner telle quelle pour l'instant
-            # Le traitement/stockage se fera dans VectorStorageService
             return insights_data
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error getting insights for user {user_id}: {e.response.status_code} - {e.response.text}")
         # Si l'endpoint n'est pas activé, Bridge peut renvoyer 403 ou 404
         if e.response.status_code in [403, 404]:
-             logger.warning(f"Insights endpoint might not be available or activated for user {user_id}.")
-             return None # Retourner None plutôt que lever une exception critique
+            logger.warning(f"Insights endpoint might not be available or activated for user {user_id}.")
+            return None  # Retourner None plutôt que lever une exception critique
         raise HTTPException(status_code=e.response.status_code, detail=f"Bridge API error getting insights: {e.response.text}")
     except httpx.RequestError as e:
         logger.error(f"Request error getting insights for user {user_id}: {e}", exc_info=True)
@@ -484,7 +483,7 @@ async def get_bridge_stocks(
     headers = await _get_bridge_headers(db=db, user_id=user_id)
 
     url = f"{settings.BRIDGE_API_URL}/aggregation/stocks"
-    params = {"limit": "500"} # Demander le max par page
+    params = {"limit": "500"}  # Demander le max par page
     if account_id:
         params["account_id"] = str(account_id)
     if since:

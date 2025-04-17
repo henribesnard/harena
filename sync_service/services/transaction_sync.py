@@ -127,7 +127,7 @@ async def _get_or_create_merchant_vector(
             return None
 
 
-# --- Fonctions Principales ---
+# --- Méthodes Principales ---
 
 async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> Dict[str, Any]:
     """
@@ -170,6 +170,7 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
 
         # 2. Récupérer le token Bridge
         token_data = await get_bridge_token(db, user_id)
+        ctx_logger.debug(f"Token Bridge récupéré avec succès")
 
         # 3. Déterminer la date 'since' pour la requête Bridge
         since_date = None
@@ -198,62 +199,87 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
             sync_account.last_sync_timestamp = datetime.now(timezone.utc)
             db.add(sync_account)
             db.commit()
+            ctx_logger.info(f"Aucune transaction à synchroniser, timestamp mis à jour: {sync_account.last_sync_timestamp}")
             return result_summary
 
         # 5. Préparer et stocker les transactions vectoriellement
+        ctx_logger.info(f"Préparation des {len(bridge_transactions)} transactions pour le stockage vectoriel")
         vector_transactions_to_store = []
+        failed_txs = []
         max_updated_at = last_effective_date or datetime.min.replace(tzinfo=timezone.utc)
+        categories_set = set()  # Pour suivre les catégories trouvées
+        operation_types = set()  # Pour suivre les types d'opérations
 
         vector_storage = None
         if VECTOR_STORAGE_AVAILABLE:
             vector_storage = VectorStorageService()
+            ctx_logger.debug(f"Service de stockage vectoriel initialisé")
+        else:
+            ctx_logger.warning(f"Service de stockage vectoriel indisponible!")
 
         for tx in bridge_transactions:
-            bridge_tx_id = tx.get("id")
-            description = tx.get("description", "")
-            clean_description = tx.get("clean_description", description)
-            category_id = tx.get("category_id")
-
-            # --- Enrichissement Marchand (optional) ---
-            merchant_point_id = None
-            # Décommenter pour activer l'enrichissement
-            # if vector_storage:
-            #     result_summary["merchant_enrichment_attempts"] += 1
-            #     merchant_point_id = await _get_or_create_merchant_vector(
-            #         vector_storage, user_id, clean_description or description, category_id
-            #     )
-            #     if merchant_point_id:
-            #         result_summary["merchants_found"] += 1
-
-            # Préparer la transaction pour le stockage vectoriel
-            vector_tx = {
-                "user_id": user_id,
-                "account_id": bridge_account_id,
-                "bridge_transaction_id": bridge_tx_id,
-                "amount": tx.get("amount", 0.0),
-                "currency_code": tx.get("currency_code", "EUR"),
-                "description": description,
-                "clean_description": clean_description,
-                "transaction_date": tx.get("date"),
-                "booking_date": tx.get("booking_date"),
-                "value_date": tx.get("value_date"),
-                "category_id": category_id,
-                "operation_type": tx.get("operation_type"),
-                "is_recurring": tx.get("recurring", {}).get("is"),
-                "merchant_id": merchant_point_id,
-                "bridge_updated_at": tx.get("updated_at")
-            }
-            vector_transactions_to_store.append(vector_tx)
-
-            # Mettre à jour la date max traitée
             try:
-                tx_updated_at_str = tx.get("updated_at")
-                if tx_updated_at_str:
-                    tx_updated_at = datetime.fromisoformat(tx_updated_at_str.replace('Z', '+00:00'))
-                    if tx_updated_at > max_updated_at:
-                        max_updated_at = tx_updated_at
-            except Exception as date_err:
-                ctx_logger.warning(f"Impossible de parser updated_at '{tx_updated_at_str}' pour tx {bridge_tx_id}: {date_err}")
+                transaction_id_str = str(tx.get("id"))
+                if not transaction_id_str or user_id is None:
+                    ctx_logger.warning(f"ID transaction Bridge ou User ID manquant, skipping")
+                    failed_txs.append({"id": tx.get("id"), "reason": "missing_id"})
+                    continue
+
+                # Collecter des statistiques
+                category_id = tx.get("category_id")
+                if category_id:
+                    categories_set.add(category_id)
+                
+                op_type = tx.get("operation_type")
+                if op_type:
+                    operation_types.add(op_type)
+
+                # Préparer la transaction pour le stockage vectoriel
+                description = tx.get("clean_description") or tx.get("description", "")
+                merchant_point_id = None
+                # Si enrichissement marchand est activé:
+                # result_summary["merchant_enrichment_attempts"] += 1
+                # merchant_point_id = await _get_or_create_merchant_vector(
+                #     vector_storage, user_id, description, category_id
+                # )
+                # if merchant_point_id:
+                #     result_summary["merchants_found"] += 1
+
+                vector_tx = {
+                    "user_id": user_id,
+                    "account_id": bridge_account_id,
+                    "bridge_transaction_id": transaction_id_str,
+                    "amount": tx.get("amount", 0.0),
+                    "currency_code": tx.get("currency_code", "EUR"),
+                    "description": tx.get("description", ""),
+                    "clean_description": description,
+                    "transaction_date": tx.get("date"),
+                    "booking_date": tx.get("booking_date"),
+                    "value_date": tx.get("value_date"),
+                    "category_id": category_id,
+                    "operation_type": op_type,
+                    "is_recurring": tx.get("recurring", {}).get("is"),
+                    "merchant_id": merchant_point_id,
+                    "bridge_updated_at": tx.get("updated_at")
+                }
+                vector_transactions_to_store.append(vector_tx)
+
+                # Mettre à jour la date max traitée
+                try:
+                    tx_updated_at_str = tx.get("updated_at")
+                    if tx_updated_at_str:
+                        tx_updated_at = datetime.fromisoformat(tx_updated_at_str.replace('Z', '+00:00'))
+                        if tx_updated_at > max_updated_at:
+                            max_updated_at = tx_updated_at
+                except Exception as date_err:
+                    ctx_logger.warning(f"Impossible de parser updated_at '{tx_updated_at_str}' pour tx {transaction_id_str}: {date_err}")
+            except Exception as tx_prep_error:
+                ctx_logger.error(f"Erreur lors de la préparation de la transaction {tx.get('id')}: {tx_prep_error}")
+                failed_txs.append({"id": tx.get("id"), "reason": "preparation_error"})
+
+        # Logging des statistiques de transactions préparées
+        ctx_logger.info(f"Transactions préparées: {len(vector_transactions_to_store)} sur {len(bridge_transactions)}. " 
+                      f"Catégories distinctes: {len(categories_set)}, Types d'opérations: {len(operation_types)}")
 
         # 6. Stocker les transactions dans le Vector Store
         if vector_storage and vector_transactions_to_store:
@@ -262,16 +288,19 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
             ctx_logger.info(f"Résultat stockage vectoriel: {vector_result}")
             result_summary["vector_storage_status"] = vector_result.get("status", "error")
             result_summary["new_transactions"] = vector_result.get("successful", 0)
+            
             if vector_result.get("status") != "success":
                 result_summary["status"] = "partial" if vector_result.get("successful", 0) > 0 else "error"
-                result_summary["errors"] = f"Vector storage failed for {vector_result.get('failed', 0)} transactions."
+                result_summary["errors"] = f"Vector storage failed for {vector_result.get('failed', 0)} transactions. Details: {str(failed_txs[:5]) if failed_txs else 'None'}"
             else:
                 result_summary["status"] = "success"
         elif not vector_storage:
+            ctx_logger.warning("Vector storage indisponible - les transactions ne seront pas stockées vectoriellement")
             result_summary["vector_storage_status"] = "unavailable"
             result_summary["status"] = "success"  # Succès car pas d'erreur, mais pas de stockage vectoriel
         else:
             # Pas de transactions à stocker
+            ctx_logger.info("Aucune transaction à stocker dans le stockage vectoriel")
             result_summary["vector_storage_status"] = "no_transactions_to_store"
             result_summary["status"] = "success"
 
@@ -287,7 +316,18 @@ async def sync_account_transactions(db: Session, sync_account: SyncAccount) -> D
         db.commit()
         db.refresh(sync_account)
 
-        ctx_logger.info(f"Synchronisation terminée pour compte {bridge_account_id}: status={result_summary['status']}")
+        # Ajouter des statistiques de catégories et types d'opérations au résultat
+        result_summary["stats"] = {
+            "categories_count": len(categories_set),
+            "operation_types_count": len(operation_types),
+            "categories": list(categories_set)[:10] if len(categories_set) <= 10 else f"{len(categories_set)} categories",
+            "operation_types": list(operation_types)
+        }
+
+        ctx_logger.info(f"Synchronisation terminée pour compte {bridge_account_id}: status={result_summary['status']}, "
+                      f"nouvelles transactions={result_summary['new_transactions']}, "
+                      f"catégories={len(categories_set)}, "
+                      f"types d'opérations={len(operation_types)}")
         return result_summary
 
     except HTTPException as http_exc:
@@ -329,30 +369,64 @@ async def force_sync_all_accounts(db: Session, user_id: int) -> Dict[str, Any]:
         results = []
         accounts_with_errors = 0
         total_new_tx = 0
+        total_accounts_processed = 0
+        categories_found = set()
 
         for account in accounts_to_sync:
-            account_result = await sync_account_transactions(db, account)
-            results.append({
-                "bridge_account_id": account.bridge_account_id,
-                "status": account_result.get("status"),
-                "new_transactions": account_result.get("new_transactions", 0)
-            })
-            if account_result.get("status") != "success":
+            try:
+                total_accounts_processed += 1
+                ctx_logger.info(f"Synchronisation du compte {account.bridge_account_id} ({total_accounts_processed}/{len(accounts_to_sync)})")
+                account_result = await sync_account_transactions(db, account)
+                
+                # Collecter les statistiques globales
+                if account_result.get("stats", {}).get("categories"):
+                    cats = account_result.get("stats", {}).get("categories")
+                    if isinstance(cats, list): 
+                        categories_found.update(cats)
+                
+                results.append({
+                    "bridge_account_id": account.bridge_account_id,
+                    "status": account_result.get("status"),
+                    "new_transactions": account_result.get("new_transactions", 0),
+                    "account_type": account.account_type,
+                    "account_name": account.account_name
+                })
+                
+                if account_result.get("status") != "success":
+                    accounts_with_errors += 1
+                    ctx_logger.warning(f"Synchronisation du compte {account.bridge_account_id} terminée avec des erreurs: {account_result.get('errors')}")
+                else:
+                    ctx_logger.info(f"Synchronisation du compte {account.bridge_account_id} réussie: {account_result.get('new_transactions', 0)} nouvelles transactions")
+                
+                total_new_tx += account_result.get("new_transactions", 0)
+            except Exception as e:
+                ctx_logger.error(f"Erreur lors de la synchronisation du compte {account.bridge_account_id}: {e}", exc_info=True)
                 accounts_with_errors += 1
-            total_new_tx += account_result.get("new_transactions", 0)
+                results.append({
+                    "bridge_account_id": account.bridge_account_id,
+                    "status": "error",
+                    "error": str(e),
+                    "account_type": account.account_type,
+                    "account_name": account.account_name
+                })
 
         # Déterminer le statut global
         overall_status = "success"
         if accounts_with_errors > 0:
             overall_status = "partial" if accounts_with_errors < len(accounts_to_sync) else "error"
 
-        ctx_logger.info(f"Forçage de synchronisation terminé pour user {user_id}. Statut: {overall_status}, {total_new_tx} nouvelles transactions stockées.")
+        ctx_logger.info(f"Forçage de synchronisation terminé pour user {user_id}. "
+                      f"Statut: {overall_status}, "
+                      f"{total_new_tx} nouvelles transactions stockées, "
+                      f"{len(categories_found)} catégories distinctes trouvées, "
+                      f"{accounts_with_errors}/{len(accounts_to_sync)} comptes avec erreurs.")
 
         return {
             "status": overall_status,
             "accounts_processed": len(accounts_to_sync),
             "accounts_with_errors": accounts_with_errors,
             "total_new_transactions_stored": total_new_tx,
+            "categories_found": len(categories_found),
             "details": results
         }
 
@@ -392,6 +466,7 @@ async def check_and_sync_missing_transactions(db: Session, user_id: int) -> Dict
             try:
                 vector_storage = VectorStorageService()
                 vector_stats = await vector_storage.get_user_statistics(user_id)
+                ctx_logger.info(f"Statistiques vectorielles actuelles: {vector_stats}")
             except Exception as vs_error:
                 ctx_logger.error(f"Erreur lors de la récupération des statistiques vectorielles: {str(vs_error)}")
                 # Continuer quand même avec la synchronisation
@@ -403,8 +478,22 @@ async def check_and_sync_missing_transactions(db: Session, user_id: int) -> Dict
         # Ajouter les statistiques vectorielles au résultat
         if vector_stats:
             result["vector_stats_before_sync"] = vector_stats
+            
+            # Récupérer les nouvelles statistiques après synchronisation
+            try:
+                after_stats = await vector_storage.get_user_statistics(user_id)
+                result["vector_stats_after_sync"] = after_stats
+                
+                # Calculer la différence
+                if "transactions_count" in after_stats and "transactions_count" in vector_stats:
+                    tx_before = vector_stats.get("transactions_count", 0)
+                    tx_after = after_stats.get("transactions_count", 0)
+                    result["vector_transactions_added"] = tx_after - tx_before
+                    ctx_logger.info(f"Différence de transactions: {result['vector_transactions_added']} (de {tx_before} à {tx_after})")
+            except Exception as e:
+                ctx_logger.error(f"Erreur lors de la récupération des statistiques après synchronisation: {e}")
         
-        ctx_logger.info(f"Résultat de la synchronisation forcée: {result.get('status')}")
+        ctx_logger.info(f"Résultat de la synchronisation forcée: {result.get('status')}, {result.get('total_new_transactions_stored', 0)} nouvelles transactions")
         return result
 
     except Exception as e:
@@ -431,8 +520,25 @@ async def get_user_vector_stats(db: Session, user_id: int) -> Dict[str, Any]:
     try:
         vector_storage = VectorStorageService()
         stats = await vector_storage.get_user_statistics(user_id)
-        ctx_logger.info(f"Statistiques vectorielles récupérées")
-        return stats
+        
+        # Enrichir les statistiques avec des informations supplémentaires
+        sql_info = {}
+        try:
+            # Compter les éléments SQL associés (items, accounts)
+            items_count = db.query(SyncItem).filter(SyncItem.user_id == user_id).count()
+            accounts_count = db.query(SyncAccount).join(SyncItem).filter(SyncItem.user_id == user_id).count()
+            sql_info = {
+                "sql_items_count": items_count,
+                "sql_accounts_count": accounts_count
+            }
+        except Exception as sql_err:
+            ctx_logger.warning(f"Erreur lors de la récupération des statistiques SQL: {sql_err}")
+            
+        # Combiner les statistiques
+        combined_stats = {**stats, **sql_info}
+        
+        ctx_logger.info(f"Statistiques vectorielles récupérées: {combined_stats}")
+        return combined_stats
     except Exception as e:
         ctx_logger.error(f"Erreur lors de la récupération des statistiques vectorielles pour user {user_id}: {str(e)}", exc_info=True)
         return {

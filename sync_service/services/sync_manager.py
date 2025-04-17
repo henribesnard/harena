@@ -402,8 +402,19 @@ async def trigger_full_sync_for_item(db: Session, sync_item: SyncItem) -> Dict[s
             try:
                 categories_list = await get_bridge_categories(db, user_id)
                 if categories_list:
+                    ctx_logger.info(f"Récupération de {len(categories_list)} catégories depuis Bridge API")
+
+                    #logging détaillé des catégories recupérées
+                    for i, cat in enumerate(categories_list[:5]):
+                        ctx_logger.debug(f"Catégorie {i+1}: {cat.get('name')} (ID: {cat.get('bridge_category_id')})")
+
                     vector_result = await vector_storage.batch_store_categories(categories_list)
                     sync_report["steps"]["store_vector_categories"] = vector_result
+
+                    # Log détaillé du résultat 
+                    ctx_logger.info(f"Stockage vectoriel des catégories: {vector_result.get('status')}, "
+                           f"succès: {vector_result.get('successful', 0)}/{len(categories_list)}")
+
                     if vector_result.get("status") != "success":
                         overall_status = "partial"
                         ctx_logger.warning(f"Stockage vectoriel des catégories partiel/échoué: {vector_result}")
@@ -414,6 +425,7 @@ async def trigger_full_sync_for_item(db: Session, sync_item: SyncItem) -> Dict[s
                 sync_report["steps"]["store_vector_categories"] = {"status": "error", "message": str(cat_error)}
                 overall_status = "partial"
         else:
+            ctx_logger.warning("Vector storage indisponible pour la synchronisation des catégories")
             sync_report["steps"]["store_vector_categories"] = {"status": "skipped", "message": "Vector storage unavailable"}
 
         # 7. Récupérer et Stocker les Insights
@@ -438,6 +450,7 @@ async def trigger_full_sync_for_item(db: Session, sync_item: SyncItem) -> Dict[s
                             insights_to_store.append({
                                 "user_id": user_id,
                                 "category_id": cat_insight.get("id"),
+                                "category_name": cat_insight.get("name", "Unknown"),
                                 "period_type": "monthly",
                                 "period_start": period_start_dt,
                                 "period_end": period_end_dt,
@@ -445,14 +458,18 @@ async def trigger_full_sync_for_item(db: Session, sync_item: SyncItem) -> Dict[s
                             })
 
                     if insights_to_store:
+                        ctx_logger.info(f"Stockage vectoriel de {len(insights_to_store)} insights")
                         vector_result = await vector_storage.batch_store_insights(insights_to_store)
                         sync_report["steps"]["store_vector_insights"] = vector_result
+                        ctx_logger.info(f"Résultat stockage vectoriel des insights: {vector_result.get('status')}, {vector_result.get('successful', 0)}/{len(insights_to_store)} réussis")
                         if vector_result.get("status") != "success":
                             overall_status = "partial"
                             ctx_logger.warning(f"Stockage vectoriel des insights partiel/échoué: {vector_result}")
                     else:
+                        ctx_logger.warning("Aucun insight à traiter")
                         sync_report["steps"]["store_vector_insights"] = {"status": "skipped", "message": "No processable insights"}
                 else:
+                    ctx_logger.warning("Aucune données d'insights retournée par Bridge API")
                     sync_report["steps"]["store_vector_insights"] = {"status": "skipped", "message": "No insights returned or endpoint unavailable"}
             except Exception as insight_error:
                 ctx_logger.error(f"Erreur lors de la récupération/stockage des insights: {insight_error}", exc_info=True)
@@ -698,4 +715,4 @@ async def create_reconnect_session(db: Session, user_id: int, bridge_item_id: in
         raise http_exc
     except Exception as e:
         ctx_logger.error(f"Erreur inattendue lors de la création de la session de reconnexion: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create reconnect session: {e}")    
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create reconnect session: {e}")

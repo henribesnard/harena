@@ -169,7 +169,7 @@ class VectorStorageService:
 
             # Créer les collections standards avec vecteurs
             for name, indexes in collection_definitions.items():
-                if name not in existing_collections:
+                if (name not in existing_collections) and (name != self.USER_METADATA_COLLECTION):
                     self._create_collection_with_indexes(name, indexes)
                 else:
                     logger.info(f"Collection Qdrant existante: {name}")
@@ -289,25 +289,36 @@ class VectorStorageService:
     async def batch_store_transactions(self, transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot de transactions."""
         if not self.client or not transactions:
+            logger.info("batch_store_transactions: Pas de client Qdrant ou liste vide")
             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
 
+        logger.info(f"Début du batch_store_transactions pour {len(transactions)} transactions")
+        
         points_to_upsert = []
         failed_ids = []
         processed_count = 0
+        categories = set()  # Pour des statistiques supplémentaires
 
+        logger.info(f"Préparation de l'embedding pour {len(transactions)} transactions")
         for transaction in transactions:
             processed_count += 1
             try:
                 transaction_id_str = str(transaction.get("bridge_transaction_id"))
                 user_id = transaction.get("user_id")
                 if not transaction_id_str or user_id is None:
-                    logger.warning(f"ID transaction Bridge ou User ID manquant dans le lot. Skipping.")
+                    logger.warning(f"ID transaction Bridge ou User ID manquant dans le lot (transaction #{processed_count}). Skipping.")
                     failed_ids.append(transaction.get("bridge_transaction_id", "unknown"))
                     continue
 
                 # Utiliser l'ID UUID déterministe
                 point_id_str = self._get_transaction_point_id(user_id, transaction_id_str)
                 description = transaction.get("clean_description") or transaction.get("description", "")
+                
+                # Collecter des statistiques sur les catégories
+                if transaction.get("category_id"):
+                    categories.add(transaction.get("category_id"))
+                    
+                # Générer l'embedding vectoriel
                 embedding = await self.embedding_service.get_embedding(description)
 
                 payload = self._prepare_payload({
@@ -319,6 +330,8 @@ class VectorStorageService:
                     "description": transaction.get("description", ""),
                     "clean_description": description,
                     "transaction_date": transaction.get("transaction_date"),
+                    "booking_date": transaction.get("booking_date"),
+                    "value_date": transaction.get("value_date"),
                     "category_id": transaction.get("category_id"),
                     "operation_type": transaction.get("operation_type"),
                     "is_recurring": transaction.get("is_recurring", False),
@@ -335,17 +348,22 @@ class VectorStorageService:
 
         successful_count = 0
         if points_to_upsert:
+            logger.info(f"Stockage vectoriel de {len(points_to_upsert)} transactions en {(len(points_to_upsert) + 99) // 100} chunks")
             try:
                 chunk_size = 100
                 for i in range(0, len(points_to_upsert), chunk_size):
                     chunk = points_to_upsert[i:i + chunk_size]
+                    chunk_start = i + 1
+                    chunk_end = min(i + chunk_size, len(points_to_upsert))
+                    logger.debug(f"Uploading transactions chunk {i//chunk_size + 1}: {chunk_start}-{chunk_end} of {len(points_to_upsert)}")
+                    
                     self.client.upsert(
                         collection_name=self.TRANSACTIONS_COLLECTION,
                         points=chunk,
                         wait=False
                     )
                     successful_count += len(chunk)
-                logger.info(f"Batch upsert de {successful_count} transactions terminé.")
+                logger.info(f"Batch upsert de {successful_count} transactions terminé. Catégories: {len(categories)}")
             except UnexpectedResponse as e:
                 logger.error(f"Erreur Qdrant lors du batch upsert des transactions: {e.status_code} - {e.content}")
                 logger.error(f"Erreur lors du batch upsert des transactions: {e}", exc_info=True)
@@ -358,15 +376,20 @@ class VectorStorageService:
             else:
                 failed_count = len(failed_ids)
         else:
+            logger.warning("Aucun point transaction à upserter dans Qdrant")
             failed_count = len(failed_ids)
 
-        return {
+        result = {
             "status": "success" if failed_count == 0 else ("partial" if successful_count > 0 else "error"),
             "total": processed_count,
             "successful": successful_count,
             "failed": failed_count,
-            "failed_ids": failed_ids[:10]
+            "failed_ids": failed_ids[:10],
+            "categories_count": len(categories)
         }
+        
+        logger.info(f"Résultat batch_store_transactions: {result['status']}, {result['successful']}/{result['total']} réussis, {len(categories)} catégories")
+        return result
 
     # --- Méthodes de Stockage (Comptes) ---
 
@@ -416,8 +439,11 @@ class VectorStorageService:
     async def batch_store_accounts(self, accounts_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot de comptes."""
         if not self.client or not accounts_list:
+            logger.info("batch_store_accounts: Pas de client Qdrant ou liste vide")
             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
 
+        logger.info(f"Début du batch_store_accounts pour {len(accounts_list)} comptes")
+        
         points_to_upsert = []
         failed_ids = []
         processed_count = 0
@@ -436,6 +462,7 @@ class VectorStorageService:
                 point_id = self._get_account_point_id(user_id, account_id)
 
                 text_to_embed = f"{account.get('name', '')} {account.get('type', '')}"
+                logger.debug(f"Génération d'embedding pour compte {account_id}: '{text_to_embed}'")
                 embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
 
                 payload = self._prepare_payload({
@@ -454,6 +481,7 @@ class VectorStorageService:
                     "last_synced_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
+                logger.debug(f"Compte {account_id} préparé pour upsert")
             except Exception as e:
                 logger.error(f"Erreur lors de la préparation du compte {account.get('bridge_account_id')} pour le batch: {e}")
                 failed_ids.append(account.get("bridge_account_id", "unknown"))
@@ -461,16 +489,18 @@ class VectorStorageService:
         successful_count = 0
         if points_to_upsert:
             try:
+                logger.info(f"Tentative d'upsert de {len(points_to_upsert)} points comptes dans Qdrant")
                 chunk_size = 100
                 for i in range(0, len(points_to_upsert), chunk_size):
                     chunk = points_to_upsert[i:i + chunk_size]
+                    logger.debug(f"Upsert du chunk de comptes {i//chunk_size + 1} (taille: {len(chunk)})")
                     self.client.upsert(
                         collection_name=self.ACCOUNTS_COLLECTION,
                         points=chunk,
                         wait=False
                     )
                     successful_count += len(chunk)
-                logger.info(f"Batch upsert de {successful_count} comptes terminé.")
+                logger.info(f"Batch upsert de {successful_count} comptes terminé avec succès")
             except Exception as e:
                 logger.error(f"Erreur lors du batch upsert des comptes: {e}", exc_info=True)
                 failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
@@ -478,27 +508,32 @@ class VectorStorageService:
             else:
                 failed_count = len(failed_ids)
         else:
+            logger.warning("Aucun point compte prêt pour l'upsert")
             failed_count = len(failed_ids)
 
-        return {
+        result = {
             "status": "success" if failed_count == 0 else ("partial" if successful_count > 0 else "error"),
             "total": processed_count,
             "successful": successful_count,
             "failed": failed_count,
-            "failed_ids": failed_ids[:10]
+            "failed_ids": failed_ids[:10] if failed_ids else []
         }
+        
+        logger.info(f"Résultat batch_store_accounts: {result['status']}, {result['successful']}/{result['total']} réussis")
+        return result
 
     # --- Méthodes de Stockage (Catégories) ---
 
     async def batch_store_categories(self, categories_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot de catégories."""
         if not self.client or not categories_list:
+            logger.info("batch_store_categories: Pas de client Qdrant ou liste vide")
             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
-
+        logger.info(f"Début du batch_store_categories pour {len(categories_list)} catégories")
+        
         points_to_upsert = []
         failed_ids = []
         processed_count = 0
-
         for category in categories_list:
             processed_count += 1
             try:
@@ -507,12 +542,12 @@ class VectorStorageService:
                     logger.warning(f"ID catégorie Bridge invalide ou manquant ({category_id}) dans le lot. Skipping.")
                     failed_ids.append(category.get("bridge_category_id", "unknown"))
                     continue
-
                 # Utiliser directement l'ID numérique bridge_category_id
                 point_id = str(category_id)
                 text_to_embed = category.get("name", "")
+                
+                logger.debug(f"Génération d'embedding pour catégorie {category_id}: '{text_to_embed}'")
                 embedding = await self.embedding_service.get_embedding(text_to_embed)
-
                 payload = self._prepare_payload({
                     "bridge_category_id": category_id,
                     "name": text_to_embed,
@@ -520,39 +555,44 @@ class VectorStorageService:
                     "last_synced_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
+                logger.debug(f"Catégorie {category_id} préparée pour upsert")
             except Exception as e:
                 logger.error(f"Erreur lors de la préparation de la catégorie {category.get('bridge_category_id')} pour le batch: {e}")
                 failed_ids.append(category.get("bridge_category_id", "unknown"))
-
         successful_count = 0
         if points_to_upsert:
             try:
+                logger.info(f"Tentative d'upsert de {len(points_to_upsert)} points catégories dans Qdrant")
                 chunk_size = 100
                 for i in range(0, len(points_to_upsert), chunk_size):
                     chunk = points_to_upsert[i:i + chunk_size]
+                    logger.debug(f"Upsert du chunk de catégories {i//chunk_size + 1} (taille: {len(chunk)})")
                     self.client.upsert(
                         collection_name=self.CATEGORIES_COLLECTION,
                         points=chunk,
                         wait=False
                     )
                     successful_count += len(chunk)
-                logger.info(f"Batch upsert de {successful_count} catégories terminé.")
+                logger.info(f"Batch upsert de {successful_count} catégories terminé avec succès.")
             except Exception as e:
-                logger.error(f"Erreur lors du batch upsert des catégories: {e}", exc_info=True)
+                logger.error(f"Erreur lors du batch upsert des catégories: {e}")
                 failed_count = len(points_to_upsert) - successful_count + len(failed_ids)
                 successful_count = 0
             else:
                 failed_count = len(failed_ids)
         else:
+            logger.warning("Aucun point catégorie prêt pour l'upsert")
             failed_count = len(failed_ids)
-
-        return {
+        result = {
             "status": "success" if failed_count == 0 else ("partial" if successful_count > 0 else "error"),
             "total": processed_count,
             "successful": successful_count,
             "failed": failed_count,
-            "failed_ids": failed_ids[:10]
+            "failed_ids": failed_ids[:10] if failed_ids else []
         }
+        
+        logger.info(f"Résultat batch_store_categories: {result['status']}, {result['successful']}/{result['total']} réussis")
+        return result
 
     # --- Méthodes de Stockage (Marchands) ---
 
@@ -639,8 +679,11 @@ class VectorStorageService:
     async def batch_store_insights(self, insights_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot d'insights."""
         if not self.client or not insights_list:
+            logger.info("batch_store_insights: Pas de client Qdrant ou liste vide")
             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
 
+        logger.info(f"Début du batch_store_insights pour {len(insights_list)} insights")
+        
         points_to_upsert = []
         failed_items = []
         processed_count = 0
@@ -669,6 +712,7 @@ class VectorStorageService:
                 category_name = insight.get("category_name", "Toutes catégories")
                 period_start_str = period_start.strftime('%Y-%m-%d') if isinstance(period_start, datetime) else str(period_start)
                 text_to_embed = f"Résumé {period_type} pour {category_name} démarrant le {period_start_str}"
+                logger.debug(f"Génération d'embedding pour insight {id_components}: '{text_to_embed}'")
                 embedding = await self.embedding_service.get_embedding(text_to_embed)
 
                 payload = self._prepare_payload({
@@ -683,6 +727,7 @@ class VectorStorageService:
                     "generated_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
+                logger.debug(f"Insight pour {category_name} (période {period_type}) préparé pour upsert")
             except Exception as e:
                 logger.error(f"Erreur lors de la préparation de l'insight pour le batch: {e}")
                 failed_items.append(f"user_{user_id}_{period_type}_{period_start}")
@@ -690,16 +735,18 @@ class VectorStorageService:
         successful_count = 0
         if points_to_upsert:
             try:
+                logger.info(f"Tentative d'upsert de {len(points_to_upsert)} points insights dans Qdrant")
                 chunk_size = 50
                 for i in range(0, len(points_to_upsert), chunk_size):
                     chunk = points_to_upsert[i:i + chunk_size]
+                    logger.debug(f"Upsert du chunk d'insights {i//chunk_size + 1} (taille: {len(chunk)})")
                     self.client.upsert(
                         collection_name=self.INSIGHTS_COLLECTION,
                         points=chunk,
                         wait=False
                     )
                     successful_count += len(chunk)
-                logger.info(f"Batch upsert de {successful_count} insights terminé.")
+                logger.info(f"Batch upsert de {successful_count} insights terminé avec succès")
             except Exception as e:
                 logger.error(f"Erreur lors du batch upsert des insights: {e}", exc_info=True)
                 failed_count = len(points_to_upsert) - successful_count + len(failed_items)
@@ -707,23 +754,30 @@ class VectorStorageService:
             else:
                 failed_count = len(failed_items)
         else:
+            logger.warning("Aucun point insight prêt pour l'upsert")
             failed_count = len(failed_items)
 
-        return {
+        result = {
             "status": "success" if failed_count == 0 else ("partial" if successful_count > 0 else "error"),
             "total": processed_count,
             "successful": successful_count,
             "failed": failed_count,
-            "failed_items": failed_items[:10]
+            "failed_items": failed_items[:10] if failed_items else []
         }
+        
+        logger.info(f"Résultat batch_store_insights: {result['status']}, {result['successful']}/{result['total']} réussis")
+        return result
 
     # --- Méthodes de Stockage (Stocks) ---
 
     async def batch_store_stocks(self, stocks_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Stocke un lot d'actions/stocks."""
         if not self.client or not stocks_list:
+            logger.info("batch_store_stocks: Pas de client Qdrant ou liste vide")
             return {"status": "noop", "total": 0, "successful": 0, "failed": 0}
 
+        logger.info(f"Début du batch_store_stocks pour {len(stocks_list)} stocks")
+        
         points_to_upsert = []
         failed_items = []
         processed_count = 0
@@ -754,6 +808,7 @@ class VectorStorageService:
                 point_id = str(uuid.uuid5(HARENA_NAMESPACE, id_components))
 
                 text_to_embed = f"{stock.get('label', '')} {ticker or ''} {isin or ''}"
+                logger.debug(f"Génération d'embedding pour stock {id_components}: '{text_to_embed}'")
                 embedding = await self.embedding_service.get_embedding(text_to_embed.strip())
 
                 payload = self._prepare_payload({
@@ -773,6 +828,7 @@ class VectorStorageService:
                     "last_synced_at": datetime.now(timezone.utc)
                 })
                 points_to_upsert.append(qmodels.PointStruct(id=point_id, vector=embedding, payload=payload))
+                logger.debug(f"Stock {ticker or isin or bridge_stock_id} préparé pour upsert")
             except Exception as e:
                 logger.error(f"Erreur lors de la préparation du stock {ticker or isin} pour le batch: {e}")
                 failed_items.append(f"user_{user_id}_acc_{account_id}_{ticker or isin}")
@@ -780,16 +836,18 @@ class VectorStorageService:
         successful_count = 0
         if points_to_upsert:
             try:
+                logger.info(f"Tentative d'upsert de {len(points_to_upsert)} points stocks dans Qdrant")
                 chunk_size = 100
                 for i in range(0, len(points_to_upsert), chunk_size):
                     chunk = points_to_upsert[i:i + chunk_size]
+                    logger.debug(f"Upsert du chunk de stocks {i//chunk_size + 1} (taille: {len(chunk)})")
                     self.client.upsert(
                         collection_name=self.STOCKS_COLLECTION,
                         points=chunk,
                         wait=False
                     )
                     successful_count += len(chunk)
-                logger.info(f"Batch upsert de {successful_count} stocks terminé.")
+                logger.info(f"Batch upsert de {successful_count} stocks terminé avec succès")
             except Exception as e:
                 logger.error(f"Erreur lors du batch upsert des stocks: {e}", exc_info=True)
                 failed_count = len(points_to_upsert) - successful_count + len(failed_items)
@@ -797,15 +855,19 @@ class VectorStorageService:
             else:
                 failed_count = len(failed_items)
         else:
+            logger.warning("Aucun point stock prêt pour l'upsert")
             failed_count = len(failed_items)
 
-        return {
+        result = {
             "status": "success" if failed_count == 0 else ("partial" if successful_count > 0 else "error"),
             "total": processed_count,
             "successful": successful_count,
             "failed": failed_count,
-            "failed_items": failed_items[:10]
+            "failed_items": failed_items[:10] if failed_items else []
         }
+        
+        logger.info(f"Résultat batch_store_stocks: {result['status']}, {result['successful']}/{result['total']} réussis")
+        return result
 
     # --- Méthodes de gestion utilisateur ---
 

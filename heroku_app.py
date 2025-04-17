@@ -13,9 +13,9 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # Configuration du logging
 logging.basicConfig(
@@ -38,7 +38,7 @@ current_dir = Path(__file__).parent.absolute()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
-# ======== GESTION DU CYCLE DE VIE DE L'APPLICATION ========
+# ======== GESTIONNAIRE DU CYCLE DE VIE ========
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,6 +73,83 @@ async def lifespan(app: FastAPI):
     # Cleanup
     logger.info("Application Harena en arrêt sur Heroku...")
 
+# ======== DÉFINITION DES SERVICES ========
+
+class ServiceRegistry:
+    """Classe pour gérer les services disponibles et leurs routeurs."""
+    
+    def __init__(self):
+        self.services = {}
+        
+    def register(self, name: str, router=None, prefix: str = None, status: str = "pending"):
+        """Enregistre un service dans le registre."""
+        self.services[name] = {
+            "router": router,
+            "prefix": prefix,
+            "status": status
+        }
+        
+    def get_service_status(self) -> Dict[str, str]:
+        """Retourne le statut de tous les services."""
+        return {name: info["status"] for name, info in self.services.items()}
+    
+    def get_available_routers(self) -> List[Dict[str, Any]]:
+        """Retourne les routeurs disponibles avec leurs préfixes."""
+        return [
+            {"name": name, "router": info["router"], "prefix": info["prefix"]}
+            for name, info in self.services.items()
+            if info["status"] == "ok" and info["router"] is not None
+        ]
+
+# Création du registre de services
+service_registry = ServiceRegistry()
+
+# ======== IMPORTATION DES SERVICES ========
+
+# Préfixes API
+API_V1_PREFIX = "/api/v1"
+
+# Service utilisateur
+try:
+    from user_service.api.endpoints.users import router as users_router
+    service_registry.register(
+        "user_service", 
+        router=users_router,
+        prefix=f"{API_V1_PREFIX}/users",
+        status="ok"
+    )
+    logger.info("User Service importé avec succès")
+except ImportError as e:
+    logger.error(f"Erreur lors de l'importation du router User Service: {e}")
+    service_registry.register("user_service", status="failed")
+
+# Service de synchronisation
+try:
+    from sync_service.api.endpoints.sync import router as sync_router
+    service_registry.register(
+        "sync_service", 
+        router=sync_router,
+        prefix=f"{API_V1_PREFIX}/sync",
+        status="ok"
+    )
+    
+    # Importer également le router des webhooks si disponible
+    try:
+        from sync_service.api.endpoints.webhooks import router as webhooks_router
+        service_registry.register(
+            "webhooks_service", 
+            router=webhooks_router,
+            prefix="/webhooks",
+            status="ok"
+        )
+    except ImportError as webhook_e:
+        logger.warning(f"Router Webhooks non disponible: {webhook_e}")
+    
+    logger.info("Sync Service importé avec succès")
+except ImportError as e:
+    logger.error(f"Erreur lors de l'importation du router Sync Service: {e}")
+    service_registry.register("sync_service", status="failed")
+
 # ======== CRÉATION DE L'APPLICATION ========
 
 # Création de l'application FastAPI pour Heroku
@@ -97,90 +174,16 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# Registre des services
-service_registry = {}
+# ======== INCLUSION DES ROUTERS ========
 
-# ======== INITIALISATION ET MONTAGE DES SERVICES ========
-
-# Service utilisateur
-try:
-    from user_service.main import create_app as create_user_app
-    user_app = create_user_app()
-    from user_service.core.config import settings as user_settings
-    service_registry["user_service"] = {
-        "app": user_app,
-        "status": "ok",
-        "api_prefix": user_settings.API_V1_STR
-    }
-    
-    # Monter l'app utilisateur uniquement sur /user
-    # Ne pas monter sur API_V1_STR pour éviter le double préfixe
-    app.mount("/user", user_app)
-    logger.info(f"User Service monté sur /user")
-    
-except ImportError as e:
-    logger.error(f"Erreur lors de l'initialisation du User Service: {e}")
-    service_registry["user_service"] = {"status": "failed", "error": str(e)}
-
-# Service de synchronisation
-try:
-    from sync_service.main import create_app as create_sync_app
-    sync_app = create_sync_app()
-    service_registry["sync_service"] = {
-        "app": sync_app,
-        "status": "ok",
-        "api_prefix": "/api/v1/sync"
-    }
-    
-    # Monter l'app sync uniquement sur /sync
-    # Ne pas monter sur /api/v1/sync pour éviter le double préfixe
-    app.mount("/sync", sync_app)
-    logger.info("Sync Service monté sur /sync")
-    
-except ImportError as e:
-    logger.error(f"Erreur lors de l'initialisation du Sync Service: {e}")
-    service_registry["sync_service"] = {"status": "failed", "error": str(e)}
-
-# ======== REDIRECTIONS API ========
-
-# Créer des redirections pour les routes API populaires
-@app.get("/api/v1/{service}/{path:path}")
-@app.post("/api/v1/{service}/{path:path}")
-@app.put("/api/v1/{service}/{path:path}")
-@app.delete("/api/v1/{service}/{path:path}")
-async def api_redirect(request: Request, service: str, path: str):
-    """Redirection intelligente vers les services montés pour les requêtes API."""
-    
-    # Mapper le service à l'application appropriée
-    target_app = None
-    if service == "users":
-        # Pour user_service
-        if "user_service" in service_registry and service_registry["user_service"]["status"] == "ok":
-            target_app = user_app
-            # Rediriger vers /users/{path} dans l'app user
-            new_path = f"/users/{path}"
-    elif service == "sync":
-        # Pour sync_service
-        if "sync_service" in service_registry and service_registry["sync_service"]["status"] == "ok":
-            target_app = sync_app
-            # Rediriger vers /{path} dans l'app sync car son préfixe inclut déjà sync
-            new_path = f"/{path}"
-    
-    if target_app:
-        # Modifier le chemin de la requête pour l'application cible
-        request.scope["path"] = new_path
-        logger.debug(f"Redirection API: /api/v1/{service}/{path} -> {new_path}")
-        return await target_app.handle_request(request)
-    else:
-        logger.warning(f"Tentative d'accès à un service non disponible: {service}")
-        raise HTTPException(status_code=404, detail=f"Service {service} not found or not available")
-
-# ======== REDIRECTIONS DOCUMENTATION ========
-
-@app.get("/api-docs", include_in_schema=False)
-async def api_docs_redirect():
-    """Redirection vers la documentation principale des utilisateurs."""
-    return RedirectResponse(url="/user/docs")
+# Inclure tous les routers disponibles avec leurs préfixes
+for service_info in service_registry.get_available_routers():
+    app.include_router(
+        service_info["router"],
+        prefix=service_info["prefix"],
+        tags=[service_info["name"]]
+    )
+    logger.info(f"Router {service_info['name']} inclus avec préfixe {service_info['prefix']}")
 
 # ======== ENDPOINTS DE BASE ========
 
@@ -194,11 +197,9 @@ async def root():
         "application": "Harena Finance API (Heroku)",
         "version": "1.0.0",
         "environment": os.environ.get("ENVIRONMENT", "production"),
-        "services": {name: info["status"] for name, info in service_registry.items()},
+        "services": service_registry.get_service_status(),
         "documentation": {
             "main": "/docs",
-            "user_service": "/user/docs",
-            "sync_service": "/sync/docs"
         }
     }
 
@@ -232,11 +233,15 @@ async def health_check():
     except Exception as e:
         vector_status = f"error: {str(e)}"
     
+    # Vérification du service Bridge
+    bridge_status = "configured" if os.environ.get("BRIDGE_CLIENT_ID") else "not_configured"
+    
     return {
-        "status": "ok" if all(info["status"] == "ok" for info in service_registry.values()) else "degraded",
-        "services": {name: info["status"] for name, info in service_registry.items()},
+        "status": "ok" if all(status == "ok" for status in service_registry.get_service_status().values()) else "degraded",
+        "services": service_registry.get_service_status(),
         "database": db_status,
         "vector_storage": vector_status,
+        "bridge_api": bridge_status,
         "environment": os.environ.get("ENVIRONMENT", "production"),
         "timestamp": str(datetime.now())
     }
@@ -254,25 +259,15 @@ async def debug_info():
             "status": "debug limited in production",
             "timestamp": str(datetime.now()),
             "environment": os.environ.get("ENVIRONMENT", "production"),
-            "services": {name: info["status"] for name, info in service_registry.items()}
+            "services": service_registry.get_service_status()
         }
     else:
         # Version plus détaillée pour dev/staging
-        service_details = {}
-        for name, info in service_registry.items():
-            if info["status"] == "ok":
-                service_details[name] = {
-                    "status": info["status"],
-                    "api_prefix": info.get("api_prefix", "unknown")
-                }
-            else:
-                service_details[name] = info
-                
         return {
             "status": "debug enabled",
             "environment": os.environ.get("ENVIRONMENT", "unknown"),
             "python_version": sys.version,
-            "services": service_details,
+            "services": service_registry.get_service_status(),
             "database_config": {
                 "url_type": type(os.environ.get("DATABASE_URL", "")).__name__,
                 "url_length": len(os.environ.get("DATABASE_URL", "")),

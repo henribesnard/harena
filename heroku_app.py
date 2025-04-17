@@ -11,10 +11,11 @@ import os
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from datetime import datetime
+from typing import Dict, Any
 
 # Configuration du logging
 logging.basicConfig(
@@ -112,10 +113,10 @@ try:
         "api_prefix": user_settings.API_V1_STR
     }
     
-    # Monter l'app utilisateur
+    # Monter l'app utilisateur uniquement sur /user
+    # Ne pas monter sur API_V1_STR pour éviter le double préfixe
     app.mount("/user", user_app)
-    app.mount(user_settings.API_V1_STR, user_app)
-    logger.info(f"User Service monté sur /user et {user_settings.API_V1_STR}")
+    logger.info(f"User Service monté sur /user")
     
 except ImportError as e:
     logger.error(f"Erreur lors de l'initialisation du User Service: {e}")
@@ -131,14 +132,55 @@ try:
         "api_prefix": "/api/v1/sync"
     }
     
-    # Monter l'app sync
+    # Monter l'app sync uniquement sur /sync
+    # Ne pas monter sur /api/v1/sync pour éviter le double préfixe
     app.mount("/sync", sync_app)
-    app.mount("/api/v1/sync", sync_app)
-    logger.info("Sync Service monté sur /sync et /api/v1/sync")
+    logger.info("Sync Service monté sur /sync")
     
 except ImportError as e:
     logger.error(f"Erreur lors de l'initialisation du Sync Service: {e}")
     service_registry["sync_service"] = {"status": "failed", "error": str(e)}
+
+# ======== REDIRECTIONS API ========
+
+# Créer des redirections pour les routes API populaires
+@app.get("/api/v1/{service}/{path:path}")
+@app.post("/api/v1/{service}/{path:path}")
+@app.put("/api/v1/{service}/{path:path}")
+@app.delete("/api/v1/{service}/{path:path}")
+async def api_redirect(request: Request, service: str, path: str):
+    """Redirection intelligente vers les services montés pour les requêtes API."""
+    
+    # Mapper le service à l'application appropriée
+    target_app = None
+    if service == "users":
+        # Pour user_service
+        if "user_service" in service_registry and service_registry["user_service"]["status"] == "ok":
+            target_app = user_app
+            # Rediriger vers /users/{path} dans l'app user
+            new_path = f"/users/{path}"
+    elif service == "sync":
+        # Pour sync_service
+        if "sync_service" in service_registry and service_registry["sync_service"]["status"] == "ok":
+            target_app = sync_app
+            # Rediriger vers /{path} dans l'app sync car son préfixe inclut déjà sync
+            new_path = f"/{path}"
+    
+    if target_app:
+        # Modifier le chemin de la requête pour l'application cible
+        request.scope["path"] = new_path
+        logger.debug(f"Redirection API: /api/v1/{service}/{path} -> {new_path}")
+        return await target_app.handle_request(request)
+    else:
+        logger.warning(f"Tentative d'accès à un service non disponible: {service}")
+        raise HTTPException(status_code=404, detail=f"Service {service} not found or not available")
+
+# ======== REDIRECTIONS DOCUMENTATION ========
+
+@app.get("/api-docs", include_in_schema=False)
+async def api_docs_redirect():
+    """Redirection vers la documentation principale des utilisateurs."""
+    return RedirectResponse(url="/user/docs")
 
 # ======== ENDPOINTS DE BASE ========
 
@@ -152,7 +194,12 @@ async def root():
         "application": "Harena Finance API (Heroku)",
         "version": "1.0.0",
         "environment": os.environ.get("ENVIRONMENT", "production"),
-        "services": {name: info["status"] for name, info in service_registry.items()}
+        "services": {name: info["status"] for name, info in service_registry.items()},
+        "documentation": {
+            "main": "/docs",
+            "user_service": "/user/docs",
+            "sync_service": "/sync/docs"
+        }
     }
 
 @app.get("/health", tags=["health"])
@@ -193,6 +240,46 @@ async def health_check():
         "environment": os.environ.get("ENVIRONMENT", "production"),
         "timestamp": str(datetime.now())
     }
+
+@app.get("/debug", tags=["debug"])
+async def debug_info():
+    """
+    Endpoint pour le débogage - fournit des informations détaillées sur l'environnement.
+    """
+    # Ne pas exposer d'informations sensibles en production
+    is_production = os.environ.get("ENVIRONMENT", "production").lower() == "production"
+    
+    if is_production:
+        return {
+            "status": "debug limited in production",
+            "timestamp": str(datetime.now()),
+            "environment": os.environ.get("ENVIRONMENT", "production"),
+            "services": {name: info["status"] for name, info in service_registry.items()}
+        }
+    else:
+        # Version plus détaillée pour dev/staging
+        service_details = {}
+        for name, info in service_registry.items():
+            if info["status"] == "ok":
+                service_details[name] = {
+                    "status": info["status"],
+                    "api_prefix": info.get("api_prefix", "unknown")
+                }
+            else:
+                service_details[name] = info
+                
+        return {
+            "status": "debug enabled",
+            "environment": os.environ.get("ENVIRONMENT", "unknown"),
+            "python_version": sys.version,
+            "services": service_details,
+            "database_config": {
+                "url_type": type(os.environ.get("DATABASE_URL", "")).__name__,
+                "url_length": len(os.environ.get("DATABASE_URL", "")),
+                "has_bridge_config": bool(os.environ.get("BRIDGE_CLIENT_ID", ""))
+            },
+            "timestamp": str(datetime.now())
+        }
 
 # ======== GESTIONNAIRE D'EXCEPTIONS ========
 

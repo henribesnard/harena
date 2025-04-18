@@ -1,3 +1,4 @@
+# heroku_app.py
 """
 Application Harena pour déploiement Heroku.
 
@@ -8,6 +9,7 @@ et des dépendances pour assurer un démarrage fiable.
 import logging
 import os
 import sys
+import traceback
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -36,6 +38,9 @@ os.environ["ENVIRONMENT"] = os.getenv("ENVIRONMENT", "production")
 current_dir = Path(__file__).parent.absolute()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
+    logger.info(f"Ajout du répertoire courant au sys.path: {current_dir}")
+
+logger.info(f"Python path: {sys.path}")
 
 # ======== GESTIONNAIRE DU CYCLE DE VIE ========
 
@@ -69,35 +74,56 @@ async def lifespan(app: FastAPI):
     
     # Initialisation des services de stockage
     try:
+        logger.info("Tentative d'initialisation des services de stockage")
         # Initialisation des services de recherche si disponibles
-        from search_service.storage.elasticsearch import init_elasticsearch
-        from search_service.storage.qdrant import init_qdrant
-        
-        # Initialisation asynchrone des clients de stockage
-        es_client_future = init_elasticsearch()
-        qdrant_client_future = init_qdrant()
-        
-        # Attendre l'initialisation des services de recherche
-        import asyncio
-        es_client, qdrant_client = await asyncio.gather(
-            es_client_future, qdrant_client_future, 
-            return_exceptions=True
-        )
-        
-        if isinstance(es_client, Exception):
-            logger.error(f"Erreur d'initialisation d'Elasticsearch: {es_client}")
-        elif es_client:
-            logger.info("Service Elasticsearch initialisé avec succès")
-        
-        if isinstance(qdrant_client, Exception):
-            logger.error(f"Erreur d'initialisation de Qdrant: {qdrant_client}")
-        elif qdrant_client:
-            logger.info("Service Qdrant initialisé avec succès")
+        try:
+            from search_service.storage.elasticsearch import init_elasticsearch
+            logger.info("Module search_service.storage.elasticsearch importé avec succès")
+        except ImportError as es_import_err:
+            logger.error(f"Erreur lors de l'importation d'Elasticsearch: {es_import_err}")
             
-    except ImportError:
-        logger.warning("Services de recherche non disponibles. Certaines fonctionnalités seront limitées.")
+        try:
+            from search_service.storage.qdrant import init_qdrant
+            logger.info("Module search_service.storage.qdrant importé avec succès")
+        except ImportError as qdrant_import_err:
+            logger.error(f"Erreur lors de l'importation de Qdrant: {qdrant_import_err}")
+            
+        # Initialisation asynchrone des clients de stockage
+        import asyncio
+        
+        # Initialiser Elasticsearch
+        es_client = None
+        try:
+            if 'init_elasticsearch' in locals():
+                logger.info("Démarrage de l'initialisation d'Elasticsearch")
+                es_client_future = init_elasticsearch()
+                es_client = await es_client_future
+                if es_client:
+                    logger.info("Service Elasticsearch initialisé avec succès")
+                else:
+                    logger.warning("Initialisation d'Elasticsearch terminée mais client None")
+        except Exception as es_init_err:
+            logger.error(f"Erreur lors de l'initialisation d'Elasticsearch: {es_init_err}")
+            
+        # Initialiser Qdrant
+        qdrant_client = None
+        try:
+            if 'init_qdrant' in locals():
+                logger.info("Démarrage de l'initialisation de Qdrant")
+                qdrant_client_future = init_qdrant()
+                qdrant_client = await qdrant_client_future
+                if qdrant_client:
+                    logger.info("Service Qdrant initialisé avec succès")
+                else:
+                    logger.warning("Initialisation de Qdrant terminée mais client None")
+        except Exception as qdrant_init_err:
+            logger.error(f"Erreur lors de l'initialisation de Qdrant: {qdrant_init_err}")
+            
+    except ImportError as import_error:
+        logger.warning(f"Services de recherche non disponibles: {import_error}")
     except Exception as e:
         logger.error(f"Erreur lors de l'initialisation des services de stockage: {e}")
+        logger.error(traceback.format_exc())
     
     yield  # L'application s'exécute ici
     
@@ -127,6 +153,7 @@ class ServiceRegistry:
             "prefix": prefix,
             "status": status
         }
+        logger.info(f"Service {name} enregistré avec statut {status}")
         
     def get_service_status(self) -> Dict[str, str]:
         """Retourne le statut de tous les services."""
@@ -134,11 +161,13 @@ class ServiceRegistry:
     
     def get_available_routers(self) -> List[Dict[str, Any]]:
         """Retourne les routeurs disponibles avec leurs préfixes."""
-        return [
+        routers = [
             {"name": name, "router": info["router"], "prefix": info["prefix"]}
             for name, info in self.services.items()
             if info["status"] == "ok" and info["router"] is not None
         ]
+        logger.info(f"Nombre de routeurs disponibles: {len(routers)}")
+        return routers
 
 # Création du registre de services
 service_registry = ServiceRegistry()
@@ -150,6 +179,7 @@ API_V1_PREFIX = "/api/v1"
 
 # Service utilisateur
 try:
+    logger.info("Tentative d'importation du module user_service.api.endpoints.users")
     from user_service.api.endpoints import users
     service_registry.register(
         "user_service", 
@@ -161,9 +191,14 @@ try:
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du router User Service: {e}")
     service_registry.register("user_service", status="failed")
+except Exception as e:
+    logger.error(f"Erreur inattendue lors de l'importation du User Service: {e}")
+    logger.error(traceback.format_exc())
+    service_registry.register("user_service", status="failed")
 
 # Service de synchronisation
 try:
+    logger.info("Tentative d'importation du module sync_service.api.endpoints.sync")
     from sync_service.api.endpoints import sync
     service_registry.register(
         "sync_service", 
@@ -174,6 +209,7 @@ try:
     
     # Importer également le router des webhooks si disponible
     try:
+        logger.info("Tentative d'importation du module sync_service.api.endpoints.webhooks")
         from sync_service.api.endpoints import webhooks
         service_registry.register(
             "webhooks_service", 
@@ -181,17 +217,66 @@ try:
             prefix="/webhooks",
             status="ok"
         )
+        logger.info("Webhooks Service importé avec succès")
     except ImportError as webhook_e:
         logger.warning(f"Router Webhooks non disponible: {webhook_e}")
+    except Exception as webhook_e:
+        logger.error(f"Erreur inattendue lors de l'importation du Webhooks Service: {webhook_e}")
+        logger.error(traceback.format_exc())
     
     logger.info("Sync Service importé avec succès")
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du router Sync Service: {e}")
     service_registry.register("sync_service", status="failed")
+except Exception as e:
+    logger.error(f"Erreur inattendue lors de l'importation du Sync Service: {e}")
+    logger.error(traceback.format_exc())
+    service_registry.register("sync_service", status="failed")
 
 # Service de recherche
 try:
-    from search_service.api.endpoints import search, health as search_health
+    # Vérifier si les modules existent
+    search_module_path = Path("search_service/api/endpoints/search.py")
+    health_module_path = Path("search_service/api/endpoints/health.py")
+    
+    if search_module_path.exists():
+        logger.info(f"Fichier search.py trouvé: {search_module_path.absolute()}")
+    else:
+        logger.error(f"Fichier search.py manquant: {search_module_path.absolute()}")
+    
+    if health_module_path.exists():
+        logger.info(f"Fichier health.py trouvé: {health_module_path.absolute()}")
+    else:
+        logger.error(f"Fichier health.py manquant: {health_module_path.absolute()}")
+    
+    # Importer les modules
+    logger.info("Tentative d'importation du module search_service.api.endpoints.search")
+    try:
+        from search_service.api.endpoints import search
+        logger.info("Module search importé avec succès")
+        
+        if not hasattr(search, 'router'):
+            logger.error("Le module search n'a pas d'attribut 'router'")
+        else:
+            logger.info("Router search trouvé")
+    except ImportError as search_e:
+        logger.error(f"Erreur lors de l'importation du module search: {search_e}")
+        raise
+    
+    logger.info("Tentative d'importation du module search_service.api.endpoints.health")
+    try:
+        from search_service.api.endpoints import health as search_health
+        logger.info("Module health importé avec succès")
+        
+        if not hasattr(search_health, 'router'):
+            logger.error("Le module health n'a pas d'attribut 'router'")
+        else:
+            logger.info("Router health trouvé")
+    except ImportError as health_e:
+        logger.error(f"Erreur lors de l'importation du module health: {health_e}")
+        raise
+    
+    # Enregistrer les services
     service_registry.register(
         "search_service",
         router=search.router,
@@ -210,6 +295,11 @@ try:
     logger.info("Search Service importé avec succès")
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du Search Service: {e}")
+    logger.error(traceback.format_exc())
+    service_registry.register("search_service", status="failed")
+except Exception as e:
+    logger.error(f"Erreur inattendue lors de l'importation du Search Service: {e}")
+    logger.error(traceback.format_exc())
     service_registry.register("search_service", status="failed")
 
 # ======== CRÉATION DE L'APPLICATION ========
@@ -239,13 +329,20 @@ app.add_middleware(
 # ======== INCLUSION DES ROUTERS ========
 
 # Inclure tous les routers disponibles avec leurs préfixes
-for service_info in service_registry.get_available_routers():
-    app.include_router(
-        service_info["router"],
-        prefix=service_info["prefix"],
-        tags=[service_info["name"]]
-    )
-    logger.info(f"Router {service_info['name']} inclus avec préfixe {service_info['prefix']}")
+available_routers = service_registry.get_available_routers()
+logger.info(f"Inclusion de {len(available_routers)} routers dans l'application")
+
+for service_info in available_routers:
+    try:
+        app.include_router(
+            service_info["router"],
+            prefix=service_info["prefix"],
+            tags=[service_info["name"]]
+        )
+        logger.info(f"Router {service_info['name']} inclus avec préfixe {service_info['prefix']}")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'inclusion du router {service_info['name']}: {e}")
+        logger.error(traceback.format_exc())
 
 # ======== ENDPOINTS DE BASE ========
 

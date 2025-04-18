@@ -25,11 +25,22 @@ class Settings(BaseSettings):
     DEEPSEEK_TOP_P: float = float(os.environ.get("DEEPSEEK_TOP_P", "0.95"))
     DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "60"))
     
+    # Configuration OpenAI pour les embeddings
+    OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
+    EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+    
+    # Paramètres de recherche par défaut
+    DEFAULT_LEXICAL_WEIGHT: float = float(os.environ.get("DEFAULT_LEXICAL_WEIGHT", "0.5"))
+    DEFAULT_SEMANTIC_WEIGHT: float = float(os.environ.get("DEFAULT_SEMANTIC_WEIGHT", "0.5"))
+    DEFAULT_TOP_K_INITIAL: int = int(os.environ.get("DEFAULT_TOP_K_INITIAL", "50"))
+    DEFAULT_TOP_K_FINAL: int = int(os.environ.get("DEFAULT_TOP_K_FINAL", "10"))
+    
     # Configuration de cache en mémoire
-    MEMORY_CACHE_TTL: int = 3600  # Secondes
+    MEMORY_CACHE_TTL: int = int(os.environ.get("MEMORY_CACHE_TTL", "3600"))  # Secondes
+    MEMORY_CACHE_MAX_SIZE: int = int(os.environ.get("MEMORY_CACHE_MAX_SIZE", "10000"))  # Nombre d'entrées
     
     # Configuration de performances
-    BATCH_SIZE: int = 32
+    BATCH_SIZE: int = int(os.environ.get("BATCH_SIZE", "32"))
     
     # Configuration de base de données partagée
     DATABASE_URL: Optional[str] = os.environ.get("DATABASE_URL")
@@ -40,6 +51,9 @@ class Settings(BaseSettings):
     
     # Clé secrète pour sécuriser les jetons JWT
     SECRET_KEY: str = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))
+    
+    # Environnement d'exécution
+    ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
     
     class Config:
         case_sensitive = True

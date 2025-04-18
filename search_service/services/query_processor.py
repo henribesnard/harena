@@ -9,8 +9,7 @@ from typing import Optional, Dict, Any, List
 import json
 
 from search_service.schemas.query import (
-    SearchQuery, SearchParameters, FilterSet, DateRange,
-    AggregationType, GroupBy, SearchType
+    SearchQuery, SearchParameters
 )
 from search_service.core.config import settings
 from search_service.services.deepseek_processor import process_query_with_deepseek

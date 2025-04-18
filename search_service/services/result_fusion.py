@@ -7,8 +7,6 @@ en utilisant l'algorithme Reciprocal Rank Fusion (RRF).
 import logging
 from typing import List, Dict, Any, Set
 
-from search_service.schemas.response import SearchResult, ResultType, MatchDetails
-
 logger = logging.getLogger(__name__)
 
 async def fuse_results(

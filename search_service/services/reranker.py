@@ -5,9 +5,7 @@ Ce module implémente la réévaluation précise des paires requête-résultat
 en utilisant un modèle cross-encoder pour améliorer la précision du classement.
 """
 import logging
-from typing import List, Dict, Any, Optional
-import asyncio
-import math
+from typing import List, Dict, Any
 
 from search_service.core.config import settings
 from search_service.storage.memory_cache import get_cache, set_cache

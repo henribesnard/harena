@@ -2,29 +2,25 @@
 Module de reranking des résultats de recherche.
 
 Ce module implémente la réévaluation précise des paires requête-résultat
-en utilisant un modèle cross-encoder pour améliorer la précision du classement.
+en utilisant l'API Cohere Rerank pour améliorer la précision du classement.
 """
 import logging
 from typing import List, Dict, Any
 
+import cohere
 from search_service.core.config import settings
 from search_service.storage.memory_cache import get_cache, set_cache
 
 logger = logging.getLogger(__name__)
 
-# Tentative d'import du cross-encoder, avec fallback sur un reranking basique
+# Tentative d'import du SDK Cohere, avec fallback sur un reranking basique
 try:
-    from sentence_transformers import CrossEncoder
-    CROSS_ENCODER_AVAILABLE = True
-    
-    # Initialisation du cross-encoder
-    model_name = "ms-marco-MiniLM-L-12-v2"  # Modèle de base pour le reranking
-    cross_encoder = CrossEncoder(model_name, max_length=512)
-    
-    logger.info(f"Cross-encoder initialisé avec le modèle {model_name}")
-except ImportError:
-    CROSS_ENCODER_AVAILABLE = False
-    logger.warning("Module sentence_transformers non disponible. Le reranking avancé est désactivé.")
+    cohere_client = cohere.ClientV2(settings.COHERE_KEY)
+    COHERE_AVAILABLE = True
+    logger.info("Client Cohere initialisé avec succès")
+except (ImportError, Exception) as e:
+    COHERE_AVAILABLE = False
+    logger.warning(f"SDK Cohere non disponible ou erreur d'initialisation: {e}. Le reranking avancé est désactivé.")
 
 async def rerank_results(
     query_text: str,
@@ -59,9 +55,9 @@ async def rerank_results(
         logger.debug(f"Résultats de reranking récupérés du cache")
         return cached_results[:top_k]
     
-    # Reclassement en fonction de la disponibilité du cross-encoder
-    if CROSS_ENCODER_AVAILABLE:
-        reranked_results = await rerank_with_cross_encoder(query_text, results_to_rerank)
+    # Reclassement en fonction de la disponibilité de Cohere
+    if COHERE_AVAILABLE:
+        reranked_results = await rerank_with_cohere(query_text, results_to_rerank, top_k)
     else:
         reranked_results = await rerank_basic(query_text, results_to_rerank)
     
@@ -74,62 +70,76 @@ async def rerank_results(
     logger.info(f"Reranking terminé: {len(top_results)} résultats retenus")
     return top_results
 
-async def rerank_with_cross_encoder(
+async def rerank_with_cohere(
     query_text: str,
-    results: List[Dict[str, Any]]
+    results: List[Dict[str, Any]],
+    top_k: int = 10
 ) -> List[Dict[str, Any]]:
     """
-    Reclasse les résultats en utilisant un modèle cross-encoder.
+    Reclasse les résultats en utilisant l'API Cohere Rerank via le SDK officiel.
     
     Args:
         query_text: Texte de la requête
         results: Liste des résultats à reclasser
+        top_k: Nombre maximum de résultats à retourner
         
     Returns:
         Liste des résultats reclassés
     """
-    # Préparer les paires requête-passage pour l'évaluation
-    pairs = []
+    # Préparer les documents à reclasser
+    documents = []
     for result in results:
         # Extraire les champs pertinents pour l'évaluation
         content = result["content"]
         merchant_name = content.get("merchant_name", "")
         description = content.get("description", "")
         clean_description = content.get("clean_description", "")
-        amount = content.get("amount", 0)
+        amount = str(content.get("amount", 0))
         date = content.get("transaction_date", "")
         
         # Construire un texte représentatif de la transaction
         transaction_text = f"{merchant_name} {clean_description or description} {date} {amount}"
-        
-        # Ajouter la paire à évaluer
-        pairs.append((query_text, transaction_text))
+        documents.append(transaction_text)
     
     try:
-        # Utiliser l'évaluation par lots du cross-encoder
-        batch_size = settings.BATCH_SIZE
-        all_scores = []
+        # Utiliser le SDK Cohere pour le reranking
+        rerank_response = cohere_client.rerank(
+            model="rerank-v3.5",  # Version la plus récente du modèle
+            query=query_text,
+            documents=documents,
+            top_n=top_k
+        )
         
-        # Traiter par lots pour optimiser la mémoire et la performance
-        for i in range(0, len(pairs), batch_size):
-            batch = pairs[i:i + batch_size]
-            scores = cross_encoder.predict(batch).tolist()
-            all_scores.extend(scores)
+        # Construire la liste des résultats reclassés
+        reranked_results = []
         
-        # Mettre à jour les scores des résultats
-        for i, score in enumerate(all_scores):
-            results[i]["score"] = score
-            if "match_details" not in results[i]:
-                results[i]["match_details"] = {}
-            results[i]["match_details"]["reranking_score"] = score
+        # Utiliser les résultats dans l'ordre retourné par Cohere
+        for cohere_result in rerank_response.results:
+            idx = cohere_result.index
+            relevance_score = cohere_result.relevance_score
+            
+            if idx < len(results):
+                result = results[idx].copy()
+                result["score"] = relevance_score
+                if "match_details" not in result:
+                    result["match_details"] = {}
+                result["match_details"]["reranking_score"] = relevance_score
+                reranked_results.append(result)
         
-        # Trier par score décroissant
-        reranked_results = sorted(results, key=lambda x: x["score"], reverse=True)
+        # S'assurer que tous les résultats sont inclus (même ceux non retournés par Cohere)
+        if len(reranked_results) < len(results):
+            # Filtrer les IDs déjà inclus
+            included_ids = {r["id"] for r in reranked_results}
+            # Ajouter les résultats manquants à la fin
+            for result in results:
+                if result["id"] not in included_ids:
+                    reranked_results.append(result)
         
+        logger.debug(f"Reranking via Cohere SDK réussi: {len(reranked_results)} résultats traités")
         return reranked_results
         
     except Exception as e:
-        logger.error(f"Erreur lors du reranking avec cross-encoder: {str(e)}", exc_info=True)
+        logger.error(f"Erreur lors du reranking avec Cohere SDK: {str(e)}", exc_info=True)
         # Fallback sur le reranking basique en cas d'erreur
         return await rerank_basic(query_text, results)
 
@@ -138,7 +148,7 @@ async def rerank_basic(
     results: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """
-    Reclasse les résultats avec une méthode basique en cas d'indisponibilité du cross-encoder.
+    Reclasse les résultats avec une méthode basique en cas d'indisponibilité de Cohere.
     
     Args:
         query_text: Texte de la requête

@@ -54,10 +54,13 @@ class Settings(BaseSettings):
     
     # Environnement d'exécution
     ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
+
+
+    COHERE_KEY: Optional[str] = os.environ.get("COHERE_KEY")
     
     class Config:
         case_sensitive = True
         env_file = ".env"
         extra = "ignore"
-
+ 
 settings = Settings()

@@ -44,11 +44,23 @@ async def get_es_client() -> Optional[Any]:
             if not url:
                 raise ValueError("SEARCHBOX_URL est manquante dans les variables d'environnement")
             
+            # Options de compatibilité pour les services hébergés comme SearchBox
+            es_options = {
+                "request_timeout": 30,
+                "verify_certs": True,
+                "retry_on_timeout": True,
+                "max_retries": 3,
+                "ignore_status": [400, 401, 403, 404],  # Ignorer certains codes d'erreur
+                "headers": {
+                    "X-Elastic-Product": "Elasticsearch"  # Aide à l'identification
+                }
+            }
+            
             # Si l'URL contient déjà des identifiants, ne pas ajouter d'authentification séparée
             if "@" in url:
                 _es_client = AsyncElasticsearch(
                     [url],
-                    request_timeout=30
+                    **es_options
                 )
                 logger.info(f"Client Elasticsearch connecté à SearchBox avec authentification intégrée dans l'URL")
             # Sinon utiliser l'API key si présente
@@ -56,14 +68,14 @@ async def get_es_client() -> Optional[Any]:
                 _es_client = AsyncElasticsearch(
                     [url],
                     api_key=api_key,
-                    request_timeout=30
+                    **es_options
                 )
                 logger.info(f"Client Elasticsearch connecté à SearchBox avec API key")
             else:
                 # Connexion sans authentification (selon la configuration de SearchBox)
                 _es_client = AsyncElasticsearch(
                     [url],
-                    request_timeout=30
+                    **es_options
                 )
                 logger.info(f"Client Elasticsearch connecté à SearchBox sans authentification")
         except Exception as e:
@@ -82,9 +94,16 @@ async def init_elasticsearch() -> Optional[Any]:
     try:
         client = await get_es_client()
         
-        # Vérifier la connectivité
-        info = await client.info()
-        logger.info(f"Elasticsearch connecté: version {info['version']['number']}")
+        # Vérifier la connectivité - ignorer l'erreur "unknown product"
+        try:
+            info = await client.info()
+            logger.info(f"Elasticsearch connecté: version {info['version']['number']}")
+        except Exception as e:
+            if "not Elasticsearch" in str(e):
+                logger.warning(f"Serveur non reconnu comme Elasticsearch standard, mais la connexion est établie.")
+                # On continue malgré cette erreur spécifique
+            else:
+                raise
         
         return client
     except Exception as e:

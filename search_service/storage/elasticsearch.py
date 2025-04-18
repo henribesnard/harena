@@ -44,8 +44,15 @@ async def get_es_client() -> Optional[Any]:
             if not url:
                 raise ValueError("SEARCHBOX_URL est manquante dans les variables d'environnement")
             
-            # Configuration sans authentification ou avec API key selon la présence de SEARCHBOX_API_KEY
-            if api_key:
+            # Si l'URL contient déjà des identifiants, ne pas ajouter d'authentification séparée
+            if "@" in url:
+                _es_client = AsyncElasticsearch(
+                    [url],
+                    request_timeout=30
+                )
+                logger.info(f"Client Elasticsearch connecté à SearchBox avec authentification intégrée dans l'URL")
+            # Sinon utiliser l'API key si présente
+            elif api_key:
                 _es_client = AsyncElasticsearch(
                     [url],
                     api_key=api_key,

@@ -30,16 +30,19 @@ async def lifespan(app: FastAPI):
     es_client = await init_elasticsearch()
     qdrant_client = await init_qdrant()
     
-    # Vérification de la configuration des embeddings
-    from search_service.services.embedding_service import EmbeddingService
-    embedding_service = EmbeddingService()
+    # Vérification de la configuration DeepSeek
+    if settings.DEEPSEEK_API_KEY:
+        logger.info(f"DeepSeek configuré avec les modèles: Chat={settings.DEEPSEEK_CHAT_MODEL}, Reasoner={settings.DEEPSEEK_REASONER_MODEL}")
+    else:
+        logger.warning("Clé API DeepSeek manquante. Le traitement avancé des requêtes sera limité.")
     
     yield  # L'application s'exécute ici
     
     # Nettoyage
     logger.info("Arrêt du service de recherche")
     # Fermeture des connexions
-    await es_client.close()
+    if es_client:
+        await es_client.close()
 
 def create_app() -> FastAPI:
     """Crée et configure l'application FastAPI du service de recherche."""

@@ -42,7 +42,7 @@ async def search(
     logger.info(f"Recherche pour utilisateur {user_id}: {query.query.text}")
     
     try:
-        # Étape 1: Traitement et expansion de la requête
+        # Étape 1: Traitement et expansion de la requête avec DeepSeek
         with timer("query_processing"):
             processed_query = await process_query(query, user_id, db)
         

@@ -28,13 +28,10 @@ Ce package fournit des fonctionnalités communes utilisées
 par les différents composants du service de recherche.
 """
 
-from search_service.utils.text_processing import normalize_text, extract_entities
 from search_service.utils.timing import timer, get_current_request_timings, reset_request_timings
 from search_service.utils.metrics import record_search_metrics, get_search_metrics, calculate_metrics_summary
 
 __all__ = [
-    'normalize_text',
-    'extract_entities',
     'timer',
     'get_current_request_timings',
     'reset_request_timings',

@@ -1,5 +1,5 @@
 """
-Interface avec Elasticsearch pour le service de recherche.
+Interface avec Elasticsearch via SearchBox pour le service de recherche.
 
 Ce module gère la connexion et les interactions avec le moteur de recherche
 Elasticsearch pour la recherche lexicale.
@@ -37,18 +37,30 @@ async def get_es_client() -> Optional[Any]:
     
     if _es_client is None:
         try:
-            auth = None
-            if settings.ELASTICSEARCH_USERNAME and settings.ELASTICSEARCH_PASSWORD:
-                auth = (settings.ELASTICSEARCH_USERNAME, settings.ELASTICSEARCH_PASSWORD)
+            # Utiliser l'URL de SearchBox
+            url = settings.SEARCHBOX_URL
+            api_key = settings.SEARCHBOX_API_KEY
             
-            _es_client = AsyncElasticsearch(
-                [settings.ELASTICSEARCH_URL],
-                basic_auth=auth,
-                request_timeout=30
-            )
-            logger.info(f"Client Elasticsearch connecté à {settings.ELASTICSEARCH_URL}")
+            if not url:
+                raise ValueError("SEARCHBOX_URL est manquante dans les variables d'environnement")
+            
+            # Configuration sans authentification ou avec API key selon la présence de SEARCHBOX_API_KEY
+            if api_key:
+                _es_client = AsyncElasticsearch(
+                    [url],
+                    api_key=api_key,
+                    request_timeout=30
+                )
+                logger.info(f"Client Elasticsearch connecté à SearchBox avec API key")
+            else:
+                # Connexion sans authentification (selon la configuration de SearchBox)
+                _es_client = AsyncElasticsearch(
+                    [url],
+                    request_timeout=30
+                )
+                logger.info(f"Client Elasticsearch connecté à SearchBox sans authentification")
         except Exception as e:
-            logger.error(f"Impossible de se connecter à Elasticsearch: {str(e)}")
+            logger.error(f"Impossible de se connecter à Elasticsearch (SearchBox): {str(e)}")
             raise
     
     return _es_client

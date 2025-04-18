@@ -1,4 +1,3 @@
-# heroku_app.py
 """
 Application Harena pour déploiement Heroku.
 
@@ -68,10 +67,50 @@ async def lifespan(app: FastAPI):
     except Exception as db_error:
         logger.error(f"Erreur de connexion à la base de données: {db_error}")
     
+    # Initialisation des services de stockage
+    try:
+        # Initialisation des services de recherche si disponibles
+        from search_service.storage.elasticsearch import init_elasticsearch
+        from search_service.storage.qdrant import init_qdrant
+        
+        # Initialisation asynchrone des clients de stockage
+        es_client_future = init_elasticsearch()
+        qdrant_client_future = init_qdrant()
+        
+        # Attendre l'initialisation des services de recherche
+        import asyncio
+        es_client, qdrant_client = await asyncio.gather(
+            es_client_future, qdrant_client_future, 
+            return_exceptions=True
+        )
+        
+        if isinstance(es_client, Exception):
+            logger.error(f"Erreur d'initialisation d'Elasticsearch: {es_client}")
+        elif es_client:
+            logger.info("Service Elasticsearch initialisé avec succès")
+        
+        if isinstance(qdrant_client, Exception):
+            logger.error(f"Erreur d'initialisation de Qdrant: {qdrant_client}")
+        elif qdrant_client:
+            logger.info("Service Qdrant initialisé avec succès")
+            
+    except ImportError:
+        logger.warning("Services de recherche non disponibles. Certaines fonctionnalités seront limitées.")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation des services de stockage: {e}")
+    
     yield  # L'application s'exécute ici
     
-    # Cleanup
+    # Nettoyage
     logger.info("Application Harena en arrêt sur Heroku...")
+    
+    # Fermeture des connexions
+    try:
+        from search_service.storage.elasticsearch import close_es_client
+        await close_es_client()
+        logger.info("Connexions Elasticsearch fermées")
+    except (ImportError, Exception):
+        pass
 
 # ======== DÉFINITION DES SERVICES ========
 
@@ -111,10 +150,10 @@ API_V1_PREFIX = "/api/v1"
 
 # Service utilisateur
 try:
-    from user_service.api.endpoints.users import router as users_router
+    from user_service.api.endpoints import users
     service_registry.register(
         "user_service", 
-        router=users_router,
+        router=users.router,
         prefix=f"{API_V1_PREFIX}/users",
         status="ok"
     )
@@ -125,20 +164,20 @@ except ImportError as e:
 
 # Service de synchronisation
 try:
-    from sync_service.api.endpoints.sync import router as sync_router
+    from sync_service.api.endpoints import sync
     service_registry.register(
         "sync_service", 
-        router=sync_router,
+        router=sync.router,
         prefix=f"{API_V1_PREFIX}/sync",
         status="ok"
     )
     
     # Importer également le router des webhooks si disponible
     try:
-        from sync_service.api.endpoints.webhooks import router as webhooks_router
+        from sync_service.api.endpoints import webhooks
         service_registry.register(
             "webhooks_service", 
-            router=webhooks_router,
+            router=webhooks.router,
             prefix="/webhooks",
             status="ok"
         )
@@ -149,6 +188,29 @@ try:
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du router Sync Service: {e}")
     service_registry.register("sync_service", status="failed")
+
+# Service de recherche
+try:
+    from search_service.api.endpoints import search, health as search_health
+    service_registry.register(
+        "search_service",
+        router=search.router,
+        prefix=f"{API_V1_PREFIX}/search",
+        status="ok"
+    )
+    
+    # Ajouter également le endpoint de santé du service de recherche
+    service_registry.register(
+        "search_health", 
+        router=search_health.router,
+        prefix=f"{API_V1_PREFIX}/search/health",
+        status="ok"
+    )
+    
+    logger.info("Search Service importé avec succès")
+except ImportError as e:
+    logger.error(f"Erreur lors de l'importation du Search Service: {e}")
+    service_registry.register("search_service", status="failed")
 
 # ======== CRÉATION DE L'APPLICATION ========
 
@@ -164,7 +226,7 @@ app = FastAPI(
 )
 
 # Configuration CORS sécurisée pour production
-ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "https://app.harena.finance").split(",")
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "https://app.harena.finance").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -222,9 +284,9 @@ async def health_check():
     # Vérifier l'état du stockage vectoriel si disponible
     vector_status = "unknown"
     try:
-        from sync_service.services.vector_storage import VectorStorageService
-        vector_service = VectorStorageService()
-        if vector_service.client:
+        from search_service.storage.qdrant import get_qdrant_client
+        qdrant_client = await get_qdrant_client()
+        if qdrant_client:
             vector_status = "connected"
         else:
             vector_status = "client_not_initialized"
@@ -233,15 +295,39 @@ async def health_check():
     except Exception as e:
         vector_status = f"error: {str(e)}"
     
-    # Vérification du service Bridge
+    # Vérifier l'état d'Elasticsearch si disponible
+    es_status = "unknown"
+    try:
+        from search_service.storage.elasticsearch import get_es_client
+        es_client = await get_es_client()
+        if es_client:
+            es_status = "connected"
+        else:
+            es_status = "client_not_initialized"
+    except ImportError:
+        es_status = "module_not_available"
+    except Exception as e:
+        es_status = f"error: {str(e)}"
+    
+    # Vérification des services externes
     bridge_status = "configured" if os.environ.get("BRIDGE_CLIENT_ID") else "not_configured"
+    deepseek_status = "configured" if os.environ.get("DEEPSEEK_API_KEY") else "not_configured"
+    
+    # État général de l'application
+    overall_status = "ok"
+    service_statuses = service_registry.get_service_status()
+    
+    if "failed" in service_statuses.values() or db_status.startswith("error"):
+        overall_status = "degraded"
     
     return {
-        "status": "ok" if all(status == "ok" for status in service_registry.get_service_status().values()) else "degraded",
-        "services": service_registry.get_service_status(),
+        "status": overall_status,
+        "services": service_statuses,
         "database": db_status,
         "vector_storage": vector_status,
+        "elasticsearch": es_status,
         "bridge_api": bridge_status,
+        "deepseek_api": deepseek_status,
         "environment": os.environ.get("ENVIRONMENT", "production"),
         "timestamp": str(datetime.now())
     }
@@ -271,10 +357,30 @@ async def debug_info():
             "database_config": {
                 "url_type": type(os.environ.get("DATABASE_URL", "")).__name__,
                 "url_length": len(os.environ.get("DATABASE_URL", "")),
-                "has_bridge_config": bool(os.environ.get("BRIDGE_CLIENT_ID", ""))
+                "has_bridge_config": bool(os.environ.get("BRIDGE_CLIENT_ID", "")),
+                "has_deepseek_config": bool(os.environ.get("DEEPSEEK_API_KEY", "")),
+                "has_qdrant_config": bool(os.environ.get("QDRANT_URL", ""))
+            },
+            "memory_usage": {
+                "process": get_process_memory_usage()
             },
             "timestamp": str(datetime.now())
         }
+
+def get_process_memory_usage():
+    """Obtient l'utilisation mémoire du processus actuel."""
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        return {
+            "rss_mb": memory_info.rss / (1024 * 1024),
+            "vms_mb": memory_info.vms / (1024 * 1024)
+        }
+    except ImportError:
+        return {"error": "psutil not installed"}
+    except Exception as e:
+        return {"error": str(e)}
 
 # ======== GESTIONNAIRE D'EXCEPTIONS ========
 

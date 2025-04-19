@@ -9,10 +9,11 @@ import asyncio
 from typing import Tuple, List, Dict, Any, Optional
 
 from search_service.schemas.query import SearchQuery, SearchType
-from search_service.storage.elasticsearch import get_es_client
+from search_service.storage.unified_engine import get_unified_engine, SearchEngineType
 from search_service.storage.qdrant import get_qdrant_client
 from search_service.services.embedding_service import EmbeddingService
 from search_service.storage.memory_cache import get_cache, set_cache
+from search_service.utils.field_weights import adjust_weights_for_query
 from config_service.config import settings
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ async def execute_lexical_search(
     top_k: int = 50
 ) -> List[Dict[str, Any]]:
     """
-    Exécute une recherche lexicale via Elasticsearch.
+    Exécute une recherche lexicale via le moteur BM25/Whoosh.
     
     Args:
         query: Requête de recherche
@@ -82,123 +83,32 @@ async def execute_lexical_search(
     Returns:
         Liste des résultats de recherche lexicale
     """
-    es_client = await get_es_client()
-    
     # Utiliser le texte enrichi si disponible
     search_text = query.query.expanded_text or query.query.text
     
-    # Préparer la requête Elasticsearch avec BM25F
-    es_query = {
-        "query": {
-            "bool": {
-                "must": [
-                    {"term": {"user_id": user_id}},
-                    {"multi_match": {
-                        "query": search_text,
-                        "fields": ["description^3", "merchant_name^4", "category^2", "clean_description^3.5"],
-                        "type": "best_fields",
-                        "operator": "or",
-                        "fuzziness": "AUTO"
-                    }}
-                ]
-            }
-        },
-        "size": top_k,
-        "highlight": {
-            "fields": {
-                "description": {},
-                "merchant_name": {},
-                "clean_description": {}
-            },
-            "pre_tags": ["<em>"],
-            "post_tags": ["</em>"]
-        }
-    }
-    
-    # Ajouter les filtres structurés si présents
-    if query.filters:
-        filter_clauses = []
-        
-        # Filtre de dates
-        if query.filters.date_range:
-            date_range = {}
-            if query.filters.date_range.start:
-                date_range["gte"] = query.filters.date_range.start.isoformat()
-            if query.filters.date_range.end:
-                date_range["lte"] = query.filters.date_range.end.isoformat()
-            
-            if date_range:
-                filter_clauses.append({"range": {"transaction_date": date_range}})
-        
-        # Filtre de montants
-        if query.filters.amount_range:
-            amount_range = {}
-            if query.filters.amount_range.min is not None:
-                amount_range["gte"] = query.filters.amount_range.min
-            if query.filters.amount_range.max is not None:
-                amount_range["lte"] = query.filters.amount_range.max
-            
-            if amount_range:
-                filter_clauses.append({"range": {"amount": amount_range}})
-        
-        # Filtre de catégories
-        if query.filters.categories:
-            if len(query.filters.categories) == 1:
-                filter_clauses.append({"term": {"category": query.filters.categories[0]}})
-            else:
-                filter_clauses.append({"terms": {"category": query.filters.categories}})
-        
-        # Filtre de marchands
-        if query.filters.merchants:
-            merchant_clauses = []
-            for merchant in query.filters.merchants:
-                merchant_clauses.append({"match_phrase": {"merchant_name": merchant}})
-            
-            filter_clauses.append({"bool": {"should": merchant_clauses, "minimum_should_match": 1}})
-        
-        # Filtre de types d'opération
-        if query.filters.operation_types:
-            op_values = []
-            for op_type in query.filters.operation_types:
-                if op_type.value == "debit":
-                    # Les transactions débit sont négatives
-                    filter_clauses.append({"range": {"amount": {"lt": 0}}})
-                elif op_type.value == "credit":
-                    # Les transactions crédit sont positives
-                    filter_clauses.append({"range": {"amount": {"gt": 0}}})
-        
-        # Ajouter tous les filtres à la requête
-        if filter_clauses:
-            es_query["query"]["bool"]["filter"] = filter_clauses
-    
     try:
-        # Exécuter la requête
-        logger.debug(f"Exécution de la recherche lexicale pour: {search_text}")
-        response = await es_client.search(
-            index=f"transactions_{user_id}",
-            body=es_query
-        )
+        # Obtenir l'instance du moteur de recherche unifié
+        engine = get_unified_engine()
         
-        # Traiter les résultats
-        results = []
-        for hit in response["hits"]["hits"]:
-            result = {
-                "id": hit["_id"],
-                "type": "transaction",
-                "content": hit["_source"],
-                "score": hit["_score"],
-                "match_details": {
-                    "lexical_score": hit["_score"]
-                },
-                "highlight": hit.get("highlight", {})
-            }
-            results.append(result)
+        # Ajuster les poids des champs en fonction de la requête
+        field_weights = adjust_weights_for_query(search_text)
+        
+        # Exécuter la recherche
+        logger.debug(f"Exécution de la recherche lexicale pour: {search_text}")
+        results = await engine.search(
+            user_id=user_id,
+            query_text=search_text,
+            engine_type=SearchEngineType.WHOOSH,  # Utiliser Whoosh par défaut
+            field_weights=field_weights,
+            top_k=top_k,
+            filters=query.filters.dict() if query.filters else None
+        )
         
         logger.info(f"Recherche lexicale: {len(results)} résultats trouvés")
         return results
         
     except Exception as e:
-        logger.error(f"Erreur lors de la recherche Elasticsearch: {str(e)}", exc_info=True)
+        logger.error(f"Erreur lors de la recherche lexicale: {str(e)}", exc_info=True)
         return []
 
 async def execute_vector_search(
@@ -217,96 +127,96 @@ async def execute_vector_search(
     Returns:
         Liste des résultats de recherche vectorielle
     """
-    import qdrant_client.models as qmodels
-    
-    qdrant_client = await get_qdrant_client()
-    embedding_service = EmbeddingService()
-    
-    # Générer l'embedding pour la requête
-    query_vector = await embedding_service.get_embedding(query.query.text)
-    
-    # Préparer les filtres pour Qdrant
-    qdrant_filter = qmodels.Filter(
-        must=[
-            qmodels.FieldCondition(
-                key="user_id",
-                match=qmodels.MatchValue(value=user_id)
-            )
-        ]
-    )
-    
-    # Ajouter les filtres structurés si présents
-    if query.filters:
-        # Filtre de dates
-        if query.filters.date_range:
-            date_range = {}
-            if query.filters.date_range.start:
-                date_range["gte"] = query.filters.date_range.start.isoformat()
-            if query.filters.date_range.end:
-                date_range["lte"] = query.filters.date_range.end.isoformat()
-            
-            if date_range:
-                qdrant_filter.must.append(
-                    qmodels.FieldCondition(
-                        key="transaction_date",
-                        range=qmodels.Range(**date_range)
-                    )
-                )
-        
-        # Filtre de montants
-        if query.filters.amount_range:
-            amount_range = {}
-            if query.filters.amount_range.min is not None:
-                amount_range["gte"] = query.filters.amount_range.min
-            if query.filters.amount_range.max is not None:
-                amount_range["lte"] = query.filters.amount_range.max
-            
-            if amount_range:
-                qdrant_filter.must.append(
-                    qmodels.FieldCondition(
-                        key="amount",
-                        range=qmodels.Range(**amount_range)
-                    )
-                )
-        
-        # Filtre de catégories
-        if query.filters.categories:
-            if len(query.filters.categories) == 1:
-                qdrant_filter.must.append(
-                    qmodels.FieldCondition(
-                        key="category",
-                        match=qmodels.MatchValue(value=query.filters.categories[0])
-                    )
-                )
-            else:
-                qdrant_filter.must.append(
-                    qmodels.FieldCondition(
-                        key="category",
-                        match=qmodels.MatchAny(any=query.filters.categories)
-                    )
-                )
-        
-        # Filtre de types d'opération
-        if query.filters.operation_types:
-            for op_type in query.filters.operation_types:
-                if op_type.value == "debit":
-                    # Les transactions débit sont négatives
-                    qdrant_filter.must.append(
-                        qmodels.FieldCondition(
-                            key="amount",
-                            range=qmodels.Range(lt=0)
-                        )
-                    )
-                elif op_type.value == "credit":
-                    # Les transactions crédit sont positives
-                    qdrant_filter.must.append(
-                        qmodels.FieldCondition(
-                            key="amount",
-                            range=qmodels.Range(gt=0)
-                        )
-                    )
-    
     try:
+        import qdrant_client.models as qmodels
+        
+        qdrant_client = await get_qdrant_client()
+        embedding_service = EmbeddingService()
+        
+        # Générer l'embedding pour la requête
+        query_vector = await embedding_service.get_embedding(query.query.text)
+        
+        # Préparer les filtres pour Qdrant
+        qdrant_filter = qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="user_id",
+                    match=qmodels.MatchValue(value=user_id)
+                )
+            ]
+        )
+        
+        # Ajouter les filtres structurés si présents
+        if query.filters:
+            # Filtre de dates
+            if query.filters.date_range:
+                date_range = {}
+                if query.filters.date_range.start:
+                    date_range["gte"] = query.filters.date_range.start.isoformat()
+                if query.filters.date_range.end:
+                    date_range["lte"] = query.filters.date_range.end.isoformat()
+                
+                if date_range:
+                    qdrant_filter.must.append(
+                        qmodels.FieldCondition(
+                            key="transaction_date",
+                            range=qmodels.Range(**date_range)
+                        )
+                    )
+            
+            # Filtre de montants
+            if query.filters.amount_range:
+                amount_range = {}
+                if query.filters.amount_range.min is not None:
+                    amount_range["gte"] = query.filters.amount_range.min
+                if query.filters.amount_range.max is not None:
+                    amount_range["lte"] = query.filters.amount_range.max
+                
+                if amount_range:
+                    qdrant_filter.must.append(
+                        qmodels.FieldCondition(
+                            key="amount",
+                            range=qmodels.Range(**amount_range)
+                        )
+                    )
+            
+            # Filtre de catégories
+            if query.filters.categories:
+                if len(query.filters.categories) == 1:
+                    qdrant_filter.must.append(
+                        qmodels.FieldCondition(
+                            key="category",
+                            match=qmodels.MatchValue(value=query.filters.categories[0])
+                        )
+                    )
+                else:
+                    qdrant_filter.must.append(
+                        qmodels.FieldCondition(
+                            key="category",
+                            match=qmodels.MatchAny(any=query.filters.categories)
+                        )
+                    )
+            
+            # Filtre de types d'opération
+            if query.filters.operation_types:
+                for op_type in query.filters.operation_types:
+                    if op_type.value == "debit":
+                        # Les transactions débit sont négatives
+                        qdrant_filter.must.append(
+                            qmodels.FieldCondition(
+                                key="amount",
+                                range=qmodels.Range(lt=0)
+                            )
+                        )
+                    elif op_type.value == "credit":
+                        # Les transactions crédit sont positives
+                        qdrant_filter.must.append(
+                            qmodels.FieldCondition(
+                                key="amount",
+                                range=qmodels.Range(gt=0)
+                            )
+                        )
+        
         # Exécuter la recherche vectorielle
         logger.debug(f"Exécution de la recherche vectorielle pour: {query.query.text}")
         search_result = await qdrant_client.search(
@@ -335,5 +245,5 @@ async def execute_vector_search(
         return results
         
     except Exception as e:
-        logger.error(f"Erreur lors de la recherche Qdrant: {str(e)}", exc_info=True)
+        logger.error(f"Erreur lors de la recherche vectorielle: {str(e)}", exc_info=True)
         return []

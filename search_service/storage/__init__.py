@@ -1,37 +1,27 @@
-# storage/__init__.py
 """
 Package de stockage pour le service de recherche.
 
 Ce package fournit les interfaces pour interagir avec les différents
-systèmes de stockage (Elasticsearch, Qdrant, Redis).
+systèmes de stockage (BM25, Whoosh, Qdrant).
 """
 
-from search_service.storage.elasticsearch import get_es_client, init_elasticsearch
-from search_service.storage.qdrant import get_qdrant_client, init_qdrant
+from search_service.storage.bm25_engine import get_bm25f_engine
+from search_service.storage.whoosh_engine import get_whoosh_engine
+from search_service.storage.unified_engine import get_unified_engine, SearchEngineType
+
+# Import conditionnel de Qdrant
+try:
+    from search_service.storage.qdrant import get_qdrant_client
+    QDRANT_AVAILABLE = True
+except ImportError:
+    QDRANT_AVAILABLE = False
 
 __all__ = [
-    'get_es_client',
-    'init_elasticsearch',
-    'get_qdrant_client',
-    'init_qdrant'
+    'get_bm25f_engine',
+    'get_whoosh_engine',
+    'get_unified_engine',
+    'SearchEngineType'
 ]
 
-# utils/__init__.py
-"""
-Package d'utilitaires pour le service de recherche.
-
-Ce package fournit des fonctionnalités communes utilisées
-par les différents composants du service de recherche.
-"""
-
-from search_service.utils.timing import timer, get_current_request_timings, reset_request_timings
-from search_service.utils.metrics import record_search_metrics, get_search_metrics, calculate_metrics_summary
-
-__all__ = [
-    'timer',
-    'get_current_request_timings',
-    'reset_request_timings',
-    'record_search_metrics',
-    'get_search_metrics',
-    'calculate_metrics_summary'
-]
+if QDRANT_AVAILABLE:
+    __all__.append('get_qdrant_client')

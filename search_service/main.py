@@ -23,12 +23,20 @@ async def lifespan(app: FastAPI):
     # Initialisation
     logger.info("Démarrage du service de recherche")
     
-    # Initialisation des connexions Elasticsearch et Qdrant
-    from search_service.storage.elasticsearch import init_elasticsearch
+    # Initialisation des moteurs de recherche
+    from search_service.storage.unified_engine import get_unified_engine
     from search_service.storage.qdrant import init_qdrant
     
-    es_client = await init_elasticsearch()
+    # Initialiser le moteur unifié
+    unified_engine = get_unified_engine()
+    logger.info(f"Moteur de recherche unifié initialisé avec {unified_engine.primary_engine_type} comme moteur principal")
+    
+    # Initialiser Qdrant pour la recherche vectorielle (si disponible)
     qdrant_client = await init_qdrant()
+    if qdrant_client:
+        logger.info("Client Qdrant initialisé pour la recherche vectorielle")
+    else:
+        logger.warning("Client Qdrant non disponible. La recherche vectorielle sera limitée.")
     
     # Vérification de la configuration DeepSeek
     if settings.DEEPSEEK_API_KEY:
@@ -36,13 +44,23 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Clé API DeepSeek manquante. Le traitement avancé des requêtes sera limité.")
     
+    # Planification de l'indexation en arrière-plan (optionnel)
+    if settings.ENABLE_BACKGROUND_INDEXING:
+        from search_service.utils.indexer import schedule_background_indexing
+        import asyncio
+        
+        # Planifier l'indexation en arrière-plan dans une tâche asyncio
+        asyncio.create_task(
+            schedule_background_indexing(
+                interval_seconds=settings.BACKGROUND_INDEXING_INTERVAL
+            )
+        )
+        logger.info(f"Indexation en arrière-plan planifiée toutes les {settings.BACKGROUND_INDEXING_INTERVAL} secondes")
+    
     yield  # L'application s'exécute ici
     
     # Nettoyage
     logger.info("Arrêt du service de recherche")
-    # Fermeture des connexions
-    if es_client:
-        await es_client.close()
 
 def create_app() -> FastAPI:
     """Crée et configure l'application FastAPI du service de recherche."""

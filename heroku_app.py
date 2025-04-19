@@ -74,13 +74,16 @@ async def lifespan(app: FastAPI):
     # Initialisation des services de stockage
     try:
         logger.info("Tentative d'initialisation des services de stockage")
-        # Initialisation des services de recherche si disponibles
+        
+        # Initialisation du moteur de recherche unifié
         try:
-            from search_service.storage.elasticsearch import init_elasticsearch
-            logger.info("Module search_service.storage.elasticsearch importé avec succès")
-        except ImportError as es_import_err:
-            logger.error(f"Erreur lors de l'importation d'Elasticsearch: {es_import_err}")
-            
+            from search_service.storage.unified_engine import get_unified_engine
+            unified_engine = get_unified_engine()
+            logger.info(f"Moteur de recherche unifié initialisé avec {unified_engine.primary_engine_type} comme moteur principal")
+        except ImportError as engine_import_err:
+            logger.error(f"Erreur lors de l'importation du moteur de recherche unifié: {engine_import_err}")
+        
+        # Initialisation de Qdrant (toujours utilisé pour la recherche vectorielle)
         try:
             from search_service.storage.qdrant import init_qdrant
             logger.info("Module search_service.storage.qdrant importé avec succès")
@@ -89,20 +92,6 @@ async def lifespan(app: FastAPI):
             
         # Initialisation asynchrone des clients de stockage
         import asyncio
-        
-        # Initialiser Elasticsearch
-        es_client = None
-        try:
-            if 'init_elasticsearch' in locals():
-                logger.info("Démarrage de l'initialisation d'Elasticsearch")
-                es_client_future = init_elasticsearch()
-                es_client = await es_client_future
-                if es_client:
-                    logger.info("Service Elasticsearch initialisé avec succès")
-                else:
-                    logger.warning("Initialisation d'Elasticsearch terminée mais client None")
-        except Exception as es_init_err:
-            logger.error(f"Erreur lors de l'initialisation d'Elasticsearch: {es_init_err}")
             
         # Initialiser Qdrant
         qdrant_client = None
@@ -129,13 +118,8 @@ async def lifespan(app: FastAPI):
     # Nettoyage
     logger.info("Application Harena en arrêt sur Heroku...")
     
-    # Fermeture des connexions
-    try:
-        from search_service.storage.elasticsearch import close_es_client
-        await close_es_client()
-        logger.info("Connexions Elasticsearch fermées")
-    except (ImportError, Exception):
-        pass
+    # Aucune fermeture spécifique nécessaire pour les nouveaux moteurs de recherche
+    # car ils n'ont pas de connexions persistantes à fermer
 
 # ======== DÉFINITION DES SERVICES ========
 
@@ -391,19 +375,21 @@ async def health_check():
     except Exception as e:
         vector_status = f"error: {str(e)}"
     
-    # Vérifier l'état d'Elasticsearch si disponible
-    es_status = "unknown"
+    # Vérifier l'état des moteurs de recherche
+    search_engine_status = "unknown"
     try:
-        from search_service.storage.elasticsearch import get_es_client
-        es_client = await get_es_client()
-        if es_client:
-            es_status = "connected"
-        else:
-            es_status = "client_not_initialized"
+        from search_service.storage.unified_engine import get_unified_engine
+        engine = get_unified_engine()
+        stats = engine.get_stats()
+        search_engine_status = {
+            "status": "ok",
+            "primary_engine": stats["primary_engine"],
+            "engines_available": list(stats["engines"].keys())
+        }
     except ImportError:
-        es_status = "module_not_available"
+        search_engine_status = "module_not_available"
     except Exception as e:
-        es_status = f"error: {str(e)}"
+        search_engine_status = f"error: {str(e)}"
     
     # Vérification des services externes
     bridge_status = "configured" if os.environ.get("BRIDGE_CLIENT_ID") else "not_configured"
@@ -421,7 +407,7 @@ async def health_check():
         "services": service_statuses,
         "database": db_status,
         "vector_storage": vector_status,
-        "elasticsearch": es_status,
+        "search_engine": search_engine_status,
         "bridge_api": bridge_status,
         "deepseek_api": deepseek_status,
         "environment": os.environ.get("ENVIRONMENT", "production"),

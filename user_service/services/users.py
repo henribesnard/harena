@@ -1,4 +1,3 @@
-# user_service/services/users.py
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from typing import Optional, List

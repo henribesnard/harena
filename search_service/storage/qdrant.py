@@ -16,7 +16,7 @@ try:
 except ImportError:
     QDRANT_AVAILABLE = False
 
-from search_service.core.config import settings
+from config_service.config import settings
 
 # Tenter d'importer le service vectoriel de sync_service
 try:

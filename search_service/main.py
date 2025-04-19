@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from search_service.api.endpoints import search, health
-from search_service.core.config import settings
+from config_service.config import settings
 from search_service.utils.logging import setup_structured_logging
 
 # Configuration du logging

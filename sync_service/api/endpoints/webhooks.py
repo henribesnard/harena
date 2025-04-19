@@ -1,4 +1,3 @@
-# sync_service/api/endpoints/webhooks.py
 """
 Endpoints pour la réception des webhooks Bridge.
 
@@ -9,7 +8,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 
 from user_service.db.session import get_db
-from user_service.core.config import settings
+from config_service.config import settings
 from sync_service.services.webhook_handler import process_webhook, verify_webhook_signature
 
 router = APIRouter()

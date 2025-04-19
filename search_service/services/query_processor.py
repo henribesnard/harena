@@ -11,7 +11,7 @@ import json
 from search_service.schemas.query import (
     SearchQuery, SearchParameters
 )
-from search_service.core.config import settings
+from config_service.config import settings
 from search_service.services.deepseek_processor import process_query_with_deepseek
 from search_service.storage.memory_cache import get_cache, set_cache
 

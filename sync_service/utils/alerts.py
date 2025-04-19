@@ -2,7 +2,7 @@
 import logging
 import smtplib
 from email.message import EmailMessage
-from user_service.core.config import settings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 

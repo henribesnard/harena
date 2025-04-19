@@ -1,4 +1,3 @@
-# sync_service/services/merchant_enrichment_service.py
 """
 Service optionnel pour l'enrichissement asynchrone des marchands.
 

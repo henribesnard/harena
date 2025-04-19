@@ -13,7 +13,7 @@ from search_service.storage.elasticsearch import get_es_client
 from search_service.storage.qdrant import get_qdrant_client
 from search_service.services.embedding_service import EmbeddingService
 from search_service.storage.memory_cache import get_cache, set_cache
-from search_service.core.config import settings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 

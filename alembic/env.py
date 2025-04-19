@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 # Import des modèles et configuration
 from user_service.models.base import Base as UserBase
 from user_service.models.user import User, BridgeConnection, UserPreference
-from user_service.core.config import settings
+from config_service.config import settings
 
 # Importer les modèles sync_service si disponibles
 try:

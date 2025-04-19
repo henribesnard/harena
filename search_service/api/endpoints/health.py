@@ -13,7 +13,7 @@ from user_service.models.user import User
 from search_service.storage.memory_cache import get_cache_stats
 from search_service.storage.elasticsearch import get_es_client
 from search_service.storage.qdrant import get_qdrant_client
-from search_service.core.config import settings
+from config_service.config import settings
 
 import logging
 

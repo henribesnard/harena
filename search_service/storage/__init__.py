@@ -8,16 +8,12 @@ systèmes de stockage (Elasticsearch, Qdrant, Redis).
 
 from search_service.storage.elasticsearch import get_es_client, init_elasticsearch
 from search_service.storage.qdrant import get_qdrant_client, init_qdrant
-from search_service.storage.cache import get_cache, set_cache, invalidate_cache
 
 __all__ = [
     'get_es_client',
     'init_elasticsearch',
     'get_qdrant_client',
-    'init_qdrant',
-    'get_cache',
-    'set_cache',
-    'invalidate_cache'
+    'init_qdrant'
 ]
 
 # utils/__init__.py

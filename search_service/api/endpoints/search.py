@@ -16,7 +16,7 @@ from search_service.services.structured_filter import apply_filters
 from search_service.services.aggregation import calculate_aggregations
 from search_service.utils.timing import timer
 from search_service.utils.metrics import record_search_metrics
-from search_service.core.config import settings
+from config_service.config import settings
 
 import logging
 import time

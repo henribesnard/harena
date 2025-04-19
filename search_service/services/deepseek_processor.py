@@ -14,7 +14,7 @@ from search_service.schemas.query import (
     SearchQuery, FilterSet, DateRange, AmountRange, 
     AggregationType, GroupBy, OperationType, AggregationRequest
 )
-from search_service.core.config import settings
+from config_service.config import settings
 from search_service.storage.memory_cache import get_cache, set_cache
 
 logger = logging.getLogger(__name__)

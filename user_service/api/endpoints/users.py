@@ -1,4 +1,3 @@
-# user_service/api/endpoints/users.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -11,7 +10,7 @@ from user_service.schemas.user import (
 )
 from user_service.api.deps import get_db, get_current_active_user
 from user_service.services import users, bridge
-from user_service.core.config import settings
+from config_service.config import settings
 from user_service.core.security import create_access_token
 
 router = APIRouter()

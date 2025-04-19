@@ -8,7 +8,7 @@ import logging
 from typing import List, Dict, Any
 
 import cohere
-from search_service.core.config import settings
+from config_service.config import settings
 from search_service.storage.memory_cache import get_cache, set_cache
 
 logger = logging.getLogger(__name__)

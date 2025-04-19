@@ -1,4 +1,3 @@
-# sync_service/services/vector_storage.py
 """
 Service pour le stockage vectoriel des données financières Harena.
 

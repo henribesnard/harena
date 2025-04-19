@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from user_service.core.config import settings
+from config_service.config import settings
 from sync_service.utils.logging import setup_structured_logging
 
 # Configuration du logging structuré

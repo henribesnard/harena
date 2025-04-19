@@ -16,7 +16,7 @@ from fastapi import HTTPException
 # Imports depuis user_service
 from user_service.models.user import User, BridgeConnection
 from user_service.services.bridge import get_bridge_token, get_bridge_transactions
-from user_service.core.config import settings
+from config_service.config import settings
 
 # Import VectorStorageService avec gestion d'erreur
 try:

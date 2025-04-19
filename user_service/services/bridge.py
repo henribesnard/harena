@@ -1,4 +1,3 @@
-# user_service/services/bridge.py
 """
 Service de communication avec l'API Bridge.
 
@@ -13,7 +12,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from user_service.models.user import User, BridgeConnection
-from user_service.core.config import settings
+from config_service.config import settings
+
 
 # Configuration des logs
 logger = logging.getLogger(__name__)

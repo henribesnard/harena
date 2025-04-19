@@ -1,12 +1,17 @@
 """
-Application Harena pour déploiement Heroku.
+Application Harena pour développement local.
 
-Module optimisé pour le déploiement sur Heroku, avec gestion adaptée des variables d'environnement
-et des dépendances pour assurer un démarrage fiable.
+Version locale de heroku_app.py avec chargement des variables d'environnement depuis .env
 """
 
-import logging
+# Ajout du chargement des variables d'environnement depuis .env
 import os
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement depuis .env au démarrage
+load_dotenv()
+
+import logging
 import sys
 import traceback
 from pathlib import Path
@@ -31,7 +36,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     logger.info("DATABASE_URL corrigé pour SQLAlchemy 1.4+")
 
 # Définir l'environnement global
-os.environ["ENVIRONMENT"] = os.getenv("ENVIRONMENT", "production")
+os.environ["ENVIRONMENT"] = os.getenv("ENVIRONMENT", "development")
 
 # S'assurer que tous les modules sont accessibles
 current_dir = Path(__file__).parent.absolute()
@@ -50,15 +55,15 @@ async def lifespan(app: FastAPI):
     Initialise les ressources au démarrage et les libère à l'arrêt.
     """
     # Initialization
-    logger.info("Application Harena en démarrage sur Heroku...")
+    logger.info("Application Harena en démarrage en local...")
     
     # Vérification des variables d'environnement critiques
     required_env_vars = ["DATABASE_URL", "BRIDGE_CLIENT_ID", "BRIDGE_CLIENT_SECRET"]
     missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
     
     if missing_vars:
-        logger.error(f"Variables d'environnement critiques manquantes: {', '.join(missing_vars)}")
-        # On continue quand même, mais certaines fonctionnalités ne marcheront pas
+        logger.warning(f"Variables d'environnement manquantes: {', '.join(missing_vars)}")
+        logger.warning("Certaines fonctionnalités peuvent ne pas fonctionner correctement.")
     
     # Test de la connexion base de données
     try:
@@ -127,7 +132,7 @@ async def lifespan(app: FastAPI):
     yield  # L'application s'exécute ici
     
     # Nettoyage
-    logger.info("Application Harena en arrêt sur Heroku...")
+    logger.info("Application Harena en arrêt...")
     
     # Fermeture des connexions
     try:
@@ -303,10 +308,10 @@ except Exception as e:
 
 # ======== CRÉATION DE L'APPLICATION ========
 
-# Création de l'application FastAPI pour Heroku
+# Création de l'application FastAPI pour développement local
 app = FastAPI(
-    title="Harena Finance API (Heroku)",
-    description="API pour les services financiers Harena - Déploiement Heroku",
+    title="Harena Finance API (Local)",
+    description="API pour les services financiers Harena - Développement local",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -314,15 +319,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuration CORS sécurisée pour production
-ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "https://app.harena.finance").split(",")
-
+# Configuration CORS pour développement local
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],  # Permet toutes les origines en développement
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ======== INCLUSION DES ROUTERS ========
@@ -352,9 +355,9 @@ async def root():
     """
     return {
         "status": "ok",
-        "application": "Harena Finance API (Heroku)",
+        "application": "Harena Finance API (Local)",
         "version": "1.0.0",
-        "environment": os.environ.get("ENVIRONMENT", "production"),
+        "environment": os.environ.get("ENVIRONMENT", "development"),
         "services": service_registry.get_service_status(),
         "documentation": {
             "main": "/docs",
@@ -424,7 +427,7 @@ async def health_check():
         "elasticsearch": es_status,
         "bridge_api": bridge_status,
         "deepseek_api": deepseek_status,
-        "environment": os.environ.get("ENVIRONMENT", "production"),
+        "environment": os.environ.get("ENVIRONMENT", "development"),
         "timestamp": str(datetime.now())
     }
 
@@ -433,50 +436,59 @@ async def debug_info():
     """
     Endpoint pour le débogage - fournit des informations détaillées sur l'environnement.
     """
-    # Ne pas exposer d'informations sensibles en production
-    is_production = os.environ.get("ENVIRONMENT", "production").lower() == "production"
-    
-    if is_production:
-        return {
-            "status": "debug limited in production",
-            "timestamp": str(datetime.now()),
-            "environment": os.environ.get("ENVIRONMENT", "production"),
-            "services": service_registry.get_service_status()
-        }
-    else:
-        # Version plus détaillée pour dev/staging
-        return {
-            "status": "debug enabled",
-            "environment": os.environ.get("ENVIRONMENT", "unknown"),
-            "python_version": sys.version,
-            "services": service_registry.get_service_status(),
-            "database_config": {
-                "url_type": type(os.environ.get("DATABASE_URL", "")).__name__,
-                "url_length": len(os.environ.get("DATABASE_URL", "")),
-                "has_bridge_config": bool(os.environ.get("BRIDGE_CLIENT_ID", "")),
-                "has_deepseek_config": bool(os.environ.get("DEEPSEEK_API_KEY", "")),
-                "has_qdrant_config": bool(os.environ.get("QDRANT_URL", ""))
-            },
-            "memory_usage": {
-                "process": get_process_memory_usage()
-            },
-            "timestamp": str(datetime.now())
-        }
+    # Pour le développement local, afficher toutes les informations
+    return {
+        "status": "debug enabled",
+        "environment": os.environ.get("ENVIRONMENT", "development"),
+        "python_version": sys.version,
+        "services": service_registry.get_service_status(),
+        "database_config": {
+            "url_type": type(os.environ.get("DATABASE_URL", "")).__name__,
+            "url_length": len(os.environ.get("DATABASE_URL", "")),
+            "has_bridge_config": bool(os.environ.get("BRIDGE_CLIENT_ID", "")),
+            "has_deepseek_config": bool(os.environ.get("DEEPSEEK_API_KEY", "")),
+            "has_qdrant_config": bool(os.environ.get("QDRANT_URL", ""))
+        },
+        "env_vars": {k: v[:5] + "..." for k, v in os.environ.items() if "SECRET" not in k and "PASSWORD" not in k and "KEY" not in k},
+        "timestamp": str(datetime.now())
+    }
 
-def get_process_memory_usage():
-    """Obtient l'utilisation mémoire du processus actuel."""
-    try:
-        import psutil
-        process = psutil.Process(os.getpid())
-        memory_info = process.memory_info()
-        return {
-            "rss_mb": memory_info.rss / (1024 * 1024),
-            "vms_mb": memory_info.vms / (1024 * 1024)
-        }
-    except ImportError:
-        return {"error": "psutil not installed"}
-    except Exception as e:
-        return {"error": str(e)}
+@app.get("/setup-help", tags=["help"])
+async def setup_help():
+    """
+    Informations d'aide pour configurer l'environnement local.
+    """
+    return {
+        "title": "Aide à la configuration locale",
+        "description": "Instructions pour configurer l'environnement de développement local",
+        "required_env_vars": [
+            "DATABASE_URL", 
+            "BRIDGE_CLIENT_ID", 
+            "BRIDGE_CLIENT_SECRET",
+            "SECRET_KEY",
+            "WEBHOOK_BASE_URL"
+        ],
+        "optional_env_vars": [
+            "QDRANT_URL", 
+            "QDRANT_API_KEY",
+            "SEARCHBOX_URL",
+            "SEARCHBOX_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "OPENAI_API_KEY"
+        ],
+        "setup_steps": [
+            "1. Créez un fichier .env à la racine du projet",
+            "2. Définissez les variables d'environnement requises",
+            "3. Installez python-dotenv: pip install python-dotenv",
+            "4. Exécutez les migrations avec alembic upgrade head",
+            "5. Lancez l'application avec python local_app.py"
+        ],
+        "troubleshooting": [
+            "Si vous rencontrez des erreurs d'encodage, assurez-vous que tous vos fichiers sont en UTF-8 sans BOM",
+            "Pour résoudre les erreurs de connexion à la base de données, vérifiez que DATABASE_URL est correctement formaté",
+            "Pour les services externes (Bridge, Qdrant, etc.), vérifiez que les clés API sont valides"
+        ]
+    }
 
 # ======== GESTIONNAIRE D'EXCEPTIONS ========
 
@@ -487,23 +499,23 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     logger.error(f"Exception non gérée: {str(exc)}", exc_info=True)
     
-    # En production, ne pas exposer les détails de l'erreur
-    is_production = os.environ.get("ENVIRONMENT", "production").lower() == "production"
-    error_detail = "Une erreur interne est survenue. Contactez l'administrateur." if is_production else str(exc)
+    # En développement, montrer les détails de l'erreur
+    error_detail = str(exc)
     
     return JSONResponse(
         status_code=500,
         content={
             "status": "error",
             "message": "Internal server error",
-            "detail": error_detail
+            "detail": error_detail,
+            "path": str(request.url)
         }
     )
 
-# Point d'entrée pour le serveur gunicorn configuré dans Procfile
+# Point d'entrée pour le serveur en développement local
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     
-    logger.info(f"Démarrage autonome de l'application Harena sur port {port}")
-    uvicorn.run("heroku_app:app", host="0.0.0.0", port=port)
+    logger.info(f"Démarrage local de l'application Harena sur port {port}")
+    uvicorn.run("local_app:app", host="0.0.0.0", port=port, reload=True)

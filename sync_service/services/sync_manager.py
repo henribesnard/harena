@@ -1,4 +1,3 @@
-# sync_service/services/sync_manager.py
 """
 Service Manager de synchronisation pour Harena.
 
@@ -19,7 +18,7 @@ from user_service.models.user import User, BridgeConnection
 
 # Imports Services
 from user_service.services.bridge import get_bridge_token, get_bridge_accounts, get_bridge_categories, get_bridge_insights, get_bridge_stocks
-from user_service.core.config import settings
+from config_service.config import settings
 # Import forward-only pour éviter les dépendances circulaires
 # Le transaction_sync sera importé au besoin dans les fonctions spécifiques
 

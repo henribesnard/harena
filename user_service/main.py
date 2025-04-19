@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from user_service.api.endpoints import users
-from user_service.core.config import settings
+from config_service.config import settings
 
 # Configuration du logging
 logging.basicConfig(

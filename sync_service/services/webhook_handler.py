@@ -20,7 +20,7 @@ from user_service.models.user import User, BridgeConnection
 
 # Imports Services (éviter les importations circulaires)
 # sync_manager et transaction_sync seront importés au besoin dans les fonctions
-from user_service.core.config import settings
+from config_service.config import settings
 
 # Import Vector Storage Service (avec gestion d'erreur)
 try:

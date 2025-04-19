@@ -1,5 +1,5 @@
 """
-Interface avec Elasticsearch via SearchBox pour le service de recherche.
+Interface avec Elasticsearch via Bonsai pour le service de recherche.
 
 Ce module gère la connexion et les interactions avec le moteur de recherche
 Elasticsearch pour la recherche lexicale.
@@ -37,51 +37,20 @@ async def get_es_client() -> Optional[Any]:
     
     if _es_client is None:
         try:
-            # Utiliser l'URL de SearchBox
-            url = settings.SEARCHBOX_URL
-            api_key = settings.SEARCHBOX_API_KEY
+            # Utiliser l'URL de Bonsai avec priorité, puis fallback sur SearchBox si présent
+            url = settings.BONSAI_URL or settings.SEARCHBOX_URL
             
             if not url:
-                raise ValueError("SEARCHBOX_URL est manquante dans les variables d'environnement")
+                raise ValueError("URL Elasticsearch (BONSAI_URL) manquante dans les variables d'environnement")
             
-            # Options de compatibilité pour les services hébergés comme SearchBox
-            es_options = {
-                "request_timeout": 30,
-                "verify_certs": True,
-                "retry_on_timeout": True,
-                "max_retries": 3,
-                "meta_header": False,
-                #"ignore_status": [400, 401, 403, 404],  # Ignorer certains codes d'erreur
-                "headers": {
-                    "X-Elastic-Product": "Elasticsearch",  # Aide à l'identification
-                    "User-Agent": "HarenaSearchService/1.0"  
-                }
-            }
+            # Configuration simplifiée pour Bonsai
+            # L'URL contient déjà les identifiants de connexion
+            logger.info(f"Tentative de connexion à Elasticsearch avec l'URL: {url[:20]}...")
+            _es_client = AsyncElasticsearch([url])
+            logger.info("Client Elasticsearch connecté avec succès")
             
-            # Si l'URL contient déjà des identifiants, ne pas ajouter d'authentification séparée
-            if "@" in url:
-                _es_client = AsyncElasticsearch(
-                    [url],
-                    **es_options
-                )
-                logger.info("Client Elasticsearch connecté à SearchBox avec authentification intégrée dans l'URL")
-            # Sinon utiliser l'API key si présente
-            elif api_key:
-                _es_client = AsyncElasticsearch(
-                    [url],
-                    api_key=api_key,
-                    **es_options
-                )
-                logger.info("Client Elasticsearch connecté à SearchBox avec API key")
-            else:
-                # Connexion sans authentification (selon la configuration de SearchBox)
-                _es_client = AsyncElasticsearch(
-                    [url],
-                    **es_options
-                )
-                logger.info("Client Elasticsearch connecté à SearchBox sans authentification")
         except Exception as e:
-            logger.error(f"Impossible de se connecter à Elasticsearch (SearchBox): {str(e)}")
+            logger.error(f"Impossible de se connecter à Elasticsearch: {str(e)}")
             raise
     
     return _es_client
@@ -96,18 +65,13 @@ async def init_elasticsearch() -> Optional[Any]:
     try:
         client = await get_es_client()
         
-        # Vérifier la connectivité avec gestion adaptée des erreurs
+        # Vérifier la connectivité
         try:
             info = await client.info()
             logger.info(f"Elasticsearch connecté: version {info['version']['number']}")
         except Exception as e:
-            if "not Elasticsearch" in str(e) or "unknown product" in str(e).lower():
-                logger.warning("Serveur non reconnu comme Elasticsearch standard, mais la connexion est établie.")
-                # On continue malgré cette erreur spécifique à SearchBox
-                return client
-            else:
-                logger.error(f"Erreur lors de la vérification de la connexion Elasticsearch: {str(e)}")
-                raise
+            logger.error(f"Erreur lors de la vérification de la connexion Elasticsearch: {str(e)}")
+            return None
         
         return client
     except Exception as e:
@@ -219,11 +183,73 @@ async def search_transactions(user_id: int, query_text: str, filters: Dict[str, 
         return results
     except Exception as e:
         logger.error(f"Erreur lors de la recherche Elasticsearch: {str(e)}")
-        # En cas d'erreur spécifique à SearchBox, retourner une liste vide plutôt que lever une exception
-        if "not Elasticsearch" in str(e) or "unknown product" in str(e).lower():
-            logger.warning("Erreur SearchBox spécifique détectée, retour d'une liste vide")
-            return []
-        raise
+        return []
+
+async def create_transaction_index(user_id: int) -> bool:
+    """
+    Crée l'index de transactions pour un utilisateur.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        
+    Returns:
+        True si l'index a été créé avec succès, False sinon
+    """
+    index_name = f"transactions_{user_id}"
+    
+    # Configuration de base pour l'index
+    settings_body = {
+        "number_of_shards": 1,
+        "number_of_replicas": 1,
+        "analysis": {
+            "analyzer": {
+                "transaction_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "asciifolding"]
+                }
+            }
+        }
+    }
+    
+    # Mapping des champs pour les transactions
+    mappings_body = {
+        "properties": {
+            "user_id": {"type": "integer"},
+            "account_id": {"type": "integer"},
+            "bridge_transaction_id": {"type": "keyword"},
+            "amount": {"type": "float"},
+            "currency_code": {"type": "keyword"},
+            "description": {"type": "text", "analyzer": "transaction_analyzer"},
+            "clean_description": {"type": "text", "analyzer": "transaction_analyzer"},
+            "transaction_date": {"type": "date"},
+            "booking_date": {"type": "date"},
+            "value_date": {"type": "date"},
+            "category_id": {"type": "integer"},
+            "operation_type": {"type": "keyword"},
+            "is_recurring": {"type": "boolean"},
+            "merchant_id": {"type": "keyword"},
+            "merchant_name": {"type": "text", "analyzer": "transaction_analyzer"}
+        }
+    }
+    
+    return await ensure_index_exists(index_name, settings_body, mappings_body)
+
+async def get_indices_stats() -> Dict[str, Any]:
+    """
+    Récupère des statistiques sur les indices Elasticsearch.
+    
+    Returns:
+        Dictionnaire contenant les statistiques des indices
+    """
+    client = await get_es_client()
+    
+    try:
+        stats = await client.indices.stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des statistiques des indices: {str(e)}")
+        return {"error": str(e)}
 
 async def close_es_client():
     """Ferme la connexion au client Elasticsearch."""

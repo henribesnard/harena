@@ -57,6 +57,9 @@ class GlobalSettings(BaseSettings):
     # Configuration SearchBox pour Elasticsearch
     SEARCHBOX_URL: str = os.environ.get("SEARCHBOX_URL", "")
     SEARCHBOX_API_KEY: str = os.environ.get("SEARCHBOX_API_KEY", "")
+    BONSAI_URL: str = os.environ.get("BONSAI_URL", "")
+    BONSAI_ACCESS_KEY : str = os.environ.get("BONSAI_ACCESS_KEY", "")
+    BONSAI_SECRET_KEY : str = os.environ.get("BONSAI_SECRET_KEY", "")
     
     # Configuration Qdrant pour le stockage vectoriel
     QDRANT_URL: str = os.environ.get("QDRANT_URL", "")

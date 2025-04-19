@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     
     # Configuration logging
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
+
+    # Configuration de l'environnement
+    ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
     
     class Config:
         case_sensitive = True

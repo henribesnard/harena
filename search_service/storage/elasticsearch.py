@@ -50,9 +50,10 @@ async def get_es_client() -> Optional[Any]:
                 "verify_certs": True,
                 "retry_on_timeout": True,
                 "max_retries": 3,
-                #"ignore_status": [400, 401, 403, 404],  # Ignorer certains codes d'erreur
+                "ignore_status": [400, 401, 403, 404],  # Ignorer certains codes d'erreur
                 "headers": {
-                    "X-Elastic-Product": "Elasticsearch"  # Aide à l'identification
+                    "X-Elastic-Product": "Elasticsearch",  # Aide à l'identification
+                    "User-Agent": "HarenaSearchService/1.0"  # Ajouter un User-Agent personnalisé
                 }
             }
             
@@ -62,7 +63,7 @@ async def get_es_client() -> Optional[Any]:
                     [url],
                     **es_options
                 )
-                logger.info(f"Client Elasticsearch connecté à SearchBox avec authentification intégrée dans l'URL")
+                logger.info("Client Elasticsearch connecté à SearchBox avec authentification intégrée dans l'URL")
             # Sinon utiliser l'API key si présente
             elif api_key:
                 _es_client = AsyncElasticsearch(
@@ -70,14 +71,14 @@ async def get_es_client() -> Optional[Any]:
                     api_key=api_key,
                     **es_options
                 )
-                logger.info(f"Client Elasticsearch connecté à SearchBox avec API key")
+                logger.info("Client Elasticsearch connecté à SearchBox avec API key")
             else:
                 # Connexion sans authentification (selon la configuration de SearchBox)
                 _es_client = AsyncElasticsearch(
                     [url],
                     **es_options
                 )
-                logger.info(f"Client Elasticsearch connecté à SearchBox sans authentification")
+                logger.info("Client Elasticsearch connecté à SearchBox sans authentification")
         except Exception as e:
             logger.error(f"Impossible de se connecter à Elasticsearch (SearchBox): {str(e)}")
             raise
@@ -94,15 +95,17 @@ async def init_elasticsearch() -> Optional[Any]:
     try:
         client = await get_es_client()
         
-        # Vérifier la connectivité - ignorer l'erreur "unknown product"
+        # Vérifier la connectivité avec gestion adaptée des erreurs
         try:
             info = await client.info()
             logger.info(f"Elasticsearch connecté: version {info['version']['number']}")
         except Exception as e:
-            if "not Elasticsearch" in str(e):
-                logger.warning(f"Serveur non reconnu comme Elasticsearch standard, mais la connexion est établie.")
-                # On continue malgré cette erreur spécifique
+            if "not Elasticsearch" in str(e) or "unknown product" in str(e).lower():
+                logger.warning("Serveur non reconnu comme Elasticsearch standard, mais la connexion est établie.")
+                # On continue malgré cette erreur spécifique à SearchBox
+                return client
             else:
+                logger.error(f"Erreur lors de la vérification de la connexion Elasticsearch: {str(e)}")
                 raise
         
         return client
@@ -144,11 +147,91 @@ async def ensure_index_exists(index_name: str, settings_body: Dict[str, Any], ma
         logger.error(f"Erreur lors de la création de l'index {index_name}: {str(e)}")
         return False
 
+async def search_transactions(user_id: int, query_text: str, filters: Dict[str, Any] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Effectue une recherche dans les transactions d'un utilisateur.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        query_text: Texte de la requête
+        filters: Filtres additionnels à appliquer
+        limit: Nombre de résultats maximum
+        
+    Returns:
+        Liste des résultats de recherche
+    """
+    client = await get_es_client()
+    index_name = f"transactions_{user_id}"
+    
+    try:
+        # Vérifier si l'index existe
+        exists = await client.indices.exists(index=index_name)
+        if not exists:
+            logger.warning(f"Index {index_name} n'existe pas encore. Aucun résultat.")
+            return []
+        
+        # Préparer la requête Elasticsearch
+        es_query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"multi_match": {
+                            "query": query_text,
+                            "fields": ["description^3", "merchant_name^4", "category^2", "clean_description^3.5"],
+                            "type": "best_fields",
+                            "operator": "or",
+                            "fuzziness": "AUTO"
+                        }}
+                    ]
+                }
+            },
+            "size": limit,
+            "highlight": {
+                "fields": {
+                    "description": {},
+                    "merchant_name": {},
+                    "clean_description": {}
+                },
+                "pre_tags": ["<em>"],
+                "post_tags": ["</em>"]
+            }
+        }
+        
+        # Ajouter les filtres si présents
+        if filters:
+            es_query["query"]["bool"]["filter"] = filters
+        
+        # Exécuter la recherche
+        response = await client.search(index=index_name, body=es_query)
+        
+        # Transformer les résultats
+        results = []
+        for hit in response["hits"]["hits"]:
+            result = {
+                "id": hit["_id"],
+                "content": hit["_source"],
+                "score": hit["_score"],
+                "highlight": hit.get("highlight", {})
+            }
+            results.append(result)
+        
+        return results
+    except Exception as e:
+        logger.error(f"Erreur lors de la recherche Elasticsearch: {str(e)}")
+        # En cas d'erreur spécifique à SearchBox, retourner une liste vide plutôt que lever une exception
+        if "not Elasticsearch" in str(e) or "unknown product" in str(e).lower():
+            logger.warning("Erreur SearchBox spécifique détectée, retour d'une liste vide")
+            return []
+        raise
+
 async def close_es_client():
     """Ferme la connexion au client Elasticsearch."""
     global _es_client
     
     if _es_client is not None:
-        await _es_client.close()
-        _es_client = None
-        logger.info("Connexion Elasticsearch fermée")
+        try:
+            await _es_client.close()
+            _es_client = None
+            logger.info("Connexion Elasticsearch fermée")
+        except Exception as e:
+            logger.error(f"Erreur lors de la fermeture de la connexion Elasticsearch: {str(e)}")

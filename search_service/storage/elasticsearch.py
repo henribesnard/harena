@@ -50,10 +50,10 @@ async def get_es_client() -> Optional[Any]:
                 "verify_certs": True,
                 "retry_on_timeout": True,
                 "max_retries": 3,
-                "ignore_status": [400, 401, 403, 404],  # Ignorer certains codes d'erreur
+                #"ignore_status": [400, 401, 403, 404],  # Ignorer certains codes d'erreur
                 "headers": {
                     "X-Elastic-Product": "Elasticsearch",  # Aide à l'identification
-                    "User-Agent": "HarenaSearchService/1.0"  # Ajouter un User-Agent personnalisé
+                    "User-Agent": "HarenaSearchService/1.0"  
                 }
             }
             

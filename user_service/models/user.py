@@ -13,12 +13,11 @@ class User(Base, TimestampMixin):
     last_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     
-    # Relations à l'intérieur de user_service
+    # Relations
     bridge_connections = relationship("BridgeConnection", back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
     
-    # Supprimer TOUTES les références à sync_service
-    # Ne pas définir les relations aux modèles de sync_service ici
+    # Ne pas définir de relations inverses avec sync_service pour éviter l'import circulaire
 
 
 class BridgeConnection(Base, TimestampMixin):

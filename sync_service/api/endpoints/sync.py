@@ -45,24 +45,60 @@ async def refresh_sync(
 ):
     """
     Déclenche une nouvelle synchronisation pour tous les items de l'utilisateur.
-    La synchronisation s'exécute en arrière-plan pour éviter les timeouts.
+    Vérifie d'abord si les items existent, les crée si nécessaire, puis lance la synchronisation.
     
     Returns:
         Dict: Statut de démarrage de la synchronisation
     """
-    # Récupérer tous les items actifs de l'utilisateur
+    # Récupérer les items actifs existants de l'utilisateur
     items = db.query(SyncItem).filter(
         SyncItem.user_id == current_user.id,
         SyncItem.status == 0  # Seulement les items sans erreur
     ).all()
     
+    # Si aucun item actif n'est trouvé, vérifier les items Bridge et les créer
     if not items:
-        return {
-            "status": "warning",
-            "message": "No active items found to synchronize"
-        }
+        try:
+            # Obtenir le token Bridge
+            from user_service.services.bridge import get_bridge_token, get_bridge_items
+            from sync_service.sync_manager.orchestrator import create_or_update_sync_item
+            
+            token_data = await get_bridge_token(db, current_user.id)
+            access_token = token_data["access_token"]
+            
+            # Récupérer les items depuis Bridge API
+            bridge_items = await get_bridge_items(db, current_user.id, access_token)
+            
+            if not bridge_items:
+                return {
+                    "status": "warning",
+                    "message": "No items found in Bridge API. Please connect a bank account first."
+                }
+            
+            # Créer les items dans la base de données locale
+            created_items = []
+            for item_data in bridge_items:
+                item = await create_or_update_sync_item(db, current_user.id, item_data["id"], item_data)
+                if item.status == 0:  # Seulement les items actifs
+                    created_items.append(item)
+            
+            if not created_items:
+                return {
+                    "status": "warning",
+                    "message": "Items found in Bridge API, but none are in active state."
+                }
+            
+            items = created_items
+            
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error synchronizing items from Bridge: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "message": f"Failed to synchronize items from Bridge API: {str(e)}"
+            }
     
-    # Démarrer la synchronisation en arrière-plan
+    # Démarrer la synchronisation en arrière-plan pour tous les items récupérés/créés
     background_tasks.add_task(
         process_sync_background,
         user_id=current_user.id,

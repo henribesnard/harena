@@ -643,3 +643,51 @@ async def get_bridge_insights(db: Session, user_id: int) -> Optional[Dict[str, A
     except Exception as e:
         logger.error(f"Unexpected error in get_bridge_insights for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get insights: {e}")
+    
+async def get_bridge_items(db: Session, user_id: int, access_token: str = None) -> List[Dict[str, Any]]:
+    """
+    Récupère tous les items Bridge d'un utilisateur.
+    
+    Args:
+        db: Session de base de données
+        user_id: ID de l'utilisateur
+        access_token: Token d'accès Bridge (optionnel)
+        
+    Returns:
+        List[Dict]: Liste des items Bridge
+    """
+    logger.info(f"Récupération des items Bridge pour l'utilisateur {user_id}")
+    
+    # Utiliser le token fourni ou récupérer un nouveau
+    if not access_token:
+        token_data = await get_bridge_token(db, user_id)
+        access_token = token_data["access_token"]
+    
+    # Construire les en-têtes avec le token
+    headers = {
+        "accept": "application/json",
+        "Bridge-Version": settings.BRIDGE_API_VERSION,
+        "Client-Id": settings.BRIDGE_CLIENT_ID,
+        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
+        "authorization": f"Bearer {access_token}"
+    }
+    
+    url = f"{settings.BRIDGE_API_URL}/aggregation/items"
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extraire les ressources (items) de la réponse
+            items = data.get("resources", [])
+            logger.info(f"Récupéré {len(items)} items Bridge pour l'utilisateur {user_id}")
+            
+            return items
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Erreur HTTP lors de la récupération des items Bridge: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Bridge API error: {e.response.text}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des items Bridge: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get Bridge items: {e}")

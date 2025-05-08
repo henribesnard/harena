@@ -10,7 +10,7 @@ Ce module initialise et démarre tous les services de la plateforme financière 
 import logging
 import uvicorn
 import os
-from fastapi import FastAPI, Request, FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional
@@ -43,13 +43,10 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Variables d'environnement manquantes: {', '.join(missing_vars)}")
         logger.warning("Certaines fonctionnalités peuvent ne pas fonctionner correctement.")
     
-    # Tout le code d'initialisation ici
-    
     yield  # L'application s'exécute ici
     
     # Cleanup code
     logger.info("Application Harena en arrêt...")
-    # Tout le code de nettoyage ici
 
 # ======== CRÉATION DE L'APPLICATION ========
 
@@ -65,9 +62,10 @@ app = FastAPI(
 )
 
 # Configuration CORS
+origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,https://app.harena.finance").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # À restreindre en production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

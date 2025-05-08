@@ -11,12 +11,12 @@ import sys
 import traceback
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Configuration du logging pour développement
 logging.basicConfig(
@@ -160,53 +160,133 @@ except ImportError as e:
     service_registry.register("user_service", status="failed")
     logger.info("Pour activer le User Service, assurez-vous que les modules user_service et config_service sont disponibles")
 
-# Sync Service - Synchronisation
+# Sync Service - Utiliser l'API router centralisé pour enregistrer tous les endpoints
 try:
-    from sync_service.api.endpoints import sync as sync_router
-    service_registry.register(
-        "sync_service", 
-        router=sync_router.router,
-        prefix="/api/v1/sync",
-        status="ok"
-    )
-    logger.info("Sync Service importé avec succès, préfixe: /api/v1/sync")
+    from sync_service.api.router import register_routers, setup_middleware
+    from sync_service.main import create_app as create_sync_app
+    
+    # Créer l'application Sync Service
+    sync_app = create_sync_app()
+    service_registry.register("sync_service_app", router=None, status="ok")
+    
+    # Enregistrer les endpoints d'API Sync Service
+    try:
+        from sync_service.api.endpoints.sync import router as sync_router
+        service_registry.register(
+            "sync_service", 
+            router=sync_router,
+            prefix="/api/v1/sync",
+            status="ok"
+        )
+        logger.info("Sync Service importé avec succès, préfixe: /api/v1/sync")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Sync Router: {e}")
+        logger.error(traceback.format_exc())
+        service_registry.register("sync_service", status="failed")
+        
+    # Sync Service - Transactions
+    try:
+        from sync_service.api.endpoints.transactions import router as transactions_router
+        service_registry.register(
+            "transactions_service", 
+            router=transactions_router,
+            prefix="/api/v1/transactions",
+            status="ok"
+        )
+        logger.info("Transactions Service importé avec succès, préfixe: /api/v1/transactions")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Transactions Router: {e}")
+        service_registry.register("transactions_service", status="failed")
+    
+    # Sync Service - Webhooks
+    try:
+        from sync_service.api.endpoints.webhooks import router as webhooks_router
+        service_registry.register(
+            "webhooks_service", 
+            router=webhooks_router,
+            prefix="/webhooks",  # Important! Le préfixe doit correspondre à celui utilisé dans le router
+            status="ok"
+        )
+        logger.info("Webhooks Service importé avec succès, préfixe: /webhooks")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Webhooks Router: {e}")
+        service_registry.register("webhooks_service", status="failed")
+    
+    # Sync Service - Comptes
+    try:
+        from sync_service.api.endpoints.accounts import router as accounts_router
+        service_registry.register(
+            "accounts_service", 
+            router=accounts_router,
+            prefix="/api/v1/accounts",
+            status="ok"
+        )
+        logger.info("Accounts Service importé avec succès, préfixe: /api/v1/accounts")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Accounts Router: {e}")
+        service_registry.register("accounts_service", status="failed")
+    
+    # Sync Service - Items
+    try:
+        from sync_service.api.endpoints.items import router as items_router
+        service_registry.register(
+            "items_service", 
+            router=items_router,
+            prefix="/api/v1/items",
+            status="ok"
+        )
+        logger.info("Items Service importé avec succès, préfixe: /api/v1/items")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Items Router: {e}")
+        service_registry.register("items_service", status="failed")
+        
+    # Sync Service - Stocks
+    try:
+        from sync_service.api.endpoints.stocks import router as stocks_router
+        service_registry.register(
+            "stocks_service", 
+            router=stocks_router,
+            prefix="/api/v1/stocks",
+            status="ok"
+        )
+        logger.info("Stocks Service importé avec succès, préfixe: /api/v1/stocks")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Stocks Router: {e}")
+        service_registry.register("stocks_service", status="failed")
+    
+    # Sync Service - Categories
+    try:
+        from sync_service.api.endpoints.categories import router as categories_router
+        service_registry.register(
+            "categories_service", 
+            router=categories_router,
+            prefix="/api/v1/categories",
+            status="ok"
+        )
+        logger.info("Categories Service importé avec succès, préfixe: /api/v1/categories")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Categories Router: {e}")
+        service_registry.register("categories_service", status="failed")
+    
+    # Sync Service - Insights
+    try:
+        from sync_service.api.endpoints.insights import router as insights_router
+        service_registry.register(
+            "insights_service", 
+            router=insights_router,
+            prefix="/api/v1/insights",
+            status="ok"
+        )
+        logger.info("Insights Service importé avec succès, préfixe: /api/v1/insights")
+    except ImportError as e:
+        logger.error(f"Erreur lors de l'importation du Insights Router: {e}")
+        service_registry.register("insights_service", status="failed")
+        
 except ImportError as e:
     logger.error(f"Erreur lors de l'importation du Sync Service: {e}")
     logger.error(traceback.format_exc())
-    service_registry.register("sync_service", status="failed")
+    service_registry.register("sync_service_app", status="failed")
     logger.info("Pour activer le Sync Service, assurez-vous que le module sync_service est disponible")
-
-# Sync Service - Webhooks
-try:
-    from sync_service.api.endpoints import webhooks as webhooks_router
-    service_registry.register(
-        "webhooks_service", 
-        router=webhooks_router.router,
-        prefix="/webhooks",  # Important! Le préfixe doit correspondre à celui utilisé dans le router
-        status="ok"
-    )
-    logger.info("Webhooks Service importé avec succès, préfixe: /webhooks")
-except ImportError as e:
-    logger.error(f"Erreur lors de l'importation du Webhooks Service: {e}")
-    logger.error(traceback.format_exc())
-    service_registry.register("webhooks_service", status="failed")
-    logger.info("Pour activer le Webhooks Service, assurez-vous que sync_service.api.endpoints.webhooks est disponible")
-
-# Sync Service - Enrichissement
-try:
-    from sync_service.api.endpoints import enrichment as enrichment_router
-    service_registry.register(
-        "enrichment_service", 
-        router=enrichment_router.router,
-        prefix="/api/v1/enrichment",
-        status="ok"
-    )
-    logger.info("Enrichment Service importé avec succès, préfixe: /api/v1/enrichment")
-except ImportError as e:
-    logger.error(f"Erreur lors de l'importation du Enrichment Service: {e}")
-    logger.error(traceback.format_exc())
-    service_registry.register("enrichment_service", status="failed")
-    logger.info("Pour activer l'Enrichment Service, assurez-vous que sync_service.api.endpoints.enrichment est disponible")
 
 # ======== INCLUSION DES ROUTERS ========
 
@@ -306,7 +386,7 @@ async def debug_info():
     }
 
 @app.get("/test-webhook", tags=["debug"])
-async def test_webhook():
+async def test_webhook(background_tasks: BackgroundTasks):
     """
     Endpoint pour tester manuellement le traitement d'un webhook Bridge.
     

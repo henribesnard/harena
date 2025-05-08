@@ -8,7 +8,7 @@ import uuid
 
 from sync_service.models.base import Base, TimestampMixin
 
-# NE PAS importer User directement ici!
+# IMPORTANT: Ne pas importer User du tout
 
 class ConversationState(PyEnum):
     ACTIVE = "ACTIVE"
@@ -47,9 +47,8 @@ class SyncItem(Base, TimestampMixin):
     last_successful_refresh = Column(DateTime(timezone=True), nullable=True)
     last_try_refresh = Column(DateTime(timezone=True), nullable=True)
     
-    # Relations
-    # Laisser la relation user avec la chaîne simple
-    user = relationship("User")
+    # Relations uniquement avec les modèles du même service
+    # SUPPRIMEZ complètement la relation 'user'
     accounts = relationship("SyncAccount", back_populates="item", cascade="all, delete-orphan")
 
 class SyncAccount(Base, TimestampMixin):
@@ -112,7 +111,7 @@ class RawTransaction(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_transactions")
-    user = relationship("User")
+    # SUPPRIMEZ la relation 'user'
 
 class BridgeCategory(Base, TimestampMixin):
     __tablename__ = "bridge_categories"
@@ -145,7 +144,7 @@ class RawStock(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_stocks")
-    user = relationship("User")
+    # SUPPRIMEZ la relation 'user'
 
 class AccountInformation(Base, TimestampMixin):
     __tablename__ = "account_information"
@@ -158,7 +157,7 @@ class AccountInformation(Base, TimestampMixin):
     account_details = Column(JSON, nullable=True)
     
     # Relations
-    user = relationship("User")
+    # SUPPRIMEZ la relation 'user'
     item = relationship("SyncItem")
 
 class BridgeInsight(Base, TimestampMixin):
@@ -173,7 +172,7 @@ class BridgeInsight(Base, TimestampMixin):
     fully_analyzed_day = Column(Integer, nullable=True)
     
     # Relations
-    user = relationship("User")
+    # SUPPRIMEZ la relation 'user'
 
 class SyncTask(Base, TimestampMixin):
     __tablename__ = "sync_tasks"
@@ -192,7 +191,7 @@ class SyncTask(Base, TimestampMixin):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
-    user = relationship("User")
+    # SUPPRIMEZ la relation 'user'
     item = relationship("SyncItem")
 
 class SyncStat(Base, TimestampMixin):
@@ -209,9 +208,6 @@ class SyncStat(Base, TimestampMixin):
     metrics = Column(JSON, nullable=False)
     
     # Relations
-    user = relationship("User")
+    # SUPPRIMEZ la relation 'user'
     item = relationship("SyncItem")
     account = relationship("SyncAccount")
-
-# IMPORTANT: Ajouter cette ligne à la fin du fichier pour assurer que la classe User est importée
-from user_service.models.user import User

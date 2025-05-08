@@ -1,0 +1,88 @@
+# Environnements virtuels
+venv/
+env/
+ENV/
+.env
+
+# Fichiers Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs et bases de données locales
+*.log
+*.sqlite
+*.db
+
+# Fichiers de cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Dossiers spécifiques à l'IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Fichiers spécifiques au projet
+.env
+*.pem
+*.key
+secrets.json
+config.json
+!alembic/versions/.gitkeep
+*.md
+
+
+# Dossiers de données locales ou volumineuses
+data/
+temp/
+uploads/
+
+# Fichiers Docker
+.dockerignore
+
+# Fichiers générés par l'application
+.generated/
+test_output/
+test_enrichissement.py
+
+# Dépendances Node.js (si vous ajoutez un frontend plus tard)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+conversation_service/
+transaction_vector_service/

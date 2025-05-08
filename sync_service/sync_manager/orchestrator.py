@@ -13,8 +13,8 @@ from typing import Dict, List, Any, Optional, Tuple
 from fastapi import HTTPException
 
 # Import des modèles
-from sync_service.models.sync import SyncItem, SyncAccount
-from user_service.models.user import User, BridgeConnection
+from db_service.models.sync import SyncItem, SyncAccount
+from db_service.models.user import User, BridgeConnection
 
 # Import des services
 from config_service.config import settings

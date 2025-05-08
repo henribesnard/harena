@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, List, Union
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from user_service.models.user import User, BridgeConnection
+from db_service.models.user import User, BridgeConnection
 from config_service.config import settings
 
 

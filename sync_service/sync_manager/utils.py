@@ -10,8 +10,8 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 
-from user_service.models.user import User
-from sync_service.models.sync import SyncItem, SyncAccount
+from db_service.models.user import User
+from db_service.models.sync import SyncItem, SyncAccount
 from sync_service.utils.logging import get_contextual_logger
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ def get_transaction_stats(db: Session, user_id: int) -> Dict[str, Any]:
     Returns:
         Dict: Statistiques sur les transactions
     """
-    from sync_service.models.sync import RawTransaction
+    from db_service.models.sync import RawTransaction
     from sqlalchemy import func, and_
     
     stats = {

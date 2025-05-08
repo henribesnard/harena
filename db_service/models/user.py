@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, JSON
 from sqlalchemy.orm import relationship
-from user_service.models.base import Base, TimestampMixin
 
+from db_service.base import Base, TimestampMixin
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"
@@ -13,12 +13,12 @@ class User(Base, TimestampMixin):
     last_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     
-    # Relations - uniquement avec les modèles du même service
+    # Relations
     bridge_connections = relationship("BridgeConnection", back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
-    
-    # Pas de relations avec sync_service
-
+    # Relations avec les modèles de synchronisation
+    sync_items = relationship("SyncItem", back_populates="user", cascade="all, delete-orphan")
+    # Autres relations cross-service
 
 class BridgeConnection(Base, TimestampMixin):
     __tablename__ = "bridge_connections"
@@ -32,7 +32,6 @@ class BridgeConnection(Base, TimestampMixin):
     
     # Relations
     user = relationship("User", back_populates="bridge_connections")
-
 
 class UserPreference(Base, TimestampMixin):
     __tablename__ = "user_preferences"

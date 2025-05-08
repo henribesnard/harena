@@ -8,7 +8,7 @@ import logging
 from sqlalchemy.orm import Session
 from typing import Dict, List, Any, Optional
 
-from sync_service.models.sync import BridgeCategory
+from db_service.models.sync import BridgeCategory
 from sync_service.utils.logging import get_contextual_logger
 
 logger = logging.getLogger(__name__)

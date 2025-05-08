@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 
-from user_service.db.session import get_db
+from db_service.session import get_db
 from user_service.api.deps import get_current_active_user
-from user_service.models.user import User
-from sync_service.models.sync import SyncAccount, LoanDetail, RawStock, AccountInformation
+from db_service.models.user import User
+from db_service.models.sync import SyncAccount, LoanDetail, RawStock, AccountInformation
 import logging
 
 router = APIRouter()

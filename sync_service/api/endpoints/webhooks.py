@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 
-from user_service.db.session import get_db
+from db_service.session import get_db
 from config_service.config import settings
 from sync_service.webhook_handler.processor import process_webhook, validate_webhook
 

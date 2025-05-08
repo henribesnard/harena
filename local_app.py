@@ -406,7 +406,7 @@ async def test_webhook(background_tasks: BackgroundTasks):
         }
         
         # Obtenir une session de base de données
-        from user_service.db.session import get_db
+        from db_service.session import get_db
         db = next(get_db())
         
         # Traiter le webhook

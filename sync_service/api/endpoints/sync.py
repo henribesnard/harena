@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 from datetime import datetime
 
-from user_service.db.session import get_db
+from db_service.session import get_db
 from user_service.api.deps import get_current_active_user
-from user_service.models.user import User
-from sync_service.models.sync import SyncItem
+from db_service.models.user import User
+from db_service.models.sync import SyncItem
 import logging
 
 # Import des services de gestion de la synchronisation

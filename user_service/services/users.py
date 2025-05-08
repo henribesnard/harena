@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from typing import Optional, List
 
-from user_service.models.user import User, UserPreference
+from db_service.models.user import User, UserPreference
 from user_service.schemas.user import UserCreate, UserUpdate
 from user_service.core.security import get_password_hash, verify_password
 

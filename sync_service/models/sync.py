@@ -46,7 +46,7 @@ class SyncItem(Base, TimestampMixin):
     last_try_refresh = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
-    # Définir la relation de clé étrangère avec User sans back_populates
+    # Référence à User sans back_populates
     user = relationship("User")
     accounts = relationship("SyncAccount", back_populates="item", cascade="all, delete-orphan")
 
@@ -110,7 +110,8 @@ class RawTransaction(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_transactions")
-    user = relationship("User", back_populates="raw_transactions")
+    # Référence à User sans back_populates
+    user = relationship("User")
 
 class BridgeCategory(Base, TimestampMixin):
     __tablename__ = "bridge_categories"
@@ -143,7 +144,8 @@ class RawStock(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_stocks")
-    user = relationship("User", back_populates="raw_stocks")
+    # Référence à User sans back_populates
+    user = relationship("User")
 
 class AccountInformation(Base, TimestampMixin):
     __tablename__ = "account_information"
@@ -156,6 +158,7 @@ class AccountInformation(Base, TimestampMixin):
     account_details = Column(JSON, nullable=True)
     
     # Relations
+    # Référence à User sans back_populates
     user = relationship("User")
     item = relationship("SyncItem")
 
@@ -171,6 +174,7 @@ class BridgeInsight(Base, TimestampMixin):
     fully_analyzed_day = Column(Integer, nullable=True)
     
     # Relations
+    # Référence à User sans back_populates
     user = relationship("User")
 
 class SyncTask(Base, TimestampMixin):
@@ -190,6 +194,7 @@ class SyncTask(Base, TimestampMixin):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
+    # Référence à User sans back_populates
     user = relationship("User")
     item = relationship("SyncItem")
 
@@ -207,6 +212,7 @@ class SyncStat(Base, TimestampMixin):
     metrics = Column(JSON, nullable=False)
     
     # Relations
+    # Référence à User sans back_populates
     user = relationship("User")
     item = relationship("SyncItem")
     account = relationship("SyncAccount")

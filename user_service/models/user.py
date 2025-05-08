@@ -16,7 +16,12 @@ class User(Base, TimestampMixin):
     # Relations
     bridge_connections = relationship("BridgeConnection", back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
-    sync_items = relationship("SyncItem", back_populates="user", cascade="all, delete-orphan")
+    
+    # Utiliser une référence par chaîne pour les modèles sync_service afin d'éviter les imports circulaires
+    # Supprimer la relation sync_items ici - elle sera définie dans sync_service
+    raw_transactions = relationship("RawTransaction", back_populates="user")
+    raw_stocks = relationship("RawStock", back_populates="user")
+
 
 class BridgeConnection(Base, TimestampMixin):
     __tablename__ = "bridge_connections"

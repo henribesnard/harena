@@ -46,7 +46,8 @@ class SyncItem(Base, TimestampMixin):
     last_try_refresh = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
-    user = relationship("User", back_populates="sync_items")
+    # Définir la relation de clé étrangère avec User sans back_populates
+    user = relationship("User")
     accounts = relationship("SyncAccount", back_populates="item", cascade="all, delete-orphan")
 
 class SyncAccount(Base, TimestampMixin):

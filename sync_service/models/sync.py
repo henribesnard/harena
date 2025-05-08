@@ -8,6 +8,8 @@ import uuid
 
 from sync_service.models.base import Base, TimestampMixin
 
+# NE PAS importer User directement ici!
+
 class ConversationState(PyEnum):
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
@@ -46,8 +48,8 @@ class SyncItem(Base, TimestampMixin):
     last_try_refresh = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
-    # Utilisation de référence par chaîne simple et sans back_populates
-    user = relationship("User", foreign_keys=[user_id])
+    # Laisser la relation user avec la chaîne simple
+    user = relationship("User")
     accounts = relationship("SyncAccount", back_populates="item", cascade="all, delete-orphan")
 
 class SyncAccount(Base, TimestampMixin):
@@ -110,8 +112,7 @@ class RawTransaction(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_transactions")
-    # Référence simple par chaîne
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User")
 
 class BridgeCategory(Base, TimestampMixin):
     __tablename__ = "bridge_categories"
@@ -144,8 +145,7 @@ class RawStock(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_stocks")
-    # Référence simple par chaîne
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User")
 
 class AccountInformation(Base, TimestampMixin):
     __tablename__ = "account_information"
@@ -158,8 +158,7 @@ class AccountInformation(Base, TimestampMixin):
     account_details = Column(JSON, nullable=True)
     
     # Relations
-    # Référence simple par chaîne
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User")
     item = relationship("SyncItem")
 
 class BridgeInsight(Base, TimestampMixin):
@@ -174,8 +173,7 @@ class BridgeInsight(Base, TimestampMixin):
     fully_analyzed_day = Column(Integer, nullable=True)
     
     # Relations
-    # Référence simple par chaîne
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User")
 
 class SyncTask(Base, TimestampMixin):
     __tablename__ = "sync_tasks"
@@ -194,8 +192,7 @@ class SyncTask(Base, TimestampMixin):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
-    # Référence simple par chaîne
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User")
     item = relationship("SyncItem")
 
 class SyncStat(Base, TimestampMixin):
@@ -212,7 +209,9 @@ class SyncStat(Base, TimestampMixin):
     metrics = Column(JSON, nullable=False)
     
     # Relations
-    # Référence simple par chaîne
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User")
     item = relationship("SyncItem")
     account = relationship("SyncAccount")
+
+# IMPORTANT: Ajouter cette ligne à la fin du fichier pour assurer que la classe User est importée
+from user_service.models.user import User

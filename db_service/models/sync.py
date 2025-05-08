@@ -6,7 +6,7 @@ from enum import Enum as PyEnum
 from datetime import datetime, timezone
 import uuid
 
-from sync_service.models.base import Base, TimestampMixin
+from db_service.base import Base, TimestampMixin
 
 # IMPORTANT: Ne pas importer User du tout
 

@@ -8,8 +8,6 @@ import uuid
 
 from db_service.base import Base, TimestampMixin
 
-# IMPORTANT: Ne pas importer User du tout
-
 class ConversationState(PyEnum):
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
@@ -47,9 +45,12 @@ class SyncItem(Base, TimestampMixin):
     last_successful_refresh = Column(DateTime(timezone=True), nullable=True)
     last_try_refresh = Column(DateTime(timezone=True), nullable=True)
     
-    # Relations uniquement avec les modèles du même service
-    # SUPPRIMEZ complètement la relation 'user'
+    # Relations
+    user = relationship("User", back_populates="sync_items")
     accounts = relationship("SyncAccount", back_populates="item", cascade="all, delete-orphan")
+    account_info = relationship("AccountInformation", back_populates="item", cascade="all, delete-orphan")
+    sync_tasks = relationship("SyncTask", back_populates="item", cascade="all, delete-orphan")
+    sync_stats = relationship("SyncStat", back_populates="item", cascade="all, delete-orphan")
 
 class SyncAccount(Base, TimestampMixin):
     __tablename__ = "sync_accounts"
@@ -69,6 +70,7 @@ class SyncAccount(Base, TimestampMixin):
     loan_details = relationship("LoanDetail", uselist=False, back_populates="account", cascade="all, delete-orphan")
     raw_transactions = relationship("RawTransaction", back_populates="account", cascade="all, delete-orphan")
     raw_stocks = relationship("RawStock", back_populates="account", cascade="all, delete-orphan")
+    sync_stats = relationship("SyncStat", back_populates="account", cascade="all, delete-orphan")
 
 class LoanDetail(Base, TimestampMixin):
     __tablename__ = "loan_details"
@@ -111,7 +113,7 @@ class RawTransaction(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_transactions")
-    # SUPPRIMEZ la relation 'user'
+    user = relationship("User", back_populates="raw_transactions")
 
 class BridgeCategory(Base, TimestampMixin):
     __tablename__ = "bridge_categories"
@@ -144,7 +146,7 @@ class RawStock(Base, TimestampMixin):
     
     # Relations
     account = relationship("SyncAccount", back_populates="raw_stocks")
-    # SUPPRIMEZ la relation 'user'
+    user = relationship("User", back_populates="raw_stocks")
 
 class AccountInformation(Base, TimestampMixin):
     __tablename__ = "account_information"
@@ -157,8 +159,8 @@ class AccountInformation(Base, TimestampMixin):
     account_details = Column(JSON, nullable=True)
     
     # Relations
-    # SUPPRIMEZ la relation 'user'
-    item = relationship("SyncItem")
+    user = relationship("User", back_populates="account_information")
+    item = relationship("SyncItem", back_populates="account_info")
 
 class BridgeInsight(Base, TimestampMixin):
     __tablename__ = "bridge_insights"
@@ -172,7 +174,7 @@ class BridgeInsight(Base, TimestampMixin):
     fully_analyzed_day = Column(Integer, nullable=True)
     
     # Relations
-    # SUPPRIMEZ la relation 'user'
+    user = relationship("User", back_populates="bridge_insights")
 
 class SyncTask(Base, TimestampMixin):
     __tablename__ = "sync_tasks"
@@ -191,8 +193,8 @@ class SyncTask(Base, TimestampMixin):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relations
-    # SUPPRIMEZ la relation 'user'
-    item = relationship("SyncItem")
+    user = relationship("User", back_populates="sync_tasks")
+    item = relationship("SyncItem", back_populates="sync_tasks")
 
 class SyncStat(Base, TimestampMixin):
     __tablename__ = "sync_stats"
@@ -208,6 +210,6 @@ class SyncStat(Base, TimestampMixin):
     metrics = Column(JSON, nullable=False)
     
     # Relations
-    # SUPPRIMEZ la relation 'user'
-    item = relationship("SyncItem")
-    account = relationship("SyncAccount")
+    user = relationship("User", back_populates="sync_stats")
+    item = relationship("SyncItem", back_populates="sync_stats")
+    account = relationship("SyncAccount", back_populates="sync_stats")

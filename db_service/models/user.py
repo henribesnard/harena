@@ -12,13 +12,20 @@ class User(Base, TimestampMixin):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
     
     # Relations
     bridge_connections = relationship("BridgeConnection", back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    
     # Relations avec les modèles de synchronisation
     sync_items = relationship("SyncItem", back_populates="user", cascade="all, delete-orphan")
-    # Autres relations cross-service
+    raw_transactions = relationship("RawTransaction", back_populates="user", cascade="all, delete-orphan")
+    raw_stocks = relationship("RawStock", back_populates="user", cascade="all, delete-orphan")
+    account_information = relationship("AccountInformation", back_populates="user", cascade="all, delete-orphan")
+    bridge_insights = relationship("BridgeInsight", back_populates="user", cascade="all, delete-orphan")
+    sync_tasks = relationship("SyncTask", back_populates="user", cascade="all, delete-orphan")
+    sync_stats = relationship("SyncStat", back_populates="user", cascade="all, delete-orphan")
 
 class BridgeConnection(Base, TimestampMixin):
     __tablename__ = "bridge_connections"

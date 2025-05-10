@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Enum, JSON, Text, Float, UUID
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Enum, JSON, Text, Float, UUID, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
@@ -94,7 +94,7 @@ class RawTransaction(Base, TimestampMixin):
     __tablename__ = "raw_transactions"
     
     id = Column(Integer, primary_key=True)
-    bridge_transaction_id = Column(Integer, nullable=False, unique=True)
+    bridge_transaction_id = Column(BigInteger, nullable=False, unique=True)
     account_id = Column(Integer, ForeignKey("sync_accounts.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     clean_description = Column(String, nullable=True)

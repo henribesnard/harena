@@ -691,3 +691,108 @@ async def get_bridge_items(db: Session, user_id: int, access_token: str = None) 
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des items Bridge: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get Bridge items: {e}")
+
+async def get_bridge_stocks(
+    db: Session,
+    user_id: int,
+    access_token: str,
+    account_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    Récupère les stocks/titres depuis Bridge API.
+    
+    Args:
+        db: Session de base de données
+        user_id: ID de l'utilisateur
+        access_token: Token d'accès Bridge
+        account_id: ID du compte (optionnel)
+        
+    Returns:
+        List[Dict]: Liste des stocks/titres
+    """
+    logger.info(f"Getting Bridge stocks for user {user_id}, account_id={account_id}")
+    
+    # Les en-têtes sont construits avec le token fourni
+    headers = {
+        "accept": "application/json",
+        "Bridge-Version": settings.BRIDGE_API_VERSION,
+        "Client-Id": settings.BRIDGE_CLIENT_ID,
+        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
+        "authorization": f"Bearer {access_token}"
+    }
+    
+    # Construire l'URL avec filtres optionnels
+    url = f"{settings.BRIDGE_API_URL}/aggregation/stocks"
+    params = {"limit": "500"}  # Nombre maximum de stocks par page
+    
+    if account_id:
+        params["account_id"] = str(account_id)
+    
+    # Construction sécurisée de l'URL
+    request_url = httpx.URL(url, params=params)
+    
+    try:
+        # Utiliser le helper pour gérer la pagination
+        all_stocks = await _fetch_paginated_resources(str(request_url), headers)
+        logger.info(f"Successfully retrieved {len(all_stocks)} stocks for account {account_id}.")
+        return all_stocks
+    except HTTPException as http_exc:
+        # Renvoyer les exceptions HTTP gérées par les helpers
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Unexpected error in get_bridge_stocks for account {account_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get stocks: {e}")
+    
+async def get_accounts_information(
+    db: Session,
+    user_id: int,
+    access_token: Optional[str] = None
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Récupère les informations détaillées des comptes (IBAN, identité) depuis Bridge API.
+    
+    Args:
+        db: Session de base de données
+        user_id: ID de l'utilisateur
+        access_token: Token d'accès Bridge (optionnel)
+        
+    Returns:
+        List[Dict]: Liste des informations des comptes ou None si non disponible
+    """
+    logger.info(f"Getting accounts information for user {user_id}")
+    
+    # Utiliser le token fourni ou récupérer un nouveau
+    if access_token:
+        headers = {
+            "accept": "application/json",
+            "Bridge-Version": settings.BRIDGE_API_VERSION,
+            "Client-Id": settings.BRIDGE_CLIENT_ID,
+            "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
+            "authorization": f"Bearer {access_token}"
+        }
+    else:
+        headers = await _get_bridge_headers(db=db, user_id=user_id)
+    
+    url = f"{settings.BRIDGE_API_URL}/aggregation/accounts-information"
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            accounts_info = data.get("resources", [])
+            
+            logger.info(f"Successfully retrieved account information for user {user_id}")
+            return accounts_info
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error getting account information: {e.response.status_code} - {e.response.text}")
+        if e.response.status_code in [403, 404]:
+            logger.warning(f"Accounts-information endpoint might not be available in the current plan")
+            return None
+        raise HTTPException(status_code=e.response.status_code, detail=f"Bridge API error: {e.response.text}")
+    except httpx.RequestError as e:
+        logger.error(f"Request error getting account information: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Could not connect to Bridge API: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in get_accounts_information for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get account information: {e}")

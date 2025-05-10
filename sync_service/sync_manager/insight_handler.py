@@ -204,3 +204,89 @@ async def store_stocks_sql(
         raise
         
     return stored_count
+
+async def store_bridge_insights(
+    db: Session,
+    user_id: int,
+    insights_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Stocke les insights Bridge dans la base de données SQL.
+    
+    Args:
+        db: Session de base de données
+        user_id: ID de l'utilisateur
+        insights_data: Données d'insights depuis Bridge API
+        
+    Returns:
+        Dict: Résultat de l'opération
+    """
+    ctx_logger = get_contextual_logger("sync_service.insight_handler", user_id=user_id)
+    ctx_logger.info(f"Stockage des insights pour l'utilisateur {user_id}")
+    
+    result = {
+        "status": "pending",
+        "insights_updated": False
+    }
+    
+    try:
+        # Analyser les données d'insights
+        if not insights_data:
+            ctx_logger.warning(f"Données d'insights vides pour l'utilisateur {user_id}")
+            result["status"] = "warning"
+            result["message"] = "No insights data received"
+            return result
+        
+        # Extraire les champs principaux
+        global_kpis = insights_data.get("kpis", {}).get("global")
+        monthly_kpis = insights_data.get("kpis", {}).get("monthly", [])
+        oldest_existing_tx = insights_data.get("oldest_existing_transaction")
+        fully_analyzed_month = insights_data.get("fully_analyzed_month")
+        fully_analyzed_day = insights_data.get("fully_analyzed_day")
+        
+        # Parsing de la date la plus ancienne si présente
+        from sync_service.sync_manager.transaction_handler import parse_date
+        oldest_tx_date = parse_date(oldest_existing_tx) if oldest_existing_tx else None
+        
+        # Vérifier si un enregistrement d'insights existe déjà
+        existing_insights = db.query(BridgeInsight).filter(
+            BridgeInsight.user_id == user_id
+        ).first()
+        
+        if existing_insights:
+            # Mise à jour
+            existing_insights.global_kpis = global_kpis
+            existing_insights.monthly_kpis = monthly_kpis
+            existing_insights.oldest_existing_transaction = oldest_tx_date
+            existing_insights.fully_analyzed_month = fully_analyzed_month
+            existing_insights.fully_analyzed_day = fully_analyzed_day
+            
+            db.add(existing_insights)
+            result["message"] = "Insights updated successfully"
+        else:
+            # Création
+            new_insights = BridgeInsight(
+                user_id=user_id,
+                global_kpis=global_kpis,
+                monthly_kpis=monthly_kpis,
+                oldest_existing_transaction=oldest_tx_date,
+                fully_analyzed_month=fully_analyzed_month,
+                fully_analyzed_day=fully_analyzed_day
+            )
+            
+            db.add(new_insights)
+            result["message"] = "Insights created successfully"
+        
+        # Commit des changements
+        db.commit()
+        result["status"] = "success"
+        result["insights_updated"] = True
+        ctx_logger.info(f"Insights stockés avec succès pour l'utilisateur {user_id}")
+        
+        return result
+    except Exception as e:
+        db.rollback()
+        ctx_logger.error(f"Erreur lors du stockage des insights pour l'utilisateur {user_id}: {e}", exc_info=True)
+        result["status"] = "error"
+        result["message"] = str(e)
+        return result

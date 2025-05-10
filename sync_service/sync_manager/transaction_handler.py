@@ -125,22 +125,26 @@ async def store_transactions_sql(
     Args:
         db: Session de base de données
         user_id: ID de l'utilisateur
-        account_id: ID du compte
+        account_id: ID du compte SQL
         transactions: Liste des transactions à stocker
         
     Returns:
-        int: Nombre de transactions stockées
+        int: Nombre de transactions stockées ou mises à jour
     """
     ctx_logger = get_contextual_logger("sync_service.transaction_handler", user_id=user_id, account_id=account_id)
     
     # Obtenir les IDs des transactions existantes pour éviter les doublons
-    existing_ids = {tx.bridge_transaction_id for tx in 
+    existing_ids = {tx[0] for tx in 
                    db.query(RawTransaction.bridge_transaction_id).filter(
                        RawTransaction.account_id == account_id,
                        RawTransaction.user_id == user_id
                    ).all()}
     
-    stored_count = 0
+    ctx_logger.info(f"Found {len(existing_ids)} existing transactions for account_id={account_id}")
+    
+    new_count = 0
+    updated_count = 0
+    unchanged_count = 0
     
     for tx_data in transactions:
         bridge_tx_id = tx_data.get("id")
@@ -151,16 +155,41 @@ async def store_transactions_sql(
         try:
             # Vérifier si la transaction existe déjà
             if bridge_tx_id in existing_ids:
-                # Mise à jour (seulement si les transactions sont marquées comme 'deleted')
-                if tx_data.get("deleted", False):
-                    tx = db.query(RawTransaction).filter(
-                        RawTransaction.bridge_transaction_id == bridge_tx_id
-                    ).first()
+                # Récupérer la transaction existante
+                tx = db.query(RawTransaction).filter(
+                    RawTransaction.bridge_transaction_id == bridge_tx_id,
+                    RawTransaction.account_id == account_id
+                ).first()
+                
+                if tx:
+                    # Vérifier si la transaction a été modifiée depuis Bridge
+                    bridge_updated_at = parse_date(tx_data.get("updated_at"))
                     
-                    if tx:
-                        tx.deleted = True
+                    # Si deleted a changé ou si la date de mise à jour est plus récente
+                    if (tx_data.get("deleted", False) != tx.deleted or 
+                        (bridge_updated_at and tx.updated_at_bridge and bridge_updated_at > tx.updated_at_bridge)):
+                        
+                        # Mise à jour de la transaction
+                        tx.clean_description = tx_data.get("clean_description", tx.clean_description)
+                        tx.provider_description = tx_data.get("provider_description", tx.provider_description)
+                        tx.amount = tx_data.get("amount", tx.amount)
+                        tx.date = parse_date(tx_data.get("date")) or tx.date
+                        tx.booking_date = parse_date(tx_data.get("booking_date")) or tx.booking_date
+                        tx.transaction_date = parse_date(tx_data.get("transaction_date")) or tx.transaction_date
+                        tx.value_date = parse_date(tx_data.get("value_date")) or tx.value_date
+                        tx.currency_code = tx_data.get("currency_code", tx.currency_code)
+                        tx.category_id = tx_data.get("category_id", tx.category_id)
+                        tx.operation_type = tx_data.get("operation_type", tx.operation_type)
+                        tx.deleted = tx_data.get("deleted", tx.deleted)
+                        tx.future = tx_data.get("future", tx.future)
+                        tx.updated_at_bridge = bridge_updated_at or tx.updated_at_bridge
+                        
                         db.add(tx)
-                        stored_count += 1
+                        updated_count += 1
+                        ctx_logger.debug(f"Updated transaction {bridge_tx_id}")
+                    else:
+                        unchanged_count += 1
+                        ctx_logger.debug(f"Transaction {bridge_tx_id} unchanged, skipping")
             else:
                 # Création d'une nouvelle transaction
                 new_tx = RawTransaction(
@@ -183,28 +212,34 @@ async def store_transactions_sql(
                 )
                 
                 db.add(new_tx)
-                stored_count += 1
-                existing_ids.add(bridge_tx_id)  # Ajouter à la liste des IDs existants
+                new_count += 1
+                existing_ids.add(bridge_tx_id)
+                ctx_logger.debug(f"Created new transaction {bridge_tx_id}")
             
             # Commit périodique pour éviter les transactions trop longues
-            if stored_count % 100 == 0:
+            if (new_count + updated_count) % 100 == 0 and (new_count + updated_count) > 0:
                 db.commit()
+                ctx_logger.debug(f"Periodic commit after processing {new_count + updated_count} transactions")
                 
         except Exception as e:
-            ctx_logger.error(f"Erreur lors du stockage de la transaction {bridge_tx_id}: {e}", exc_info=True)
+            ctx_logger.error(f"Erreur lors du traitement de la transaction {bridge_tx_id}: {e}", exc_info=True)
             # Continuer avec la transaction suivante
     
     # Commit final
     try:
-        db.commit()
-        ctx_logger.info(f"{stored_count} transactions stockées avec succès")
+        if new_count > 0 or updated_count > 0:
+            db.commit()
+            
+        total_processed = new_count + updated_count + unchanged_count
+        ctx_logger.info(f"Résultat du traitement: {new_count} nouvelles, {updated_count} mises à jour, {unchanged_count} inchangées (total: {total_processed}/{len(transactions)})")
+        
+        return new_count + updated_count  # Retourne le nombre de modifications effectuées
+        
     except Exception as e:
         db.rollback()
         ctx_logger.error(f"Erreur lors du commit final des transactions: {e}", exc_info=True)
         raise
-        
-    return stored_count
-
+    
 def parse_date(date_val: Any) -> Optional[datetime]:
     """
     Parse une date depuis diverses sources.

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, Union
 
-from sync_service.models.sync import WebhookEvent
+from db_service.models.sync import WebhookEvent
 from sync_service.utils.logging import get_contextual_logger
 from sync_service.webhook_handler.handlers import handle_event
 

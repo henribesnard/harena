@@ -206,9 +206,12 @@ def register_routers(app: FastAPI) -> None:
         # Enregistrement directement sur l'app (sans préfixe API)
         app.include_router(
             webhooks_router,
-            prefix="/webhooks",
+            #prefix="/webhooks",
             tags=["webhooks"]
         )
+        # Log détaillé des routes de webhook pour le débogage
+        for route in webhooks_router.routes:
+            logger.info(f"Route webhook enregistrée: {route.path} -> /webhooks{route.path} [{', '.join(route.methods)}]")
         
         registered_endpoints["webhooks"].append({
             "module": "sync_service.api.endpoints.webhooks",
@@ -218,7 +221,7 @@ def register_routers(app: FastAPI) -> None:
         
         logger.info("Webhooks router registered at /webhooks")
     except ImportError as e:
-        logger.warning(f"Failed to register webhooks router: {str(e)}")
+        logger.error(f"Échec de l'enregistrement du routeur webhooks: {e}", exc_info=True)
         registered_endpoints["webhooks"].append({
             "module": "sync_service.api.endpoints.webhooks",
             "prefix": "/webhooks",

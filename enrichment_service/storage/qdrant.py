@@ -15,6 +15,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 
 from config_service.config import settings
 from enrichment_service.models import VectorizedTransaction, SearchResult
+from enrichment_service.core.embeddings import embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +25,17 @@ class QdrantStorage:
     def __init__(self):
         self.client = None
         self.collection_name = "financial_transactions"
-        self.vector_dimension = 1536  # Dimension de text-embedding-3-small
+        self.vector_dimension = None  # Sera défini dynamiquement
     
     async def initialize(self):
         """Initialise la connexion Qdrant et crée les collections."""
         if not settings.QDRANT_URL:
             raise ValueError("QDRANT_URL is required")
-            
+        
+        # Récupérer la dimension des embeddings depuis le service
+        self.vector_dimension = embedding_service.get_embedding_dimension()
+        logger.info(f"Dimension des vecteurs configurée: {self.vector_dimension}")
+        
         # Initialiser le client
         if settings.QDRANT_API_KEY:
             self.client = AsyncQdrantClient(
@@ -67,9 +72,19 @@ class QdrantStorage:
                     )
                 )
                 
-                logger.info(f"Collection {self.collection_name} créée avec succès")
+                logger.info(f"Collection {self.collection_name} créée avec succès (dimension: {self.vector_dimension})")
             else:
                 logger.info(f"Collection {self.collection_name} existe déjà")
+                
+                # Vérifier que la dimension est correcte
+                collection_info = await self.client.get_collection(self.collection_name)
+                existing_dimension = collection_info.config.params.vectors.size
+                
+                if existing_dimension != self.vector_dimension:
+                    logger.warning(
+                        f"Dimension mismatch: collection existante ({existing_dimension}) "
+                        f"vs configuration ({self.vector_dimension})"
+                    )
                 
         except Exception as e:
             logger.error(f"Erreur lors de la création de la collection: {e}")
@@ -87,7 +102,7 @@ class QdrantStorage:
         """
         if not self.client:
             raise ValueError("QdrantStorage not initialized")
-            
+        
         try:
             point = PointStruct(
                 id=transaction.id,
@@ -100,7 +115,7 @@ class QdrantStorage:
                 points=[point]
             )
             
-            logger.debug(f"Transaction {transaction.id} stockée: {result}")
+            logger.debug(f"Transaction {transaction.id} stockée avec succès")
             return True
             
         except Exception as e:
@@ -122,7 +137,7 @@ class QdrantStorage:
         
         if not transactions:
             return {"stored": 0, "errors": 0, "total": 0}
-            
+        
         try:
             # Convertir en PointStruct
             points = []
@@ -316,7 +331,7 @@ class QdrantStorage:
         """Récupère les informations de la collection."""
         if not self.client:
             return None
-            
+        
         try:
             return await self.client.get_collection(self.collection_name)
         except Exception as e:

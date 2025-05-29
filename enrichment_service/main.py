@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from enrichment_service.api.routes import router
 from enrichment_service.storage.qdrant import QdrantStorage
+from enrichment_service.core.processor import TransactionProcessor
+from enrichment_service.core.embeddings import embedding_service
 from config_service.config import settings
 
 # Configuration du logging
@@ -20,13 +22,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("enrichment_service")
 
-# Instance globale du storage Qdrant
+# Instances globales
 qdrant_storage = None
+transaction_processor = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestionnaire du cycle de vie du service d'enrichissement."""
-    global qdrant_storage
+    global qdrant_storage, transaction_processor
     
     # Initialisation
     logger.info("Démarrage du service d'enrichissement")
@@ -38,20 +41,40 @@ async def lifespan(app: FastAPI):
     if not settings.OPENAI_API_KEY:
         logger.warning("OPENAI_API_KEY non définie. La génération d'embeddings ne fonctionnera pas.")
     
+    # Initialisation du service d'embeddings
+    try:
+        await embedding_service.initialize()
+        logger.info("Service d'embeddings initialisé avec succès")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation du service d'embeddings: {e}")
+    
     # Initialisation du storage Qdrant
     try:
         qdrant_storage = QdrantStorage()
         await qdrant_storage.initialize()
         logger.info("Qdrant storage initialisé avec succès")
+        
+        # Créer le transaction processor
+        transaction_processor = TransactionProcessor(qdrant_storage)
+        logger.info("Transaction processor créé avec succès")
+        
+        # Injecter les instances dans le module routes
+        import enrichment_service.api.routes as routes
+        routes.qdrant_storage = qdrant_storage
+        routes.transaction_processor = transaction_processor
+        
     except Exception as e:
         logger.error(f"Erreur lors de l'initialisation de Qdrant: {e}")
         qdrant_storage = None
+        transaction_processor = None
     
     yield  # L'application s'exécute ici
     
     # Nettoyage
     if qdrant_storage:
         await qdrant_storage.close()
+    if embedding_service:
+        await embedding_service.close()
     logger.info("Arrêt du service d'enrichissement")
 
 def create_app() -> FastAPI:
@@ -79,13 +102,17 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health_check():
         """Vérification de l'état de santé du service d'enrichissement."""
+        qdrant_ready = qdrant_storage is not None and hasattr(qdrant_storage, 'client') and qdrant_storage.client is not None
+        embedding_ready = embedding_service is not None and hasattr(embedding_service, 'client') and embedding_service.client is not None
+        
         return {
             "status": "ok",
             "service": "enrichment_service",
             "version": "1.0.0",
             "qdrant_configured": bool(settings.QDRANT_URL),
             "openai_configured": bool(settings.OPENAI_API_KEY),
-            "qdrant_ready": qdrant_storage is not None and qdrant_storage.client is not None
+            "qdrant_ready": qdrant_ready,
+            "embedding_ready": embedding_ready
         }
     
     return app

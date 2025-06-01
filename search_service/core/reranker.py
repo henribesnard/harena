@@ -1,3 +1,4 @@
+
 """
 Service de reranking pour améliorer la pertinence des résultats.
 
@@ -35,8 +36,13 @@ class RerankerService:
                 timeout=30.0
             )
             
-            # Tester la connexion
-            await self.client.tokenize(text="test", model="command")
+            # Tester la connexion avec une requête simple
+            test_response = await self.client.rerank(
+                model=self.model,
+                query="test",
+                documents=["test document"],
+                top_n=1
+            )
             
             self._initialized = True
             logger.info(f"RerankerService initialisé avec le modèle {self.model}")
@@ -82,6 +88,7 @@ class RerankerService:
         try:
             # Limiter le nombre de documents si nécessaire
             truncated = False
+            original_length = len(documents)
             if len(documents) > self.max_documents:
                 logger.warning(
                     f"Trop de documents ({len(documents)}), "
@@ -117,7 +124,7 @@ class RerankerService:
             
             # Ajouter des scores nuls pour les documents tronqués
             if truncated:
-                scores.extend([0.0] * (len(documents) - self.max_documents))
+                scores.extend([0.0] * (original_length - self.max_documents))
             
             logger.debug(f"Reranking terminé, scores: {scores[:10]}...")
             return scores
@@ -129,6 +136,8 @@ class RerankerService:
     
     async def close(self):
         """Nettoie les ressources du service."""
+        if self.client:
+            await self.client.close()
         self.client = None
         self._initialized = False
         logger.info("RerankerService fermé")

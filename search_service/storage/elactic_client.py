@@ -37,13 +37,19 @@ class ElasticClient:
         
         try:
             # Créer le client
+            # Bonsai inclut l'auth dans l'URL, donc pas besoin de config supplémentaire
             self.client = AsyncElasticsearch(
                 [es_url],
                 verify_certs=True,
                 ssl_show_warn=False,
                 max_retries=3,
                 retry_on_timeout=True,
-                timeout=30
+                timeout=30,
+                # Pour Bonsai, on peut ajouter des headers supplémentaires si nécessaire
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                }
             )
             
             # Vérifier la connexion

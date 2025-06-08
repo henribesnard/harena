@@ -317,47 +317,13 @@ try:
         logger.error(traceback.format_exc())
         service_registry.register_service("enrichment_service", status="failed")
 
-    # 4. SEARCH SERVICE
-    logger.info("📦 Importation du Search Service...")
-    try:
-        from search_service.api.routes import router as search_router
-        service_registry.register_service(
-            "search_service",
-            router=search_router,
-            prefix="/api/v1/search",
-            status="ok"
-        )
-        logger.info("✅ Search Service importé avec succès")
-    except ImportError as e:
-        logger.error(f"❌ Erreur lors de l'importation du Search Service: {e}")
-        logger.error(traceback.format_exc())
-        service_registry.register_service("search_service", status="failed")
+    # 4. SEARCH SERVICE - DÉSACTIVÉ TEMPORAIREMENT
+    logger.info("📦 Search Service temporairement désactivé (problème QueryProcessor)")
+    service_registry.register_service("search_service", status="disabled")
 
-    # 5. CONVERSATION SERVICE
-    logger.info("📦 Importation du Conversation Service...")
-    try:
-        from conversation_service.api.routes import router as conversation_router
-        from conversation_service.api.websocket import websocket_router
-        
-        service_registry.register_service(
-            "conversation_service",
-            router=conversation_router,
-            prefix="/api/v1/conversation",
-            status="ok"
-        )
-        
-        service_registry.register_service(
-            "conversation_websocket",
-            router=websocket_router,
-            prefix="/ws",
-            status="ok"
-        )
-        
-        logger.info("✅ Conversation Service importé avec succès")
-    except ImportError as e:
-        logger.error(f"❌ Erreur lors de l'importation du Conversation Service: {e}")
-        logger.error(traceback.format_exc())
-        service_registry.register_service("conversation_service", status="failed")
+    # 5. CONVERSATION SERVICE - DÉSACTIVÉ TEMPORAIREMENT  
+    logger.info("📦 Conversation Service temporairement désactivé (problème imports)")
+    service_registry.register_service("conversation_service", status="disabled")
 
     logger.info("📦 Fin de l'importation des services")
 
@@ -408,6 +374,7 @@ try:
         service_statuses = service_registry.get_service_status()
         active_services = [name for name, status in service_statuses.items() if status == "ok"]
         failed_services = [name for name, status in service_statuses.items() if status == "failed"]
+        disabled_services = [name for name, status in service_statuses.items() if status == "disabled"]
         
         return {
             "status": "running",
@@ -417,6 +384,7 @@ try:
             "services": {
                 "active": active_services,
                 "failed": failed_services,
+                "disabled": disabled_services,
                 "total": len(service_statuses)
             },
             "features": {
@@ -461,13 +429,16 @@ try:
         # État général de l'application
         service_statuses = service_registry.get_service_status()
         failed_services = [name for name, status in service_statuses.items() if status == "failed"]
+        active_services = [name for name, status in service_statuses.items() if status == "ok"]
         
         if db_status.startswith("error"):
             overall_status = "critical"
         elif failed_services:
             overall_status = "degraded"
-        else:
+        elif len(active_services) >= 2:  # Au moins user et sync services
             overall_status = "healthy"
+        else:
+            overall_status = "limited"
         
         # Calculer l'uptime
         uptime = time.time() - startup_time if startup_time else 0
@@ -485,7 +456,7 @@ try:
                 "python_version": sys.version.split()[0]
             },
             "capabilities": {
-                "can_sync_banks": external_services["bridge_api"] == "configured",
+                "can_sync_banks": external_services["bridge_api"] == "configured" and "sync_service" in active_services,
                 "can_search_semantic": external_services["openai_api"] == "configured" and external_services["qdrant"] == "configured",
                 "can_search_lexical": external_services["elasticsearch"] == "configured",
                 "can_chat_ai": external_services["deepseek_api"] == "configured",
@@ -550,7 +521,7 @@ try:
                 "status": "not_found",
                 "message": f"Endpoint {request.url.path} not found",
                 "available_endpoints": [
-                    "/health", "/status", "/docs", "/redoc"
+                    "/health", "/docs", "/redoc"
                 ],
                 "timestamp": datetime.now().isoformat()
             }

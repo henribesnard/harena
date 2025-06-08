@@ -1,451 +1,395 @@
 """
-Compteur de tokens pour le suivi des coûts.
+Compteur de tokens pour les appels API DeepSeek.
 
-Ce module gère le comptage et le suivi des tokens utilisés
-avec l'API DeepSeek pour estimer les coûts.
+Ce module suit l'utilisation des tokens et calcule les coûts
+pour le monitoring et la facturation.
 """
 import logging
-from typing import Dict, Any, Optional
+import time
+from collections import defaultdict, Counter
 from datetime import datetime, timedelta
-from collections import defaultdict, deque
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class TokenUsage:
+    """Structure pour l'usage de tokens."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost: float = 0.0
+    timestamp: str = ""
+    model: str = ""
+    user_id: Optional[int] = None
+    operation: str = ""
 
 class TokenCounter:
-    """Compteur et gestionnaire des tokens utilisés."""
+    """Compteur et tracker pour l'usage des tokens DeepSeek."""
     
     def __init__(self):
-        self.daily_usage = defaultdict(lambda: {"input": 0, "output": 0, "total": 0})
-        self.user_usage = defaultdict(lambda: {"input": 0, "output": 0, "total": 0})
-        self.model_usage = defaultdict(lambda: {"input": 0, "output": 0, "total": 0})
-        
-        # Historique des sessions récentes (pour les stats)
-        self.recent_sessions = deque(maxlen=1000)
+        self.usage_history: List[TokenUsage] = []
+        self.user_usage: Dict[int, List[TokenUsage]] = defaultdict(list)
+        self.daily_usage: Dict[str, TokenUsage] = {}
+        self.monthly_usage: Dict[str, TokenUsage] = {}
         
         # Coûts par modèle (prix par 1K tokens)
-        self.token_costs = {
+        self.model_costs = {
             "deepseek-chat": {
-                "input": 0.00014,   # $0.14 per 1M input tokens
-                "output": 0.00028   # $0.28 per 1M output tokens
+                "input": 0.00014,   # $0.14 per 1M tokens
+                "output": 0.00028   # $0.28 per 1M tokens
             },
             "deepseek-reasoner": {
-                "input": 0.00055,   # $0.55 per 1M input tokens  
-                "output": 0.00222   # $2.22 per 1M output tokens
+                "input": 0.00055,   # $0.55 per 1M tokens
+                "output": 0.00220   # $2.20 per 1M tokens
             }
         }
         
-        self._initialized = False
+        self.is_enabled = True
+        logger.info("TokenCounter initialisé")
     
     def initialize(self):
         """Initialise le compteur de tokens."""
-        self._initialized = True
-        logger.info("TokenCounter initialisé")
-    
+        logger.info("TokenCounter initialized")
+        
     def record_usage(
         self,
-        user_id: int,
         input_tokens: int,
         output_tokens: int,
-        model: str = "deepseek-chat"
-    ):
+        model: str = "deepseek-chat",
+        user_id: Optional[int] = None,
+        operation: str = "chat"
+    ) -> TokenUsage:
         """
-        Enregistre l'utilisation de tokens.
+        Enregistre l'usage de tokens pour un appel API.
         
         Args:
+            input_tokens: Nombre de tokens d'entrée
+            output_tokens: Nombre de tokens de sortie
+            model: Modèle utilisé
             user_id: ID de l'utilisateur
-            input_tokens: Nombre de tokens d'entrée
-            output_tokens: Nombre de tokens de sortie
-            model: Modèle utilisé
-        """
-        try:
-            total_tokens = input_tokens + output_tokens
-            today = datetime.now().strftime("%Y-%m-%d")
-            
-            # Mise à jour des compteurs journaliers
-            self.daily_usage[today]["input"] += input_tokens
-            self.daily_usage[today]["output"] += output_tokens
-            self.daily_usage[today]["total"] += total_tokens
-            
-            # Mise à jour des compteurs par utilisateur
-            self.user_usage[user_id]["input"] += input_tokens
-            self.user_usage[user_id]["output"] += output_tokens
-            self.user_usage[user_id]["total"] += total_tokens
-            
-            # Mise à jour des compteurs par modèle
-            self.model_usage[model]["input"] += input_tokens
-            self.model_usage[model]["output"] += output_tokens
-            self.model_usage[model]["total"] += total_tokens
-            
-            # Ajouter à l'historique des sessions
-            session_data = {
-                "timestamp": datetime.now().isoformat(),
-                "user_id": user_id,
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
-                "estimated_cost": self.calculate_cost(input_tokens, output_tokens, model)
-            }
-            self.recent_sessions.append(session_data)
-            
-            logger.debug(
-                f"Tokens enregistrés: user={user_id}, model={model}, "
-                f"input={input_tokens}, output={output_tokens}"
-            )
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de l'enregistrement des tokens: {e}")
-    
-    def calculate_cost(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        model: str = "deepseek-chat"
-    ) -> float:
-        """
-        Calcule le coût estimé pour une utilisation de tokens.
-        
-        Args:
-            input_tokens: Nombre de tokens d'entrée
-            output_tokens: Nombre de tokens de sortie
-            model: Modèle utilisé
+            operation: Type d'opération
             
         Returns:
-            float: Coût estimé en USD
+            TokenUsage: Enregistrement de l'usage
         """
-        if model not in self.token_costs:
-            logger.warning(f"Modèle {model} non reconnu pour le calcul du coût")
-            model = "deepseek-chat"  # Fallback
+        if not self.is_enabled:
+            return TokenUsage()
         
-        costs = self.token_costs[model]
+        total_tokens = input_tokens + output_tokens
+        cost = self._calculate_cost(input_tokens, output_tokens, model)
         
-        # Calcul du coût (prix par 1K tokens)
+        usage = TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cost=cost,
+            timestamp=datetime.now().isoformat(),
+            model=model,
+            user_id=user_id,
+            operation=operation
+        )
+        
+        # Stocker l'usage
+        self.usage_history.append(usage)
+        
+        if user_id:
+            self.user_usage[user_id].append(usage)
+        
+        # Mise à jour des statistiques quotidiennes et mensuelles
+        self._update_period_stats(usage)
+        
+        logger.debug(f"Token usage recorded: {total_tokens} tokens, ${cost:.6f}, user: {user_id}")
+        return usage
+    
+    def _calculate_cost(self, input_tokens: int, output_tokens: int, model: str) -> float:
+        """Calcule le coût d'un appel API."""
+        if model not in self.model_costs:
+            logger.warning(f"Unknown model {model}, using deepseek-chat costs")
+            model = "deepseek-chat"
+        
+        costs = self.model_costs[model]
+        
+        # Coût par 1000 tokens
         input_cost = (input_tokens / 1000) * costs["input"]
         output_cost = (output_tokens / 1000) * costs["output"]
         
         return input_cost + output_cost
     
-    def get_user_usage(self, user_id: int) -> Dict[str, Any]:
+    def _update_period_stats(self, usage: TokenUsage):
+        """Met à jour les statistiques par période."""
+        now = datetime.now()
+        day_key = now.strftime("%Y-%m-%d")
+        month_key = now.strftime("%Y-%m")
+        
+        # Statistiques quotidiennes
+        if day_key in self.daily_usage:
+            daily = self.daily_usage[day_key]
+            daily.input_tokens += usage.input_tokens
+            daily.output_tokens += usage.output_tokens
+            daily.total_tokens += usage.total_tokens
+            daily.cost += usage.cost
+        else:
+            self.daily_usage[day_key] = TokenUsage(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+                cost=usage.cost,
+                timestamp=day_key
+            )
+        
+        # Statistiques mensuelles
+        if month_key in self.monthly_usage:
+            monthly = self.monthly_usage[month_key]
+            monthly.input_tokens += usage.input_tokens
+            monthly.output_tokens += usage.output_tokens
+            monthly.total_tokens += usage.total_tokens
+            monthly.cost += usage.cost
+        else:
+            self.monthly_usage[month_key] = TokenUsage(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+                cost=usage.cost,
+                timestamp=month_key
+            )
+    
+    def get_user_stats(self, user_id: int, days: int = 30) -> Dict[str, Any]:
         """
-        Récupère l'utilisation d'un utilisateur.
+        Récupère les statistiques d'un utilisateur.
         
         Args:
             user_id: ID de l'utilisateur
+            days: Nombre de jours à inclure
             
         Returns:
-            Dict: Statistiques d'utilisation
+            Dict: Statistiques de l'utilisateur
         """
-        usage = self.user_usage.get(user_id, {"input": 0, "output": 0, "total": 0})
+        if user_id not in self.user_usage:
+            return {
+                "user_id": user_id,
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "calls_count": 0,
+                "period_days": days
+            }
         
-        # Calculer le coût total estimé pour l'utilisateur
-        user_sessions = [s for s in self.recent_sessions if s["user_id"] == user_id]
-        total_cost = sum(s["estimated_cost"] for s in user_sessions)
+        # Filtrer par période
+        cutoff_date = datetime.now() - timedelta(days=days)
+        recent_usage = [
+            usage for usage in self.user_usage[user_id]
+            if datetime.fromisoformat(usage.timestamp) >= cutoff_date
+        ]
         
-        # Calculer les moyennes
-        session_count = len(user_sessions)
-        avg_tokens_per_session = usage["total"] / session_count if session_count > 0 else 0
-        avg_cost_per_session = total_cost / session_count if session_count > 0 else 0
+        if not recent_usage:
+            return {
+                "user_id": user_id,
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "calls_count": 0,
+                "period_days": days
+            }
+        
+        total_tokens = sum(usage.total_tokens for usage in recent_usage)
+        total_cost = sum(usage.cost for usage in recent_usage)
+        calls_count = len(recent_usage)
+        
+        # Statistiques par modèle
+        by_model = defaultdict(lambda: {"tokens": 0, "cost": 0.0, "calls": 0})
+        for usage in recent_usage:
+            by_model[usage.model]["tokens"] += usage.total_tokens
+            by_model[usage.model]["cost"] += usage.cost
+            by_model[usage.model]["calls"] += 1
+        
+        # Statistiques par opération
+        by_operation = defaultdict(lambda: {"tokens": 0, "cost": 0.0, "calls": 0})
+        for usage in recent_usage:
+            by_operation[usage.operation]["tokens"] += usage.total_tokens
+            by_operation[usage.operation]["cost"] += usage.cost
+            by_operation[usage.operation]["calls"] += 1
         
         return {
             "user_id": user_id,
-            "total_input_tokens": usage["input"],
-            "total_output_tokens": usage["output"],
-            "total_tokens": usage["total"],
-            "total_estimated_cost_usd": total_cost,
-            "session_count": session_count,
-            "avg_tokens_per_session": avg_tokens_per_session,
-            "avg_cost_per_session": avg_cost_per_session
+            "period_days": days,
+            "total_tokens": total_tokens,
+            "total_cost": total_cost,
+            "calls_count": calls_count,
+            "avg_tokens_per_call": total_tokens / calls_count if calls_count > 0 else 0,
+            "avg_cost_per_call": total_cost / calls_count if calls_count > 0 else 0,
+            "by_model": dict(by_model),
+            "by_operation": dict(by_operation),
+            "latest_call": recent_usage[-1].timestamp if recent_usage else None
         }
     
-    def get_daily_usage(self, date: Optional[str] = None) -> Dict[str, Any]:
+    def get_stats(self, days: int = 30) -> Dict[str, Any]:
         """
-        Récupère l'utilisation quotidienne.
+        Récupère les statistiques globales.
         
         Args:
-            date: Date au format YYYY-MM-DD (aujourd'hui par défaut)
+            days: Nombre de jours à inclure
             
         Returns:
-            Dict: Statistiques quotidiennes
+            Dict: Statistiques globales
         """
-        if not date:
-            date = datetime.now().strftime("%Y-%m-%d")
-        
-        usage = self.daily_usage.get(date, {"input": 0, "output": 0, "total": 0})
-        
-        # Sessions du jour
-        day_sessions = [
-            s for s in self.recent_sessions 
-            if s["timestamp"].startswith(date)
-        ]
-        
-        total_cost = sum(s["estimated_cost"] for s in day_sessions)
-        unique_users = len(set(s["user_id"] for s in day_sessions))
-        
-        return {
-            "date": date,
-            "total_input_tokens": usage["input"],
-            "total_output_tokens": usage["output"],
-            "total_tokens": usage["total"],
-            "total_estimated_cost_usd": total_cost,
-            "session_count": len(day_sessions),
-            "unique_users": unique_users
-        }
-    
-    def get_model_usage(self) -> Dict[str, Any]:
-        """
-        Récupère l'utilisation par modèle.
-        
-        Returns:
-            Dict: Statistiques par modèle
-        """
-        model_stats = {}
-        
-        for model, usage in self.model_usage.items():
-            # Sessions pour ce modèle
-            model_sessions = [s for s in self.recent_sessions if s["model"] == model]
-            total_cost = sum(s["estimated_cost"] for s in model_sessions)
-            
-            model_stats[model] = {
-                "total_input_tokens": usage["input"],
-                "total_output_tokens": usage["output"],
-                "total_tokens": usage["total"],
-                "total_estimated_cost_usd": total_cost,
-                "session_count": len(model_sessions),
-                "cost_per_1k_input": self.token_costs.get(model, {}).get("input", 0),
-                "cost_per_1k_output": self.token_costs.get(model, {}).get("output", 0)
+        if not self.usage_history:
+            return {
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "calls_count": 0,
+                "unique_users": 0,
+                "period_days": days
             }
         
-        return model_stats
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Récupère les statistiques globales du compteur.
-        
-        Returns:
-            Dict: Statistiques complètes
-        """
-        # Statistiques générales
-        total_sessions = len(self.recent_sessions)
-        total_cost = sum(s["estimated_cost"] for s in self.recent_sessions)
-        
-        # Calculs sur les dernières 24h
-        now = datetime.now()
-        last_24h = now - timedelta(hours=24)
-        recent_sessions = [
-            s for s in self.recent_sessions 
-            if datetime.fromisoformat(s["timestamp"]) > last_24h
+        # Filtrer par période
+        cutoff_date = datetime.now() - timedelta(days=days)
+        recent_usage = [
+            usage for usage in self.usage_history
+            if datetime.fromisoformat(usage.timestamp) >= cutoff_date
         ]
         
-        recent_cost = sum(s["estimated_cost"] for s in recent_sessions)
-        recent_tokens = sum(s["total_tokens"] for s in recent_sessions)
+        if not recent_usage:
+            return {
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "calls_count": 0,
+                "unique_users": 0,
+                "period_days": days
+            }
+        
+        total_tokens = sum(usage.total_tokens for usage in recent_usage)
+        total_cost = sum(usage.cost for usage in recent_usage)
+        calls_count = len(recent_usage)
+        unique_users = len(set(usage.user_id for usage in recent_usage if usage.user_id))
+        
+        # Statistiques par modèle
+        by_model = defaultdict(lambda: {"tokens": 0, "cost": 0.0, "calls": 0})
+        for usage in recent_usage:
+            by_model[usage.model]["tokens"] += usage.total_tokens
+            by_model[usage.model]["cost"] += usage.cost
+            by_model[usage.model]["calls"] += 1
         
         return {
-            "total_sessions": total_sessions,
-            "total_estimated_cost_usd": total_cost,
-            "total_users": len(self.user_usage),
-            "total_models": len(self.model_usage),
-            "last_24h": {
-                "sessions": len(recent_sessions),
-                "tokens": recent_tokens,
-                "estimated_cost_usd": recent_cost
-            },
-            "daily_usage_days": len(self.daily_usage),
-            "most_expensive_session": max(
-                self.recent_sessions, 
-                key=lambda x: x["estimated_cost"], 
-                default={}
-            ),
-            "average_tokens_per_session": (
-                sum(s["total_tokens"] for s in self.recent_sessions) / total_sessions
-                if total_sessions > 0 else 0
-            ),
-            "average_cost_per_session": total_cost / total_sessions if total_sessions > 0 else 0
+            "period_days": days,
+            "total_tokens": total_tokens,
+            "total_cost": total_cost,
+            "calls_count": calls_count,
+            "unique_users": unique_users,
+            "avg_tokens_per_call": total_tokens / calls_count if calls_count > 0 else 0,
+            "avg_cost_per_call": total_cost / calls_count if calls_count > 0 else 0,
+            "by_model": dict(by_model),
+            "cost_breakdown": {
+                model: costs for model, costs in by_model.items()
+            }
+        }
+    
+    def get_daily_stats(self, days: int = 7) -> Dict[str, Any]:
+        """Récupère les statistiques quotidiennes."""
+        daily_stats = {}
+        
+        for i in range(days):
+            date = datetime.now() - timedelta(days=i)
+            day_key = date.strftime("%Y-%m-%d")
+            
+            if day_key in self.daily_usage:
+                usage = self.daily_usage[day_key]
+                daily_stats[day_key] = {
+                    "tokens": usage.total_tokens,
+                    "cost": usage.cost,
+                    "input_tokens": usage.input_tokens,
+                    "output_tokens": usage.output_tokens
+                }
+            else:
+                daily_stats[day_key] = {
+                    "tokens": 0,
+                    "cost": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0
+                }
+        
+        return daily_stats
+    
+    def get_monthly_stats(self) -> Dict[str, Any]:
+        """Récupère les statistiques mensuelles."""
+        return {
+            month: {
+                "tokens": usage.total_tokens,
+                "cost": usage.cost,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens
+            }
+            for month, usage in self.monthly_usage.items()
         }
     
     def get_top_users(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Récupère les utilisateurs avec le plus d'utilisation.
+        Récupère les utilisateurs avec le plus d'usage.
         
         Args:
             limit: Nombre d'utilisateurs à retourner
             
         Returns:
-            List[Dict]: Top utilisateurs par utilisation
+            List: Liste des top utilisateurs
         """
-        user_costs = {}
+        if not self.user_usage:
+            return []
         
-        for session in self.recent_sessions:
-            user_id = session["user_id"]
-            if user_id not in user_costs:
-                user_costs[user_id] = 0
-            user_costs[user_id] += session["estimated_cost"]
-        
-        # Trier par coût décroissant
-        sorted_users = sorted(
-            user_costs.items(), 
-            key=lambda x: x[1], 
-            reverse=True
-        )[:limit]
-        
-        return [
-            {
+        # Calculer l'usage total par utilisateur
+        user_totals = {}
+        for user_id, usages in self.user_usage.items():
+            total_tokens = sum(usage.total_tokens for usage in usages)
+            total_cost = sum(usage.cost for usage in usages)
+            user_totals[user_id] = {
                 "user_id": user_id,
-                "total_estimated_cost_usd": cost,
-                "total_tokens": self.user_usage[user_id]["total"],
-                "sessions": len([s for s in self.recent_sessions if s["user_id"] == user_id])
+                "total_tokens": total_tokens,
+                "total_cost": total_cost,
+                "calls_count": len(usages)
             }
-            for user_id, cost in sorted_users
-        ]
-    
-    def estimate_monthly_cost(self) -> float:
-        """
-        Estime le coût mensuel basé sur l'utilisation récente.
         
-        Returns:
-            float: Coût mensuel estimé en USD
-        """
-        # Utiliser les 7 derniers jours pour extrapoler
-        now = datetime.now()
-        week_ago = now - timedelta(days=7)
-        
-    def estimate_monthly_cost(self) -> float:
-        """
-        Estime le coût mensuel basé sur l'utilisation récente.
-        
-        Returns:
-            float: Coût mensuel estimé en USD
-        """
-        # Utiliser les 7 derniers jours pour extrapoler
-        now = datetime.now()
-        week_ago = now - timedelta(days=7)
-        
-        week_sessions = [
-            s for s in self.recent_sessions 
-            if datetime.fromisoformat(s["timestamp"]) > week_ago
-        ]
-        
-        if not week_sessions:
-            return 0.0
-        
-        # Coût de la semaine
-        week_cost = sum(s["estimated_cost"] for s in week_sessions)
-        
-        # Extrapoler sur un mois (30 jours)
-        monthly_estimate = (week_cost / 7) * 30
-        
-        return monthly_estimate
-    
-    def reset_user_usage(self, user_id: int):
-        """
-        Remet à zéro l'utilisation d'un utilisateur.
-        
-        Args:
-            user_id: ID de l'utilisateur
-        """
-        if user_id in self.user_usage:
-            del self.user_usage[user_id]
-        
-        # Supprimer les sessions de cet utilisateur
-        self.recent_sessions = deque(
-            [s for s in self.recent_sessions if s["user_id"] != user_id],
-            maxlen=1000
+        # Trier par usage total de tokens
+        sorted_users = sorted(
+            user_totals.values(),
+            key=lambda x: x["total_tokens"],
+            reverse=True
         )
         
-        logger.info(f"Utilisation remise à zéro pour l'utilisateur {user_id}")
+        return sorted_users[:limit]
     
-    def cleanup_old_data(self, days_to_keep: int = 30):
+    def export_usage_data(self, days: int = 30) -> List[Dict[str, Any]]:
         """
-        Nettoie les anciennes données de comptage.
+        Exporte les données d'usage pour analyse.
         
         Args:
-            days_to_keep: Nombre de jours de données à conserver
-        """
-        cutoff_date = datetime.now() - timedelta(days=days_to_keep)
-        
-        # Nettoyer les sessions anciennes
-        filtered_sessions = [
-            s for s in self.recent_sessions 
-            if datetime.fromisoformat(s["timestamp"]) > cutoff_date
-        ]
-        self.recent_sessions = deque(filtered_sessions, maxlen=1000)
-        
-        # Nettoyer les données quotidiennes anciennes
-        cutoff_date_str = cutoff_date.strftime("%Y-%m-%d")
-        old_dates = [
-            date for date in self.daily_usage.keys()
-            if date < cutoff_date_str
-        ]
-        
-        for date in old_dates:
-            del self.daily_usage[date]
-        
-        # Recalculer les compteurs utilisateurs et modèles
-        self._recalculate_counters()
-        
-        logger.info(f"Nettoyage effectué: {len(old_dates)} jours supprimés")
-    
-    def _recalculate_counters(self):
-        """Recalcule les compteurs utilisateurs et modèles depuis les sessions."""
-        # Réinitialiser les compteurs
-        self.user_usage.clear()
-        self.model_usage.clear()
-        
-        # Recalculer depuis les sessions restantes
-        for session in self.recent_sessions:
-            user_id = session["user_id"]
-            model = session["model"]
-            input_tokens = session["input_tokens"]
-            output_tokens = session["output_tokens"]
-            total_tokens = session["total_tokens"]
-            
-            # Compteurs utilisateur
-            if user_id not in self.user_usage:
-                self.user_usage[user_id] = {"input": 0, "output": 0, "total": 0}
-            
-            self.user_usage[user_id]["input"] += input_tokens
-            self.user_usage[user_id]["output"] += output_tokens
-            self.user_usage[user_id]["total"] += total_tokens
-            
-            # Compteurs modèle
-            if model not in self.model_usage:
-                self.model_usage[model] = {"input": 0, "output": 0, "total": 0}
-            
-            self.model_usage[model]["input"] += input_tokens
-            self.model_usage[model]["output"] += output_tokens
-            self.model_usage[model]["total"] += total_tokens
-    
-    def export_usage_data(self, user_id: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Exporte les données d'utilisation pour analyse.
-        
-        Args:
-            user_id: ID de l'utilisateur spécifique (optionnel)
+            days: Nombre de jours à exporter
             
         Returns:
-            Dict: Données d'utilisation exportées
+            List: Liste des enregistrements d'usage
         """
-        if user_id:
-            # Exporter pour un utilisateur spécifique
-            user_sessions = [s for s in self.recent_sessions if s["user_id"] == user_id]
-            
-            return {
-                "user_id": user_id,
-                "export_timestamp": datetime.now().isoformat(),
-                "sessions": user_sessions,
-                "summary": self.get_user_usage(user_id)
-            }
-        else:
-            # Exporter toutes les données
-            return {
-                "export_timestamp": datetime.now().isoformat(),
-                "sessions": list(self.recent_sessions),
-                "daily_usage": dict(self.daily_usage),
-                "user_usage": dict(self.user_usage),
-                "model_usage": dict(self.model_usage),
-                "summary": self.get_stats()
-            }
-
+        cutoff_date = datetime.now() - timedelta(days=days)
+        recent_usage = [
+            usage for usage in self.usage_history
+            if datetime.fromisoformat(usage.timestamp) >= cutoff_date
+        ]
+        
+        return [asdict(usage) for usage in recent_usage]
+    
+    def reset_stats(self):
+        """Remet à zéro toutes les statistiques."""
+        self.usage_history.clear()
+        self.user_usage.clear()
+        self.daily_usage.clear()
+        self.monthly_usage.clear()
+        logger.info("Token counter stats reset")
+    
+    def enable(self):
+        """Active le compteur de tokens."""
+        self.is_enabled = True
+        logger.info("Token counting enabled")
+    
+    def disable(self):
+        """Désactive le compteur de tokens."""
+        self.is_enabled = False
+        logger.info("Token counting disabled")
 
 # Instance globale
 token_counter = TokenCounter()

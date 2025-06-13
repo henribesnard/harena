@@ -14,17 +14,38 @@ logger = logging.getLogger(__name__)
 # Vérification de la disponibilité de bcrypt
 try:
     import bcrypt
-    logger.info(f"bcrypt version: {bcrypt.__version__}")
+    # Gestion des différentes versions de bcrypt
+    try:
+        # Anciennes versions
+        bcrypt_version = bcrypt.__about__.__version__
+    except AttributeError:
+        try:
+            # Nouvelles versions
+            bcrypt_version = bcrypt.__version__
+        except AttributeError:
+            # Version non disponible
+            bcrypt_version = "unknown"
+    
+    logger.info(f"bcrypt version: {bcrypt_version}")
 except ImportError:
     logger.error("bcrypt module not found. Please install it with 'pip install bcrypt'")
 except Exception as e:
     logger.error(f"Error importing bcrypt: {str(e)}")
 
-# Configuration de passlib avec des schemes de repli
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-)
+# Configuration de passlib avec gestion d'erreur
+try:
+    pwd_context = CryptContext(
+        schemes=["bcrypt"],
+        deprecated="auto",
+    )
+except Exception as e:
+    logger.warning(f"Error initializing bcrypt context: {e}")
+    # Utiliser un contexte de repli si bcrypt échoue
+    pwd_context = CryptContext(
+        schemes=["pbkdf2_sha256"],
+        deprecated="auto",
+    )
+    logger.warning("Using pbkdf2_sha256 as fallback password scheme")
 
 ALGORITHM = "HS256"
 
@@ -56,7 +77,4 @@ def get_password_hash(password: str) -> str:
         return pwd_context.hash(password)
     except Exception as e:
         logger.error(f"Error hashing password: {str(e)}")
-        # Utiliser un algorithme de repli en cas d'erreur avec bcrypt
-        import hashlib
-        logger.warning("Using fallback SHA-256 hashing - THIS IS NOT RECOMMENDED FOR PRODUCTION")
-        return hashlib.sha256(password.encode()).hexdigest()
+        raise  # Il vaut mieux lever l'exception pour le hachage

@@ -73,6 +73,7 @@ try:
             self.services = {}
             self.service_apps = {}  # Pour les applications complètes
             self.service_health_checks = {}  # Pour les vérifications de santé
+            self.failed_services = {}
             
         def register_service(self, name: str, router=None, prefix: str = None, status: str = "pending", 
                            app=None, health_check=None):
@@ -82,7 +83,8 @@ try:
                 "prefix": prefix,
                 "status": status,
                 "app": app,
-                "error": None
+                "error": None,
+                "registered_at": datetime.now()
             }
             if app:
                 self.service_apps[name] = app
@@ -95,7 +97,12 @@ try:
             if name in self.services:
                 self.services[name]["status"] = "failed"
                 self.services[name]["error"] = str(error)
-                logger.error(f"Service {name} marqué comme échoué: {error}")
+            
+            self.failed_services[name] = {
+                "error": str(error),
+                "failed_at": datetime.now()
+            }
+            logger.error(f"Service {name} marqué comme échoué: {error}")
             
         def get_service_status(self) -> Dict[str, str]:
             """Retourne le statut de tous les services."""
@@ -115,6 +122,16 @@ try:
             ]
             logger.info(f"Nombre de routeurs disponibles: {len(routers)}")
             return routers
+
+        def get_active_routers(self) -> List[Dict[str, Any]]:
+            """Retourne la liste des routeurs actifs à enregistrer."""
+            routers = [
+                {"name": name, "router": info["router"], "prefix": info["prefix"]}
+                for name, info in self.services.items()
+                if info["status"] == "ok" and info["router"] is not None
+            ]
+            logger.info(f"Nombre de routeurs disponibles: {len(routers)}")
+            return routers
         
         def get_service_apps(self) -> Dict[str, Any]:
             """Retourne les applications de service pour montage."""
@@ -126,6 +143,29 @@ try:
 
     # Variables globales
     startup_time = None
+
+    # ======== FONCTIONS UTILITAIRES ========
+
+    def _check_database_connection() -> bool:
+        """Vérifie la connexion à la base de données."""
+        try:
+            from db_service.session import engine
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                return True
+        except Exception:
+            return False
+
+    def _count_configured_external_services() -> int:
+        """Compte le nombre de services externes configurés."""
+        external_vars = [
+            "BRIDGE_CLIENT_ID", "BRIDGE_CLIENT_SECRET",
+            "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
+            "QDRANT_URL", "COHERE_KEY",
+            "SEARCHBOX_URL", "BONSAI_URL"
+        ]
+        return len([var for var in external_vars if os.environ.get(var)])
 
     # ======== FONCTION DU CYCLE DE VIE ========
 
@@ -172,9 +212,79 @@ try:
             logger.error(f"❌ Erreur de connexion à la base de données: {db_error}")
             raise RuntimeError(f"Database connection failed: {db_error}")
 
+        # 🔧 INITIALISATION DES SERVICES CRITIQUES
+        logger.info("🔧 Initialisation des services critiques...")
+        
+        # Initialisation du service d'embeddings pour enrichment_service
+        if os.environ.get("OPENAI_API_KEY"):
+            try:
+                logger.info("🔧 Initialisation de l'EmbeddingService...")
+                from enrichment_service.core.embeddings import embedding_service
+                await embedding_service.initialize()
+                logger.info("✅ EmbeddingService initialisé avec succès")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'initialisation de l'EmbeddingService: {e}")
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("⚠️ OPENAI_API_KEY non définie, EmbeddingService non initialisé")
+
+        # Initialisation du service d'embeddings pour search_service
+        if os.environ.get("OPENAI_API_KEY"):
+            try:
+                logger.info("🔧 Initialisation de l'EmbeddingService pour search...")
+                from search_service.core.embeddings import embedding_service as search_embedding_service
+                await search_embedding_service.initialize()
+                logger.info("✅ Search EmbeddingService initialisé avec succès")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'initialisation du Search EmbeddingService: {e}")
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("⚠️ OPENAI_API_KEY non définie, Search EmbeddingService non initialisé")
+
+        # Initialisation du stockage Qdrant pour enrichment_service
+        if os.environ.get("QDRANT_URL"):
+            try:
+                logger.info("🔧 Initialisation du QdrantStorage...")
+                from enrichment_service.storage.qdrant import QdrantStorage
+                qdrant_storage = QdrantStorage()
+                await qdrant_storage.initialize()
+                
+                # Créer et injecter le transaction processor
+                from enrichment_service.core.processor import TransactionProcessor
+                transaction_processor = TransactionProcessor(qdrant_storage)
+                
+                # Injecter dans les routes
+                import enrichment_service.api.routes as enrichment_routes
+                enrichment_routes.qdrant_storage = qdrant_storage
+                enrichment_routes.transaction_processor = transaction_processor
+                
+                logger.info("✅ QdrantStorage et TransactionProcessor initialisés avec succès")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'initialisation de Qdrant: {e}")
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("⚠️ QDRANT_URL non définie, QdrantStorage non initialisé")
+
+        logger.info("✅ Initialisation des services critiques terminée")
+
     async def shutdown():
         """Fonction de nettoyage lors de l'arrêt de l'application"""
         logger.info("⏹️ Application Harena complète en arrêt sur Heroku...")
+        
+        # Nettoyage des services d'embeddings
+        try:
+            from enrichment_service.core.embeddings import embedding_service
+            await embedding_service.close()
+            logger.info("✅ EmbeddingService fermé")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la fermeture de l'EmbeddingService: {e}")
+        
+        try:
+            from search_service.core.embeddings import embedding_service as search_embedding_service
+            await search_embedding_service.close()
+            logger.info("✅ Search EmbeddingService fermé")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la fermeture du Search EmbeddingService: {e}")
 
     # ======== GESTIONNAIRE DE CYCLE DE VIE ========
 
@@ -338,7 +448,7 @@ try:
         logger.error(traceback.format_exc())
         service_registry.mark_service_failed("enrichment_service", e)
 
-    # 4. SEARCH SERVICE - MAINTENANT ACTIVÉ
+    # 4. SEARCH SERVICE
     logger.info("📦 Importation du Search Service...")
     try:
         from search_service.api.routes import router as search_router
@@ -354,7 +464,7 @@ try:
         logger.error(traceback.format_exc())
         service_registry.mark_service_failed("search_service", e)
 
-    # 5. CONVERSATION SERVICE - MAINTENANT ACTIVÉ
+    # 5. CONVERSATION SERVICE
     logger.info("📦 Importation du Conversation Service...")
     try:
         # Routes REST
@@ -430,227 +540,74 @@ try:
     @app.get("/", tags=["health"])
     async def root():
         """Point d'entrée racine pour vérifier que l'application est en ligne."""
-        service_statuses = service_registry.get_service_status()
-        active_services = [name for name, status in service_statuses.items() if status == "ok"]
-        failed_services = [name for name, status in service_statuses.items() if status == "failed"]
-        disabled_services = [name for name, status in service_statuses.items() if status == "disabled"]
-        
-        # Calculer les capacités disponibles
-        capabilities = {
-            "user_management": "user_service" in active_services,
-            "bank_sync": any(s in active_services for s in ["sync_service", "transactions_service"]),
-            "data_enrichment": "enrichment_service" in active_services,
-            "smart_search": "search_service" in active_services,
-            "ai_assistant": "conversation_service" in active_services,
-            "websocket_chat": "conversation_websocket" in active_services,
-            "webhooks": "webhooks_service" in active_services,
-            "accounts_management": "accounts_service" in active_services,
-            "stocks_tracking": "stocks_service" in active_services,
-            "financial_insights": "insights_service" in active_services
-        }
+        uptime = time.time() - startup_time if startup_time else 0
         
         return {
-            "status": "running",
-            "application": "Harena Finance API (Complete)",
-            "version": "1.0.0",
-            "environment": os.environ.get("ENVIRONMENT", "production"),
-            "services": {
-                "active": active_services,
-                "failed": failed_services,
-                "disabled": disabled_services,
-                "total": len(service_statuses)
-            },
-            "capabilities": capabilities,
-            "features": {
-                "user_management": capabilities["user_management"],
-                "bank_sync": capabilities["bank_sync"],
-                "data_enrichment": capabilities["data_enrichment"],
-                "smart_search": capabilities["smart_search"],
-                "ai_assistant": capabilities["ai_assistant"],
-                "real_time_chat": capabilities["websocket_chat"]
-            },
-            "api_endpoints": {
-                "documentation": {
-                    "swagger": "/docs",
-                    "redoc": "/redoc"
-                },
-                "health": "/health",
-                "users": "/api/v1/users",
-                "transactions": "/api/v1/transactions",
-                "search": "/api/v1/search",
-                "chat": "/api/v1/conversation",
-                "websocket": "/ws"
-            },
-            "timestamp": datetime.now().isoformat()
+            "message": "Harena Finance API - Tous services activés",
+            "status": "online",
+            "version": "1.0.0-complete",
+            "uptime_seconds": round(uptime, 2),
+            "services_count": len([s for s in service_registry.services.values() if s["status"] == "ok"]),
+            "timestamp": datetime.now().isoformat(),
+            "environment": os.environ.get("ENVIRONMENT", "production")
         }
 
     @app.get("/health", tags=["health"])
     async def health_check():
-        """Vérification détaillée de l'état de santé de tous les services."""
+        """Endpoint de vérification de santé détaillé."""
+        uptime = time.time() - startup_time if startup_time else 0
         
-        # Vérifier la connexion à la base de données
+        # Vérification des services critiques
+        services_status = {}
+        for name, info in service_registry.services.items():
+            services_status[name] = {
+                "status": info["status"],
+                "registered_at": info["registered_at"].isoformat()
+            }
+        
+        # Vérification de la base de données
         db_status = "unknown"
-        db_error = None
         try:
             from db_service.session import engine
             from sqlalchemy import text
             with engine.connect() as conn:
-                result = conn.execute(text("SELECT version()"))
-                db_version = result.fetchone()[0] if result else "unknown"
-            db_status = "connected"
-        except Exception as e:
-            db_status = "error"
-            db_error = str(e)[:200]
+                conn.execute(text("SELECT 1"))
+                db_status = "connected"
+        except Exception:
+            db_status = "disconnected"
         
-        # Vérification des services externes
-        external_services = {
-            "bridge_api": {
-                "status": "configured" if (os.environ.get("BRIDGE_CLIENT_ID") and os.environ.get("BRIDGE_CLIENT_SECRET")) else "not_configured",
-                "required_for": ["bank synchronization", "transaction fetching"]
-            },
-            "openai_api": {
-                "status": "configured" if os.environ.get("OPENAI_API_KEY") else "not_configured",
-                "required_for": ["embeddings generation", "semantic search"]
-            },
-            "deepseek_api": {
-                "status": "configured" if os.environ.get("DEEPSEEK_API_KEY") else "not_configured",
-                "required_for": ["AI conversation", "intent detection"]
-            },
-            "qdrant": {
-                "status": "configured" if os.environ.get("QDRANT_URL") else "not_configured",
-                "required_for": ["vector storage", "semantic search"]
-            },
-            "elasticsearch": {
-                "status": "configured" if (os.environ.get("SEARCHBOX_URL") or os.environ.get("BONSAI_URL")) else "not_configured",
-                "required_for": ["lexical search", "full-text search"]
-            },
-            "cohere": {
-                "status": "configured" if os.environ.get("COHERE_KEY") else "not_configured",
-                "required_for": ["search result reranking"]
-            }
-        }
-        
-        # État général de l'application
-        service_statuses = service_registry.get_service_status()
-        service_errors = service_registry.get_service_errors()
-        failed_services = [name for name, status in service_statuses.items() if status == "failed"]
-        active_services = [name for name, status in service_statuses.items() if status == "ok"]
-        
-        if db_status == "error":
-            overall_status = "critical"
-        elif len(failed_services) > len(active_services):
-            overall_status = "critical"
-        elif failed_services:
-            overall_status = "degraded"
-        elif len(active_services) >= 3:  # Au moins les services de base
-            overall_status = "healthy"
-        else:
-            overall_status = "limited"
-        
-        # Calculer l'uptime
-        uptime = time.time() - startup_time if startup_time else 0
-        
-        # Capacités système
-        system_capabilities = {
-            "can_sync_banks": (
-                external_services["bridge_api"]["status"] == "configured" and 
-                any(s in active_services for s in ["sync_service", "transactions_service"])
-            ),
-            "can_search_semantic": (
-                external_services["openai_api"]["status"] == "configured" and 
-                external_services["qdrant"]["status"] == "configured" and
-                "search_service" in active_services
-            ),
-            "can_search_lexical": (
-                external_services["elasticsearch"]["status"] == "configured" and
-                "search_service" in active_services
-            ),
-            "can_chat_ai": (
-                external_services["deepseek_api"]["status"] == "configured" and
-                "conversation_service" in active_services
-            ),
-            "can_rerank_results": (
-                external_services["cohere"]["status"] == "configured" and
-                "search_service" in active_services
-            ),
-            "can_enrich_data": (
-                external_services["openai_api"]["status"] == "configured" and
-                external_services["qdrant"]["status"] == "configured" and
-                "enrichment_service" in active_services
-            ),
-            "can_track_stocks": "stocks_service" in active_services,
-            "can_manage_accounts": "accounts_service" in active_services,
-            "can_receive_webhooks": "webhooks_service" in active_services,
-            "has_real_time_chat": "conversation_websocket" in active_services
-        }
-        
-        response_data = {
-            "status": overall_status,
+        health_data = {
+            "status": "healthy",
+            "version": "1.0.0-complete",
+            "uptime_seconds": round(uptime, 2),
+            "timestamp": datetime.now().isoformat(),
+            "environment": os.environ.get("ENVIRONMENT", "production"),
             "database": {
                 "status": db_status,
-                "error": db_error,
-                "version": db_version if db_status == "connected" else None
+                "url_configured": bool(os.environ.get("DATABASE_URL"))
             },
-            "services": {
-                "statuses": service_statuses,
-                "errors": service_errors,
-                "active_count": len(active_services),
-                "failed_count": len(failed_services),
-                "total_count": len(service_statuses)
+            "services": services_status,
+            "external_apis": {
+                "bridge_configured": bool(os.environ.get("BRIDGE_CLIENT_ID")),
+                "openai_configured": bool(os.environ.get("OPENAI_API_KEY")),
+                "deepseek_configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
+                "qdrant_configured": bool(os.environ.get("QDRANT_URL")),
+                "cohere_configured": bool(os.environ.get("COHERE_KEY"))
             },
-            "external_services": external_services,
-            "system": {
-                "environment": os.environ.get("ENVIRONMENT", "production"),
-                "uptime_seconds": uptime,
-                "uptime_human": str(timedelta(seconds=int(uptime))),
-                "python_version": sys.version.split()[0],
-                "platform": "Heroku"
-            },
-            "capabilities": system_capabilities,
-            "performance": {
-                "avg_response_time": "unknown",  # Pourrait être calculé avec des métriques
-                "requests_per_minute": "unknown",
-                "error_rate": "unknown"
-            },
-            "configuration": {
-                "cors_origins": len(ALLOWED_ORIGINS),
-                "api_docs_enabled": True,
-                "debug_mode": os.environ.get("DEBUG", "False").lower() == "true"
-            },
-            "timestamp": datetime.now().isoformat()
+            "failed_services": service_registry.failed_services
         }
         
-        return response_data
-
-    @app.get("/services", tags=["health"])
-    async def services_status():
-        """Détail du statut de chaque service."""
-        service_statuses = service_registry.get_service_status()
-        service_errors = service_registry.get_service_errors()
+        # Déterminer le status global
+        if db_status == "disconnected":
+            health_data["status"] = "degraded"
+        elif len(service_registry.failed_services) > 0:
+            health_data["status"] = "degraded"
         
-        services_detail = {}
-        for name, status in service_statuses.items():
-            services_detail[name] = {
-                "status": status,
-                "description": _get_service_description(name),
-                "error": service_errors.get(name),
-                "prefix": service_registry.services[name].get("prefix"),
-                "active": status == "ok"
-            }
-        
-        return {
-            "services": services_detail,
-            "summary": {
-                "total": len(service_statuses),
-                "active": len([s for s in service_statuses.values() if s == "ok"]),
-                "failed": len([s for s in service_statuses.values() if s == "failed"]),
-                "disabled": len([s for s in service_statuses.values() if s == "disabled"])
-            },
-            "timestamp": datetime.now().isoformat()
-        }
+        return health_data
 
-    def _get_service_description(service_name: str) -> str:
-        """Retourne une description pour chaque service."""
+    @app.get("/services", tags=["admin"])
+    async def list_services():
+        """Liste tous les services enregistrés et leur statut."""
         descriptions = {
             "user_service": "Gestion des utilisateurs et authentification",
             "sync_service": "Synchronisation des données bancaires",
@@ -666,146 +623,23 @@ try:
             "conversation_service": "Assistant IA conversationnel",
             "conversation_websocket": "WebSocket pour chat temps réel"
         }
-        return descriptions.get(service_name, "Service Harena")
-
-    # ======== ENDPOINTS DE DÉVELOPPEMENT ========
-
-    @app.get("/debug/info", tags=["debug"])
-    async def debug_info(request: Request):
-        """Informations de debug (en mode développement uniquement)."""
-        if os.environ.get("ENVIRONMENT", "production").lower() == "production":
-            raise HTTPException(status_code=404, detail="Not found")
+        
+        services_info = {}
+        for name, info in service_registry.services.items():
+            services_info[name] = {
+                "status": info["status"],
+                "prefix": info["prefix"],
+                "description": descriptions.get(name, "Service Harena"),
+                "registered_at": info["registered_at"].isoformat()
+            }
         
         return {
-            "request": {
-                "method": request.method,
-                "url": str(request.url),
-                "headers": dict(request.headers),
-                "client": request.client.host if request.client else None
-            },
-            "environment": dict(os.environ),
-            "python_path": sys.path,
-            "services": service_registry.services,
+            "services": services_info,
+            "active_count": len([s for s in service_registry.services.values() if s["status"] == "ok"]),
+            "failed_count": len(service_registry.failed_services),
+            "failed_services": service_registry.failed_services,
             "timestamp": datetime.now().isoformat()
         }
-
-    # ======== GESTIONNAIRE D'EXCEPTIONS ========
-
-    @app.exception_handler(Exception)
-    async def global_exception_handler(request: Request, exc: Exception):
-        """Gestionnaire global d'exceptions pour toute l'application."""
-        logger.error(f"Exception non gérée sur {request.method} {request.url.path}: {str(exc)}", exc_info=True)
-        
-        # En production, ne pas exposer les détails de l'erreur
-        is_production = os.environ.get("ENVIRONMENT", "production").lower() == "production"
-        
-        if is_production:
-            error_detail = "Une erreur interne est survenue. Veuillez contacter le support."
-            error_id = f"ERR-{int(time.time())}"
-        else:
-            error_detail = str(exc)
-            error_id = None
-        
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "message": "Internal server error",
-                "detail": error_detail,
-                "error_id": error_id,
-                "path": request.url.path,
-                "method": request.method,
-                "timestamp": datetime.now().isoformat()
-            }
-        )
-
-    @app.exception_handler(404)
-    async def not_found_handler(request: Request, exc: HTTPException):
-        """Gestionnaire pour les erreurs 404."""
-        return JSONResponse(
-            status_code=404,
-            content={
-                "status": "not_found",
-                "message": f"Endpoint {request.url.path} not found",
-                "available_endpoints": {
-                    "health": "/health",
-                    "services": "/services", 
-                    "docs": "/docs",
-                    "redoc": "/redoc",
-                    "api": {
-                        "users": "/api/v1/users",
-                        "sync": "/api/v1/sync",
-                        "transactions": "/api/v1/transactions",
-                        "accounts": "/api/v1/accounts",
-                        "search": "/api/v1/search",
-                        "conversation": "/api/v1/conversation",
-                        "enrichment": "/api/v1/enrich"
-                    },
-                    "websocket": "/ws"
-                },
-                "timestamp": datetime.now().isoformat()
-            }
-        )
-
-    @app.exception_handler(500)
-    async def internal_server_error_handler(request: Request, exc: HTTPException):
-        """Gestionnaire pour les erreurs 500."""
-        logger.error(f"500 error on {request.method} {request.url.path}: {exc.detail}")
-        
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "internal_error",
-                "message": "Service temporarily unavailable",
-                "detail": "Please try again later or contact support",
-                "timestamp": datetime.now().isoformat()
-            }
-        )
-
-    # ======== ENDPOINTS DE MONITORING ========
-
-    @app.get("/metrics", tags=["monitoring"])
-    async def metrics_endpoint():
-        """Endpoint pour les métriques de monitoring (format simple)."""
-        service_statuses = service_registry.get_service_status()
-        active_count = len([s for s in service_statuses.values() if s == "ok"])
-        failed_count = len([s for s in service_statuses.values() if s == "failed"])
-        
-        # Métriques basiques
-        uptime = time.time() - startup_time if startup_time else 0
-        
-        metrics = {
-            "harena_services_active": active_count,
-            "harena_services_failed": failed_count,
-            "harena_services_total": len(service_statuses),
-            "harena_uptime_seconds": uptime,
-            "harena_database_connected": 1 if _check_database_connection() else 0,
-            "harena_external_services_configured": _count_configured_external_services(),
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        return metrics
-
-    def _check_database_connection() -> bool:
-        """Vérifie rapidement la connexion à la base de données."""
-        try:
-            from db_service.session import engine
-            from sqlalchemy import text
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return True
-        except:
-            return False
-
-    def _count_configured_external_services() -> int:
-        """Compte le nombre de services externes configurés."""
-        external_vars = [
-            "BRIDGE_CLIENT_ID", "BRIDGE_CLIENT_SECRET",
-            "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
-            "QDRANT_URL", "COHERE_KEY",
-            "SEARCHBOX_URL", "BONSAI_URL"
-        ]
-        return len([var for var in external_vars if os.environ.get(var)])
 
     # ======== ENDPOINT DE PERFORMANCE ========
 
@@ -857,106 +691,391 @@ try:
     @app.get("/status", tags=["health"])
     async def application_status():
         """Statut global de l'application (version condensée du health check)."""
-        service_statuses = service_registry.get_service_status()
-        active_services = [name for name, status in service_statuses.items() if status == "ok"]
-        failed_services = [name for name, status in service_statuses.items() if status == "failed"]
+        uptime = time.time() - startup_time if startup_time else 0
+        
+        # Compter les services actifs vs total
+        total_services = len(service_registry.services)
+        active_services = len([s for s in service_registry.services.values() if s["status"] == "ok"])
+        failed_services = len([s for s in service_registry.services.values() if s["status"] == "failed"])
         
         # Déterminer le statut global
-        if not _check_database_connection():
-            status = "critical"
-        elif len(failed_services) > len(active_services):
-            status = "critical"
-        elif failed_services:
-            status = "degraded"
-        elif len(active_services) >= 5:  # Si au moins 5 services fonctionnent
-            status = "healthy"
+        if failed_services == 0:
+            global_status = "operational"
+        elif active_services > failed_services:
+            global_status = "degraded"
         else:
-            status = "limited"
+            global_status = "major_outage"
+        
+        # Vérification DB rapide
+        db_connected = _check_database_connection()
+        if not db_connected:
+            global_status = "major_outage"
         
         return {
-            "status": status,
+            "status": global_status,
+            "uptime_hours": round(uptime / 3600, 2),
             "services": {
-                "active": len(active_services),
-                "failed": len(failed_services),
-                "total": len(service_statuses)
+                "active": active_services,
+                "failed": failed_services,
+                "total": total_services
             },
-            "core_features": {
-                "authentication": "user_service" in active_services,
-                "data_sync": any(s in active_services for s in ["sync_service", "transactions_service"]),
-                "search": "search_service" in active_services,
-                "ai_chat": "conversation_service" in active_services,
-                "data_enrichment": "enrichment_service" in active_services
-            },
-            "database_connected": _check_database_connection(),
-            "uptime_hours": round((time.time() - startup_time) / 3600, 2) if startup_time else 0,
+            "database_connected": db_connected,
+            "external_services_configured": _count_configured_external_services(),
             "timestamp": datetime.now().isoformat()
         }
 
-    # ======== GESTION GRACIEUSE DES SIGNAUX ========
+    @app.get("/metrics", tags=["monitoring"])
+    async def application_metrics():
+        """Métriques détaillées pour monitoring externe."""
+        uptime = time.time() - startup_time if startup_time else 0
+        
+        # Métriques des services
+        service_metrics = {}
+        for name, info in service_registry.services.items():
+            service_metrics[name] = {
+                "status": 1 if info["status"] == "ok" else 0,
+                "error_count": 1 if info["status"] == "failed" else 0,
+                "uptime_seconds": uptime  # Tous les services ont le même uptime pour l'instant
+            }
+        
+        # Métriques système
+        system_metrics = {
+            "app_uptime_seconds": uptime,
+            "total_services": len(service_registry.services),
+            "healthy_services": len([s for s in service_registry.services.values() if s["status"] == "ok"]),
+            "failed_services": len([s for s in service_registry.services.values() if s["status"] == "failed"]),
+            "database_connected": 1 if _check_database_connection() else 0,
+            "external_apis_configured": _count_configured_external_services()
+        }
+        
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "services": service_metrics,
+            "system": system_metrics,
+            "environment": os.environ.get("ENVIRONMENT", "production")
+        }
 
-    import signal
-    
-    def signal_handler(signum, frame):
-        """Gestionnaire pour les signaux système."""
-        logger.info(f"Signal {signum} reçu, arrêt gracieux en cours...")
+    def get_service_description(service_name: str) -> str:
+        """Retourne la description d'un service."""
+        descriptions = {
+            "user_service": "Gestion des utilisateurs et authentification",
+            "sync_service": "Synchronisation des données bancaires",
+            "transactions_service": "Gestion des transactions financières",
+            "webhooks_service": "Traitement des webhooks Bridge API",
+            "accounts_service": "Gestion des comptes bancaires",
+            "items_service": "Gestion des connexions bancaires",
+            "stocks_service": "Gestion des actions et investissements",
+            "categories_service": "Catégorisation des transactions",
+            "insights_service": "Analyses et insights financiers",
+            "enrichment_service": "Enrichissement et vectorisation des données",
+            "search_service": "Recherche hybride dans les transactions",
+            "conversation_service": "Assistant IA conversationnel",
+            "conversation_websocket": "WebSocket pour chat temps réel"
+        }
+        return descriptions.get(service_name, "Service Harena")
 
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    # ======== ENDPOINTS DE DÉVELOPPEMENT ========
 
-    # ======== TÂCHES DE FOND ========
+    @app.get("/debug/info", tags=["debug"])
+    async def debug_info(request: Request):
+        """Informations de debug (en mode développement uniquement)."""
+        if os.environ.get("ENVIRONMENT", "production").lower() == "production":
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        return {
+            "request": {
+                "method": request.method,
+                "url": str(request.url),
+                "headers": dict(request.headers),
+                "client": request.client.host if request.client else None
+            },
+            "environment": dict(os.environ),
+            "python_path": sys.path,
+            "services": service_registry.services,
+            "timestamp": datetime.now().isoformat()
+        }
 
-    async def periodic_health_check():
-        """Tâche de vérification périodique de la santé des services."""
-        while True:
-            try:
-                await asyncio.sleep(300)  # Toutes les 5 minutes
-                
-                # Vérifier la base de données
-                db_ok = _check_database_connection()
-                if not db_ok:
-                    logger.warning("❌ Perte de connexion à la base de données détectée")
-                
-                # Compter les services actifs
-                service_statuses = service_registry.get_service_status()
-                active_count = len([s for s in service_statuses.values() if s == "ok"])
-                total_count = len(service_statuses)
-                
-                logger.info(f"🔍 Health check: {active_count}/{total_count} services actifs, DB: {'✅' if db_ok else '❌'}")
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Erreur dans periodic_health_check: {e}")
+    @app.get("/debug/services", tags=["debug"])
+    async def debug_services():
+        """Debug détaillé des services (développement uniquement)."""
+        if os.environ.get("ENVIRONMENT", "production").lower() == "production":
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        debug_info = {}
+        for name, info in service_registry.services.items():
+            debug_info[name] = {
+                "status": info["status"],
+                "prefix": info["prefix"],
+                "has_router": info["router"] is not None,
+                "router_type": type(info["router"]).__name__ if info["router"] else None,
+                "error": info.get("error"),
+                "registered_at": info["registered_at"].isoformat() if info.get("registered_at") else None
+            }
+        
+        return {
+            "services": debug_info,
+            "registry_state": {
+                "total_services": len(service_registry.services),
+                "failed_services": len(service_registry.failed_services),
+                "service_apps_count": len(service_registry.service_apps)
+            },
+            "timestamp": datetime.now().isoformat()
+        }
 
-    # Démarrer la tâche de fond
-    @app.on_event("startup")
-    async def start_background_tasks():
-        """Démarre les tâches de fond."""
-        if os.environ.get("ENABLE_HEALTH_CHECK", "true").lower() == "true":
-            asyncio.create_task(periodic_health_check())
-            logger.info("✅ Tâche de vérification de santé périodique démarrée")
+    @app.get("/debug/routes", tags=["debug"])
+    async def debug_routes():
+        """Liste toutes les routes enregistrées (développement uniquement)."""
+        if os.environ.get("ENVIRONMENT", "production").lower() == "production":
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        routes_info = []
+        for route in app.routes:
+            route_info = {
+                "path": route.path,
+                "methods": list(route.methods) if hasattr(route, 'methods') else [],
+                "name": route.name if hasattr(route, 'name') else None,
+                "tags": route.tags if hasattr(route, 'tags') else []
+            }
+            routes_info.append(route_info)
+        
+        return {
+            "total_routes": len(routes_info),
+            "routes": routes_info,
+            "timestamp": datetime.now().isoformat()
+        }
 
-    logger.info("✅ Application heroku_app.py COMPLÈTE entièrement initialisée")
-    logger.info(f"📊 Services configurés: {len(service_registry.services)}")
-    logger.info(f"🔗 Routeurs inclus: {len(service_registry.get_available_routers())}")
+    # ======== ENDPOINTS D'ADMINISTRATION ========
 
-except Exception as e:
-    logger.error(f"❌ ERREUR FATALE lors de l'importation de heroku_app.py: {e}")
-    logger.error(traceback.format_exc())
+    @app.post("/admin/restart-service/{service_name}", tags=["admin"])
+    async def restart_service(service_name: str):
+        """Redémarre un service spécifique (admin uniquement)."""
+        # Note: En production, cet endpoint devrait être protégé par authentification
+        if service_name not in service_registry.services:
+            raise HTTPException(status_code=404, detail=f"Service {service_name} not found")
+        
+        # Pour l'instant, retourner un message d'information
+        # Dans une implémentation complète, on pourrait réimporter le module
+        return {
+            "message": f"Service restart requested for {service_name}",
+            "note": "Service restart functionality not implemented in this version",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    @app.get("/admin/logs/{service_name}", tags=["admin"])
+    async def get_service_logs(service_name: str, lines: int = 100):
+        """Récupère les logs d'un service spécifique (admin uniquement)."""
+        if service_name not in service_registry.services:
+            raise HTTPException(status_code=404, detail=f"Service {service_name} not found")
+        
+        # Note: Implémentation basique - en production, on lirait les vrais logs
+        return {
+            "service": service_name,
+            "lines_requested": lines,
+            "logs": [
+                f"[INFO] Service {service_name} operational",
+                f"[DEBUG] Last status check: {datetime.now().isoformat()}"
+            ],
+            "note": "Log retrieval functionality would be implemented with proper log aggregation",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    # ======== ENDPOINTS DE MONITORING AVANCÉ ========
+
+    @app.get("/monitoring/database", tags=["monitoring"])
+    async def database_monitoring():
+        """Informations détaillées sur l'état de la base de données."""
+        try:
+            from db_service.session import engine
+            from sqlalchemy import text
+            
+            # Test de connexion de base
+            start_time = time.time()
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            connection_time = time.time() - start_time
+            
+            # Informations sur le pool de connexions
+            pool_info = {
+                "size": engine.pool.size(),
+                "checked_in": engine.pool.checkedin(),
+                "checked_out": engine.pool.checkedout(),
+                "overflow": engine.pool.overflow()
+            }
+            
+            return {
+                "status": "connected",
+                "connection_time_ms": round(connection_time * 1000, 2),
+                "pool": pool_info,
+                "url_configured": bool(os.environ.get("DATABASE_URL")),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "url_configured": bool(os.environ.get("DATABASE_URL")),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    @app.get("/monitoring/external-apis", tags=["monitoring"])
+    async def external_apis_monitoring():
+        """État des APIs externes configurées."""
+        apis_status = {}
+        
+        # Bridge API
+        if os.environ.get("BRIDGE_CLIENT_ID") and os.environ.get("BRIDGE_CLIENT_SECRET"):
+            apis_status["bridge"] = {
+                "configured": True,
+                "client_id_set": bool(os.environ.get("BRIDGE_CLIENT_ID")),
+                "client_secret_set": bool(os.environ.get("BRIDGE_CLIENT_SECRET")),
+                "webhook_secret_set": bool(os.environ.get("BRIDGE_WEBHOOK_SECRET"))
+            }
+        else:
+            apis_status["bridge"] = {"configured": False}
+        
+        # OpenAI API
+        apis_status["openai"] = {
+            "configured": bool(os.environ.get("OPENAI_API_KEY")),
+            "api_key_set": bool(os.environ.get("OPENAI_API_KEY"))
+        }
+        
+        # DeepSeek API
+        apis_status["deepseek"] = {
+            "configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
+            "api_key_set": bool(os.environ.get("DEEPSEEK_API_KEY"))
+        }
+        
+        # Qdrant
+        apis_status["qdrant"] = {
+            "configured": bool(os.environ.get("QDRANT_URL")),
+            "url_set": bool(os.environ.get("QDRANT_URL")),
+            "api_key_set": bool(os.environ.get("QDRANT_API_KEY"))
+        }
+        
+        # Cohere
+        apis_status["cohere"] = {
+            "configured": bool(os.environ.get("COHERE_KEY")),
+            "api_key_set": bool(os.environ.get("COHERE_KEY"))
+        }
+        
+        # Elasticsearch (Searchbox/Bonsai)
+        searchbox_url = os.environ.get("SEARCHBOX_URL")
+        bonsai_url = os.environ.get("BONSAI_URL")
+        apis_status["elasticsearch"] = {
+            "configured": bool(searchbox_url or bonsai_url),
+            "searchbox_set": bool(searchbox_url),
+            "bonsai_set": bool(bonsai_url),
+            "active_provider": "searchbox" if searchbox_url else "bonsai" if bonsai_url else None
+        }
+        
+        total_configured = len([api for api in apis_status.values() if api.get("configured", False)])
+        
+        return {
+            "total_configured": total_configured,
+            "apis": apis_status,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    # ======== GESTIONNAIRE D'EXCEPTIONS ========
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """Gestionnaire global d'exceptions pour toute l'application."""
+        logger.error(f"Exception non gérée sur {request.method} {request.url.path}: {str(exc)}", exc_info=True)
+        
+        # En production, ne pas exposer les détails de l'erreur
+        is_production = os.environ.get("ENVIRONMENT", "production").lower() == "production"
+        
+        if is_production:
+            error_detail = "Une erreur interne est survenue. Veuillez contacter le support."
+            error_type = "internal_error"
+        else:
+            error_detail = str(exc)
+            error_type = type(exc).__name__
+        
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": error_type,
+                "detail": error_detail,
+                "timestamp": datetime.now().isoformat(),
+                "path": request.url.path,
+                "method": request.method
+            }
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        """Gestionnaire pour les exceptions HTTP."""
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": "http_error",
+                "detail": exc.detail,
+                "status_code": exc.status_code,
+                "timestamp": datetime.now().isoformat(),
+                "path": request.url.path,
+                "method": request.method
+            }
+        )
+
+    # ======== ENDPOINTS DE COMPATIBILITÉ ========
+
+    @app.get("/ping", tags=["health"])
+    async def ping():
+        """Endpoint simple pour les checks de santé externes."""
+        return {"status": "pong", "timestamp": datetime.now().isoformat()}
+
+    @app.get("/version", tags=["info"])
+    async def version_info():
+        """Informations de version de l'application."""
+        return {
+            "version": "1.0.0-complete",
+            "build": "heroku-production",
+            "python_version": sys.version.split()[0],
+            "environment": os.environ.get("ENVIRONMENT", "production"),
+            "platform": "Heroku",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    @app.get("/robots.txt", include_in_schema=False)
+    async def robots_txt():
+        """Fichier robots.txt pour les crawlers."""
+        return JSONResponse(
+            content="User-agent: *\nDisallow: /",
+            media_type="text/plain"
+        )
+
+    # ======== FINALISATION ========
+
+    logger.info("✅ Application Harena complète configurée et prête pour Heroku")
+
+except Exception as critical_error:
+    logger.critical(f"💥 ERREUR CRITIQUE lors de l'initialisation: {critical_error}")
+    logger.critical(traceback.format_exc())
     raise
 
-# Point d'entrée pour le serveur gunicorn configuré dans Procfile
+# ======== POINT D'ENTRÉE POUR HEROKU ========
+
+# Cette ligne est cruciale pour Heroku - elle doit être à la racine du module
+if 'app' not in locals():
+    logger.error("❌ L'application FastAPI n'a pas été créée correctement")
+    raise RuntimeError("FastAPI app not created")
+
+logger.info("🎉 heroku_app.py chargé avec succès - Application prête pour déploiement")
+
+# ======== INFORMATIONS DE DÉMARRAGE ========
+
 if __name__ == "__main__":
+    # Mode développement local
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
     
-    logger.info(f"🚀 Démarrage autonome de l'application Harena COMPLÈTE sur port {port}")
-    logger.info("🎯 TOUS LES SERVICES SONT ACTIVÉS")
-    
+    logger.info("🔧 Démarrage en mode développement local")
     uvicorn.run(
-        "heroku_app:app", 
-        host="0.0.0.0", 
-        port=port,
-        log_level="info",
-        access_log=True
+        "heroku_app:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        reload=True,
+        log_level="info"
     )

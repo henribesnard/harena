@@ -1,0 +1,208 @@
+# logging_config.yaml
+# Configuration personnalisée du logging pour le service de recherche
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  
+  detailed:
+    format: '%(asctime)s - %(name)s - %(levelname)s - [%(process)d:%(thread)d] - %(module)s:%(funcName)s:%(lineno)d - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  
+  metrics:
+    format: '%(asctime)s - METRICS - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  
+  access:
+    format: '%(asctime)s - ACCESS - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+  
+  file_general:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: detailed
+    filename: logs/search_service.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+  
+  file_errors:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: detailed
+    filename: logs/search_service_errors.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+  
+  file_metrics:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: metrics
+    filename: logs/search_metrics.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+  
+  file_access:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: access
+    filename: logs/search_access.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+loggers:
+  # Service principal
+  search_service:
+    level: INFO
+    handlers: [console, file_general, file_errors]
+    propagate: false
+  
+  # Composants spécifiques
+  search_service.elasticsearch:
+    level: INFO
+    handlers: [console, file_general, file_errors]
+    propagate: false
+  
+  search_service.qdrant:
+    level: INFO
+    handlers: [console, file_general, file_errors]
+    propagate: false
+  
+  search_service.monitoring:
+    level: INFO
+    handlers: [console, file_general]
+    propagate: false
+  
+  search_service.middleware:
+    level: INFO
+    handlers: [console, file_general]
+    propagate: false
+  
+  search_service.diagnostic:
+    level: INFO
+    handlers: [console, file_general]
+    propagate: false
+  
+  # Métriques spécialisées
+  search_service.metrics:
+    level: INFO
+    handlers: [file_metrics]
+    propagate: false
+  
+  search_service.metrics.requests:
+    level: INFO
+    handlers: [file_metrics]
+    propagate: false
+  
+  search_service.metrics.elasticsearch:
+    level: INFO
+    handlers: [file_metrics]
+    propagate: false
+  
+  search_service.metrics.qdrant:
+    level: INFO
+    handlers: [file_metrics]
+    propagate: false
+  
+  # Logs d'accès
+  search_service.access:
+    level: INFO
+    handlers: [file_access]
+    propagate: false
+  
+  # Réduire le bruit des bibliothèques externes
+  urllib3:
+    level: WARNING
+    handlers: [file_errors]
+    propagate: false
+  
+  elasticsearch:
+    level: WARNING
+    handlers: [file_errors]
+    propagate: false
+  
+  qdrant_client:
+    level: WARNING
+    handlers: [file_errors]
+    propagate: false
+  
+  httpx:
+    level: WARNING
+    handlers: [file_errors]
+    propagate: false
+  
+  uvicorn:
+    level: INFO
+    handlers: [console]
+    propagate: false
+  
+  uvicorn.access:
+    level: INFO
+    handlers: [file_access]
+    propagate: false
+
+root:
+  level: INFO
+  handlers: [console, file_general]
+
+# Configuration pour différents environnements
+---
+# Production - logging minimal mais complet
+production:
+  loggers:
+    search_service:
+      level: INFO
+    search_service.elasticsearch:
+      level: WARNING  # Seulement erreurs et warnings
+    search_service.qdrant:
+      level: WARNING
+
+---
+# Development - logging détaillé
+development:
+  loggers:
+    search_service:
+      level: DEBUG
+    search_service.elasticsearch:
+      level: DEBUG
+    search_service.qdrant:
+      level: DEBUG
+    search_service.monitoring:
+      level: DEBUG
+
+---
+# Debug - logging très détaillé pour diagnostic
+debug:
+  loggers:
+    search_service:
+      level: DEBUG
+    search_service.elasticsearch:
+      level: DEBUG
+    search_service.qdrant:
+      level: DEBUG
+    search_service.monitoring:
+      level: DEBUG
+    search_service.middleware:
+      level: DEBUG
+    search_service.diagnostic:
+      level: DEBUG
+  
+  handlers:
+    console:
+      level: DEBUG
+    file_general:
+      level: DEBUG

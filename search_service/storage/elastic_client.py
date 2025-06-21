@@ -30,33 +30,27 @@ class ElasticClient:
         logger.info("🔄 Initialisation du client Elasticsearch...")
         start_time = time.time()
         
-        # Log des configurations
-        if settings.SEARCHBOX_URL:
-            es_url = settings.SEARCHBOX_URL
-            logger.info("📡 Configuration: SearchBox Elasticsearch")
-        elif settings.BONSAI_URL:
-            es_url = settings.BONSAI_URL
-            logger.info("📡 Configuration: Bonsai Elasticsearch")
-        else:
-            logger.error("❌ Aucune URL Elasticsearch configurée (SEARCHBOX_URL/BONSAI_URL)")
-            raise ValueError("No Elasticsearch URL configured")
+        # Vérifier la configuration
+        if not settings.BONSAI_URL:
+            logger.error("❌ BONSAI_URL non configurée")
+            return False
         
         # Masquer les credentials dans les logs
-        safe_url = self._mask_credentials(es_url)
-        logger.info(f"🔗 Connexion à: {safe_url}")
+        safe_url = self._mask_credentials(settings.BONSAI_URL)
+        logger.info(f"🔗 Connexion à Bonsai Elasticsearch: {safe_url}")
         
         try:
             self._connection_attempts += 1
             logger.info(f"🔄 Tentative de connexion #{self._connection_attempts}")
             
-            # Créer le client avec configuration détaillée
+            # Créer le client avec configuration adaptée à Bonsai
             self.client = AsyncElasticsearch(
-                [es_url],
+                [settings.BONSAI_URL],
                 verify_certs=True,
                 ssl_show_warn=False,
                 max_retries=3,
                 retry_on_timeout=True,
-                timeout=30,
+                request_timeout=30.0,  # Utiliser request_timeout au lieu de timeout
                 headers={
                     "Accept": "application/json",
                     "Content-Type": "application/json"
@@ -67,6 +61,7 @@ class ElasticClient:
             logger.info("⏱️ Test de connexion...")
             connection_start = time.time()
             
+            # Test basic de connexion
             info = await self.client.info()
             connection_time = time.time() - connection_start
             
@@ -89,26 +84,25 @@ class ElasticClient:
             total_time = time.time() - start_time
             logger.info(f"🎉 Client Elasticsearch initialisé avec succès en {total_time:.2f}s")
             
-            # IMPORTANT: Retourner True en cas de succès
             return True
             
         except ConnectionError as e:
             logger.error(f"🔌 Erreur de connexion Elasticsearch: {e}")
             metrics_logger.error(f"elasticsearch.connection.failed,type=connection,attempt={self._connection_attempts}")
             self._handle_connection_error(e)
-            raise  # Re-lever l'exception
+            return False
             
         except TransportError as e:
             logger.error(f"🚫 Erreur de transport Elasticsearch: {e}")
             logger.error(f"📍 Status code: {e.status_code if hasattr(e, 'status_code') else 'N/A'}")
             metrics_logger.error(f"elasticsearch.connection.failed,type=transport,status={getattr(e, 'status_code', 'unknown')}")
-            raise  # Re-lever l'exception
+            return False
             
         except Exception as e:
             logger.error(f"💥 Erreur inattendue lors de l'initialisation Elasticsearch: {type(e).__name__}: {e}")
             logger.error(f"📍 Détails: {str(e)}", exc_info=True)
             metrics_logger.error(f"elasticsearch.connection.failed,type=unexpected,error={type(e).__name__}")
-            raise  # Re-lever l'exception
+            return False
             
         finally:
             if not self._initialized:
@@ -118,153 +112,76 @@ class ElasticClient:
     async def _check_cluster_health(self):
         """Vérifie la santé du cluster Elasticsearch."""
         try:
-            logger.debug("🩺 Vérification santé cluster Elasticsearch...")
-            
-            # Vérification basique avec cluster health
             health = await self.client.cluster.health()
-            status = health.get('status', 'unknown')
+            status = health.get("status", "unknown")
             
-            if status == 'green':
-                logger.info("🟢 Cluster Elasticsearch: Excellent état")
-            elif status == 'yellow':
-                logger.warning("🟡 Cluster Elasticsearch: État dégradé mais fonctionnel")
-            elif status == 'red':
-                logger.error("🔴 Cluster Elasticsearch: État critique")
+            if status == "green":
+                logger.info("💚 Cluster Elasticsearch: Santé EXCELLENTE")
+            elif status == "yellow":
+                logger.warning("💛 Cluster Elasticsearch: Santé ACCEPTABLE (réplicas manquants)")
+            elif status == "red":
+                logger.error("💔 Cluster Elasticsearch: Santé CRITIQUE")
             else:
-                logger.warning(f"⚪ Cluster Elasticsearch: État inconnu ({status})")
+                logger.warning(f"⚠️ Cluster Elasticsearch: Statut inconnu ({status})")
             
-            metrics_logger.info(f"elasticsearch.cluster.health,status={status}")
+            logger.info(f"📊 Nœuds: {health.get('number_of_nodes', 0)}")
+            logger.info(f"🗂️ Shards actifs: {health.get('active_shards', 0)}")
             
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de vérifier la santé du cluster: {e}")
+            logger.error(f"❌ Impossible de vérifier la santé du cluster: {e}")
     
     async def _setup_index(self):
-        """Configure l'index Elasticsearch."""
+        """Configure l'index pour les transactions."""
         try:
-            logger.debug(f"📁 Configuration de l'index {self.index_name}...")
-            
             # Vérifier si l'index existe
             exists = await self.client.indices.exists(index=self.index_name)
             
             if not exists:
-                logger.info(f"📁 Création de l'index {self.index_name}...")
+                logger.info(f"📚 Création de l'index '{self.index_name}'...")
                 
-                # Configuration de l'index pour les transactions
-                index_config = {
-                    "settings": {
-                        "number_of_shards": 1,
-                        "number_of_replicas": 0,
-                        "analysis": {
-                            "analyzer": {
-                                "harena_analyzer": {
-                                    "type": "custom",
-                                    "tokenizer": "standard",
-                                    "filter": ["lowercase", "stop", "snowball"]
-                                }
-                            }
-                        }
-                    },
+                # Mapping pour les transactions financières
+                mapping = {
                     "mappings": {
                         "properties": {
+                            "user_id": {"type": "integer"},
                             "transaction_id": {"type": "keyword"},
+                            "amount": {"type": "float"},
                             "description": {
                                 "type": "text",
-                                "analyzer": "harena_analyzer",
+                                "analyzer": "standard",
                                 "fields": {
-                                    "raw": {"type": "keyword"}
+                                    "keyword": {"type": "keyword"}
+                                }
+                            },
+                            "merchant": {
+                                "type": "text",
+                                "analyzer": "standard",
+                                "fields": {
+                                    "keyword": {"type": "keyword"}
                                 }
                             },
                             "category": {"type": "keyword"},
-                            "amount": {"type": "float"},
                             "date": {"type": "date"},
-                            "account_id": {"type": "keyword"},
-                            "merchant": {"type": "text", "analyzer": "harena_analyzer"},
-                            "location": {"type": "text"},
                             "created_at": {"type": "date"},
                             "updated_at": {"type": "date"}
                         }
+                    },
+                    "settings": {
+                        "number_of_shards": 1,
+                        "number_of_replicas": 0
                     }
                 }
                 
-                await self.client.indices.create(
-                    index=self.index_name,
-                    body=index_config
-                )
-                logger.info(f"✅ Index {self.index_name} créé avec succès")
-                metrics_logger.info(f"elasticsearch.index.created,name={self.index_name}")
+                await self.client.indices.create(index=self.index_name, body=mapping)
+                logger.info(f"✅ Index '{self.index_name}' créé avec succès")
             else:
-                logger.info(f"📁 Index {self.index_name} existe déjà")
+                logger.info(f"📚 Index '{self.index_name}' existe déjà")
                 
-            # Vérifier les stats de l'index
-            stats = await self.client.indices.stats(index=self.index_name)
-            doc_count = stats['indices'][self.index_name]['total']['docs']['count']
-            logger.info(f"📊 Index {self.index_name}: {doc_count} documents")
-            
         except Exception as e:
             logger.error(f"❌ Erreur lors de la configuration de l'index: {e}")
-            # Ne pas lever l'exception car ce n'est pas critique pour l'initialisation
-    
-    async def is_healthy(self) -> bool:
-        """Vérifie si le client Elasticsearch est en bonne santé."""
-        if not self.client:
-            logger.debug("❌ Client non initialisé")
-            return False
-        
-        try:
-            logger.debug("🩺 Vérification santé client...")
-            start_time = time.time()
-            
-            # Ping simple
-            ping_result = await self.client.ping()
-            ping_time = time.time() - start_time
-            
-            if ping_result:
-                logger.debug(f"✅ Ping réussi en {ping_time:.3f}s")
-                metrics_logger.info(f"elasticsearch.health.ping.success,time={ping_time:.3f}")
-                
-                # Vérification plus approfondie si nécessaire
-                if time.time() - (self._last_health_check or 0) > 60:  # Chaque minute
-                    await self._detailed_health_check()
-                    self._last_health_check = time.time()
-                
-                return True
-            else:
-                logger.warning(f"⚠️ Ping échoué en {ping_time:.3f}s")
-                metrics_logger.warning(f"elasticsearch.health.ping.failed,time={ping_time:.3f}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du health check: {type(e).__name__}: {e}")
-            metrics_logger.error(f"elasticsearch.health.check.failed,error={type(e).__name__}")
-            return False
-    
-    async def _detailed_health_check(self):
-        """Effectue une vérification de santé approfondie."""
-        try:
-            logger.debug("🔍 Vérification santé détaillée...")
-            
-            # Vérifier l'index
-            exists = await self.client.indices.exists(index=self.index_name)
-            if not exists:
-                logger.error(f"❌ Index {self.index_name} n'existe pas")
-                metrics_logger.error("elasticsearch.health.index.missing")
-                return
-            
-            # Statistiques de l'index
-            stats = await self.client.indices.stats(index=self.index_name)
-            index_stats = stats.get("indices", {}).get(self.index_name, {})
-            
-            total_docs = index_stats.get("total", {}).get("docs", {}).get("count", 0)
-            store_size = index_stats.get("total", {}).get("store", {}).get("size_in_bytes", 0)
-            
-            logger.info(f"📊 Index stats: {total_docs} documents, {store_size} bytes")
-            metrics_logger.info(f"elasticsearch.index.stats,docs={total_docs},size={store_size}")
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la vérification détaillée: {e}")
     
     def _mask_credentials(self, url: str) -> str:
-        """Masque les credentials dans l'URL pour les logs."""
+        """Masque les credentials dans l'URL pour l'affichage."""
         if "@" in url:
             # Format: https://user:pass@host:port/path
             parts = url.split("@")
@@ -291,13 +208,48 @@ class ElasticClient:
         logger.error("   - Contrôler les variables d'environnement")
         logger.error("   - Tester la connection depuis un autre client")
     
-    async def search_transactions(self, query: str, filters: Dict[str, Any] = None, limit: int = 10) -> Dict[str, Any]:
+    async def is_healthy(self) -> bool:
+        """Vérifie si le client est sain et fonctionnel."""
+        if not self.client or not self._initialized:
+            return False
+        
+        try:
+            # Test rapide de ping
+            start_time = time.time()
+            health = await self.client.cluster.health()
+            response_time = time.time() - start_time
+            
+            status = health.get("status", "red")
+            is_healthy = status in ["green", "yellow"]
+            
+            # Mettre à jour le cache de santé
+            self._last_health_check = {
+                "timestamp": time.time(),
+                "healthy": is_healthy,
+                "status": status,
+                "response_time": response_time
+            }
+            
+            return is_healthy
+            
+        except Exception as e:
+            logger.error(f"❌ Health check failed: {e}")
+            return False
+    
+    async def search(
+        self,
+        user_id: int,
+        query: str,
+        limit: int = 10,
+        filters: Dict[str, Any] = None,
+        include_highlights: bool = True
+    ) -> List[Dict[str, Any]]:
         """Recherche des transactions avec logging des performances."""
         if not self.client or not self._initialized:
             raise RuntimeError("Client Elasticsearch non initialisé")
         
         search_id = f"search_{int(time.time() * 1000)}"
-        logger.info(f"🔍 [{search_id}] Recherche: '{query}' (limit: {limit})")
+        logger.info(f"🔍 [{search_id}] Recherche pour user {user_id}: '{query}' (limit: {limit})")
         
         start_time = time.time()
         
@@ -306,6 +258,9 @@ class ElasticClient:
             search_body = {
                 "query": {
                     "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}}
+                        ],
                         "should": [
                             {
                                 "multi_match": {
@@ -328,69 +283,90 @@ class ElasticClient:
                 "sort": [
                     {"_score": {"order": "desc"}},
                     {"date": {"order": "desc"}}
-                ],
-                "_source": True
+                ]
             }
             
-            # Ajouter des filtres si fournis
+            # Ajouter les filtres si spécifiés
             if filters:
-                filter_clauses = []
                 for field, value in filters.items():
                     if value is not None:
-                        filter_clauses.append({"term": {field: value}})
-                
-                if filter_clauses:
-                    search_body["query"]["bool"]["filter"] = filter_clauses
+                        search_body["query"]["bool"]["filter"] = search_body["query"]["bool"].get("filter", [])
+                        search_body["query"]["bool"]["filter"].append({"term": {field: value}})
+            
+            # Ajouter la mise en évidence si demandée
+            if include_highlights:
+                search_body["highlight"] = {
+                    "fields": {
+                        "description": {},
+                        "merchant": {}
+                    },
+                    "pre_tags": ["<mark>"],
+                    "post_tags": ["</mark>"]
+                }
             
             # Exécuter la recherche
-            response = await self.client.search(
-                index=self.index_name,
-                body=search_body
-            )
+            logger.info(f"🎯 [{search_id}] Exécution recherche lexicale...")
+            response = await self.client.search(index=self.index_name, body=search_body)
             
-            search_time = time.time() - start_time
-            hits = response.get('hits', {})
-            total_hits = hits.get('total', {}).get('value', 0)
+            query_time = time.time() - start_time
             
-            logger.info(f"✅ [{search_id}] Trouvé {total_hits} résultats en {search_time:.3f}s")
-            metrics_logger.info(f"elasticsearch.search.success,time={search_time:.3f},results={total_hits},query_length={len(query)}")
+            # Analyser les résultats
+            hits = response.get("hits", {}).get("hits", [])
+            total_hits = response.get("hits", {}).get("total", {})
+            
+            if isinstance(total_hits, dict):
+                total_count = total_hits.get("value", 0)
+            else:
+                total_count = total_hits
             
             # Formater les résultats
             results = []
-            for hit in hits.get('hits', []):
-                source = hit.get('_source', {})
-                source['_score'] = hit.get('_score', 0)
-                results.append(source)
+            scores = []
             
-            return {
-                "query": query,
-                "total": total_hits,
-                "results": results,
-                "search_time": search_time,
-                "search_id": search_id
-            }
+            for hit in hits:
+                result = {
+                    "id": hit["_id"],
+                    "score": hit["_score"],
+                    "source": hit["_source"]
+                }
+                
+                # Ajouter les highlights si disponibles
+                if "highlight" in hit:
+                    result["highlights"] = hit["highlight"]
+                
+                results.append(result)
+                scores.append(hit["_score"])
+            
+            # Statistiques des scores
+            if scores:
+                max_score = max(scores)
+                min_score = min(scores)
+                avg_score = sum(scores) / len(scores)
+            else:
+                max_score = min_score = avg_score = 0
+            
+            # Logs de résultats
+            logger.info(f"✅ [{search_id}] Recherche terminée en {query_time:.3f}s")
+            logger.info(f"📊 [{search_id}] Résultats: {len(results)}/{total_count}")
+            logger.info(f"🎯 [{search_id}] Scores: max={max_score:.3f}, min={min_score:.3f}, avg={avg_score:.3f}")
+            
+            # Métriques
+            metrics_logger.info(
+                f"elasticsearch.search.success,"
+                f"user_id={user_id},"
+                f"query_time={query_time:.3f},"
+                f"results={len(results)},"
+                f"total={total_count},"
+                f"max_score={max_score:.3f}"
+            )
+            
+            return results
             
         except Exception as e:
-            search_time = time.time() - start_time
-            logger.error(f"❌ [{search_id}] Erreur recherche après {search_time:.3f}s: {type(e).__name__}: {e}")
-            metrics_logger.error(f"elasticsearch.search.failed,time={search_time:.3f},error={type(e).__name__}")
-            
-            if isinstance(e, TransportError):
-                self._handle_transport_error(e, search_id)
-            
-            raise
-    
-    def _handle_transport_error(self, error, search_id):
-        """Gère les erreurs de transport avec contexte."""
-        status_code = getattr(error, 'status_code', 'unknown')
-        logger.error(f"🚫 [{search_id}] Erreur transport - Status: {status_code}")
-        
-        if status_code == 429:
-            logger.error(f"🚫 [{search_id}] Rate limiting détecté")
-        elif status_code >= 500:
-            logger.error(f"🚫 [{search_id}] Erreur serveur Elasticsearch")
-        elif status_code >= 400:
-            logger.error(f"🚫 [{search_id}] Erreur client - vérifier la requête")
+            query_time = time.time() - start_time
+            logger.error(f"❌ [{search_id}] Erreur recherche après {query_time:.3f}s: {e}")
+            metrics_logger.error(f"elasticsearch.search.failed,user_id={user_id},time={query_time:.3f},error={type(e).__name__}")
+            return []
     
     async def close(self):
         """Ferme la connexion avec logging."""
@@ -401,44 +377,3 @@ class ElasticClient:
             logger.info("✅ Connexion Elasticsearch fermée")
         else:
             logger.debug("🔒 Aucun client à fermer")
-    
-    async def get_cluster_info(self) -> Dict[str, Any]:
-        """Récupère les informations détaillées du cluster."""
-        if not self.client:
-            return {}
-        
-        try:
-            info = await self.client.info()
-            cluster_stats = await self.client.cluster.stats()
-            
-            return {
-                "cluster_name": info.get("cluster_name"),
-                "version": info.get("version", {}).get("number"),
-                "nodes": cluster_stats.get("nodes", {}).get("count", {}).get("total", 0),
-                "indices_count": cluster_stats.get("indices", {}).get("count", 0),
-                "docs_count": cluster_stats.get("indices", {}).get("docs", {}).get("count", 0),
-                "store_size": cluster_stats.get("indices", {}).get("store", {}).get("size_in_bytes", 0)
-            }
-        except Exception as e:
-            logger.warning(f"Impossible de récupérer les infos cluster: {e}")
-            return {}
-    
-    async def get_indices_info(self) -> Dict[str, Any]:
-        """Récupère les informations sur les indices."""
-        if not self.client:
-            return {}
-        
-        try:
-            stats = await self.client.indices.stats()
-            indices_info = {}
-            
-            for index_name, index_stats in stats.get("indices", {}).items():
-                indices_info[index_name] = {
-                    "docs": index_stats.get("total", {}).get("docs", {}),
-                    "store": index_stats.get("total", {}).get("store", {}),
-                }
-            
-            return indices_info
-        except Exception as e:
-            logger.warning(f"Impossible de récupérer les infos indices: {e}")
-            return {}

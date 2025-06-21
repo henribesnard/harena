@@ -66,104 +66,91 @@ class QdrantClient:
             # Test de connexion
             logger.info("⏱️ Test de connexion Qdrant...")
             collections = await self.client.get_collections()
+            
             connection_time = time.time() - connection_start
+            total_time = time.time() - start_time
             
-            logger.info(f"✅ Connexion Qdrant réussie en {connection_time:.2f}s")
-            
-            # Log des collections disponibles
+            # Vérification des collections
             collection_names = [col.name for col in collections.collections]
-            logger.info(f"📚 Collections disponibles: {collection_names}")
+            logger.info(f"✅ Connexion Qdrant réussie en {connection_time:.3f}s")
+            logger.info(f"📚 Collections disponibles: {len(collection_names)}")
             
-            # Vérifier notre collection
+            for col_name in collection_names:
+                logger.info(f"   - {col_name}")
+            
+            # Vérifier si notre collection existe
             if self.collection_name in collection_names:
                 logger.info(f"✅ Collection '{self.collection_name}' trouvée")
-                await self._analyze_collection()
-                self._initialized = True
+                # Obtenir les infos de la collection
+                try:
+                    collection_info = await self.client.get_collection(self.collection_name)
+                    self._collection_info = {
+                        "vectors_count": collection_info.vectors_count,
+                        "indexed_vectors_count": collection_info.indexed_vectors_count,
+                        "points_count": collection_info.points_count,
+                        "segments_count": collection_info.segments_count,
+                        "status": collection_info.status
+                    }
+                    logger.info(f"📊 Collection '{self.collection_name}': {collection_info.points_count} points")
+                except Exception as collection_error:
+                    logger.warning(f"⚠️ Erreur récupération infos collection: {collection_error}")
             else:
                 logger.warning(f"⚠️ Collection '{self.collection_name}' non trouvée")
-                logger.info("🔧 La collection sera créée automatiquement si nécessaire")
-                # On peut tout de même marquer comme initialisé pour permettre la création
-                self._initialized = True
+                logger.info("💡 La collection sera créée lors du premier enrichissement")
             
-            # Métriques de connexion
-            metrics_logger.info(
-                f"qdrant.connection.success,"
-                f"time={connection_time:.3f},"
-                f"attempt={self._connection_attempts},"
-                f"collections={len(collection_names)}"
-            )
+            # Marquer comme initialisé
+            self._initialized = True
+            logger.info(f"🎉 Client Qdrant prêt en {total_time:.3f}s")
             
-            total_time = time.time() - start_time
-            logger.info(f"🎉 Client Qdrant initialisé avec succès en {total_time:.2f}s")
             return True
-                
-        except ResponseHandlingException as e:
-            logger.error(f"🚫 Erreur de réponse Qdrant: {e}")
-            logger.error(f"📍 Status code: {getattr(e, 'status_code', 'unknown')}")
-            metrics_logger.error(f"qdrant.connection.failed,type=response_error,attempt={self._connection_attempts}")
-            self._handle_response_error(e)
-            return False
-            
-        except UnexpectedResponse as e:
-            logger.error(f"🚫 Réponse inattendue de Qdrant: {e}")
-            metrics_logger.error(f"qdrant.connection.failed,type=unexpected_response,attempt={self._connection_attempts}")
-            return False
             
         except Exception as e:
-            logger.error(f"💥 Erreur inattendue lors de l'initialisation Qdrant: {type(e).__name__}: {e}")
-            logger.error(f"📍 Détails", exc_info=True)
-            metrics_logger.error(f"qdrant.connection.failed,type=unexpected,error={type(e).__name__}")
+            connection_time = time.time() - start_time
+            self._handle_connection_error(e, connection_time)
             return False
-            
-        finally:
-            if not self._initialized:
-                self.client = None
-                logger.warning("⚠️ Client Qdrant non initialisé - recherche sémantique indisponible")
-    
-    async def _analyze_collection(self):
-        """Analyse la collection pour obtenir des métriques."""
-        try:
-            # Obtenir les informations de la collection
-            collection_info = await self.client.get_collection(self.collection_name)
-            
-            points_count = collection_info.points_count
-            vectors_count = collection_info.vectors_count if hasattr(collection_info, 'vectors_count') else points_count
-            
-            logger.info(f"📊 Collection '{self.collection_name}':")
-            logger.info(f"   📍 Points: {points_count}")
-            logger.info(f"   🎯 Vecteurs: {vectors_count}")
-            
-            # Stocker les informations pour le monitoring
-            self._collection_info = {
-                "points_count": points_count,
-                "vectors_count": vectors_count,
-                "status": collection_info.status,
-                "optimizer_status": collection_info.optimizer_status.dict() if hasattr(collection_info, 'optimizer_status') else {}
-            }
-            
-            # Log des détails de configuration
-            if hasattr(collection_info, 'config'):
-                config = collection_info.config
-                if hasattr(config, 'params'):
-                    logger.info(f"   🔧 Configuration: {config.params.vectors}")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Impossible d'analyser la collection: {e}")
-            self._collection_info = {"error": str(e)}
     
     def _mask_api_key(self, url: str) -> str:
-        """Masque l'API key dans l'URL pour l'affichage."""
+        """Masque l'API key dans l'URL pour les logs."""
         # Qdrant URL est généralement juste l'endpoint, pas de credentials dans l'URL
         return url
+    
+    def _handle_connection_error(self, error, connection_time):
+        """Gère les erreurs de connexion avec diagnostic détaillé."""
+        error_type = error.__class__.__name__
+        error_msg = str(error)
+        
+        logger.error(f"💥 Erreur Qdrant après {connection_time:.3f}s:")
+        logger.error(f"   Type: {error_type}")
+        logger.error(f"   Message: {error_msg}")
+        
+        # Diagnostic spécifique des erreurs
+        error_str = error_msg.lower()
+        if "connection" in error_str or "timeout" in error_str:
+            logger.error("🔌 DIAGNOSTIC: Problème de connectivité réseau")
+            logger.error("   - Vérifiez l'URL Qdrant")
+            logger.error("   - Vérifiez la connectivité réseau")
+        elif "401" in error_msg or "403" in error_msg or "auth" in error_str:
+            logger.error("🔑 DIAGNOSTIC: Problème d'authentification")
+            logger.error("   - Vérifiez QDRANT_API_KEY")
+        elif "ssl" in error_str or "certificate" in error_str:
+            logger.error("🔒 DIAGNOSTIC: Problème SSL/TLS")
+        
+        # Suggestions de diagnostic
+        logger.error("🔧 Actions de diagnostic suggérées:")
+        logger.error("   - Vérifier la connectivité réseau vers Qdrant")
+        logger.error("   - Valider QDRANT_URL et QDRANT_API_KEY")
+        logger.error("   - Contrôler l'état du service Qdrant")
     
     def _handle_response_error(self, error):
         """Gère les erreurs de réponse avec diagnostic."""
         status_code = getattr(error, 'status_code', 'unknown')
+        error_type = error.__class__.__name__
+        error_msg = str(error)
         
         logger.error("🚫 Diagnostic de l'erreur Qdrant:")
-        logger.error(f"   - Type: {type(error).__name__}")
+        logger.error(f"   - Type: {error_type}")
         logger.error(f"   - Status: {status_code}")
-        logger.error(f"   - Message: {str(error)}")
+        logger.error(f"   - Message: {error_msg}")
         
         # Diagnostic selon le code d'erreur
         if status_code == 401:
@@ -303,387 +290,118 @@ class QdrantClient:
             scores = []
             
             for point in search_result.points if hasattr(search_result, 'points') else search_result:
-                result = {
-                    "id": point.id,
-                    "score": point.score,
+                result_data = {
+                    "id": str(point.id),
+                    "score": float(point.score),
                     "payload": point.payload
                 }
-                results.append(result)
+                results.append(result_data)
                 scores.append(point.score)
             
-            # Statistiques des scores
-            if scores:
-                max_score = max(scores)
-                min_score = min(scores)
-                avg_score = sum(scores) / len(scores)
-            else:
-                max_score = min_score = avg_score = 0
+            # Métriques de performance
+            avg_score = sum(scores) / len(scores) if scores else 0
+            min_score = min(scores) if scores else 0
+            max_score = max(scores) if scores else 0
             
-            # Logs de résultats
-            logger.info(f"✅ [{search_id}] Recherche terminée en {total_time:.3f}s")
-            logger.info(f"📊 [{search_id}] Résultats: {len(results)}")
-            logger.info(f"⏱️ [{search_id}] Temps requête: {query_time:.3f}s")
-            logger.info(f"🎯 [{search_id}] Scores: max={max_score:.3f}, min={min_score:.3f}, avg={avg_score:.3f}")
+            # Logging des résultats
+            logger.info(f"✅ [{search_id}] Recherche terminée:")
+            logger.info(f"   - Temps total: {total_time:.3f}s")
+            logger.info(f"   - Temps requête: {query_time:.3f}s")
+            logger.info(f"   - Résultats: {len(results)}/{limit}")
+            logger.info(f"   - Score moyen: {avg_score:.3f}")
             
-            # Métriques détaillées
-            metrics_logger.info(
-                f"qdrant.search.success,"
-                f"user_id={user_id},"
-                f"query_time={query_time:.3f},"
-                f"total_time={total_time:.3f},"
-                f"results={len(results)},"
-                f"max_score={max_score:.3f}"
-            )
+            if len(results) > 0:
+                logger.info(f"   - Score min/max: {min_score:.3f}/{max_score:.3f}")
+            
+            # Métriques pour monitoring
+            metrics_logger.info("qdrant_search", extra={
+                "search_id": search_id,
+                "user_id": user_id,
+                "query_time": query_time,
+                "total_time": total_time,
+                "results_count": len(results),
+                "requested_limit": limit,
+                "avg_score": avg_score,
+                "filters_count": len(filters) if filters else 0
+            })
             
             return results
             
+        except ResponseHandlingException as e:
+            search_time = time.time() - start_time
+            logger.error(f"❌ [{search_id}] Erreur Qdrant après {search_time:.3f}s:")
+            self._handle_response_error(e)
+            raise
         except Exception as e:
-            query_time = time.time() - start_time
-            logger.error(f"❌ [{search_id}] Erreur recherche vectorielle après {query_time:.3f}s: {e}")
-            metrics_logger.error(f"qdrant.search.failed,user_id={user_id},time={query_time:.3f},error={type(e).__name__}")
-            return []
+            search_time = time.time() - start_time
+            error_type = e.__class__.__name__
+            logger.error(f"❌ [{search_id}] Erreur générale après {search_time:.3f}s:")
+            logger.error(f"   Type: {error_type}")
+            logger.error(f"   Message: {str(e)}")
+            raise
     
-    async def get_collection_info(self) -> Dict[str, Any]:
-        """Retourne les informations de la collection."""
-        if not self.client or not self._initialized:
-            return {"error": "Client not initialized"}
-        
-        try:
-            if not self._collection_info:
-                await self._analyze_collection()
-            
-            return self._collection_info or {"error": "Collection info not available"}
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des infos collection: {e}")
-            return {"error": str(e)}
-    
-    async def create_collection_if_not_exists(
-        self,
-        vector_size: int = 1536,
-        distance_metric: str = "Cosine"
-    ) -> bool:
-        """Crée la collection si elle n'existe pas."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return False
-        
-        try:
-            # Vérifier si la collection existe
-            collections = await self.client.get_collections()
-            collection_names = [col.name for col in collections.collections]
-            
-            if self.collection_name in collection_names:
-                logger.info(f"✅ Collection '{self.collection_name}' existe déjà")
-                return True
-            
-            # Créer la collection
-            distance_map = {
-                "Cosine": Distance.COSINE,
-                "Euclidean": Distance.EUCLID,
-                "Dot": Distance.DOT
-            }
-            
-            logger.info(f"🔧 Création de la collection '{self.collection_name}'...")
-            
-            await self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(
-                    size=vector_size,
-                    distance=distance_map.get(distance_metric, Distance.COSINE)
-                )
-            )
-            
-            logger.info(f"✅ Collection '{self.collection_name}' créée avec succès")
-            await self._analyze_collection()
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la création de la collection: {e}")
-            return False
-    
-    async def upsert_points(
-        self,
-        points: List[Dict[str, Any]]
-    ) -> bool:
-        """Insère ou met à jour des points dans la collection."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return False
-        
-        if not points:
-            logger.warning("⚠️ Aucun point à insérer")
-            return True
-        
-        try:
-            # Convertir les points au format Qdrant
-            qdrant_points = []
-            for point in points:
-                qdrant_point = PointStruct(
-                    id=point["id"],
-                    vector=point["vector"],
-                    payload=point.get("payload", {})
-                )
-                qdrant_points.append(qdrant_point)
-            
-            logger.info(f"💾 Insertion de {len(qdrant_points)} points dans '{self.collection_name}'...")
-            
-            # Insérer les points
-            operation_info = await self.client.upsert(
-                collection_name=self.collection_name,
-                points=qdrant_points
-            )
-            
-            logger.info(f"✅ {len(qdrant_points)} points insérés avec succès")
-            logger.info(f"📊 Opération: {operation_info.status}")
-            
-            # Mettre à jour les informations de la collection
-            await self._analyze_collection()
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'insertion des points: {e}")
-            return False
-    
-    async def delete_points(
-        self,
-        point_ids: List[str]
-    ) -> bool:
-        """Supprime des points de la collection."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return False
-        
-        if not point_ids:
-            logger.warning("⚠️ Aucun point à supprimer")
-            return True
-        
-        try:
-            logger.info(f"🗑️ Suppression de {len(point_ids)} points de '{self.collection_name}'...")
-            
-            operation_info = await self.client.delete(
-                collection_name=self.collection_name,
-                points_selector=point_ids
-            )
-            
-            logger.info(f"✅ {len(point_ids)} points supprimés avec succès")
-            logger.info(f"📊 Opération: {operation_info.status}")
-            
-            # Mettre à jour les informations de la collection
-            await self._analyze_collection()
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la suppression des points: {e}")
-            return False
-    
-    async def scroll_points(
-        self,
-        user_id: Optional[int] = None,
-        limit: int = 100,
-        offset: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Parcourt les points de la collection avec pagination."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return {"points": [], "next_page_offset": None}
-        
-        try:
-            scroll_filter = None
-            if user_id is not None:
-                scroll_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="user_id",
-                            match=Match(value=user_id)
-                        )
-                    ]
-                )
-            
-            logger.info(f"📖 Parcours des points (user_id: {user_id}, limit: {limit})")
-            
-            result = await self.client.scroll(
-                collection_name=self.collection_name,
-                scroll_filter=scroll_filter,
-                limit=limit,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False
-            )
-            
-            points = []
-            for point in result[0]:  # result[0] contient les points
-                points.append({
-                    "id": point.id,
-                    "payload": point.payload
-                })
-            
-            next_offset = result[1]  # result[1] contient le next_page_offset
-            
-            logger.info(f"📊 {len(points)} points récupérés")
-            
-            return {
-                "points": points,
-                "next_page_offset": next_offset
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du parcours des points: {e}")
-            return {"points": [], "next_page_offset": None}
-    
-    async def get_point(self, point_id: str) -> Optional[Dict[str, Any]]:
-        """Récupère un point spécifique par son ID."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return None
-        
-        try:
-            logger.info(f"🔍 Récupération du point {point_id}")
-            
-            result = await self.client.retrieve(
-                collection_name=self.collection_name,
-                ids=[point_id],
-                with_payload=True,
-                with_vectors=False
-            )
-            
-            if result:
-                point = result[0]
-                return {
-                    "id": point.id,
-                    "payload": point.payload
-                }
-            else:
-                logger.warning(f"⚠️ Point {point_id} non trouvé")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération du point {point_id}: {e}")
-            return None
-    
-    async def count_points(self, user_id: Optional[int] = None) -> int:
-        """Compte le nombre de points dans la collection."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return 0
-        
-        try:
-            count_filter = None
-            if user_id is not None:
-                count_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="user_id",
-                            match=Match(value=user_id)
-                        )
-                    ]
-                )
-            
-            result = await self.client.count(
-                collection_name=self.collection_name,
-                count_filter=count_filter,
-                exact=True
-            )
-            
-            count = result.count
-            logger.info(f"📊 Nombre de points (user_id: {user_id}): {count}")
-            
-            return count
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du comptage des points: {e}")
-            return 0
-    
-    async def get_collections_list(self) -> List[str]:
+    async def get_collections(self):
         """Retourne la liste des collections disponibles."""
         if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return []
+            raise RuntimeError("Client Qdrant non initialisé")
         
         try:
             collections = await self.client.get_collections()
-            collection_names = [col.name for col in collections.collections]
-            
-            logger.info(f"📚 Collections disponibles: {collection_names}")
-            return collection_names
-            
+            return [col.name for col in collections.collections]
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des collections: {e}")
-            return []
+            logger.error(f"❌ Erreur récupération collections: {e}")
+            raise
     
-    async def collection_exists(self, collection_name: Optional[str] = None) -> bool:
+    async def collection_exists(self, collection_name: str = None) -> bool:
         """Vérifie si une collection existe."""
-        if not self.client or not self._initialized:
-            return False
-        
-        target_collection = collection_name or self.collection_name
+        collection_name = collection_name or self.collection_name
         
         try:
-            collections = await self.client.get_collections()
-            collection_names = [col.name for col in collections.collections]
-            
-            exists = target_collection in collection_names
-            logger.info(f"🔍 Collection '{target_collection}': {'Existe' if exists else 'N\'existe pas'}")
-            
-            return exists
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la vérification de la collection: {e}")
+            collections = await self.get_collections()
+            return collection_name in collections
+        except Exception:
             return False
     
-    async def delete_collection(self, collection_name: Optional[str] = None) -> bool:
-        """Supprime une collection."""
-        if not self.client or not self._initialized:
-            logger.error("❌ Client Qdrant non initialisé")
-            return False
+    async def get_collection_info(self, collection_name: str = None) -> Dict[str, Any]:
+        """Retourne les informations détaillées d'une collection."""
+        collection_name = collection_name or self.collection_name
         
-        target_collection = collection_name or self.collection_name
+        if not self.client or not self._initialized:
+            raise RuntimeError("Client Qdrant non initialisé")
         
         try:
-            logger.warning(f"🗑️ Suppression de la collection '{target_collection}'...")
-            
-            await self.client.delete_collection(collection_name=target_collection)
-            
-            logger.info(f"✅ Collection '{target_collection}' supprimée avec succès")
-            
-            # Réinitialiser les infos si c'est notre collection principale
-            if target_collection == self.collection_name:
-                self._collection_info = None
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la suppression de la collection: {e}")
-            return False
-    
-    async def get_cluster_info(self) -> Dict[str, Any]:
-        """Retourne les informations sur le cluster Qdrant."""
-        if not self.client or not self._initialized:
-            return {"error": "Client not initialized"}
-        
-        try:
-            # Obtenir les informations du cluster
-            cluster_info = await self.client.get_cluster_info()
-            
+            collection_info = await self.client.get_collection(collection_name)
             return {
-                "peer_id": cluster_info.peer_id if hasattr(cluster_info, 'peer_id') else "unknown",
-                "raft_info": cluster_info.raft_info.dict() if hasattr(cluster_info, 'raft_info') else {},
-                "status": "healthy",
-                "collections_count": len(await self.get_collections_list())
+                "name": collection_name,
+                "vectors_count": collection_info.vectors_count,
+                "indexed_vectors_count": collection_info.indexed_vectors_count,
+                "points_count": collection_info.points_count,
+                "segments_count": collection_info.segments_count,
+                "status": collection_info.status.value if hasattr(collection_info.status, 'value') else str(collection_info.status),
+                "optimizer_status": collection_info.optimizer_status.value if hasattr(collection_info.optimizer_status, 'value') else str(collection_info.optimizer_status)
             }
-            
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des infos cluster: {e}")
-            return {"error": str(e)}
+            logger.error(f"❌ Erreur récupération infos collection '{collection_name}': {e}")
+            raise
     
     async def close(self):
-        """Ferme la connexion avec logging."""
+        """Ferme la connexion Qdrant."""
         if self.client:
-            logger.info("🔒 Fermeture connexion Qdrant...")
-            await self.client.close()
-            self._initialized = False
-            logger.info("✅ Connexion Qdrant fermée")
-        else:
-            logger.debug("🔒 Aucun client à fermer")
+            try:
+                await self.client.close()
+                logger.info("✅ Connexion Qdrant fermée proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture Qdrant: {e}")
+            finally:
+                self.client = None
+                self._initialized = False
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Retourne le statut complet du client."""
+        return {
+            "initialized": self._initialized,
+            "connection_attempts": self._connection_attempts,
+            "last_health_check": self._last_health_check,
+            "collection_name": self.collection_name,
+            "collection_info": self._collection_info
+        }

@@ -1,5 +1,5 @@
 """
-Routes API pour le service de recherche.
+Routes API pour le service de recherche - VERSION CORRIGÉE.
 
 Ce module définit les endpoints pour la recherche hybride de transactions.
 """
@@ -23,23 +23,192 @@ router = APIRouter()
 # Instances globales (initialisées dans main.py)
 elastic_client = None
 qdrant_client = None
+embedding_service = None
+reranker_service = None
 search_cache = None
 metrics_collector = None
 
 
 def get_search_engine() -> SearchEngine:
-    """Crée une instance du moteur de recherche."""
-    if not elastic_client and not qdrant_client:
+    """Crée une instance du moteur de recherche avec vérification robuste."""
+    # Vérification détaillée des clients
+    elastic_available = elastic_client is not None
+    qdrant_available = qdrant_client is not None
+    
+    # Log de diagnostic détaillé
+    logger.info(f"🔍 Vérification des clients:")
+    logger.info(f"   - elastic_client: {type(elastic_client).__name__ if elastic_client else 'None'}")
+    logger.info(f"   - qdrant_client: {type(qdrant_client).__name__ if qdrant_client else 'None'}")
+    logger.info(f"   - elastic_available: {elastic_available}")
+    logger.info(f"   - qdrant_available: {qdrant_available}")
+    
+    # Vérification de l'état d'initialisation des clients
+    elastic_initialized = False
+    qdrant_initialized = False
+    
+    if elastic_client:
+        elastic_initialized = hasattr(elastic_client, '_initialized') and elastic_client._initialized
+        logger.info(f"   - elastic_initialized: {elastic_initialized}")
+    
+    if qdrant_client:
+        qdrant_initialized = hasattr(qdrant_client, '_initialized') and qdrant_client._initialized
+        logger.info(f"   - qdrant_initialized: {qdrant_initialized}")
+    
+    # Au moins un client doit être disponible ET initialisé
+    if not ((elastic_available and elastic_initialized) or (qdrant_available and qdrant_initialized)):
+        error_details = []
+        
+        if not elastic_available:
+            error_details.append("Elasticsearch client not injected")
+        elif not elastic_initialized:
+            error_details.append("Elasticsearch client not initialized")
+            
+        if not qdrant_available:
+            error_details.append("Qdrant client not injected")
+        elif not qdrant_initialized:
+            error_details.append("Qdrant client not initialized")
+        
+        error_message = f"Search service not available: {'; '.join(error_details)}"
+        logger.error(f"❌ {error_message}")
+        
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Search service not available"
+            detail=error_message
         )
     
-    return SearchEngine(
-        elastic_client=elastic_client,
-        qdrant_client=qdrant_client,
-        cache=search_cache
-    )
+    # Log des clients disponibles
+    available_services = []
+    if elastic_available and elastic_initialized:
+        available_services.append("Elasticsearch")
+    if qdrant_available and qdrant_initialized:
+        available_services.append("Qdrant")
+    
+    logger.info(f"✅ Services disponibles: {', '.join(available_services)}")
+    
+    # Créer le moteur de recherche
+    try:
+        search_engine = SearchEngine(
+            elastic_client=elastic_client if (elastic_available and elastic_initialized) else None,
+            qdrant_client=qdrant_client if (qdrant_available and qdrant_initialized) else None,
+            cache=search_cache
+        )
+        logger.info("✅ SearchEngine créé avec succès")
+        return search_engine
+    except Exception as e:
+        logger.error(f"❌ Erreur création SearchEngine: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to create search engine: {str(e)}"
+        )
+
+
+@router.get("/health")
+async def search_health():
+    """Check de santé détaillé du service de recherche."""
+    health_status = {
+        "service": "search_service",
+        "timestamp": time.time(),
+        "clients": {
+            "elasticsearch": {
+                "injected": elastic_client is not None,
+                "initialized": elastic_client is not None and hasattr(elastic_client, '_initialized') and elastic_client._initialized,
+                "type": type(elastic_client).__name__ if elastic_client else None
+            },
+            "qdrant": {
+                "injected": qdrant_client is not None,
+                "initialized": qdrant_client is not None and hasattr(qdrant_client, '_initialized') and qdrant_client._initialized,
+                "type": type(qdrant_client).__name__ if qdrant_client else None
+            },
+            "embedding_service": {
+                "injected": embedding_service is not None,
+                "type": type(embedding_service).__name__ if embedding_service else None
+            },
+            "cache": {
+                "injected": search_cache is not None,
+                "type": type(search_cache).__name__ if search_cache else None
+            }
+        }
+    }
+    
+    # Déterminer la santé globale
+    elasticsearch_ok = health_status["clients"]["elasticsearch"]["initialized"]
+    qdrant_ok = health_status["clients"]["qdrant"]["initialized"]
+    
+    health_status["healthy"] = elasticsearch_ok or qdrant_ok
+    health_status["status"] = "healthy" if health_status["healthy"] else "unhealthy"
+    health_status["available_services"] = []
+    
+    if elasticsearch_ok:
+        health_status["available_services"].append("elasticsearch")
+    if qdrant_ok:
+        health_status["available_services"].append("qdrant")
+    
+    # Tests de connectivité si possible
+    if elasticsearch_ok:
+        try:
+            is_healthy = await elastic_client.is_healthy()
+            health_status["clients"]["elasticsearch"]["connectivity"] = is_healthy
+        except Exception as e:
+            health_status["clients"]["elasticsearch"]["connectivity_error"] = str(e)
+    
+    if qdrant_ok:
+        try:
+            is_healthy = await qdrant_client.is_healthy()
+            health_status["clients"]["qdrant"]["connectivity"] = is_healthy
+        except Exception as e:
+            health_status["clients"]["qdrant"]["connectivity_error"] = str(e)
+    
+    return health_status
+
+
+@router.get("/debug/injection")
+async def debug_injection():
+    """Debug endpoint pour vérifier l'injection des dépendances."""
+    import sys
+    
+    # Informations sur les variables globales
+    injection_debug = {
+        "module_info": {
+            "module_name": __name__,
+            "module_file": __file__,
+            "module_id": id(sys.modules[__name__])
+        },
+        "global_variables": {
+            "elastic_client": {
+                "value": elastic_client,
+                "type": type(elastic_client).__name__ if elastic_client else None,
+                "id": id(elastic_client),
+                "is_none": elastic_client is None
+            },
+            "qdrant_client": {
+                "value": qdrant_client,
+                "type": type(qdrant_client).__name__ if qdrant_client else None,
+                "id": id(qdrant_client),
+                "is_none": qdrant_client is None
+            },
+            "embedding_service": {
+                "value": embedding_service,
+                "type": type(embedding_service).__name__ if embedding_service else None,
+                "id": id(embedding_service),
+                "is_none": embedding_service is None
+            },
+            "search_cache": {
+                "value": search_cache,
+                "type": type(search_cache).__name__ if search_cache else None,
+                "id": id(search_cache),
+                "is_none": search_cache is None
+            }
+        }
+    }
+    
+    # Vérifier si les clients sont initialisés
+    if elastic_client:
+        injection_debug["global_variables"]["elastic_client"]["initialized"] = hasattr(elastic_client, '_initialized') and elastic_client._initialized
+    
+    if qdrant_client:
+        injection_debug["global_variables"]["qdrant_client"]["initialized"] = hasattr(qdrant_client, '_initialized') and qdrant_client._initialized
+    
+    return injection_debug
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -52,250 +221,142 @@ async def search_transactions(
     
     Ce endpoint combine recherche lexicale (Elasticsearch) et sémantique (Qdrant)
     avec reranking optionnel pour optimiser la pertinence.
-    
-    Args:
-        query: Requête de recherche avec filtres et paramètres
-        current_user: Utilisateur authentifié
-        
-    Returns:
-        SearchResponse: Résultats de recherche avec scores et métadonnées
     """
     start_time = time.time()
     
-    # Vérifier que l'utilisateur ne peut chercher que ses propres transactions
-    if query.user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot search other users' transactions"
-        )
-    
     try:
-        # Obtenir le moteur de recherche
+        # Log de la requête
+        logger.info(f"🔍 Nouvelle recherche pour user {current_user.id}")
+        logger.info(f"   Query: '{query.query}'")
+        logger.info(f"   Type: {query.search_type}")
+        logger.info(f"   Limit: {query.limit}")
+        
+        # Créer le moteur de recherche (avec vérifications détaillées)
         search_engine = get_search_engine()
         
-        # Vérifier si on peut utiliser le cache
-        cache_key = None
-        if search_cache and not query.include_explanations:
-            cache_key = search_cache.generate_key(query)
-            cached_response = await search_cache.get(cache_key)
-            
-            if cached_response:
-                logger.info(f"Cache hit for query: {query.query[:50]}...")
-                if metrics_collector:
-                    metrics_collector.record_cache_hit()
-                return cached_response
+        # Effectuer la recherche
+        results = await search_engine.search(
+            query=query.query,
+            user_id=current_user.id,
+            search_type=query.search_type,
+            limit=query.limit,
+            filters=query.filters,
+            rerank=query.rerank
+        )
         
-        # Exécuter la recherche
-        logger.info(f"Executing {query.search_type} search for user {query.user_id}: {query.query}")
+        search_time = time.time() - start_time
         
-        response = await search_engine.search(query)
+        # Préparer la réponse
+        response = SearchResponse(
+            results=results,
+            total_found=len(results),
+            search_time=search_time,
+            query_info={
+                "original_query": query.query,
+                "search_type": query.search_type,
+                "user_id": current_user.id,
+                "limit": query.limit,
+                "rerank": query.rerank
+            }
+        )
         
-        # Mettre en cache si approprié
-        if cache_key and response.results:
-            await search_cache.set(cache_key, response, ttl=300)  # 5 minutes
-        
-        # Enregistrer les métriques
-        if metrics_collector:
-            metrics_collector.record_search(
-                search_type=query.search_type,
-                results_count=len(response.results),
-                duration=time.time() - start_time
-            )
+        logger.info(f"✅ Recherche terminée en {search_time:.3f}s - {len(results)} résultats")
         
         return response
         
-    except ValueError as e:
-        logger.error(f"Invalid search query: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except HTTPException:
+        # Re-lever les HTTPException (comme 503)
+        raise
     except Exception as e:
-        logger.error(f"Search error: {e}", exc_info=True)
+        search_time = time.time() - start_time
+        error_msg = f"Search failed: {str(e)}"
+        logger.error(f"❌ Erreur recherche après {search_time:.3f}s: {error_msg}")
+        logger.error(f"   Type: {type(e).__name__}")
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search failed: {str(e)}"
+            detail=error_msg
         )
 
 
-@router.get("/search/suggest")
+@router.get("/suggest")
 async def get_search_suggestions(
-    prefix: str = Query(..., min_length=2, description="Préfixe de recherche"),
-    limit: int = Query(10, ge=1, le=20, description="Nombre de suggestions"),
+    q: str = Query(..., description="Requête pour les suggestions"),
+    limit: int = Query(5, description="Nombre de suggestions"),
     current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Obtient des suggestions de recherche basées sur un préfixe.
-    
-    Args:
-        prefix: Début du terme de recherche
-        limit: Nombre maximum de suggestions
-        current_user: Utilisateur authentifié
-        
-    Returns:
-        Dict: Liste des suggestions
-    """
+    """Retourne des suggestions de recherche basées sur la requête."""
     try:
-        # Pour l'instant, on retourne des suggestions statiques
-        # TODO: Implémenter avec Elasticsearch suggest API
+        # Pour l'instant, retourner des suggestions statiques
+        # TODO: Implémenter la logique de suggestions dynamiques
         
-        static_suggestions = [
-            "restaurant",
-            "supermarché",
-            "carburant",
-            "pharmacie",
-            "virement",
-            "retrait",
-            "abonnement",
-            "transport",
-            "courses",
-            "shopping"
-        ]
-        
-        # Filtrer par préfixe
         suggestions = [
-            s for s in static_suggestions 
-            if s.lower().startswith(prefix.lower())
+            f"{q} ce mois-ci",
+            f"{q} cette semaine",
+            f"Toutes les transactions {q}",
+            f"{q} supérieur à 100€",
+            f"{q} récent"
         ][:limit]
         
         return {
-            "prefix": prefix,
+            "query": q,
             "suggestions": suggestions,
-            "count": len(suggestions)
+            "user_id": current_user.id
         }
         
     except Exception as e:
-        logger.error(f"Suggestion error: {e}")
+        logger.error(f"❌ Erreur suggestions: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get suggestions: {str(e)}"
+            detail=f"Suggestions failed: {str(e)}"
         )
 
 
-@router.get("/search/stats")
+@router.get("/stats")
 async def get_search_stats(
     current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Obtient les statistiques de recherche pour l'utilisateur.
-    
-    Args:
-        current_user: Utilisateur authentifié
-        
-    Returns:
-        Dict: Statistiques de recherche
-    """
+    """Retourne des statistiques de recherche pour l'utilisateur."""
     try:
-        # Obtenir les statistiques depuis le collecteur de métriques
-        if not metrics_collector:
-            return {
-                "message": "Metrics collector not available",
-                "user_id": current_user.id
-            }
-        
-        stats = metrics_collector.get_user_stats(current_user.id)
-        
+        # TODO: Implémenter les vraies statistiques
         return {
             "user_id": current_user.id,
-            "total_searches": stats.get("total_searches", 0),
-            "search_types": stats.get("search_types", {}),
-            "avg_results_count": stats.get("avg_results_count", 0),
-            "cache_hit_rate": stats.get("cache_hit_rate", 0),
-            "recent_queries": stats.get("recent_queries", [])
-        }
-        
-    except Exception as e:
-        logger.error(f"Stats error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get stats: {str(e)}"
-        )
-
-
-@router.post("/search/feedback")
-async def submit_search_feedback(
-    transaction_id: int,
-    query: str,
-    relevant: bool,
-    feedback: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Soumet un feedback sur la pertinence d'un résultat de recherche.
-    
-    Args:
-        transaction_id: ID de la transaction
-        query: Requête de recherche originale
-        relevant: Si le résultat était pertinent
-        feedback: Commentaire optionnel
-        current_user: Utilisateur authentifié
-        
-    Returns:
-        Dict: Confirmation du feedback
-    """
-    try:
-        # TODO: Stocker le feedback pour améliorer le modèle
-        logger.info(
-            f"Feedback from user {current_user.id}: "
-            f"transaction {transaction_id} is {'relevant' if relevant else 'not relevant'} "
-            f"for query '{query}'"
-        )
-        
-        if metrics_collector:
-            metrics_collector.record_feedback(
-                user_id=current_user.id,
-                query=query,
-                transaction_id=transaction_id,
-                relevant=relevant
-            )
-        
-        return {
-            "status": "success",
-            "message": "Feedback recorded",
-            "transaction_id": transaction_id,
-            "relevant": relevant
-        }
-        
-    except Exception as e:
-        logger.error(f"Feedback error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to record feedback: {str(e)}"
-        )
-
-
-@router.delete("/search/cache")
-async def clear_search_cache(
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Vide le cache de recherche pour l'utilisateur.
-    
-    Args:
-        current_user: Utilisateur authentifié
-        
-    Returns:
-        Dict: Confirmation de la suppression
-    """
-    try:
-        if not search_cache:
-            return {
-                "status": "warning",
-                "message": "Cache not available"
+            "total_searches": 0,
+            "avg_search_time": 0,
+            "most_searched_terms": [],
+            "search_service_status": {
+                "elasticsearch_available": elastic_client is not None and hasattr(elastic_client, '_initialized') and elastic_client._initialized,
+                "qdrant_available": qdrant_client is not None and hasattr(qdrant_client, '_initialized') and qdrant_client._initialized
             }
-        
-        # Vider le cache pour l'utilisateur
-        cleared = await search_cache.clear_user_cache(current_user.id)
-        
-        return {
-            "status": "success",
-            "message": f"Cache cleared for user {current_user.id}",
-            "entries_cleared": cleared
         }
         
     except Exception as e:
-        logger.error(f"Cache clear error: {e}")
+        logger.error(f"❌ Erreur stats: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to clear cache: {str(e)}"
+            detail=f"Stats failed: {str(e)}"
+        )
+
+
+@router.post("/feedback")
+async def submit_search_feedback(
+    feedback_data: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user)
+):
+    """Collecte les retours utilisateur sur les résultats de recherche."""
+    try:
+        # TODO: Implémenter la collecte de feedback
+        logger.info(f"📝 Feedback reçu de user {current_user.id}: {feedback_data}")
+        
+        return {
+            "status": "success",
+            "message": "Feedback enregistré",
+            "user_id": current_user.id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur feedback: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Feedback failed: {str(e)}"
         )

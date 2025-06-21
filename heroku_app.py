@@ -1,7 +1,7 @@
 """
-Application Harena pour déploiement Heroku - Diagnostic complet avec initialisation corrigée du Search Service.
+Application Harena pour déploiement Heroku - Diagnostic complet avec initialisation DIRECTE du Search Service.
 
-Focus: Statut détaillé de chaque service avec initialisation séquentielle et polling pour le Search Service.
+Focus: Statut détaillé de chaque service avec initialisation directe et injection forcée pour le Search Service.
 """
 
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger("heroku_app")
 # ==================== CONFIGURATION INITIALE ====================
 
 try:
-    logger.info("🚀 Démarrage Harena Finance Platform - Diagnostic Complet avec Search Service Fix")
+    logger.info("🚀 Démarrage Harena Finance Platform - Diagnostic avec Search Service Direct")
     
     # Correction DATABASE_URL pour Heroku
     DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -367,9 +367,9 @@ try:
             
         return result
 
-    async def initialize_search_service_with_polling() -> Dict[str, Any]:
-        """Initialise le Search Service en attendant l'injection des clients avec polling intelligent."""
-        logger.info("🔧 === INITIALISATION AVANCÉE SEARCH SERVICE ===")
+    async def initialize_search_service_direct() -> Dict[str, Any]:
+        """Initialise directement le Search Service en appelant les fonctions d'initialisation."""
+        logger.info("🔧 === INITIALISATION DIRECTE SEARCH SERVICE ===")
         
         initialization_result = {
             "service": "search_service",
@@ -377,21 +377,16 @@ try:
             "details": {
                 "importable": False,
                 "routes_count": 0,
-                "main_imported": False,
-                "clients_injection_attempts": 0,
-                "clients_injection_success": False,
-                "elasticsearch_injected": False,
-                "qdrant_injected": False,
+                "config": {
+                    "elasticsearch_url": bool(os.environ.get("BONSAI_URL")),
+                    "qdrant_url": bool(os.environ.get("QDRANT_URL")),
+                    "openai_key": bool(os.environ.get("OPENAI_API_KEY")),
+                    "cohere_key": bool(os.environ.get("COHERE_KEY"))
+                },
                 "elasticsearch_initialized": False,
                 "qdrant_initialized": False,
-                "max_wait_time": 60,
-                "actual_wait_time": 0,
-                "config": {
-                    "elasticsearch_url": False,
-                    "qdrant_url": False,
-                    "openai_key": False,
-                    "cohere_key": False
-                },
+                "clients_injected": False,
+                "initialization_time": 0,
                 "connectivity": {
                     "elasticsearch": {
                         "reachable": False,
@@ -418,121 +413,40 @@ try:
         start_time = time.time()
         
         try:
-            # Étape 1: Vérifier la configuration avant tout
-            logger.info("📋 Vérification de la configuration Search Service...")
-            initialization_result["details"]["config"]["elasticsearch_url"] = bool(os.environ.get("BONSAI_URL"))
-            initialization_result["details"]["config"]["qdrant_url"] = bool(os.environ.get("QDRANT_URL"))
-            initialization_result["details"]["config"]["openai_key"] = bool(os.environ.get("OPENAI_API_KEY"))
-            initialization_result["details"]["config"]["cohere_key"] = bool(os.environ.get("COHERE_KEY"))
-            
+            logger.info("📋 Vérification configuration...")
             if not any([
                 initialization_result["details"]["config"]["elasticsearch_url"],
                 initialization_result["details"]["config"]["qdrant_url"]
             ]):
-                logger.error("❌ Aucune URL configurée pour Elasticsearch ou Qdrant")
                 initialization_result["error"] = "No search service URLs configured"
                 return initialization_result
             
-            # Étape 2: Import du main pour déclencher l'initialisation asynchrone
-            logger.info("📦 Import du search_service.main pour déclencher l'initialisation...")
+            # Import des modules nécessaires
+            logger.info("📦 Import des modules de recherche...")
             try:
-                import search_service.main
-                initialization_result["details"]["main_imported"] = True
-                logger.info("✅ search_service.main importé - initialisation asynchrone déclenchée")
-            except Exception as e:
-                logger.error(f"❌ Erreur import search_service.main: {e}")
-                initialization_result["error"] = f"Main import failed: {e}"
+                from search_service.storage.elastic_client_hybrid import HybridElasticClient
+                from search_service.storage.qdrant_client import QdrantClient
+                from config_service.config import settings
+            except ImportError as e:
+                initialization_result["error"] = f"Import failed: {e}"
                 return initialization_result
             
-            # Étape 3: Polling intelligent pour attendre l'injection des clients
-            logger.info("⏳ Début du polling pour l'injection des clients...")
-            max_wait = initialization_result["details"]["max_wait_time"]
-            poll_interval = 1.0  # Seconde
-            last_log_time = 0
+            # Initialisation directe des clients
+            elastic_client = None
+            qdrant_client = None
             
-            for attempt in range(max_wait):
-                initialization_result["details"]["clients_injection_attempts"] = attempt + 1
-                current_time = time.time()
-                
+            # Elasticsearch
+            if settings.BONSAI_URL:
+                logger.info("🔍 Initialisation directe Elasticsearch...")
                 try:
-                    # Vérifier l'injection des clients dans les routes
-                    from search_service.api import routes as search_routes
-                    
-                    # Vérifier l'injection
-                    elastic_injected = (
-                        hasattr(search_routes, 'elastic_client') and 
-                        search_routes.elastic_client is not None
-                    )
-                    qdrant_injected = (
-                        hasattr(search_routes, 'qdrant_client') and 
-                        search_routes.qdrant_client is not None
-                    )
-                    
-                    # Vérifier l'initialisation si les clients sont injectés
-                    elastic_initialized = False
-                    qdrant_initialized = False
-                    
-                    if elastic_injected:
-                        elastic_initialized = (
-                            hasattr(search_routes.elastic_client, '_initialized') and 
-                            search_routes.elastic_client._initialized
-                        )
-                    
-                    if qdrant_injected:
-                        qdrant_initialized = (
-                            hasattr(search_routes.qdrant_client, '_initialized') and 
-                            search_routes.qdrant_client._initialized
-                        )
-                    
-                    # Mettre à jour les résultats
-                    initialization_result["details"]["elasticsearch_injected"] = elastic_injected
-                    initialization_result["details"]["qdrant_injected"] = qdrant_injected
-                    initialization_result["details"]["elasticsearch_initialized"] = elastic_initialized
-                    initialization_result["details"]["qdrant_initialized"] = qdrant_initialized
-                    
-                    # Succès si au moins un client est injecté ET initialisé
-                    if (elastic_injected and elastic_initialized) or (qdrant_injected and qdrant_initialized):
-                        logger.info(f"✅ Clients correctement injectés et initialisés après {attempt + 1}s:")
-                        logger.info(f"   - Elasticsearch: {'✅ injecté+initialisé' if elastic_injected and elastic_initialized else '❌'}")
-                        logger.info(f"   - Qdrant: {'✅ injecté+initialisé' if qdrant_injected and qdrant_initialized else '❌'}")
+                    elastic_client = HybridElasticClient()
+                    success = await elastic_client.initialize()
+                    if success and hasattr(elastic_client, '_initialized') and elastic_client._initialized:
+                        initialization_result["details"]["elasticsearch_initialized"] = True
+                        logger.info("✅ Elasticsearch initialisé directement")
                         
-                        initialization_result["details"]["clients_injection_success"] = True
-                        break
-                    
-                    # Log de progression moins fréquent
-                    if current_time - last_log_time >= 5.0:  # Log toutes les 5 secondes
-                        elastic_status = "✅ injecté" if elastic_injected else "❌"
-                        qdrant_status = "✅ injecté" if qdrant_injected else "❌"
-                        
-                        if elastic_injected and not elastic_initialized:
-                            elastic_status += " (non initialisé)"
-                        if qdrant_injected and not qdrant_initialized:
-                            qdrant_status += " (non initialisé)"
-                        
-                        logger.info(f"⏳ Polling {attempt + 1}/{max_wait}s - Elasticsearch: {elastic_status}, Qdrant: {qdrant_status}")
-                        last_log_time = current_time
-                    
-                    await asyncio.sleep(poll_interval)
-                    
-                except Exception as e:
-                    if current_time - last_log_time >= 10.0:  # Log erreurs moins fréquemment
-                        logger.warning(f"⚠️ Erreur vérification injection (tentative {attempt + 1}): {e}")
-                        last_log_time = current_time
-                    await asyncio.sleep(poll_interval)
-            
-            initialization_result["details"]["actual_wait_time"] = time.time() - start_time
-            
-            # Étape 4: Tests de connectivité si injection réussie
-            if initialization_result["details"]["clients_injection_success"]:
-                logger.info("🌐 Tests de connectivité des clients...")
-                
-                # Test Elasticsearch
-                if initialization_result["details"]["elasticsearch_initialized"]:
-                    try:
-                        from search_service.api import routes as search_routes
-                        elastic_client = search_routes.elastic_client
-                        
-                        if hasattr(elastic_client, 'is_healthy'):
+                        # Test de connectivité
+                        try:
                             ping_start = time.time()
                             is_healthy = await elastic_client.is_healthy()
                             ping_time = round((time.time() - ping_start) * 1000, 2)
@@ -542,18 +456,29 @@ try:
                             
                             if is_healthy:
                                 initialization_result["details"]["capabilities"]["lexical_search"] = True
-                                
-                    except Exception as e:
-                        initialization_result["details"]["connectivity"]["elasticsearch"]["error"] = str(e)
-                        logger.warning(f"⚠️ Test connectivité Elasticsearch échoué: {e}")
-                
-                # Test Qdrant
-                if initialization_result["details"]["qdrant_initialized"]:
-                    try:
-                        from search_service.api import routes as search_routes
-                        qdrant_client = search_routes.qdrant_client
+                                logger.info(f"✅ Elasticsearch connectivité OK ({ping_time}ms)")
+                        except Exception as health_error:
+                            initialization_result["details"]["connectivity"]["elasticsearch"]["error"] = str(health_error)
+                            logger.warning(f"⚠️ Test connectivité Elasticsearch échoué: {health_error}")
+                    else:
+                        logger.error("❌ Échec initialisation Elasticsearch")
+                        elastic_client = None
+                except Exception as e:
+                    logger.error(f"❌ Erreur Elasticsearch: {e}")
+                    elastic_client = None
+            
+            # Qdrant
+            if settings.QDRANT_URL:
+                logger.info("🎯 Initialisation directe Qdrant...")
+                try:
+                    qdrant_client = QdrantClient()
+                    success = await qdrant_client.initialize()
+                    if success and hasattr(qdrant_client, '_initialized') and qdrant_client._initialized:
+                        initialization_result["details"]["qdrant_initialized"] = True
+                        logger.info("✅ Qdrant initialisé directement")
                         
-                        if hasattr(qdrant_client, 'is_healthy'):
+                        # Test de connectivité
+                        try:
                             ping_start = time.time()
                             is_healthy = await qdrant_client.is_healthy()
                             ping_time = round((time.time() - ping_start) * 1000, 2)
@@ -563,63 +488,95 @@ try:
                             
                             if is_healthy:
                                 initialization_result["details"]["capabilities"]["semantic_search"] = True
-                                
-                    except Exception as e:
-                        initialization_result["details"]["connectivity"]["qdrant"]["error"] = str(e)
-                        logger.warning(f"⚠️ Test connectivité Qdrant échoué: {e}")
-                
-                # Capacités avancées
-                initialization_result["details"]["capabilities"]["hybrid_search"] = (
-                    initialization_result["details"]["capabilities"]["lexical_search"] and 
-                    initialization_result["details"]["capabilities"]["semantic_search"]
-                )
-                
-                # Étape 5: Import des routes si tout est OK
+                                logger.info(f"✅ Qdrant connectivité OK ({ping_time}ms)")
+                        except Exception as health_error:
+                            initialization_result["details"]["connectivity"]["qdrant"]["error"] = str(health_error)
+                            logger.warning(f"⚠️ Test connectivité Qdrant échoué: {health_error}")
+                    else:
+                        logger.error("❌ Échec initialisation Qdrant")
+                        qdrant_client = None
+                except Exception as e:
+                    logger.error(f"❌ Erreur Qdrant: {e}")
+                    qdrant_client = None
+            
+            # Capacités avancées
+            initialization_result["details"]["capabilities"]["hybrid_search"] = (
+                initialization_result["details"]["capabilities"]["lexical_search"] and 
+                initialization_result["details"]["capabilities"]["semantic_search"]
+            )
+            
+            # Injection DIRECTE dans les routes
+            if elastic_client or qdrant_client:
+                logger.info("🔗 Injection directe dans les routes...")
                 try:
+                    # Forcer l'import et l'injection
+                    import search_service.api.routes as routes
+                    
+                    # Injection directe
+                    routes.elastic_client = elastic_client
+                    routes.qdrant_client = qdrant_client
+                    routes.embedding_service = None  # Pas critique pour le test
+                    routes.reranker_service = None  # Pas critique pour le test
+                    routes.search_cache = None  # Pas critique pour le test
+                    routes.metrics_collector = None  # Pas critique pour le test
+                    
+                    # Vérification
+                    elastic_injected = hasattr(routes, 'elastic_client') and routes.elastic_client is not None
+                    qdrant_injected = hasattr(routes, 'qdrant_client') and routes.qdrant_client is not None
+                    
+                    initialization_result["details"]["clients_injected"] = elastic_injected or qdrant_injected
+                    
+                    logger.info(f"✅ Injection directe réussie:")
+                    logger.info(f"   - Elasticsearch: {'✅' if elastic_injected else '❌'}")
+                    logger.info(f"   - Qdrant: {'✅' if qdrant_injected else '❌'}")
+                    
+                    # Import des routes pour l'enregistrement
                     from search_service.api.routes import router as search_router
                     initialization_result["details"]["importable"] = True
                     initialization_result["details"]["routes_count"] = len(search_router.routes) if hasattr(search_router, 'routes') else 0
-                    initialization_result["healthy"] = True
                     
-                    logger.info("✅ Search Service complètement initialisé avec succès")
+                    # Succès si au moins un client injecté
+                    initialization_result["healthy"] = initialization_result["details"]["clients_injected"]
+                    
+                    # Générer les recommandations
+                    recommendations = []
+                    if not initialization_result["details"]["config"]["elasticsearch_url"]:
+                        recommendations.append("⚠️ Configurez BONSAI_URL pour Elasticsearch")
+                    if not initialization_result["details"]["config"]["qdrant_url"]:
+                        recommendations.append("⚠️ Configurez QDRANT_URL pour Qdrant")
+                    if not initialization_result["details"]["config"]["openai_key"] and not initialization_result["details"]["config"]["cohere_key"]:
+                        recommendations.append("⚠️ Configurez OPENAI_API_KEY ou COHERE_KEY")
+                        
+                    if not elastic_injected and initialization_result["details"]["config"]["elasticsearch_url"]:
+                        recommendations.append("🔧 Problème d'injection du client Elasticsearch")
+                    if not qdrant_injected and initialization_result["details"]["config"]["qdrant_url"]:
+                        recommendations.append("🔧 Problème d'injection du client Qdrant")
+                        
+                    if elastic_injected and not initialization_result["details"]["connectivity"]["elasticsearch"]["reachable"]:
+                        recommendations.append("🌐 Vérifiez la connectivité réseau vers Elasticsearch")
+                    if qdrant_injected and not initialization_result["details"]["connectivity"]["qdrant"]["reachable"]:
+                        recommendations.append("🌐 Vérifiez la connectivité réseau vers Qdrant")
+                        
+                    if not recommendations and initialization_result["healthy"]:
+                        recommendations.append("✅ Search Service complètement opérationnel")
+                        
+                    initialization_result["recommendations"] = recommendations
                     
                 except Exception as e:
-                    logger.error(f"❌ Erreur import routes après injection réussie: {e}")
-                    initialization_result["error"] = f"Routes import failed after successful injection: {e}"
+                    logger.error(f"❌ Erreur injection: {e}")
+                    initialization_result["error"] = f"Injection failed: {e}"
             else:
-                logger.error("❌ Timeout - clients non injectés/initialisés dans le délai imparti")
-                initialization_result["error"] = "Client injection/initialization timeout"
+                initialization_result["error"] = "No clients initialized successfully"
             
-            # Générer les recommandations
-            recommendations = []
-            if not initialization_result["details"]["config"]["elasticsearch_url"]:
-                recommendations.append("⚠️ Configurez BONSAI_URL pour Elasticsearch")
-            if not initialization_result["details"]["config"]["qdrant_url"]:
-                recommendations.append("⚠️ Configurez QDRANT_URL pour Qdrant")
-            if not initialization_result["details"]["config"]["openai_key"] and not initialization_result["details"]["config"]["cohere_key"]:
-                recommendations.append("⚠️ Configurez OPENAI_API_KEY ou COHERE_KEY")
-                
-            if not initialization_result["details"]["elasticsearch_injected"] and initialization_result["details"]["config"]["elasticsearch_url"]:
-                recommendations.append("🔧 Problème d'injection du client Elasticsearch")
-            if not initialization_result["details"]["qdrant_injected"] and initialization_result["details"]["config"]["qdrant_url"]:
-                recommendations.append("🔧 Problème d'injection du client Qdrant")
-                
-            if initialization_result["details"]["elasticsearch_injected"] and not initialization_result["details"]["connectivity"]["elasticsearch"]["reachable"]:
-                recommendations.append("🌐 Vérifiez la connectivité réseau vers Elasticsearch")
-            if initialization_result["details"]["qdrant_injected"] and not initialization_result["details"]["connectivity"]["qdrant"]["reachable"]:
-                recommendations.append("🌐 Vérifiez la connectivité réseau vers Qdrant")
-                
-            if not recommendations and initialization_result["healthy"]:
-                recommendations.append("✅ Search Service complètement opérationnel")
-                
-            initialization_result["recommendations"] = recommendations
-                
+            initialization_result["details"]["initialization_time"] = time.time() - start_time
+            
         except Exception as e:
-            logger.error(f"💥 Erreur générale initialisation Search Service: {e}")
+            logger.error(f"💥 Erreur générale: {e}")
             initialization_result["error"] = str(e)
+            initialization_result["details"]["initialization_time"] = time.time() - start_time
         
         total_time = time.time() - start_time
-        logger.info(f"🏁 Initialisation Search Service terminée en {total_time:.2f}s")
+        logger.info(f"🏁 Initialisation directe terminée en {total_time:.2f}s")
         
         return initialization_result
 
@@ -654,9 +611,9 @@ try:
                 status_icon = "✅" if test_result["healthy"] else "❌"
                 logger.info(f"{status_icon} {service_name}: {'Healthy' if test_result['healthy'] else 'Unhealthy'}")
         
-        # Traitement spécial pour le Search Service avec initialisation avancée
-        logger.info("🔧 Initialisation avancée du Search Service avec polling...")
-        search_service_result = await initialize_search_service_with_polling()
+        # Traitement spécial pour le Search Service avec initialisation directe
+        logger.info("🔧 Initialisation directe du Search Service...")
+        search_service_result = await initialize_search_service_direct()
         services_status["search_service"] = search_service_result
         
         status_icon = "✅" if search_service_result["healthy"] else "❌"
@@ -713,10 +670,10 @@ try:
     # ==================== CYCLE DE VIE ====================
 
     async def startup():
-        """Initialisation de l'application avec diagnostic complet et Search Service avancé."""
+        """Initialisation de l'application avec diagnostic complet et Search Service direct."""
         global startup_time, all_services_status
         startup_time = time.time()
-        logger.info("📋 Démarrage application Harena avec Search Service fix...")
+        logger.info("📋 Démarrage application Harena avec Search Service direct...")
         
         # Test de connexion DB immédiat
         try:
@@ -736,21 +693,16 @@ try:
         healthy_count = sum(1 for s in all_services_status.values() if s.get("healthy"))
         logger.info(f"✅ Démarrage terminé en {total_time:.2f}s - {healthy_count}/{len(all_services_status)} services sains")
 
-    async def shutdown():
-        """Arrêt de l'application."""
-        logger.info("⏹️ Arrêt application Harena...")
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await startup()
         yield
-        await shutdown()
 
     # ==================== APPLICATION FASTAPI ====================
 
     app = FastAPI(
         title="Harena Finance Platform",
-        description="Plateforme de gestion financière avec recherche hybride corrigée",
+        description="Plateforme de gestion financière avec recherche hybride directe",
         version="1.0.0",
         lifespan=lifespan
     )
@@ -793,11 +745,11 @@ try:
             "search_service": {
                 "configured": search_details.get("config", {}).get("elasticsearch_url", False) and search_details.get("config", {}).get("qdrant_url", False),
                 "healthy": search_status.get("healthy", False),
-                "clients_injected": search_details.get("clients_injection_success", False),
+                "clients_injected": search_details.get("clients_injected", False),
                 "elasticsearch_reachable": search_details.get("connectivity", {}).get("elasticsearch", {}).get("reachable", False),
                 "qdrant_reachable": search_details.get("connectivity", {}).get("qdrant", {}).get("reachable", False),
                 "status": "fully_operational" if search_status.get("healthy") and search_details.get("capabilities", {}).get("hybrid_search") else "degraded",
-                "initialization_time": search_details.get("actual_wait_time", 0),
+                "initialization_time": search_details.get("initialization_time", 0),
                 "capabilities": search_details.get("capabilities", {})
             },
             "timestamp": datetime.now().isoformat()
@@ -832,7 +784,7 @@ try:
             "health_summary": {
                 "importable": search_status.get("details", {}).get("importable", False),
                 "routes_count": search_status.get("details", {}).get("routes_count", 0),
-                "clients_injected": search_status.get("details", {}).get("clients_injection_success", False),
+                "clients_injected": search_status.get("details", {}).get("clients_injected", False),
                 "elasticsearch_initialized": search_status.get("details", {}).get("elasticsearch_initialized", False),
                 "qdrant_initialized": search_status.get("details", {}).get("qdrant_initialized", False),
                 "connectivity_ok": any([
@@ -841,16 +793,12 @@ try:
                 ])
             },
             "initialization_metrics": {
-                "main_imported": search_status.get("details", {}).get("main_imported", False),
-                "injection_attempts": search_status.get("details", {}).get("clients_injection_attempts", 0),
-                "wait_time": search_status.get("details", {}).get("actual_wait_time", 0),
-                "max_wait_time": search_status.get("details", {}).get("max_wait_time", 0),
-                "injection_success": search_status.get("details", {}).get("clients_injection_success", False)
+                "method": "direct_initialization",
+                "initialization_time": search_status.get("details", {}).get("initialization_time", 0),
+                "clients_injected": search_status.get("details", {}).get("clients_injected", False)
             },
             "configuration": search_status.get("details", {}).get("config", {}),
             "clients_status": {
-                "elasticsearch_injected": search_status.get("details", {}).get("elasticsearch_injected", False),
-                "qdrant_injected": search_status.get("details", {}).get("qdrant_injected", False),
                 "elasticsearch_initialized": search_status.get("details", {}).get("elasticsearch_initialized", False),
                 "qdrant_initialized": search_status.get("details", {}).get("qdrant_initialized", False)
             },
@@ -890,16 +838,14 @@ try:
             # Métriques spéciales par service
             if service_name == "search_service":
                 summary["services"][service_name]["key_metrics"].update({
-                    "main_imported": status.get("details", {}).get("main_imported", False),
-                    "injection_success": status.get("details", {}).get("clients_injection_success", False),
-                    "elasticsearch_injected": status.get("details", {}).get("elasticsearch_injected", False),
-                    "qdrant_injected": status.get("details", {}).get("qdrant_injected", False),
+                    "initialization_method": "direct",
+                    "clients_injected": status.get("details", {}).get("clients_injected", False),
                     "elasticsearch_initialized": status.get("details", {}).get("elasticsearch_initialized", False),
                     "qdrant_initialized": status.get("details", {}).get("qdrant_initialized", False),
                     "elasticsearch_reachable": status.get("details", {}).get("connectivity", {}).get("elasticsearch", {}).get("reachable", False),
                     "qdrant_reachable": status.get("details", {}).get("connectivity", {}).get("qdrant", {}).get("reachable", False),
                     "hybrid_search": status.get("details", {}).get("capabilities", {}).get("hybrid_search", False),
-                    "initialization_time": status.get("details", {}).get("actual_wait_time", 0)
+                    "initialization_time": status.get("details", {}).get("initialization_time", 0)
                 })
             elif service_name == "db_service":
                 summary["services"][service_name]["key_metrics"].update({
@@ -954,31 +900,9 @@ try:
     except Exception as e:
         logger.error(f"❌ Enrichment Service: {e}")
 
-    # 4. Search Service (CRITIQUE) - Enregistrement conditionnel après initialisation
-    try:
-        # Vérifier si le Search Service a été initialisé avec succès dans le cycle de vie
-        # Cette vérification se fera après le startup, donc on retarde l'enregistrement
-        
-        @app.on_event("startup")
-        async def register_search_service_after_initialization():
-            """Enregistre le Search Service après son initialisation complète."""
-            if search_service_initialization_result and search_service_initialization_result.get("healthy", False):
-                try:
-                    from search_service.api.routes import router as search_router
-                    if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 CRITIQUE: Recherche hybride"):
-                        app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-                        logger.info("🎉 Search Service enregistré avec succès après initialisation")
-                    else:
-                        logger.error("🚨 Search Service: Échec enregistrement après initialisation réussie")
-                except Exception as e:
-                    logger.error(f"💥 Search Service post-initialization registration: {e}")
-            else:
-                logger.error("🚨 Search Service: Non initialisé - enregistrement ignoré")
-                if search_service_initialization_result:
-                    logger.error(f"   Erreur: {search_service_initialization_result.get('error', 'Unknown error')}")
-        
-    except Exception as e:
-        logger.error(f"💥 Search Service setup: {e}")
+    # 4. Search Service (CRITIQUE) - Enregistrement IMMÉDIAT après initialisation directe
+    # Note: Le Search Service sera enregistré automatiquement après le startup
+    # car l'initialisation directe aura déjà injecté les clients
 
     # 5. Conversation Service
     try:
@@ -988,19 +912,41 @@ try:
     except Exception as e:
         logger.error(f"❌ Conversation Service: {e}")
 
+    # ==================== ENREGISTREMENT SEARCH SERVICE POST-STARTUP ====================
+
+    @app.on_event("startup") 
+    async def register_search_service_after_direct_initialization():
+        """Enregistre le Search Service après son initialisation directe."""
+        await asyncio.sleep(0.1)  # Petit délai pour s'assurer que le diagnostic est terminé
+        
+        if search_service_initialization_result and search_service_initialization_result.get("healthy", False):
+            try:
+                from search_service.api.routes import router as search_router
+                if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 CRITIQUE: Recherche hybride (Direct)"):
+                    app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+                    logger.info("🎉 Search Service enregistré avec succès après initialisation directe")
+                else:
+                    logger.error("🚨 Search Service: Échec enregistrement après initialisation directe réussie")
+            except Exception as e:
+                logger.error(f"💥 Search Service post-direct registration: {e}")
+        else:
+            logger.error("🚨 Search Service: Non initialisé directement - enregistrement ignoré")
+            if search_service_initialization_result:
+                logger.error(f"   Erreur: {search_service_initialization_result.get('error', 'Unknown error')}")
+
     # ==================== ENDPOINTS UTILITAIRES ====================
 
     @app.get("/version")
     async def version():
         return {
             "version": "1.0.0",
-            "build": "heroku-search-service-polling-fix",
+            "build": "heroku-search-service-direct-fix",
             "python": sys.version.split()[0],
             "environment": os.environ.get("ENVIRONMENT", "production"),
             "diagnostic_features": [
                 "Complete services health check",
-                "Search Service intelligent polling initialization",
-                "Client injection monitoring with 60s timeout",
+                "Search Service DIRECT initialization (no polling)",
+                "Client injection immediate after init",
                 "Connectivity tests with latency monitoring",
                 "Service capabilities assessment",
                 "Detailed initialization metrics"
@@ -1030,13 +976,13 @@ try:
     # ==================== RAPPORT FINAL ====================
 
     logger.info("=" * 80)
-    logger.info("🎯 HARENA FINANCE PLATFORM - SEARCH SERVICE POLLING FIX")
+    logger.info("🎯 HARENA FINANCE PLATFORM - SEARCH SERVICE DIRECT FIX")
     logger.info(f"📊 Services enregistrés: {service_registry.get_summary()['registered']}")
     logger.info(f"❌ Services échoués: {service_registry.get_summary()['failed']}")
     logger.info("🔧 Fonctionnalités de diagnostic avancées:")
     logger.info("   📋 Diagnostic complet de tous les services")
-    logger.info("   🔍 Initialisation intelligente Search Service avec polling 60s")
-    logger.info("   🔗 Surveillance injection clients avec états détaillés")
+    logger.info("   🔍 Initialisation DIRECTE Search Service (pas de polling)")
+    logger.info("   🔗 Injection immédiate clients après initialisation")
     logger.info("   🌐 Tests connectivité Elasticsearch & Qdrant avec latence")
     logger.info("   📊 Monitoring capacités en temps réel")
     logger.info("   ⏱️ Métriques d'initialisation détaillées")
@@ -1052,7 +998,7 @@ try:
     logger.info("   GET  /api/v1/sync - Synchronisation Bridge")
     logger.info("   POST /api/v1/users/register - Enregistrement utilisateur")
     logger.info("=" * 80)
-    logger.info("✅ Application Harena prête avec Search Service polling fix")
+    logger.info("✅ Application Harena prête avec Search Service direct fix")
 
 except Exception as critical_error:
     logger.critical(f"💥 ERREUR CRITIQUE: {critical_error}")

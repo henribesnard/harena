@@ -245,29 +245,40 @@ async def search_transactions(
         
         search_time = time.time() - start_time
         
-        # FIX: search_engine.search() retourne déjà un SearchResponse
-        # Nous devons extraire les bonnes propriétés ou adapter selon l'implémentation réelle
-        if hasattr(search_result, 'results'):
-            # Si search_result est déjà un SearchResponse
-            results = search_result.results
-            total_found = search_result.total_found
-        else:
-            # Si search_result est une liste de SearchResult
-            results = search_result
-            total_found = len(results)
+        # FIX: search_engine.search() retourne déjà un SearchResponse complet
+        # Si c'est déjà un SearchResponse, on le retourne directement
+        if hasattr(search_result, 'results') and hasattr(search_result, 'query'):
+            # C'est déjà un SearchResponse complet du SearchEngine
+            logger.info(f"✅ Recherche terminée en {search_time:.3f}s - {len(search_result.results)} résultats")
+            return search_result
         
-        # Préparer la réponse
+        # Sinon, si c'est une liste de SearchResult, on construit la réponse
+        if isinstance(search_result, list):
+            results = search_result
+        else:
+            # Cas de fallback
+            results = []
+        
+        # Construire la réponse avec TOUS les champs obligatoires du modèle SearchResponse
         response = SearchResponse(
+            # Champs obligatoires principaux
+            query=query.query,
+            search_type=query.search_type,
             results=results,
-            total_found=total_found,
-            search_time=search_time,
-            query_info={
-                "original_query": query.query,
-                "search_type": query.search_type,
-                "user_id": current_user.id,
-                "limit": query.limit,
-                "use_reranking": query.use_reranking  # FIX: utiliser use_reranking
-            }
+            total_found=len(results),
+            
+            # Pagination obligatoire
+            limit=query.limit,
+            offset=query.offset,
+            has_more=(query.offset + len(results)) < len(results),  # Simplification
+            
+            # Performance obligatoire
+            processing_time=search_time,
+            
+            # Champs optionnels
+            timings=None,
+            filters_applied=query.filters,
+            suggestions=None
         )
         
         logger.info(f"✅ Recherche terminée en {search_time:.3f}s - {len(results)} résultats")

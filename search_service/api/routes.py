@@ -2,6 +2,7 @@
 Routes API pour le service de recherche - VERSION CORRIGÉE.
 
 Ce module définit les endpoints pour la recherche hybride de transactions.
+Fix: Correction de l'attribut 'rerank' vers 'use_reranking' et ajustement de l'interface SearchEngine.
 """
 import logging
 import time
@@ -230,33 +231,42 @@ async def search_transactions(
         logger.info(f"   Query: '{query.query}'")
         logger.info(f"   Type: {query.search_type}")
         logger.info(f"   Limit: {query.limit}")
+        logger.info(f"   Use reranking: {query.use_reranking}")  # FIX: utiliser use_reranking
+        
+        # Mise à jour de l'user_id dans la query si ce n'est pas déjà fait
+        query.user_id = current_user.id
         
         # Créer le moteur de recherche (avec vérifications détaillées)
         search_engine = get_search_engine()
         
-        # Effectuer la recherche
-        results = await search_engine.search(
-            query=query.query,
-            user_id=current_user.id,
-            search_type=query.search_type,
-            limit=query.limit,
-            filters=query.filters,
-            rerank=query.rerank
-        )
+        # FIX: Passer l'objet SearchQuery complet au lieu de paramètres individuels
+        # Le moteur de recherche attend un objet SearchQuery selon les modèles
+        search_result = await search_engine.search(query)
         
         search_time = time.time() - start_time
+        
+        # FIX: search_engine.search() retourne déjà un SearchResponse
+        # Nous devons extraire les bonnes propriétés ou adapter selon l'implémentation réelle
+        if hasattr(search_result, 'results'):
+            # Si search_result est déjà un SearchResponse
+            results = search_result.results
+            total_found = search_result.total_found
+        else:
+            # Si search_result est une liste de SearchResult
+            results = search_result
+            total_found = len(results)
         
         # Préparer la réponse
         response = SearchResponse(
             results=results,
-            total_found=len(results),
+            total_found=total_found,
             search_time=search_time,
             query_info={
                 "original_query": query.query,
                 "search_type": query.search_type,
                 "user_id": current_user.id,
                 "limit": query.limit,
-                "rerank": query.rerank
+                "use_reranking": query.use_reranking  # FIX: utiliser use_reranking
             }
         )
         

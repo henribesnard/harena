@@ -1,7 +1,10 @@
 """
-Application Harena pour déploiement Heroku - Diagnostic complet avec initialisation DIRECTE du Search Service.
+Application Harena pour déploiement Heroku - Fix définitif des endpoints Search Service.
 
-Focus: Statut détaillé de chaque service avec initialisation directe et injection forcée pour le Search Service.
+PROBLÈME RÉSOLU: Les endpoints search_service n'étaient pas disponibles car l'enregistrement 
+était conditionnel dans un event handler startup et dépendait d'une initialisation complexe qui échouait.
+
+SOLUTION: Enregistrement DIRECT et INCONDITIONNEL du search_service avec les autres services.
 """
 
 import logging
@@ -25,7 +28,7 @@ logger = logging.getLogger("heroku_app")
 # ==================== CONFIGURATION INITIALE ====================
 
 try:
-    logger.info("🚀 Démarrage Harena Finance Platform - Diagnostic avec Search Service Direct")
+    logger.info("🚀 Démarrage Harena Finance Platform - Fix Search Service Endpoints")
     
     # Correction DATABASE_URL pour Heroku
     DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -368,7 +371,7 @@ try:
         return result
 
     async def initialize_search_service_direct() -> Dict[str, Any]:
-        """Initialise directement le Search Service en appelant les fonctions d'initialisation."""
+        """Initialise directement le Search Service avec tous les diagnostics."""
         logger.info("🔧 === INITIALISATION DIRECTE SEARCH SERVICE ===")
         
         initialization_result = {
@@ -644,17 +647,16 @@ try:
                         "prefix": prefix,
                         "description": description,
                         "routes_count": routes_count,
-                        "registered_at": datetime.now()
+                        "registered_at": datetime.now().isoformat()
                     }
-                    logger.info(f"✅ {name}: {prefix} ({routes_count} routes)")
+                    logger.info(f"✅ {name} enregistré: {routes_count} routes sur {prefix}")
                     return True
                 else:
-                    raise ValueError("Router is None")
+                    self.failed_services[name] = f"Router is None"
+                    logger.error(f"❌ {name}: Router est None")
+                    return False
             except Exception as e:
-                self.failed_services[name] = {
-                    "error": str(e),
-                    "failed_at": datetime.now()
-                }
+                self.failed_services[name] = str(e)
                 logger.error(f"❌ {name}: {e}")
                 return False
         
@@ -662,7 +664,9 @@ try:
             return {
                 "registered": len(self.services),
                 "failed": len(self.failed_services),
-                "total_routes": sum(s.get("routes_count", 0) for s in self.services.values())
+                "total_routes": sum(s["routes_count"] for s in self.services.values()),
+                "services": list(self.services.keys()),
+                "failed_services": self.failed_services
             }
 
     service_registry = ServiceRegistry()
@@ -702,7 +706,7 @@ try:
 
     app = FastAPI(
         title="Harena Finance Platform",
-        description="Plateforme de gestion financière avec recherche hybride directe",
+        description="Plateforme de gestion financière avec recherche hybride",
         version="1.0.0",
         lifespan=lifespan
     )
@@ -715,6 +719,101 @@ try:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ==================== ENREGISTREMENT DES SERVICES ====================
+
+    logger.info("📋 Enregistrement des services...")
+
+    # 1. User Service
+    try:
+        from user_service.api.endpoints.users import router as user_router
+        if service_registry.register("user_service", user_router, "/api/v1/users", "Gestion utilisateurs"):
+            app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
+    except Exception as e:
+        logger.error(f"❌ User Service: {e}")
+
+    # 2. Sync Service - modules principaux
+    sync_modules = [
+        ("sync_service.api.endpoints.sync", "/api/v1/sync", "Synchronisation"),
+        ("sync_service.api.endpoints.transactions", "/api/v1/transactions", "Transactions"),
+        ("sync_service.api.endpoints.accounts", "/api/v1/accounts", "Comptes"),
+        ("sync_service.api.endpoints.categories", "/api/v1/categories", "Catégories"),
+        ("sync_service.api.endpoints.items", "/api/v1/items", "Items Bridge"),
+        ("sync_service.api.endpoints.webhooks", "/webhooks", "Webhooks"),
+    ]
+
+    for module_path, prefix, description in sync_modules:
+        try:
+            module = __import__(module_path, fromlist=["router"])
+            router = getattr(module, "router")
+            service_name = f"sync_{module_path.split('.')[-1]}"
+            if service_registry.register(service_name, router, prefix, description):
+                app.include_router(router, prefix=prefix, tags=[module_path.split('.')[-1]])
+        except Exception as e:
+            logger.error(f"❌ {module_path}: {e}")
+
+    # 3. Enrichment Service
+    try:
+        from enrichment_service.api.routes import router as enrichment_router
+        if service_registry.register("enrichment_service", enrichment_router, "/api/v1/enrichment", "Enrichissement IA"):
+            app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
+    except Exception as e:
+        logger.error(f"❌ Enrichment Service: {e}")
+
+    # 4. Search Service (FIX CRITIQUE) - Enregistrement DIRECT et INCONDITIONNEL
+    logger.info("🔍 === ENREGISTREMENT SEARCH SERVICE - FIX CRITIQUE ===")
+    try:
+        from search_service.api.routes import router as search_router
+        if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 CRITIQUE: Recherche hybride"):
+            app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+            logger.info("🎉 Search Service enregistré avec succès - ENDPOINTS DISPONIBLES")
+        else:
+            logger.error("🚨 Search Service: Échec enregistrement du router")
+    except Exception as e:
+        logger.error(f"💥 Search Service registration FAILED: {e}")
+        # Créer des endpoints de fallback pour debugging
+        from fastapi import APIRouter
+        fallback_router = APIRouter()
+        
+        @fallback_router.get("/health")
+        async def search_fallback_health():
+            return {
+                "status": "error",
+                "message": "Search service router failed to load",
+                "error": str(e),
+                "fallback_mode": True,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        @fallback_router.post("/search")
+        async def search_fallback():
+            return {
+                "error": "Search service not available",
+                "message": "Router failed to load",
+                "original_error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        @fallback_router.get("/debug/injection")
+        async def search_fallback_debug():
+            return {
+                "error": "Search service not available",
+                "message": "Router failed to load - debug mode",
+                "original_error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        if service_registry.register("search_service_fallback", fallback_router, "/api/v1/search", "🆘 Search Service Fallback"):
+            app.include_router(fallback_router, prefix="/api/v1/search", tags=["search-fallback"])
+            logger.info("🆘 Search Service fallback endpoints créés")
+
+    # 5. Conversation Service
+    try:
+        from conversation_service.api.routes import router as conversation_router
+        if service_registry.register("conversation_service", conversation_router, "/api/v1/conversation", "Assistant IA"):
+            app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+    except Exception as e:
+        logger.error(f"❌ Conversation Service: {e}")
 
     # ==================== ENDPOINTS DE DIAGNOSTIC ====================
 
@@ -750,7 +849,8 @@ try:
                 "qdrant_reachable": search_details.get("connectivity", {}).get("qdrant", {}).get("reachable", False),
                 "status": "fully_operational" if search_status.get("healthy") and search_details.get("capabilities", {}).get("hybrid_search") else "degraded",
                 "initialization_time": search_details.get("initialization_time", 0),
-                "capabilities": search_details.get("capabilities", {})
+                "capabilities": search_details.get("capabilities", {}),
+                "endpoints_registered": "search_service" in service_registry.get_summary().get("services", [])
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -817,139 +917,55 @@ try:
     @app.get("/services-summary")
     async def services_summary():
         """Résumé synthétique de tous les services avec focus Search Service."""
-        summary = {
-            "timestamp": datetime.now().isoformat(),
-            "services_count": len(all_services_status),
-            "healthy_count": sum(1 for s in all_services_status.values() if s.get("healthy")),
-            "registry": service_registry.get_summary(),
-            "services": {}
+        healthy_count = sum(1 for s in all_services_status.values() if s.get("healthy"))
+        total_count = len(all_services_status)
+        
+        search_status = all_services_status.get("search_service", {})
+        registry_summary = service_registry.get_summary()
+        
+        return {
+            "summary": {
+                "total_services": total_count,
+                "healthy_services": healthy_count,
+                "health_percentage": round((healthy_count / total_count) * 100, 1) if total_count > 0 else 0,
+                "search_service_critical": search_status.get("healthy", False)
+            },
+            "registry": {
+                "registered_routers": registry_summary["registered"],
+                "failed_routers": registry_summary["failed"],
+                "total_routes": registry_summary["total_routes"]
+            },
+            "search_service_status": {
+                "healthy": search_status.get("healthy", False),
+                "endpoints_registered": "search_service" in registry_summary.get("services", []),
+                "capabilities": search_status.get("details", {}).get("capabilities", {}),
+                "error": search_status.get("error")
+            },
+            "quick_diagnostics": {
+                "database_configured": all_services_status.get("db_service", {}).get("healthy", False),
+                "user_management": all_services_status.get("user_service", {}).get("healthy", False),
+                "sync_available": all_services_status.get("sync_service", {}).get("healthy", False),
+                "ai_features": all_services_status.get("conversation_service", {}).get("healthy", False),
+                "search_critical": search_status.get("healthy", False)
+            },
+            "timestamp": datetime.now().isoformat()
         }
-        
-        for service_name, status in all_services_status.items():
-            summary["services"][service_name] = {
-                "healthy": status.get("healthy", False),
-                "error": status.get("error"),
-                "key_metrics": {
-                    "importable": status.get("details", {}).get("importable", False),
-                    "routes_count": status.get("details", {}).get("routes_count", 0)
-                }
-            }
-            
-            # Métriques spéciales par service
-            if service_name == "search_service":
-                summary["services"][service_name]["key_metrics"].update({
-                    "initialization_method": "direct",
-                    "clients_injected": status.get("details", {}).get("clients_injected", False),
-                    "elasticsearch_initialized": status.get("details", {}).get("elasticsearch_initialized", False),
-                    "qdrant_initialized": status.get("details", {}).get("qdrant_initialized", False),
-                    "elasticsearch_reachable": status.get("details", {}).get("connectivity", {}).get("elasticsearch", {}).get("reachable", False),
-                    "qdrant_reachable": status.get("details", {}).get("connectivity", {}).get("qdrant", {}).get("reachable", False),
-                    "hybrid_search": status.get("details", {}).get("capabilities", {}).get("hybrid_search", False),
-                    "initialization_time": status.get("details", {}).get("initialization_time", 0)
-                })
-            elif service_name == "db_service":
-                summary["services"][service_name]["key_metrics"].update({
-                    "connection": status.get("details", {}).get("connection", False),
-                    "tables_count": status.get("details", {}).get("tables_count", 0)
-                })
-            elif service_name == "sync_service":
-                summary["services"][service_name]["key_metrics"].update({
-                    "bridge_config": status.get("details", {}).get("bridge_config", False),
-                    "modules_success": sum(1 for m in status.get("details", {}).get("modules_imported", {}).values() if m.get("success"))
-                })
-        
-        return summary
-
-    # ==================== IMPORTATION DES SERVICES ====================
-
-    logger.info("📦 Importation des services...")
-
-    # 1. User Service
-    try:
-        from user_service.api.endpoints.users import router as user_router
-        if service_registry.register("user_service", user_router, "/api/v1/users", "Gestion utilisateurs"):
-            app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
-    except Exception as e:
-        logger.error(f"❌ User Service: {e}")
-
-    # 2. Sync Service - modules principaux
-    sync_modules = [
-        ("sync_service.api.endpoints.sync", "/api/v1/sync", "Synchronisation"),
-        ("sync_service.api.endpoints.transactions", "/api/v1/transactions", "Transactions"),
-        ("sync_service.api.endpoints.accounts", "/api/v1/accounts", "Comptes"),
-        ("sync_service.api.endpoints.categories", "/api/v1/categories", "Catégories"),
-        ("sync_service.api.endpoints.items", "/api/v1/items", "Items Bridge"),
-        ("sync_service.api.endpoints.webhooks", "/webhooks", "Webhooks"),
-    ]
-
-    for module_path, prefix, description in sync_modules:
-        try:
-            module = __import__(module_path, fromlist=["router"])
-            router = getattr(module, "router")
-            service_name = f"sync_{module_path.split('.')[-1]}"
-            if service_registry.register(service_name, router, prefix, description):
-                app.include_router(router, prefix=prefix, tags=[module_path.split('.')[-1]])
-        except Exception as e:
-            logger.error(f"❌ {module_path}: {e}")
-
-    # 3. Enrichment Service
-    try:
-        from enrichment_service.api.routes import router as enrichment_router
-        if service_registry.register("enrichment_service", enrichment_router, "/api/v1/enrichment", "Enrichissement IA"):
-            app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
-    except Exception as e:
-        logger.error(f"❌ Enrichment Service: {e}")
-
-    # 4. Search Service (CRITIQUE) - Enregistrement IMMÉDIAT après initialisation directe
-    # Note: Le Search Service sera enregistré automatiquement après le startup
-    # car l'initialisation directe aura déjà injecté les clients
-
-    # 5. Conversation Service
-    try:
-        from conversation_service.api.routes import router as conversation_router
-        if service_registry.register("conversation_service", conversation_router, "/api/v1/conversation", "Assistant IA"):
-            app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
-    except Exception as e:
-        logger.error(f"❌ Conversation Service: {e}")
-
-    # ==================== ENREGISTREMENT SEARCH SERVICE POST-STARTUP ====================
-
-    @app.on_event("startup") 
-    async def register_search_service_after_direct_initialization():
-        """Enregistre le Search Service après son initialisation directe."""
-        await asyncio.sleep(0.1)  # Petit délai pour s'assurer que le diagnostic est terminé
-        
-        if search_service_initialization_result and search_service_initialization_result.get("healthy", False):
-            try:
-                from search_service.api.routes import router as search_router
-                if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 CRITIQUE: Recherche hybride (Direct)"):
-                    app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-                    logger.info("🎉 Search Service enregistré avec succès après initialisation directe")
-                else:
-                    logger.error("🚨 Search Service: Échec enregistrement après initialisation directe réussie")
-            except Exception as e:
-                logger.error(f"💥 Search Service post-direct registration: {e}")
-        else:
-            logger.error("🚨 Search Service: Non initialisé directement - enregistrement ignoré")
-            if search_service_initialization_result:
-                logger.error(f"   Erreur: {search_service_initialization_result.get('error', 'Unknown error')}")
-
-    # ==================== ENDPOINTS UTILITAIRES ====================
 
     @app.get("/version")
     async def version():
         return {
             "version": "1.0.0",
-            "build": "heroku-search-service-direct-fix",
+            "build": "heroku-search-service-endpoints-fix",
             "python": sys.version.split()[0],
             "environment": os.environ.get("ENVIRONMENT", "production"),
             "diagnostic_features": [
                 "Complete services health check",
-                "Search Service DIRECT initialization (no polling)",
+                "DIRECT Search Service registration (unconditional)",
                 "Client injection immediate after init",
                 "Connectivity tests with latency monitoring",
                 "Service capabilities assessment",
-                "Detailed initialization metrics"
+                "Detailed initialization metrics",
+                "Fallback endpoints for failed services"
             ]
         }
 
@@ -976,16 +992,17 @@ try:
     # ==================== RAPPORT FINAL ====================
 
     logger.info("=" * 80)
-    logger.info("🎯 HARENA FINANCE PLATFORM - SEARCH SERVICE DIRECT FIX")
+    logger.info("🎯 HARENA FINANCE PLATFORM - SEARCH SERVICE ENDPOINTS FIX")
     logger.info(f"📊 Services enregistrés: {service_registry.get_summary()['registered']}")
     logger.info(f"❌ Services échoués: {service_registry.get_summary()['failed']}")
-    logger.info("🔧 Fonctionnalités de diagnostic avancées:")
+    logger.info("🔧 Fonctionnalités:")
     logger.info("   📋 Diagnostic complet de tous les services")
-    logger.info("   🔍 Initialisation DIRECTE Search Service (pas de polling)")
+    logger.info("   🔍 Enregistrement DIRECT Search Service (inconditionnel)")
     logger.info("   🔗 Injection immédiate clients après initialisation")
     logger.info("   🌐 Tests connectivité Elasticsearch & Qdrant avec latence")
     logger.info("   📊 Monitoring capacités en temps réel")
     logger.info("   ⏱️ Métriques d'initialisation détaillées")
+    logger.info("   🆘 Endpoints de fallback pour services échoués")
     logger.info("🌐 Endpoints de diagnostic:")
     logger.info("   GET  / - Statut général avec métriques Search Service")
     logger.info("   GET  /health - Santé ultra-détaillée tous services")
@@ -993,12 +1010,13 @@ try:
     logger.info("   GET  /services-summary - Résumé synthétique")
     logger.info("🔧 Endpoints principaux:")
     logger.info("   POST /api/v1/search/search - Recherche de transactions")
+    logger.info("   GET  /api/v1/search/health - Santé Search Service")
     logger.info("   GET  /api/v1/search/debug/injection - Debug injection")
     logger.info("   POST /api/v1/conversation/chat - Assistant IA")
     logger.info("   GET  /api/v1/sync - Synchronisation Bridge")
     logger.info("   POST /api/v1/users/register - Enregistrement utilisateur")
     logger.info("=" * 80)
-    logger.info("✅ Application Harena prête avec Search Service direct fix")
+    logger.info("✅ Application Harena prête avec Search Service endpoints fix")
 
 except Exception as critical_error:
     logger.critical(f"💥 ERREUR CRITIQUE: {critical_error}")

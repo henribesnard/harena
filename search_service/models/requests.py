@@ -1,435 +1,22 @@
 """
 Modèles de requêtes pour le service de recherche.
-VERSION CORRIGÉE - Compatible Pydantic V2
+VERSION COMPLÈTE - Inclut SearchQuery et tous les modèles nécessaires
 """
-from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+from enum import Enum
 
 
-class SearchRequest(BaseModel):
-    """Modèle de requête pour la recherche de transactions."""
-    
-    # Configuration Pydantic V2
-    model_config = ConfigDict(
-        validate_assignment=True,
-        use_enum_values=True,
-        str_strip_whitespace=True
-    )
-    
-    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
-    query: str = Field(..., description="Requête de recherche", min_length=1)
-    type: Optional[str] = Field("hybrid", description="Type de recherche: lexical, semantic, hybrid")
-    limit: Optional[int] = Field(10, description="Nombre maximum de résultats", ge=1, le=50)
-    use_reranking: Optional[bool] = Field(True, description="Utiliser le reranking des résultats")
-    filters: Optional[Dict[str, Any]] = Field(None, description="Filtres additionnels")
-    include_highlights: Optional[bool] = Field(True, description="Inclure la mise en évidence")
-    
-    @field_validator('query')
-    @classmethod
-    def validate_query(cls, v):
-        """Valide que la requête est une string non vide."""
-        if not isinstance(v, str):
-            raise ValueError(f"Query must be a string, got {type(v).__name__}")
-        
-        stripped = v.strip()
-        if not stripped:
-            raise ValueError("Query cannot be empty or only whitespace")
-        
-        if len(stripped) > 500:
-            raise ValueError("Query too long (max 500 characters)")
-        
-        return stripped
-    
-    @field_validator('type')
-    @classmethod
-    def validate_search_type(cls, v):
-        """Valide le type de recherche."""
-        if v is None:
-            return "hybrid"
-        
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_types = ["lexical", "semantic", "hybrid"]
-        
-        if v not in valid_types:
-            raise ValueError(f"Search type must be one of: {', '.join(valid_types)}")
-        
-        return v
-    
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        """Valide l'ID utilisateur."""
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            raise ValueError("user_id must be positive")
-        
-        return v
-    
-    @field_validator('limit')
-    @classmethod
-    def validate_limit(cls, v):
-        """Valide la limite de résultats."""
-        if v is None:
-            return 10
-        
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"limit must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            return 10
-        
-        return min(v, 50)
-    
-    @field_validator('filters')
-    @classmethod
-    def validate_filters(cls, v):
-        """Valide les filtres."""
-        if v is None:
-            return {}
-        
-        if not isinstance(v, dict):
-            raise ValueError(f"filters must be a dict, got {type(v).__name__}")
-        
-        validated_filters = {}
-        for key, value in v.items():
-            if not isinstance(key, str):
-                raise ValueError(f"Filter key must be string, got {type(key).__name__}")
-            
-            if value is not None and not isinstance(value, (str, int, float, bool)):
-                raise ValueError(f"Filter value for '{key}' must be string, int, float, bool or None")
-            
-            validated_filters[key] = value
-        
-        return validated_filters
+class SearchType(str, Enum):
+    """Types de recherche disponibles."""
+    HYBRID = "hybrid"
+    LEXICAL = "lexical"
+    SEMANTIC = "semantic"
 
 
-class ReindexRequest(BaseModel):
-    """Modèle de requête pour la réindexation."""
-    
-    model_config = ConfigDict(
-        validate_assignment=True,
-        use_enum_values=True
-    )
-    
-    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
-    force_refresh: Optional[bool] = Field(False, description="Forcer le refresh complet")
-    index_type: Optional[str] = Field("both", description="Type d'index: elasticsearch, qdrant, both")
-    batch_size: Optional[int] = Field(100, description="Taille des lots", ge=1, le=1000)
-    
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            raise ValueError("user_id must be positive")
-        
-        return v
-    
-    @field_validator('index_type')
-    @classmethod
-    def validate_index_type(cls, v):
-        if v is None:
-            return "both"
-        
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_types = ["elasticsearch", "qdrant", "both"]
-        
-        if v not in valid_types:
-            raise ValueError(f"index_type must be one of: {', '.join(valid_types)}")
-        
-        return v
-    
-    @field_validator('batch_size')
-    @classmethod
-    def validate_batch_size(cls, v):
-        if v is None:
-            return 100
-        
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"batch_size must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            return 100
-        
-        return min(v, 1000)
-
-
-class BulkIndexRequest(BaseModel):
-    """Modèle de requête pour l'indexation en lot."""
-    
-    model_config = ConfigDict(validate_assignment=True)
-    
-    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
-    transactions: List[Dict[str, Any]] = Field(..., description="Liste des transactions")
-    index_type: Optional[str] = Field("both", description="Type d'index")
-    refresh_after: Optional[bool] = Field(True, description="Refresh après indexation")
-    
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            raise ValueError("user_id must be positive")
-        
-        return v
-    
-    @field_validator('transactions')
-    @classmethod
-    def validate_transactions(cls, v):
-        if not isinstance(v, list):
-            raise ValueError(f"transactions must be a list, got {type(v).__name__}")
-        
-        if len(v) == 0:
-            raise ValueError("transactions list cannot be empty")
-        
-        if len(v) > 1000:
-            raise ValueError("Maximum 1000 transactions per bulk request")
-        
-        required_fields = ['id', 'description', 'amount', 'date']
-        
-        for i, transaction in enumerate(v):
-            if not isinstance(transaction, dict):
-                raise ValueError(f"Transaction {i} must be a dict, got {type(transaction).__name__}")
-            
-            for field in required_fields:
-                if field not in transaction:
-                    raise ValueError(f"Transaction {i} missing required field: {field}")
-        
-        return v
-    
-    @field_validator('index_type')
-    @classmethod
-    def validate_index_type(cls, v):
-        if v is None:
-            return "both"
-        
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_types = ["elasticsearch", "qdrant", "both"]
-        
-        if v not in valid_types:
-            raise ValueError(f"index_type must be one of: {', '.join(valid_types)}")
-        
-        return v
-
-
-class DeleteUserDataRequest(BaseModel):
-    """Modèle de requête pour la suppression des données utilisateur."""
-    
-    model_config = ConfigDict(validate_assignment=True)
-    
-    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
-    confirm: bool = Field(..., description="Confirmation de suppression")
-    index_type: Optional[str] = Field("both", description="Type d'index")
-    
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            raise ValueError("user_id must be positive")
-        
-        return v
-    
-    @field_validator('confirm')
-    @classmethod
-    def validate_confirm(cls, v):
-        if not isinstance(v, bool):
-            raise ValueError("confirm must be a boolean")
-        
-        if not v:
-            raise ValueError("confirm must be True to delete user data")
-        
-        return v
-    
-    @field_validator('index_type')
-    @classmethod
-    def validate_index_type(cls, v):
-        if v is None:
-            return "both"
-        
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_types = ["elasticsearch", "qdrant", "both"]
-        
-        if v not in valid_types:
-            raise ValueError(f"index_type must be one of: {', '.join(valid_types)}")
-        
-        return v
-
-
-class QueryExpansionRequest(BaseModel):
-    """Modèle de requête pour tester l'expansion de requête."""
-    
-    model_config = ConfigDict(validate_assignment=True)
-    
-    query: str = Field(..., description="Requête à expanser")
-    include_debug: Optional[bool] = Field(False, description="Inclure les informations de debug")
-    
-    @field_validator('query')
-    @classmethod
-    def validate_query(cls, v):
-        if not isinstance(v, str):
-            v = str(v) if v is not None else ""
-        
-        if not v.strip():
-            raise ValueError("Query cannot be empty")
-        
-        return v.strip()
-
-
-class UserStatsRequest(BaseModel):
-    """Modèle de requête pour les statistiques utilisateur."""
-    
-    model_config = ConfigDict(validate_assignment=True)
-    
-    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
-    include_details: Optional[bool] = Field(False, description="Inclure les détails")
-    
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            raise ValueError("user_id must be positive")
-        
-        return v
-
-
-class DebugSearchRequest(BaseModel):
-    """Modèle de requête pour le debug de recherche."""
-    
-    model_config = ConfigDict(validate_assignment=True)
-    
-    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
-    query: str = Field(..., description="Requête de recherche")
-    client_type: str = Field(..., description="Type de client: elasticsearch ou qdrant")
-    
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        if not isinstance(v, int):
-            try:
-                v = int(v)
-            except (ValueError, TypeError):
-                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
-        
-        if v <= 0:
-            raise ValueError("user_id must be positive")
-        
-        return v
-    
-    @field_validator('query')
-    @classmethod
-    def validate_query(cls, v):
-        if not isinstance(v, str):
-            v = str(v) if v is not None else ""
-        
-        if not v.strip():
-            raise ValueError("Query cannot be empty")
-        
-        return v.strip()
-    
-    @field_validator('client_type')
-    @classmethod
-    def validate_client_type(cls, v):
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_types = ["elasticsearch", "qdrant"]
-        
-        if v not in valid_types:
-            raise ValueError(f"client_type must be one of: {', '.join(valid_types)}")
-        
-        return v
-
-
-class IndexManagementRequest(BaseModel):
-    """Modèle de requête pour la gestion des index."""
-    
-    model_config = ConfigDict(validate_assignment=True)
-    
-    action: str = Field(..., description="Action: create, delete, refresh")
-    index_type: Optional[str] = Field("both", description="Type d'index")
-    force: Optional[bool] = Field(False, description="Forcer l'action")
-    
-    @field_validator('action')
-    @classmethod
-    def validate_action(cls, v):
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_actions = ["create", "delete", "refresh", "info"]
-        
-        if v not in valid_actions:
-            raise ValueError(f"action must be one of: {', '.join(valid_actions)}")
-        
-        return v
-    
-    @field_validator('index_type')
-    @classmethod
-    def validate_index_type(cls, v):
-        if v is None:
-            return "both"
-        
-        if not isinstance(v, str):
-            v = str(v)
-        
-        v = v.lower().strip()
-        valid_types = ["elasticsearch", "qdrant", "both"]
-        
-        if v not in valid_types:
-            raise ValueError(f"index_type must be one of: {', '.join(valid_types)}")
-        
-        return v
-
-
-# Classe de base corrigée pour Pydantic V2
 class BaseRequest(BaseModel):
-    """Classe de base pour toutes les requêtes avec validation commune."""
+    """Classe de base pour toutes les requêtes."""
     
     model_config = ConfigDict(
         validate_assignment=True,
@@ -446,8 +33,157 @@ class BaseRequest(BaseModel):
         return v
 
 
+class SearchQuery(BaseModel):
+    """Modèle de requête de recherche - ORIGINAL pour compatibilité."""
+    
+    model_config = ConfigDict(
+        validate_assignment=True,
+        use_enum_values=True,
+        str_strip_whitespace=True
+    )
+    
+    user_id: int = Field(..., description="ID de l'utilisateur")
+    query: str = Field(..., min_length=1, description="Texte de recherche")
+    search_type: SearchType = Field(default=SearchType.HYBRID, description="Type de recherche")
+    
+    # Pagination
+    limit: int = Field(default=20, ge=1, le=100, description="Nombre de résultats")
+    offset: int = Field(default=0, ge=0, description="Décalage pour pagination")
+    
+    # Filtres optionnels
+    filters: Optional[Dict[str, Any]] = Field(default=None, description="Filtres additionnels")
+    date_from: Optional[datetime] = Field(default=None, description="Date de début")
+    date_to: Optional[datetime] = Field(default=None, description="Date de fin")
+    amount_min: Optional[float] = Field(default=None, description="Montant minimum")
+    amount_max: Optional[float] = Field(default=None, description="Montant maximum")
+    categories: Optional[List[int]] = Field(default=None, description="IDs de catégories")
+    account_ids: Optional[List[int]] = Field(default=None, description="IDs de comptes")
+    transaction_types: Optional[List[str]] = Field(default=None, description="Types de transaction")
+    
+    # Paramètres de recherche hybride
+    lexical_weight: float = Field(default=0.5, ge=0, le=1, description="Poids recherche lexicale")
+    semantic_weight: float = Field(default=0.5, ge=0, le=1, description="Poids recherche sémantique")
+    
+    # Options avancées
+    use_reranking: bool = Field(default=True, description="Utiliser le reranking")
+    include_highlights: bool = Field(default=True, description="Inclure les highlights")
+    include_explanations: bool = Field(default=False, description="Inclure les explications de score")
+    
+    @field_validator('semantic_weight')
+    @classmethod
+    def weights_sum_to_one(cls, v, values):
+        """Vérifie que les poids somment à 1."""
+        if 'lexical_weight' in values and values['lexical_weight'] + v != 1.0:
+            # Ajuster automatiquement le poids lexical
+            values['lexical_weight'] = 1.0 - v
+        return v
+
+
+class SearchRequest(BaseRequest):
+    """Modèle de requête de recherche - NOUVEAU système."""
+    
+    user_id: int = Field(..., description="ID de l'utilisateur")
+    query: str = Field(..., min_length=1, description="Texte de recherche")
+    search_type: SearchType = Field(default=SearchType.HYBRID, description="Type de recherche")
+    
+    # Pagination
+    limit: int = Field(default=20, ge=1, le=100, description="Nombre de résultats")
+    offset: int = Field(default=0, ge=0, description="Décalage pour pagination")
+    
+    # Filtres optionnels
+    filters: Optional[Dict[str, Any]] = Field(default=None, description="Filtres additionnels")
+    date_from: Optional[datetime] = Field(default=None, description="Date de début")
+    date_to: Optional[datetime] = Field(default=None, description="Date de fin")
+    amount_min: Optional[float] = Field(default=None, description="Montant minimum")
+    amount_max: Optional[float] = Field(default=None, description="Montant maximum")
+    categories: Optional[List[int]] = Field(default=None, description="IDs de catégories")
+    account_ids: Optional[List[int]] = Field(default=None, description="IDs de comptes")
+    transaction_types: Optional[List[str]] = Field(default=None, description="Types de transaction")
+    
+    # Paramètres de recherche hybride
+    lexical_weight: float = Field(default=0.5, ge=0, le=1, description="Poids recherche lexicale")
+    semantic_weight: float = Field(default=0.5, ge=0, le=1, description="Poids recherche sémantique")
+    
+    # Options avancées
+    use_reranking: bool = Field(default=True, description="Utiliser le reranking")
+    include_highlights: bool = Field(default=True, description="Inclure les highlights")
+    include_explanations: bool = Field(default=False, description="Inclure les explications de score")
+
+
+class ReindexRequest(BaseRequest):
+    """Modèle de requête pour la réindexation."""
+    
+    user_id: int = Field(..., description="ID de l'utilisateur")
+    force_refresh: bool = Field(default=False, description="Forcer la réindexation complète")
+    batch_size: int = Field(default=1000, ge=1, le=10000, description="Taille des lots")
+    include_deleted: bool = Field(default=False, description="Inclure les transactions supprimées")
+
+
+class BulkIndexRequest(BaseRequest):
+    """Modèle de requête pour l'indexation en lot."""
+    
+    user_ids: List[int] = Field(..., description="Liste des IDs utilisateurs")
+    batch_size: int = Field(default=1000, ge=1, le=10000, description="Taille des lots")
+    parallel_workers: int = Field(default=2, ge=1, le=10, description="Nombre de workers parallèles")
+    force_refresh: bool = Field(default=False, description="Forcer la réindexation complète")
+
+
+class DeleteUserDataRequest(BaseRequest):
+    """Modèle de requête pour la suppression des données utilisateur."""
+    
+    user_id: int = Field(..., description="ID de l'utilisateur")
+    confirm_deletion: bool = Field(..., description="Confirmation de suppression")
+    remove_from_search: bool = Field(default=True, description="Supprimer des index de recherche")
+    remove_from_cache: bool = Field(default=True, description="Supprimer du cache")
+
+
+class QueryExpansionRequest(BaseRequest):
+    """Modèle de requête pour l'expansion de requête."""
+    
+    query: str = Field(..., min_length=1, description="Requête à étendre")
+    max_terms: int = Field(default=10, ge=1, le=50, description="Nombre maximum de termes")
+    include_synonyms: bool = Field(default=True, description="Inclure les synonymes")
+    include_financial_terms: bool = Field(default=True, description="Inclure les termes financiers")
+
+
+class UserStatsRequest(BaseRequest):
+    """Modèle de requête pour les statistiques utilisateur."""
+    
+    user_id: int = Field(..., description="ID de l'utilisateur")
+    date_from: Optional[datetime] = Field(default=None, description="Date de début")
+    date_to: Optional[datetime] = Field(default=None, description="Date de fin")
+    include_cache_stats: bool = Field(default=True, description="Inclure les stats de cache")
+
+
+class DebugSearchRequest(BaseRequest):
+    """Modèle de requête pour le debug de recherche."""
+    
+    user_id: int = Field(..., description="ID de l'utilisateur")
+    query: str = Field(..., min_length=1, description="Texte de recherche")
+    search_type: SearchType = Field(default=SearchType.HYBRID, description="Type de recherche")
+    include_explanation: bool = Field(default=True, description="Inclure l'explication détaillée")
+    include_timings: bool = Field(default=True, description="Inclure les temps de traitement")
+    include_raw_results: bool = Field(default=False, description="Inclure les résultats bruts")
+
+
+class IndexManagementRequest(BaseRequest):
+    """Modèle de requête pour la gestion des index."""
+    
+    action: str = Field(..., description="Action à effectuer (create, delete, refresh, optimize)")
+    index_type: str = Field(..., description="Type d'index (transactions, users, categories)")
+    force: bool = Field(default=False, description="Forcer l'action même si risqué")
+    backup_before: bool = Field(default=True, description="Faire une sauvegarde avant l'action")
+
+
 # Export des modèles
 __all__ = [
+    # Enums
+    'SearchType',
+    
+    # Modèles principaux (pour compatibilité)
+    'SearchQuery',  # IMPORTANT : Modèle original pour compatibilité
+    
+    # Nouveaux modèles
     'SearchRequest',
     'ReindexRequest', 
     'BulkIndexRequest',

@@ -1,5 +1,6 @@
 """
 Client Elasticsearch hybride qui utilise le client officiel ou Bonsai HTTP selon la compatibilité.
+VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower'
 """
 import logging
 import json
@@ -182,8 +183,13 @@ class HybridElasticClient:
         if not self._initialized:
             raise RuntimeError("Client non initialisé")
         
+        # VALIDATION CRITIQUE: S'assurer que query est une string
+        if not isinstance(query, str):
+            logger.error(f"❌ Query doit être une string, reçu: {type(query)} = {query}")
+            query = str(query) if query is not None else ""
+        
         search_id = f"search_{int(time.time() * 1000)}"
-        logger.info(f"🔍 [{search_id}] Recherche via {self.client_type}: '{query}'")
+        logger.info(f"🔍 [{search_id}] Recherche via {self.client_type}: '{query}' (type: {type(query)})")
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
@@ -196,6 +202,8 @@ class HybridElasticClient:
                 
         except Exception as e:
             logger.error(f"❌ Erreur de recherche: {e}")
+            logger.error(f"   Query type: {type(query)}")
+            logger.error(f"   Query value: {query}")
             return []
     
     async def _search_elasticsearch(
@@ -206,90 +214,169 @@ class HybridElasticClient:
         filters: Dict[str, Any],
         include_highlights: bool
     ) -> List[Dict[str, Any]]:
-        """Recherche avec le client Elasticsearch officiel."""
-        search_body = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"user_id": user_id}}
-                    ],
-                    "should": [
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["description^2", "merchant", "category"],
-                                "type": "best_fields",
-                                "fuzziness": "AUTO"
-                            }
-                        },
-                        {
-                            "wildcard": {
-                                "description": f"*{query.lower()}*"
-                            }
-                        }
-                    ],
-                    "minimum_should_match": 1
-                }
-            },
-            "size": limit,
-            "sort": [
-                {"_score": {"order": "desc"}},
-                {"date": {"order": "desc"}}
-            ]
-        }
+        """Recherche avec le client Elasticsearch officiel - VERSION CORRIGÉE."""
         
-        # Ajouter les filtres
-        if filters:
-            search_body["query"]["bool"]["filter"] = []
-            for field, value in filters.items():
-                if value is not None:
-                    search_body["query"]["bool"]["filter"].append({"term": {field: value}})
+        # VALIDATION CRITIQUE
+        if not isinstance(query, str):
+            logger.error(f"❌ Query doit être string dans _search_elasticsearch: {type(query)}")
+            query = str(query) if query is not None else ""
         
-        # Ajouter la mise en évidence
-        if include_highlights:
-            search_body["highlight"] = {
-                "fields": {
-                    "description": {},
-                    "merchant": {}
+        search_id = f"search_{int(time.time() * 1000)}"
+        start_time = time.time()
+        
+        try:
+            # Expansion des termes de recherche - SÉCURISÉE
+            from search_service.utils.query_expansion import expand_query_terms
+            expanded_terms = expand_query_terms(query)
+            
+            # Construction de la chaîne de recherche
+            search_string = " ".join(expanded_terms)
+            
+            # VALIDATION: s'assurer que tous les éléments sont des strings
+            validated_terms = []
+            for term in expanded_terms:
+                if isinstance(term, str):
+                    validated_terms.append(term)
+                else:
+                    logger.warning(f"Term ignoré (pas string): {type(term)} = {term}")
+                    validated_terms.append(str(term))
+            
+            # Construction de la requête Elasticsearch
+            search_body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}}
+                        ],
+                        "should": [
+                            {
+                                "multi_match": {
+                                    "query": search_string,  # String validée
+                                    "fields": ["searchable_text^3", "primary_description^2", "merchant_name^2", "category_name"],
+                                    "type": "best_fields",
+                                    "operator": "or",
+                                    "fuzziness": "AUTO"
+                                }
+                            },
+                            {
+                                "terms": {
+                                    "primary_description": validated_terms,  # Liste de strings validées
+                                    "boost": 2.0
+                                }
+                            }
+                        ],
+                        "minimum_should_match": 1
+                    }
                 },
-                "pre_tags": ["<mark>"],
-                "post_tags": ["</mark>"]
-            }
-        
-        # Exécuter la recherche
-        response = await self.client.search(index=self.index_name, body=search_body)
-        
-        # Formater les résultats
-        hits = response.get("hits", {}).get("hits", [])
-        results = []
-        
-        for hit in hits:
-            result = {
-                "id": hit["_id"],
-                "score": hit["_score"],
-                "source": hit["_source"]
+                "size": limit,
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"date": {"order": "desc"}}
+                ]
             }
             
-            if "highlight" in hit:
-                result["highlights"] = hit["highlight"]
+            # Log de la requête construite (pour debug)
+            logger.info(f"🔍 [{search_id}] Query construite: search_string='{search_string}', terms={validated_terms}")
             
-            results.append(result)
-        
-        return results
+            # Ajouter les filtres
+            if filters:
+                if "filter" not in search_body["query"]["bool"]:
+                    search_body["query"]["bool"]["filter"] = []
+                
+                for field, value in filters.items():
+                    if value is not None:
+                        search_body["query"]["bool"]["filter"].append({"term": {field: value}})
+            
+            # Ajouter highlighting
+            if include_highlights:
+                search_body["highlight"] = {
+                    "fields": {
+                        "searchable_text": {},
+                        "primary_description": {},
+                        "merchant_name": {}
+                    },
+                    "pre_tags": ["<mark>"],
+                    "post_tags": ["</mark>"]
+                }
+            
+            # Exécuter la recherche
+            logger.info(f"🎯 [{search_id}] Exécution recherche Elasticsearch...")
+            
+            response = await self.client.search(
+                index=self.index_name,
+                body=search_body
+            )
+            
+            query_time = time.time() - start_time
+            
+            # Traiter les résultats
+            hits = response.get("hits", {}).get("hits", [])
+            total_hits = response.get("hits", {}).get("total", {})
+            
+            if isinstance(total_hits, dict):
+                total_count = total_hits.get("value", 0)
+            else:
+                total_count = total_hits
+            
+            results = []
+            scores = []
+            
+            for hit in hits:
+                result_item = {
+                    "id": hit["_id"],
+                    "score": hit["_score"],
+                    "source": hit["_source"]
+                }
+                
+                if "highlight" in hit:
+                    result_item["highlights"] = hit["highlight"]
+                
+                results.append(result_item)
+                scores.append(hit["_score"])
+            
+            # Logs de résultats
+            if scores:
+                max_score, min_score, avg_score = max(scores), min(scores), sum(scores) / len(scores)
+            else:
+                max_score = min_score = avg_score = 0
+            
+            logger.info(f"✅ [{search_id}] Recherche terminée en {query_time:.3f}s")
+            logger.info(f"📊 [{search_id}] Résultats: {len(results)}/{total_count}")
+            logger.info(f"🎯 [{search_id}] Scores: max={max_score:.3f}, min={min_score:.3f}, avg={avg_score:.3f}")
+            
+            # Métriques
+            metrics_logger.info(
+                f"elasticsearch.search.success,"
+                f"user_id={user_id},"
+                f"query_time={query_time:.3f},"
+                f"results={len(results)},"
+                f"total={total_count},"
+                f"max_score={max_score:.3f}"
+            )
+            
+            return results
+            
+        except Exception as e:
+            query_time = time.time() - start_time
+            logger.error(f"❌ [{search_id}] Erreur Elasticsearch après {query_time:.3f}s: {e}")
+            logger.error(f"   Query type: {type(query)}")
+            logger.error(f"   Query value: {query}")
+            metrics_logger.error(f"elasticsearch.search.failed,user_id={user_id},time={query_time:.3f},error={type(e).__name__}")
+            return []
     
     async def index_document(self, doc_id: str, document: Dict[str, Any]) -> bool:
-        """Indexe un document via le client approprié."""
+        """Indexe un document."""
         if not self._initialized:
             return False
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
-                result = await self.client.index(
+                response = await self.client.index(
                     index=self.index_name,
                     id=doc_id,
                     body=document
                 )
-                return result.get("result") in ["created", "updated"]
+                return response.get("result") in ["created", "updated"]
                 
             elif self.client_type == 'bonsai' and self.bonsai_client:
                 return await self.bonsai_client.index_document(doc_id, document)
@@ -300,50 +387,18 @@ class HybridElasticClient:
             logger.error(f"❌ Erreur indexation: {e}")
             return False
     
-    async def bulk_index(self, documents: List[Dict[str, Any]]) -> bool:
-        """Indexation en lot via le client approprié."""
-        if not self._initialized:
-            return False
-        
-        try:
-            if self.client_type == 'elasticsearch' and self.client:
-                from elasticsearch.helpers import async_bulk
-                
-                actions = []
-                for doc in documents:
-                    doc_id = doc.get("id") or doc.get("transaction_id")
-                    if doc_id:
-                        actions.append({
-                            "_index": self.index_name,
-                            "_id": doc_id,
-                            "_source": doc
-                        })
-                
-                if actions:
-                    success, failed = await async_bulk(self.client, actions)
-                    logger.info(f"📦 Bulk: {success} succès, {len(failed)} échecs")
-                    return len(failed) == 0
-                
-                return True
-                
-            elif self.client_type == 'bonsai' and self.bonsai_client:
-                return await self.bonsai_client.bulk_index(documents)
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur bulk indexation: {e}")
-            return False
-    
     async def delete_document(self, doc_id: str) -> bool:
-        """Supprime un document via le client approprié."""
+        """Supprime un document."""
         if not self._initialized:
             return False
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
-                result = await self.client.delete(index=self.index_name, id=doc_id)
-                return result.get("result") == "deleted"
+                response = await self.client.delete(
+                    index=self.index_name,
+                    id=doc_id
+                )
+                return response.get("result") == "deleted"
                 
             elif self.client_type == 'bonsai' and self.bonsai_client:
                 return await self.bonsai_client.delete_document(doc_id)
@@ -354,8 +409,39 @@ class HybridElasticClient:
             logger.error(f"❌ Erreur suppression: {e}")
             return False
     
-    async def count_documents(self, user_id: Optional[int] = None, filters: Dict[str, Any] = None) -> int:
-        """Compte le nombre de documents dans l'index."""
+    async def bulk_index(self, documents: List[Dict[str, Any]]) -> bool:
+        """Indexation en lot."""
+        if not self._initialized or not documents:
+            return False
+        
+        try:
+            if self.client_type == 'elasticsearch' and self.client:
+                from elasticsearch.helpers import async_bulk
+                
+                actions = []
+                for doc in documents:
+                    action = {
+                        "_index": self.index_name,
+                        "_id": doc.get("id"),
+                        "_source": doc
+                    }
+                    actions.append(action)
+                
+                success, failed = await async_bulk(self.client, actions)
+                logger.info(f"✅ Bulk indexation: {success} succès, {len(failed)} échecs")
+                return len(failed) == 0
+                
+            elif self.client_type == 'bonsai' and self.bonsai_client:
+                return await self.bonsai_client.bulk_index(documents)
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur bulk indexation: {e}")
+            return False
+    
+    async def count_documents(self, user_id: int = None, filters: Dict[str, Any] = None) -> int:
+        """Compte le nombre de documents."""
         if not self._initialized:
             return 0
         
@@ -425,58 +511,6 @@ class HybridElasticClient:
     
     async def get_index_info(self) -> Dict[str, Any]:
         """Retourne les informations sur l'index."""
-        if not self._initialized:
-            return {"error": "Client not initialized"}
-        
-        try:
-            if self.client_type == 'elasticsearch' and self.client:
-                # Vérifier si l'index existe
-                exists = await self.client.indices.exists(index=self.index_name)
-                if not exists:
-                    return {"exists": False, "index_name": self.index_name}
-                
-                # Statistiques de l'index
-                stats = await self.client.indices.stats(index=self.index_name)
-                index_stats = stats.get("indices", {}).get(self.index_name, {})
-                
-                return {
-                    "exists": True,
-                    "index_name": self.index_name,
-                    "client_type": self.client_type,
-                    "document_count": index_stats.get("total", {}).get("docs", {}).get("count", 0),
-                    "store_size_bytes": index_stats.get("total", {}).get("store", {}).get("size_in_bytes", 0),
-                    "primary_shards": index_stats.get("primaries", {}).get("docs", {}).get("count", 0)
-                }
-                
-            elif self.client_type == 'bonsai' and self.bonsai_client:
-                # Pour Bonsai, utiliser l'API de stats
-                async with self.bonsai_client.session.get(
-                    f"{self.bonsai_client.base_url}/{self.index_name}/_stats"
-                ) as response:
-                    if response.status == 200:
-                        stats = await response.json()
-                        index_stats = stats.get("indices", {}).get(self.index_name, {})
-                        
-                        return {
-                            "exists": True,
-                            "index_name": self.index_name,
-                            "client_type": self.client_type,
-                            "document_count": index_stats.get("total", {}).get("docs", {}).get("count", 0),
-                            "store_size_bytes": index_stats.get("total", {}).get("store", {}).get("size_in_bytes", 0)
-                        }
-                    elif response.status == 404:
-                        return {"exists": False, "index_name": self.index_name, "client_type": self.client_type}
-                    else:
-                        return {"error": f"HTTP {response.status}", "client_type": self.client_type}
-            
-            return {"error": "No client available"}
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur info index: {e}")
-            return {"error": str(e), "client_type": self.client_type}
-    
-    def get_client_info(self) -> Dict[str, Any]:
-        """Retourne les informations sur le client utilisé."""
         return {
             "initialized": self._initialized,
             "client_type": self.client_type,

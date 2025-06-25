@@ -1,7 +1,10 @@
-"""
-Module API pour le service de recherche.
 
-Contient les routes et endpoints REST pour la recherche hybride.
+"""
+API pour le service de recherche.
 """
 
-__all__ = []
+from .routes import router
+
+__all__ = [
+    'router'
+]

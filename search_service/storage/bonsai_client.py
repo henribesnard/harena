@@ -1,5 +1,6 @@
 """
 Client Bonsai compatible - Alternative pour contourner les problèmes de compatibilité.
+VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower'
 
 Ce client utilise des requêtes HTTP directes pour interagir avec Bonsai
 quand le client Elasticsearch officiel refuse la connexion.
@@ -10,6 +11,7 @@ import json
 from typing import List, Dict, Any, Optional
 import aiohttp
 import asyncio
+from urllib.parse import urlparse
 
 from config_service.config import settings
 
@@ -27,182 +29,112 @@ class BonsaiClient:
         self._initialized = False
         self._connection_attempts = 0
         self._last_health_check = None
+        self.auth = None
         
     async def initialize(self):
         """Initialise la connexion Bonsai avec HTTP direct."""
-        logger.info("🔄 Initialisation du client Bonsai (HTTP direct)...")
-        start_time = time.time()
+        logger.info("🌐 Initialisation du client Bonsai HTTP...")
         
         if not settings.BONSAI_URL:
             logger.error("❌ BONSAI_URL non configurée")
             return False
         
-        # Préparer l'URL de base
-        self.base_url = settings.BONSAI_URL.rstrip('/')
-        
-        # Masquer les credentials pour l'affichage
-        safe_url = self._mask_credentials(self.base_url)
-        logger.info(f"🔗 Connexion HTTP directe à Bonsai: {safe_url}")
-        
         try:
-            self._connection_attempts += 1
-            logger.info(f"🔄 Tentative de connexion #{self._connection_attempts}")
+            # Parser l'URL Bonsai pour extraire les informations
+            parsed_url = urlparse(settings.BONSAI_URL)
             
-            # Créer une session HTTP
+            if not parsed_url.hostname:
+                logger.error("❌ URL Bonsai malformée")
+                return False
+            
+            # Construire l'URL de base
+            self.base_url = f"{parsed_url.scheme}://{parsed_url.hostname}"
+            if parsed_url.port:
+                self.base_url += f":{parsed_url.port}"
+            
+            # Extraire les credentials
+            if parsed_url.username and parsed_url.password:
+                self.auth = aiohttp.BasicAuth(parsed_url.username, parsed_url.password)
+                logger.info(f"🔑 Authentification configurée pour {parsed_url.username}")
+            
+            # Masquer l'URL pour l'affichage
+            safe_url = f"{parsed_url.scheme}://***:***@{parsed_url.hostname}"
+            if parsed_url.port:
+                safe_url += f":{parsed_url.port}"
+            logger.info(f"🔗 Connexion Bonsai HTTP: {safe_url}")
+            
+            # Créer la session HTTP
+            timeout = aiohttp.ClientTimeout(total=30.0)
             connector = aiohttp.TCPConnector(
-                limit=100,
-                limit_per_host=30,
-                keepalive_timeout=30,
+                limit=10,
+                limit_per_host=5,
+                keepalive_timeout=30.0,
                 enable_cleanup_closed=True
             )
             
-            timeout = aiohttp.ClientTimeout(total=30)
             self.session = aiohttp.ClientSession(
-                connector=connector,
+                auth=self.auth,
                 timeout=timeout,
+                connector=connector,
                 headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
                 }
             )
             
             # Test de connexion
-            logger.info("⏱️ Test de connexion...")
-            connection_start = time.time()
-            
-            async with self.session.get(self.base_url) as response:
+            start_time = time.time()
+            async with self.session.get(f"{self.base_url}/") as response:
+                connection_time = time.time() - start_time
+                
                 if response.status == 200:
-                    info = await response.json()
-                    connection_time = time.time() - connection_start
-                    
-                    logger.info(f"✅ Connexion réussie en {connection_time:.2f}s")
-                    logger.info(f"📊 Version: {info.get('version', {}).get('number', 'N/A')}")
-                    logger.info(f"🏷️ Cluster: {info.get('cluster_name', 'N/A')}")
-                    
-                    # Tester la santé
-                    await self._check_cluster_health()
-                    
-                    # Configurer l'index
-                    await self._setup_index()
-                    
-                    self._initialized = True
-                    total_time = time.time() - start_time
-                    logger.info(f"🎉 Client Bonsai initialisé avec succès en {total_time:.2f}s")
-                    
-                    return True
+                    cluster_info = await response.json()
+                    logger.info(f"✅ Bonsai connecté en {connection_time:.2f}s")
+                    logger.info(f"   Cluster: {cluster_info.get('cluster_name', 'Unknown')}")
+                    logger.info(f"   Version: {cluster_info.get('version', {}).get('number', 'Unknown')}")
                 else:
-                    logger.error(f"❌ Erreur HTTP: {response.status}")
+                    logger.error(f"❌ Échec connexion Bonsai: HTTP {response.status}")
                     return False
+            
+            # Test de santé du cluster
+            async with self.session.get(f"{self.base_url}/_cluster/health") as response:
+                if response.status == 200:
+                    health = await response.json()
+                    status = health.get("status", "red")
+                    logger.info(f"💚 Santé cluster: {status}")
                     
+                    if status in ["red"]:
+                        logger.warning("⚠️ Cluster en état critique mais connexion établie")
+                else:
+                    logger.warning(f"⚠️ Impossible de vérifier la santé: HTTP {response.status}")
+            
+            # Test d'existence de l'index
+            async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
+                if response.status == 200:
+                    logger.info(f"✅ Index '{self.index_name}' trouvé")
+                elif response.status == 404:
+                    logger.warning(f"⚠️ Index '{self.index_name}' n'existe pas")
+                else:
+                    logger.warning(f"⚠️ Statut index inconnu: HTTP {response.status}")
+            
+            self._initialized = True
+            logger.info("🎉 Client Bonsai HTTP initialisé avec succès")
+            return True
+            
         except Exception as e:
-            logger.error(f"💥 Erreur lors de l'initialisation Bonsai: {e}")
+            logger.error(f"❌ Erreur initialisation Bonsai: {e}")
             if self.session:
                 await self.session.close()
                 self.session = None
             return False
     
-    async def _check_cluster_health(self):
-        """Vérifie la santé du cluster via HTTP."""
-        try:
-            async with self.session.get(f"{self.base_url}/_cluster/health") as response:
-                if response.status == 200:
-                    health = await response.json()
-                    status = health.get("status", "unknown")
-                    
-                    if status == "green":
-                        logger.info("💚 Cluster Bonsai: Santé EXCELLENTE")
-                    elif status == "yellow":
-                        logger.warning("💛 Cluster Bonsai: Santé ACCEPTABLE")
-                    elif status == "red":
-                        logger.error("💔 Cluster Bonsai: Santé CRITIQUE")
-                    
-                    logger.info(f"📊 Nœuds: {health.get('number_of_nodes', 0)}")
-                    logger.info(f"🗂️ Shards actifs: {health.get('active_shards', 0)}")
-                    
-        except Exception as e:
-            logger.warning(f"⚠️ Impossible de vérifier la santé: {e}")
-    
-    async def _setup_index(self):
-        """Configure l'index pour les transactions."""
-        try:
-            # Vérifier si l'index existe
-            async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
-                exists = response.status == 200
-            
-            if not exists:
-                logger.info(f"📚 Création de l'index '{self.index_name}'...")
-                
-                # Mapping pour les transactions financières
-                mapping = {
-                    "mappings": {
-                        "properties": {
-                            "user_id": {"type": "integer"},
-                            "transaction_id": {"type": "keyword"},
-                            "amount": {"type": "float"},
-                            "description": {
-                                "type": "text",
-                                "analyzer": "standard",
-                                "fields": {
-                                    "keyword": {"type": "keyword"}
-                                }
-                            },
-                            "merchant": {
-                                "type": "text",
-                                "analyzer": "standard",
-                                "fields": {
-                                    "keyword": {"type": "keyword"}
-                                }
-                            },
-                            "category": {"type": "keyword"},
-                            "date": {"type": "date"},
-                            "created_at": {"type": "date"},
-                            "updated_at": {"type": "date"}
-                        }
-                    },
-                    "settings": {
-                        "number_of_shards": 1,
-                        "number_of_replicas": 0
-                    }
-                }
-                
-                async with self.session.put(
-                    f"{self.base_url}/{self.index_name}",
-                    data=json.dumps(mapping)
-                ) as response:
-                    if response.status in [200, 201]:
-                        logger.info(f"✅ Index '{self.index_name}' créé avec succès")
-                    else:
-                        logger.error(f"❌ Erreur création index: {response.status}")
-            else:
-                logger.info(f"📚 Index '{self.index_name}' existe déjà")
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la configuration de l'index: {e}")
-    
-    def _mask_credentials(self, url: str) -> str:
-        """Masque les credentials dans l'URL."""
-        if "@" in url:
-            parts = url.split("@")
-            if len(parts) == 2:
-                protocol_and_creds = parts[0]
-                host_and_path = parts[1]
-                
-                if "://" in protocol_and_creds:
-                    protocol = protocol_and_creds.split("://")[0]
-                    return f"{protocol}://***:***@{host_and_path}"
-        
-        return url
-    
     async def is_healthy(self) -> bool:
         """Vérifie si le client est sain et fonctionnel."""
-        if not self.session or not self._initialized:
+        if not self._initialized or not self.session:
             return False
         
         try:
-            start_time = time.time()
             async with self.session.get(f"{self.base_url}/_cluster/health") as response:
-                response_time = time.time() - start_time
-                
                 if response.status == 200:
                     health = await response.json()
                     status = health.get("status", "red")
@@ -212,15 +144,14 @@ class BonsaiClient:
                         "timestamp": time.time(),
                         "healthy": is_healthy,
                         "status": status,
-                        "response_time": response_time
+                        "client_type": "bonsai_http"
                     }
                     
                     return is_healthy
-                else:
-                    return False
-                    
+                return False
+                
         except Exception as e:
-            logger.error(f"❌ Health check failed: {e}")
+            logger.error(f"❌ Health check Bonsai échoué: {e}")
             return False
     
     async def search(
@@ -231,9 +162,15 @@ class BonsaiClient:
         filters: Dict[str, Any] = None,
         include_highlights: bool = True
     ) -> List[Dict[str, Any]]:
-        """Recherche des transactions via HTTP direct."""
+        """Recherche des transactions via Bonsai HTTP - VERSION CORRIGÉE."""
+        
         if not self.session or not self._initialized:
             raise RuntimeError("Client Bonsai non initialisé")
+        
+        # VALIDATION CRITIQUE: S'assurer que query est une string
+        if not isinstance(query, str):
+            logger.error(f"❌ Query doit être une string dans BonsaiClient: {type(query)} = {query}")
+            query = str(query) if query is not None else ""
         
         search_id = f"search_{int(time.time() * 1000)}"
         logger.info(f"🔍 [{search_id}] Recherche pour user {user_id}: '{query}' (limit: {limit})")
@@ -241,6 +178,21 @@ class BonsaiClient:
         start_time = time.time()
         
         try:
+            # Expansion des termes de recherche - SÉCURISÉE
+            from search_service.utils.query_expansion import expand_query_terms
+            expanded_terms = expand_query_terms(query)
+            
+            # Validation des termes expandus
+            validated_terms = []
+            for term in expanded_terms:
+                if isinstance(term, str):
+                    validated_terms.append(term)
+                else:
+                    logger.warning(f"Term ignoré dans Bonsai: {type(term)} = {term}")
+                    validated_terms.append(str(term))
+            
+            search_string = " ".join(validated_terms)
+            
             # Construction de la requête de recherche
             search_body = {
                 "query": {
@@ -251,15 +203,17 @@ class BonsaiClient:
                         "should": [
                             {
                                 "multi_match": {
-                                    "query": query,
-                                    "fields": ["description^2", "merchant", "category"],
+                                    "query": search_string,  # String validée
+                                    "fields": ["searchable_text^3", "primary_description^2", "merchant_name^2", "category_name"],
                                     "type": "best_fields",
+                                    "operator": "or",
                                     "fuzziness": "AUTO"
                                 }
                             },
                             {
-                                "wildcard": {
-                                    "description": f"*{query.lower()}*"
+                                "terms": {
+                                    "primary_description": validated_terms,  # Liste validée
+                                    "boost": 2.0
                                 }
                             }
                         ],
@@ -273,6 +227,9 @@ class BonsaiClient:
                 ]
             }
             
+            # Log de debug
+            logger.info(f"🔍 [{search_id}] Recherche via bonsai: search_string='{search_string}', terms={validated_terms}")
+            
             # Ajouter les filtres si spécifiés
             if filters:
                 search_body["query"]["bool"]["filter"] = []
@@ -284,8 +241,9 @@ class BonsaiClient:
             if include_highlights:
                 search_body["highlight"] = {
                     "fields": {
-                        "description": {},
-                        "merchant": {}
+                        "searchable_text": {},
+                        "primary_description": {},
+                        "merchant_name": {}
                     },
                     "pre_tags": ["<mark>"],
                     "post_tags": ["</mark>"]
@@ -296,11 +254,14 @@ class BonsaiClient:
             
             async with self.session.post(
                 f"{self.base_url}/{self.index_name}/_search",
-                data=json.dumps(search_body)
+                data=json.dumps(search_body),
+                headers={"Content-Type": "application/json"}
             ) as response:
                 
                 if response.status != 200:
                     logger.error(f"❌ Erreur recherche HTTP: {response.status}")
+                    response_text = await response.text()
+                    logger.error(f"   Response: {response_text}")
                     return []
                 
                 result = await response.json()
@@ -361,6 +322,8 @@ class BonsaiClient:
         except Exception as e:
             query_time = time.time() - start_time
             logger.error(f"❌ [{search_id}] Erreur recherche après {query_time:.3f}s: {e}")
+            logger.error(f"   Query type: {type(query)}")
+            logger.error(f"   Query value: {query}")
             metrics_logger.error(f"bonsai.search.failed,user_id={user_id},time={query_time:.3f},error={type(e).__name__}")
             return []
     
@@ -372,7 +335,8 @@ class BonsaiClient:
         try:
             async with self.session.put(
                 f"{self.base_url}/{self.index_name}/_doc/{doc_id}",
-                data=json.dumps(document)
+                data=json.dumps(document),
+                headers={"Content-Type": "application/json"}
             ) as response:
                 return response.status in [200, 201]
                 
@@ -397,65 +361,184 @@ class BonsaiClient:
     
     async def bulk_index(self, documents: List[Dict[str, Any]]) -> bool:
         """Indexation en lot."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or not documents:
             return False
         
-        if not documents:
-            return True
-        
         try:
-            # Construire le payload bulk
-            bulk_data = []
+            # Construction du corps de la requête bulk
+            bulk_body = []
             for doc in documents:
-                doc_id = doc.get("id") or doc.get("transaction_id")
-                if not doc_id:
-                    continue
-                
-                # Action header
-                bulk_data.append(json.dumps({
-                    "index": {
-                        "_index": self.index_name,
-                        "_id": doc_id
-                    }
-                }))
-                
-                # Document data
-                bulk_data.append(json.dumps(doc))
+                # Action d'indexation
+                action = {"index": {"_index": self.index_name, "_id": doc.get("id")}}
+                bulk_body.append(json.dumps(action))
+                bulk_body.append(json.dumps(doc))
             
-            if not bulk_data:
-                return True
-            
-            bulk_payload = "\n".join(bulk_data) + "\n"
+            # Ajouter un retour à la ligne final
+            bulk_data = "\n".join(bulk_body) + "\n"
             
             async with self.session.post(
                 f"{self.base_url}/_bulk",
-                data=bulk_payload,
+                data=bulk_data,
                 headers={"Content-Type": "application/x-ndjson"}
             ) as response:
                 
                 if response.status == 200:
                     result = await response.json()
                     errors = result.get("errors", False)
+                    items = result.get("items", [])
                     
-                    if not errors:
-                        logger.info(f"✅ {len(documents)} documents indexés en lot")
-                        return True
-                    else:
-                        logger.warning("⚠️ Erreurs lors de l'indexation en lot")
-                        return False
+                    success_count = 0
+                    error_count = 0
+                    
+                    for item in items:
+                        if "index" in item:
+                            if item["index"].get("status") in [200, 201]:
+                                success_count += 1
+                            else:
+                                error_count += 1
+                    
+                    logger.info(f"✅ Bulk indexation: {success_count} succès, {error_count} erreurs")
+                    return not errors
                 else:
-                    logger.error(f"❌ Erreur bulk: {response.status}")
+                    logger.error(f"❌ Erreur bulk HTTP: {response.status}")
                     return False
                 
         except Exception as e:
-            logger.error(f"❌ Erreur indexation bulk: {e}")
+            logger.error(f"❌ Erreur bulk indexation: {e}")
+            return False
+    
+    async def count_documents(self, user_id: int = None, filters: Dict[str, Any] = None) -> int:
+        """Compte le nombre de documents."""
+        if not self.session or not self._initialized:
+            return 0
+        
+        try:
+            count_body = {"query": {"match_all": {}}}
+            
+            if user_id is not None or filters:
+                count_body["query"] = {"bool": {"must": []}}
+                
+                if user_id is not None:
+                    count_body["query"]["bool"]["must"].append({"term": {"user_id": user_id}})
+                
+                if filters:
+                    for field, value in filters.items():
+                        if value is not None:
+                            count_body["query"]["bool"]["must"].append({"term": {field: value}})
+            
+            async with self.session.post(
+                f"{self.base_url}/{self.index_name}/_count",
+                data=json.dumps(count_body),
+                headers={"Content-Type": "application/json"}
+            ) as response:
+                
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("count", 0)
+                return 0
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur comptage documents: {e}")
+            return 0
+    
+    async def refresh_index(self) -> bool:
+        """Force le refresh de l'index pour rendre les documents visibles."""
+        if not self.session or not self._initialized:
+            return False
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/{self.index_name}/_refresh"
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur refresh index: {e}")
+            return False
+    
+    async def get_index_info(self) -> Dict[str, Any]:
+        """Retourne les informations sur l'index."""
+        if not self.session or not self._initialized:
+            return {"error": "Client non initialisé"}
+        
+        try:
+            async with self.session.get(f"{self.base_url}/{self.index_name}") as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"error": f"HTTP {response.status}"}
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur info index: {e}")
+            return {"error": str(e)}
+    
+    async def create_index(self, mapping: Dict[str, Any] = None) -> bool:
+        """Crée l'index avec un mapping optionnel."""
+        if not self.session or not self._initialized:
+            return False
+        
+        try:
+            body = {}
+            if mapping:
+                body["mappings"] = mapping
+            
+            async with self.session.put(
+                f"{self.base_url}/{self.index_name}",
+                data=json.dumps(body) if body else None,
+                headers={"Content-Type": "application/json"} if body else None
+            ) as response:
+                
+                if response.status in [200, 201]:
+                    logger.info(f"✅ Index '{self.index_name}' créé")
+                    return True
+                elif response.status == 400:
+                    result = await response.json()
+                    if "resource_already_exists_exception" in str(result):
+                        logger.info(f"ℹ️ Index '{self.index_name}' existe déjà")
+                        return True
+                    else:
+                        logger.error(f"❌ Erreur création index: {result}")
+                        return False
+                else:
+                    logger.error(f"❌ Erreur création index: HTTP {response.status}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur création index: {e}")
+            return False
+    
+    async def delete_index(self) -> bool:
+        """Supprime l'index."""
+        if not self.session or not self._initialized:
+            return False
+        
+        try:
+            async with self.session.delete(f"{self.base_url}/{self.index_name}") as response:
+                if response.status in [200, 404]:  # 404 = déjà supprimé
+                    logger.info(f"✅ Index '{self.index_name}' supprimé")
+                    return True
+                else:
+                    logger.error(f"❌ Erreur suppression index: HTTP {response.status}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur suppression index: {e}")
             return False
     
     async def close(self):
-        """Ferme la connexion."""
+        """Ferme la session HTTP."""
         if self.session:
-            logger.info("🔒 Fermeture connexion Bonsai...")
-            await self.session.close()
-            self.session = None
-            self._initialized = False
-            logger.info("✅ Connexion Bonsai fermée")
+            logger.info("🔒 Fermeture session Bonsai HTTP...")
+            try:
+                await self.session.close()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture session: {e}")
+            finally:
+                self.session = None
+                self._initialized = False
+                logger.info("✅ Session Bonsai fermée")
+    
+    def __del__(self):
+        """Destructeur pour s'assurer que la session est fermée."""
+        if self.session and not self.session.closed:
+            logger.warning("⚠️ Session Bonsai non fermée explicitement")

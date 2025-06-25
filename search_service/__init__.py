@@ -1,9 +1,9 @@
 """
-Service de recherche hybride pour Harena.
-
-Ce service combine recherche lexicale (Elasticsearch) et sémantique (Qdrant)
-avec reranking (Cohere) pour optimiser la pertinence des résultats.
+Service de recherche Harena.
 """
 
 __version__ = "1.0.0"
-__all__ = ["__version__"]
+__author__ = "Harena Team"
+__description__ = "Service de recherche pour transactions financières"
+
+

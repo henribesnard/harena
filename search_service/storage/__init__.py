@@ -1,8 +1,12 @@
-"""
-Module de stockage pour le service de recherche.
 
-Fournit les interfaces pour Elasticsearch (recherche lexicale)
-et Qdrant (recherche sémantique).
+"""
+Clients de stockage pour le service de recherche.
 """
 
-__all__ = []
+from .elastic_client_hybrid import HybridElasticClient
+from .bonsai_client import BonsaiClient
+
+__all__ = [
+    'HybridElasticClient',
+    'BonsaiClient'
+]

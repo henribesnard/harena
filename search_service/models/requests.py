@@ -314,6 +314,119 @@ class QueryExpansionRequest(BaseModel):
         return v.strip()
 
 
+class UserStatsRequest(BaseModel):
+    """Modèle de requête pour les statistiques utilisateur."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
+    include_details: Optional[bool] = Field(False, description="Inclure les détails")
+    
+    @field_validator('user_id')
+    @classmethod
+    def validate_user_id(cls, v):
+        if not isinstance(v, int):
+            try:
+                v = int(v)
+            except (ValueError, TypeError):
+                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
+        
+        if v <= 0:
+            raise ValueError("user_id must be positive")
+        
+        return v
+
+
+class DebugSearchRequest(BaseModel):
+    """Modèle de requête pour le debug de recherche."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    user_id: int = Field(..., description="ID de l'utilisateur", gt=0)
+    query: str = Field(..., description="Requête de recherche")
+    client_type: str = Field(..., description="Type de client: elasticsearch ou qdrant")
+    
+    @field_validator('user_id')
+    @classmethod
+    def validate_user_id(cls, v):
+        if not isinstance(v, int):
+            try:
+                v = int(v)
+            except (ValueError, TypeError):
+                raise ValueError(f"user_id must be an integer, got {type(v).__name__}")
+        
+        if v <= 0:
+            raise ValueError("user_id must be positive")
+        
+        return v
+    
+    @field_validator('query')
+    @classmethod
+    def validate_query(cls, v):
+        if not isinstance(v, str):
+            v = str(v) if v is not None else ""
+        
+        if not v.strip():
+            raise ValueError("Query cannot be empty")
+        
+        return v.strip()
+    
+    @field_validator('client_type')
+    @classmethod
+    def validate_client_type(cls, v):
+        if not isinstance(v, str):
+            v = str(v)
+        
+        v = v.lower().strip()
+        valid_types = ["elasticsearch", "qdrant"]
+        
+        if v not in valid_types:
+            raise ValueError(f"client_type must be one of: {', '.join(valid_types)}")
+        
+        return v
+
+
+class IndexManagementRequest(BaseModel):
+    """Modèle de requête pour la gestion des index."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    action: str = Field(..., description="Action: create, delete, refresh")
+    index_type: Optional[str] = Field("both", description="Type d'index")
+    force: Optional[bool] = Field(False, description="Forcer l'action")
+    
+    @field_validator('action')
+    @classmethod
+    def validate_action(cls, v):
+        if not isinstance(v, str):
+            v = str(v)
+        
+        v = v.lower().strip()
+        valid_actions = ["create", "delete", "refresh", "info"]
+        
+        if v not in valid_actions:
+            raise ValueError(f"action must be one of: {', '.join(valid_actions)}")
+        
+        return v
+    
+    @field_validator('index_type')
+    @classmethod
+    def validate_index_type(cls, v):
+        if v is None:
+            return "both"
+        
+        if not isinstance(v, str):
+            v = str(v)
+        
+        v = v.lower().strip()
+        valid_types = ["elasticsearch", "qdrant", "both"]
+        
+        if v not in valid_types:
+            raise ValueError(f"index_type must be one of: {', '.join(valid_types)}")
+        
+        return v
+
+
 # Classe de base corrigée pour Pydantic V2
 class BaseRequest(BaseModel):
     """Classe de base pour toutes les requêtes avec validation commune."""
@@ -328,7 +441,7 @@ class BaseRequest(BaseModel):
     @classmethod
     def prevent_dict_queries(cls, v, info):
         """Empêche l'utilisation d'objets dict pour les champs query."""
-        if info.field_name == 'query' and isinstance(v, dict):
+        if hasattr(info, 'field_name') and info.field_name == 'query' and isinstance(v, dict):
             raise ValueError("Query parameter cannot be a dict object")
         return v
 
@@ -340,5 +453,8 @@ __all__ = [
     'BulkIndexRequest',
     'DeleteUserDataRequest',
     'QueryExpansionRequest',
+    'UserStatsRequest',
+    'DebugSearchRequest',
+    'IndexManagementRequest',
     'BaseRequest'
 ]

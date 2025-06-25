@@ -1,6 +1,6 @@
 """
 Modèles de réponses pour le service de recherche.
-VERSION CORRIGÉE - Compatible Pydantic V2
+VERSION CORRIGÉE - Compatible Pydantic V2 avec toutes les classes requises
 """
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, ConfigDict
@@ -168,6 +168,25 @@ class ErrorResponse(BaseModel):
         super().__init__(**data)
 
 
+class ValidationErrorResponse(BaseModel):
+    """Modèle de réponse pour les erreurs de validation spécifiques."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    error_type: str = Field(..., description="Type d'erreur de validation")
+    field: str = Field(..., description="Champ en erreur")
+    received_type: str = Field(..., description="Type reçu")
+    expected_type: str = Field(..., description="Type attendu")
+    received_value: Optional[str] = Field(None, description="Valeur reçue (tronquée)")
+    message: str = Field(..., description="Message d'erreur détaillé")
+    timestamp: float = Field(..., description="Timestamp de l'erreur")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
 class DebugClientResponse(BaseModel):
     """Modèle de réponse pour le debug des clients."""
     
@@ -204,6 +223,161 @@ class DebugSearchResponse(BaseModel):
         super().__init__(**data)
 
 
+class IndexInfoResponse(BaseModel):
+    """Modèle de réponse pour les informations d'index."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    index_name: str = Field(..., description="Nom de l'index")
+    elasticsearch: Dict[str, Any] = Field(..., description="Informations Elasticsearch")
+    qdrant: Dict[str, Any] = Field(..., description="Informations Qdrant")
+    timestamp: float = Field(..., description="Timestamp de la vérification")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class ServiceMetricsResponse(BaseModel):
+    """Modèle de réponse pour les métriques du service."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    uptime: float = Field(..., description="Temps de fonctionnement en secondes")
+    total_searches: int = Field(..., description="Nombre total de recherches", ge=0)
+    total_indexations: int = Field(..., description="Nombre total d'indexations", ge=0)
+    average_query_time: float = Field(..., description="Temps moyen de requête", ge=0.0)
+    error_rate: float = Field(..., description="Taux d'erreur", ge=0.0, le=1.0)
+    last_24h: Dict[str, Any] = Field(..., description="Métriques des 24 dernières heures")
+    timestamp: float = Field(..., description="Timestamp des métriques")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class BatchOperationResponse(BaseModel):
+    """Modèle de réponse pour les opérations par lots."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    operation_type: str = Field(..., description="Type d'opération")
+    total_items: int = Field(..., description="Nombre total d'éléments", ge=0)
+    successful: int = Field(..., description="Nombre de succès", ge=0)
+    failed: int = Field(..., description="Nombre d'échecs", ge=0)
+    processing_time: float = Field(..., description="Temps de traitement total", ge=0.0)
+    items_per_second: float = Field(..., description="Vitesse de traitement", ge=0.0)
+    errors: List[str] = Field(default_factory=list, description="Liste des erreurs")
+    timestamp: float = Field(..., description="Timestamp de l'opération")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        
+        # Calculer items_per_second automatiquement
+        if 'items_per_second' not in data and data.get('processing_time', 0) > 0:
+            total = data.get('total_items', 0)
+            time_taken = data.get('processing_time', 1)
+            data['items_per_second'] = round(total / time_taken, 2)
+        
+        super().__init__(**data)
+
+
+class IndexManagementResponse(BaseModel):
+    """Modèle de réponse pour la gestion des index."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    action: str = Field(..., description="Action effectuée")
+    success: bool = Field(..., description="Succès de l'opération")
+    index_type: str = Field(..., description="Type d'index traité")
+    details: Dict[str, Any] = Field(..., description="Détails de l'opération")
+    processing_time: float = Field(..., description="Temps de traitement", ge=0.0)
+    timestamp: float = Field(..., description="Timestamp de l'opération")
+    error: Optional[str] = Field(None, description="Message d'erreur éventuel")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class SimpleTestResponse(BaseModel):
+    """Modèle de réponse pour les tests simples."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    status: str = Field(..., description="Statut du test")
+    message: str = Field(..., description="Message du test")
+    timestamp: float = Field(..., description="Timestamp du test")
+    version: str = Field(..., description="Version du service")
+    test_data: Optional[Dict[str, Any]] = Field(None, description="Données de test")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class ConnectionStatusResponse(BaseModel):
+    """Modèle de réponse pour le statut des connexions."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    service_name: str = Field(..., description="Nom du service")
+    connections: Dict[str, Any] = Field(..., description="État des connexions")
+    total_connections: int = Field(..., description="Nombre total de connexions", ge=0)
+    healthy_connections: int = Field(..., description="Connexions saines", ge=0)
+    failed_connections: int = Field(..., description="Connexions échouées", ge=0)
+    timestamp: float = Field(..., description="Timestamp de la vérification")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class SearchCapabilitiesResponse(BaseModel):
+    """Modèle de réponse pour les capacités de recherche."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    available_search_types: List[str] = Field(..., description="Types de recherche disponibles")
+    elasticsearch_enabled: bool = Field(..., description="Elasticsearch disponible")
+    qdrant_enabled: bool = Field(..., description="Qdrant disponible")
+    features: Dict[str, bool] = Field(..., description="Fonctionnalités disponibles")
+    limitations: List[str] = Field(default_factory=list, description="Limitations")
+    performance_info: Dict[str, Any] = Field(..., description="Informations de performance")
+    timestamp: float = Field(..., description="Timestamp de la vérification")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class SystemInfoResponse(BaseModel):
+    """Modèle de réponse pour les informations système."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    service_name: str = Field(..., description="Nom du service")
+    version: str = Field(..., description="Version du service")
+    uptime: float = Field(..., description="Temps de fonctionnement", ge=0.0)
+    environment: str = Field(..., description="Environnement")
+    python_version: str = Field(..., description="Version Python")
+    dependencies: Dict[str, str] = Field(..., description="Versions des dépendances")
+    configuration: Dict[str, Any] = Field(..., description="Configuration active")
+    timestamp: float = Field(..., description="Timestamp de la réponse")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
 # Classe de base corrigée pour Pydantic V2
 class BaseResponse(BaseModel):
     """Classe de base pour toutes les réponses avec timestamp automatique."""
@@ -221,18 +395,105 @@ class BaseResponse(BaseModel):
         super().__init__(**data)
 
 
+# Modèles de réponse pour les opérations spécialisées
+class BenchmarkResponse(BaseModel):
+    """Modèle de réponse pour les benchmarks de performance."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    test_name: str = Field(..., description="Nom du test de performance")
+    total_queries: int = Field(..., description="Nombre total de requêtes", ge=0)
+    successful_queries: int = Field(..., description="Requêtes réussies", ge=0)
+    failed_queries: int = Field(..., description="Requêtes échouées", ge=0)
+    average_response_time: float = Field(..., description="Temps de réponse moyen", ge=0.0)
+    min_response_time: float = Field(..., description="Temps minimum", ge=0.0)
+    max_response_time: float = Field(..., description="Temps maximum", ge=0.0)
+    queries_per_second: float = Field(..., description="Requêtes par seconde", ge=0.0)
+    benchmark_duration: float = Field(..., description="Durée du benchmark", ge=0.0)
+    timestamp: float = Field(..., description="Timestamp du benchmark")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class ConfigurationResponse(BaseModel):
+    """Modèle de réponse pour la configuration du service."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    service_name: str = Field(..., description="Nom du service")
+    elasticsearch_config: Dict[str, Any] = Field(..., description="Configuration Elasticsearch")
+    qdrant_config: Dict[str, Any] = Field(..., description="Configuration Qdrant")
+    search_settings: Dict[str, Any] = Field(..., description="Paramètres de recherche")
+    performance_settings: Dict[str, Any] = Field(..., description="Paramètres de performance")
+    security_settings: Dict[str, Any] = Field(..., description="Paramètres de sécurité")
+    timestamp: float = Field(..., description="Timestamp de la configuration")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
+class DiagnosticResponse(BaseModel):
+    """Modèle de réponse pour le diagnostic approfondi."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    service_status: str = Field(..., description="Statut global du service")
+    components: Dict[str, Dict[str, Any]] = Field(..., description="État des composants")
+    performance_metrics: Dict[str, float] = Field(..., description="Métriques de performance")
+    error_summary: Dict[str, int] = Field(..., description="Résumé des erreurs")
+    recommendations: List[str] = Field(default_factory=list, description="Recommandations")
+    detailed_logs: List[Dict[str, Any]] = Field(default_factory=list, description="Logs détaillés")
+    diagnostic_duration: float = Field(..., description="Durée du diagnostic", ge=0.0)
+    timestamp: float = Field(..., description="Timestamp du diagnostic")
+    
+    def __init__(self, **data):
+        if 'timestamp' not in data:
+            data['timestamp'] = datetime.now().timestamp()
+        super().__init__(**data)
+
+
 # Export de tous les modèles
 __all__ = [
+    # Modèles de résultats principaux
     'SearchResultItem',
     'SearchResponse',
+    
+    # Modèles d'opérations
     'ReindexResponse',
     'BulkIndexResponse',
     'DeleteUserDataResponse',
+    'BatchOperationResponse',
+    'IndexManagementResponse',
+    
+    # Modèles de statistiques et informations
     'UserStatsResponse',
     'HealthResponse',
+    'IndexInfoResponse',
+    'ServiceMetricsResponse',
+    'SystemInfoResponse',
+    'ConfigurationResponse',
+    
+    # Modèles de debug et diagnostic
     'QueryExpansionResponse',
     'DebugClientResponse',
     'DebugSearchResponse',
+    'DiagnosticResponse',
+    'BenchmarkResponse',
+    
+    # Modèles de test et statut
+    'SimpleTestResponse',
+    'ConnectionStatusResponse',
+    'SearchCapabilitiesResponse',
+    
+    # Modèles d'erreur
     'ErrorResponse',
+    'ValidationErrorResponse',
+    
+    # Classe de base
     'BaseResponse'
 ]

@@ -1,10 +1,11 @@
 """
 Client Elasticsearch hybride qui utilise le client officiel ou Bonsai HTTP selon la compatibilité.
-VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower'
+VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower' + gestion connexions
 """
 import logging
 import json
 import time
+import asyncio
 from typing import List, Dict, Any, Optional
 
 from config_service.config import settings
@@ -24,6 +25,7 @@ class HybridElasticClient:
         self._initialized = False
         self._connection_attempts = 0
         self._last_health_check = None
+        self._closed = False
         
     async def initialize(self):
         """Initialise la connexion en essayant d'abord Elasticsearch, puis Bonsai."""
@@ -33,6 +35,9 @@ class HybridElasticClient:
         if not settings.BONSAI_URL:
             logger.error("❌ BONSAI_URL non configurée")
             return False
+        
+        # Fermer les clients existants
+        await self._cleanup_existing_clients()
         
         # Masquer les credentials pour l'affichage
         safe_url = self._mask_credentials(settings.BONSAI_URL)
@@ -44,6 +49,7 @@ class HybridElasticClient:
         if elasticsearch_success:
             self.client_type = 'elasticsearch'
             self._initialized = True
+            self._closed = False
             total_time = time.time() - start_time
             logger.info(f"🎉 Client Elasticsearch officiel initialisé en {total_time:.2f}s")
             return True
@@ -55,6 +61,7 @@ class HybridElasticClient:
         if bonsai_success:
             self.client_type = 'bonsai'
             self._initialized = True
+            self._closed = False
             total_time = time.time() - start_time
             logger.info(f"🎉 Client Bonsai HTTP initialisé en {total_time:.2f}s")
             return True
@@ -62,6 +69,35 @@ class HybridElasticClient:
         # Les deux ont échoué
         logger.error("❌ Impossible d'initialiser un client de recherche")
         return False
+    
+    async def _cleanup_existing_clients(self):
+        """Nettoie les clients existants."""
+        cleanup_tasks = []
+        
+        if self.client:
+            logger.debug("🧹 Nettoyage client Elasticsearch existant...")
+            try:
+                cleanup_tasks.append(self.client.close())
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur nettoyage Elasticsearch: {e}")
+            finally:
+                self.client = None
+        
+        if self.bonsai_client:
+            logger.debug("🧹 Nettoyage client Bonsai existant...")
+            try:
+                cleanup_tasks.append(self.bonsai_client.close())
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur nettoyage Bonsai: {e}")
+            finally:
+                self.bonsai_client = None
+        
+        # Attendre tous les nettoyages
+        if cleanup_tasks:
+            try:
+                await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur nettoyage groupé: {e}")
     
     async def _try_elasticsearch_client(self):
         """Essaie d'initialiser le client Elasticsearch officiel."""
@@ -83,13 +119,21 @@ class HybridElasticClient:
                 }
             )
             
-            # Test de connexion
-            info = await self.client.info()
-            logger.info(f"✅ Client Elasticsearch: {info['cluster_name']} v{info['version']['number']}")
+            # Test de connexion avec timeout
+            try:
+                info = await asyncio.wait_for(self.client.info(), timeout=15.0)
+                logger.info(f"✅ Client Elasticsearch: {info['cluster_name']} v{info['version']['number']}")
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Timeout connexion Elasticsearch")
+                await self._safe_close_elasticsearch()
+                return False
             
             # Test de santé
-            health = await self.client.cluster.health()
-            logger.info(f"💚 Santé: {health['status']}")
+            try:
+                health = await asyncio.wait_for(self.client.cluster.health(), timeout=10.0)
+                logger.info(f"💚 Santé: {health['status']}")
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Timeout health check Elasticsearch")
             
             return True
             
@@ -98,14 +142,19 @@ class HybridElasticClient:
             if "UnsupportedProductError" in str(e):
                 logger.info("💡 Bonsai détecté comme incompatible avec le client standard")
             
-            if self.client:
-                try:
-                    await self.client.close()
-                except:
-                    pass
-                self.client = None
-            
+            await self._safe_close_elasticsearch()
             return False
+    
+    async def _safe_close_elasticsearch(self):
+        """Ferme le client Elasticsearch de manière sécurisée."""
+        if self.client:
+            try:
+                await asyncio.wait_for(self.client.close(), timeout=5.0)
+                logger.debug("🔒 Client Elasticsearch fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture Elasticsearch: {e}")
+            finally:
+                self.client = None
     
     async def _try_bonsai_client(self):
         """Essaie d'initialiser le client Bonsai HTTP."""
@@ -144,12 +193,12 @@ class HybridElasticClient:
     
     async def is_healthy(self) -> bool:
         """Vérifie si le client est sain et fonctionnel."""
-        if not self._initialized:
+        if not self._initialized or self._closed:
             return False
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
-                health = await self.client.cluster.health()
+                health = await asyncio.wait_for(self.client.cluster.health(), timeout=5.0)
                 status = health.get("status", "red")
                 is_healthy = status in ["green", "yellow"]
                 
@@ -180,8 +229,8 @@ class HybridElasticClient:
         include_highlights: bool = True
     ) -> List[Dict[str, Any]]:
         """Recherche des transactions via le client approprié."""
-        if not self._initialized:
-            raise RuntimeError("Client non initialisé")
+        if not self._initialized or self._closed:
+            raise RuntimeError("Client non initialisé ou fermé")
         
         # VALIDATION CRITIQUE: S'assurer que query est une string
         if not isinstance(query, str):
@@ -299,12 +348,12 @@ class HybridElasticClient:
                     "post_tags": ["</mark>"]
                 }
             
-            # Exécuter la recherche
+            # Exécuter la recherche avec timeout
             logger.info(f"🎯 [{search_id}] Exécution recherche Elasticsearch...")
             
-            response = await self.client.search(
-                index=self.index_name,
-                body=search_body
+            response = await asyncio.wait_for(
+                self.client.search(index=self.index_name, body=search_body),
+                timeout=15.0
             )
             
             query_time = time.time() - start_time
@@ -356,6 +405,12 @@ class HybridElasticClient:
             
             return results
             
+        except asyncio.TimeoutError:
+            query_time = time.time() - start_time
+            logger.error(f"❌ [{search_id}] Timeout Elasticsearch après {query_time:.3f}s")
+            metrics_logger.error(f"elasticsearch.search.timeout,user_id={user_id},time={query_time:.3f}")
+            return []
+            
         except Exception as e:
             query_time = time.time() - start_time
             logger.error(f"❌ [{search_id}] Erreur Elasticsearch après {query_time:.3f}s: {e}")
@@ -366,15 +421,14 @@ class HybridElasticClient:
     
     async def index_document(self, doc_id: str, document: Dict[str, Any]) -> bool:
         """Indexe un document."""
-        if not self._initialized:
+        if not self._initialized or self._closed:
             return False
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
-                response = await self.client.index(
-                    index=self.index_name,
-                    id=doc_id,
-                    body=document
+                response = await asyncio.wait_for(
+                    self.client.index(index=self.index_name, id=doc_id, body=document),
+                    timeout=10.0
                 )
                 return response.get("result") in ["created", "updated"]
                 
@@ -389,14 +443,14 @@ class HybridElasticClient:
     
     async def delete_document(self, doc_id: str) -> bool:
         """Supprime un document."""
-        if not self._initialized:
+        if not self._initialized or self._closed:
             return False
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
-                response = await self.client.delete(
-                    index=self.index_name,
-                    id=doc_id
+                response = await asyncio.wait_for(
+                    self.client.delete(index=self.index_name, id=doc_id),
+                    timeout=10.0
                 )
                 return response.get("result") == "deleted"
                 
@@ -411,7 +465,7 @@ class HybridElasticClient:
     
     async def bulk_index(self, documents: List[Dict[str, Any]]) -> bool:
         """Indexation en lot."""
-        if not self._initialized or not documents:
+        if not self._initialized or self._closed or not documents:
             return False
         
         try:
@@ -442,7 +496,7 @@ class HybridElasticClient:
     
     async def count_documents(self, user_id: int = None, filters: Dict[str, Any] = None) -> int:
         """Compte le nombre de documents."""
-        if not self._initialized:
+        if not self._initialized or self._closed:
             return 0
         
         try:
@@ -460,26 +514,14 @@ class HybridElasticClient:
                             count_body["query"]["bool"]["must"].append({"term": {field: value}})
             
             if self.client_type == 'elasticsearch' and self.client:
-                response = await self.client.count(index=self.index_name, body=count_body)
+                response = await asyncio.wait_for(
+                    self.client.count(index=self.index_name, body=count_body),
+                    timeout=10.0
+                )
                 return response.get("count", 0)
                 
             elif self.client_type == 'bonsai' and self.bonsai_client:
-                # Pour le client Bonsai, utiliser une recherche avec size=0
-                search_body = count_body.copy()
-                search_body["size"] = 0
-                
-                async with self.bonsai_client.session.post(
-                    f"{self.bonsai_client.base_url}/{self.index_name}/_search",
-                    data=json.dumps(search_body)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        total = result.get("hits", {}).get("total", {})
-                        if isinstance(total, dict):
-                            return total.get("value", 0)
-                        else:
-                            return total
-                    return 0
+                return await self.bonsai_client.count_documents(user_id, filters)
             
             return 0
             
@@ -489,19 +531,19 @@ class HybridElasticClient:
     
     async def refresh_index(self) -> bool:
         """Force le refresh de l'index pour rendre les documents visibles."""
-        if not self._initialized:
+        if not self._initialized or self._closed:
             return False
         
         try:
             if self.client_type == 'elasticsearch' and self.client:
-                await self.client.indices.refresh(index=self.index_name)
+                await asyncio.wait_for(
+                    self.client.indices.refresh(index=self.index_name),
+                    timeout=10.0
+                )
                 return True
                 
             elif self.client_type == 'bonsai' and self.bonsai_client:
-                async with self.bonsai_client.session.post(
-                    f"{self.bonsai_client.base_url}/{self.index_name}/_refresh"
-                ) as response:
-                    return response.status == 200
+                return await self.bonsai_client.refresh_index()
             
             return False
             
@@ -518,20 +560,56 @@ class HybridElasticClient:
             "bonsai_available": self.bonsai_client is not None,
             "connection_attempts": self._connection_attempts,
             "last_health_check": self._last_health_check,
-            "index_name": self.index_name
+            "index_name": self.index_name,
+            "closed": self._closed
         }
     
     async def close(self):
         """Ferme les connexions."""
+        if self._closed:
+            return
+        
+        logger.info("🔒 Fermeture des clients de recherche...")
+        self._closed = True
+        self._initialized = False
+        
+        close_tasks = []
+        
         if self.client:
             logger.info("🔒 Fermeture client Elasticsearch...")
-            await self.client.close()
-            self.client = None
+            try:
+                close_tasks.append(asyncio.create_task(self._safe_close_elasticsearch()))
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur préparation fermeture Elasticsearch: {e}")
+                self.client = None
             
         if self.bonsai_client:
             logger.info("🔒 Fermeture client Bonsai...")
-            await self.bonsai_client.close()
-            self.bonsai_client = None
-            
-        self._initialized = False
+            try:
+                close_tasks.append(asyncio.create_task(self.bonsai_client.close()))
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur préparation fermeture Bonsai: {e}")
+                self.bonsai_client = None
+        
+        # Attendre toutes les fermetures avec timeout
+        if close_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*close_tasks, return_exceptions=True),
+                    timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Timeout fermeture clients")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture groupée: {e}")
+        
         logger.info("✅ Clients fermés")
+    
+    async def __aenter__(self):
+        """Support pour 'async with'."""
+        await self.initialize()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Nettoyage automatique lors de la sortie du contexte."""
+        await self.close()

@@ -1,93 +1,158 @@
 """
-Service de recherche Harena - Point d'entrée principal (VERSION ROBUSTE).
-
-Ce module configure et démarre le service de recherche hybride combinant
-Elasticsearch (Bonsai) pour la recherche lexicale et Qdrant pour la recherche sémantique.
-
-Version simplifiée et robuste pour Heroku avec gestion d'erreur améliorée.
+Point d'entrée principal pour le service de recherche.
+VERSION CORRIGÉE - Gestion propre des connexions et cycle de vie
 """
-
 import asyncio
 import logging
-import os
+import signal
 import sys
 import time
+import atexit
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Optional, Any, List
 
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Configuration du logging avant les autres imports
+from config_service.config import settings
+
+# Configuration du logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [%(name)s] - %(levelname)s - %(module)s:%(lineno)d - %(message)s',
-    stream=sys.stdout
+    level=getattr(logging, settings.LOG_LEVEL.upper()),
+    format='%(asctime)s - [%(name)s] - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 
 logger = logging.getLogger("search_service.main")
 
-# ==================== VARIABLES GLOBALES ====================
+# Variables globales pour les services
+elastic_client: Optional[Any] = None
+qdrant_client: Optional[Any] = None
+search_engine: Optional[Any] = None
+initialization_errors: List[str] = []
+cleanup_tasks: List[asyncio.Task] = []
+app_start_time = time.time()
 
-# Clients principaux
-elastic_client = None
-qdrant_client = None
+# Gestionnaire de fermeture propre
+shutdown_event = asyncio.Event()
 
-# Services IA
-embedding_service = None
-reranker_service = None
 
-# Utilitaires
-search_cache = None
-metrics_collector = None
+def register_cleanup_task(coro_func, *args, **kwargs):
+    """Enregistre une tâche de nettoyage."""
+    try:
+        task = asyncio.create_task(coro_func(*args, **kwargs))
+        cleanup_tasks.append(task)
+        logger.debug(f"Tâche de nettoyage enregistrée: {coro_func.__name__}")
+    except Exception as e:
+        logger.error(f"Erreur enregistrement tâche nettoyage: {e}")
 
-# Diagnostics
-startup_diagnostics = {}
-startup_time = None
-initialization_errors = []
 
-# ==================== FONCTIONS UTILITAIRES ====================
-
-def log_startup_banner():
-    """Affiche la bannière de démarrage."""
-    print("=" * 100)
-    print("🔍 HARENA SEARCH SERVICE - DÉMARRAGE ROBUSTE")
-    print("=" * 100)
-    print(f"🕐 Heure de démarrage: {datetime.now().isoformat()}")
-    print(f"🐍 Python: {sys.version}")
-    print("=" * 100)
-
-def check_environment_variables():
-    """Vérifie les variables d'environnement critiques."""
-    logger.info("📋 Vérification des variables d'environnement...")
+async def cleanup_on_shutdown():
+    """Nettoie les ressources lors de l'arrêt."""
+    global elastic_client, qdrant_client, search_engine
     
-    env_status = {
-        "BONSAI_URL": bool(os.environ.get("BONSAI_URL")),
-        "QDRANT_URL": bool(os.environ.get("QDRANT_URL")),
-        "QDRANT_API_KEY": bool(os.environ.get("QDRANT_API_KEY")),
-        "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
-        "COHERE_KEY": bool(os.environ.get("COHERE_KEY")),
-    }
+    logger.info("🧹 Début du nettoyage des ressources...")
+    start_cleanup = time.time()
     
-    for var, present in env_status.items():
-        status_icon = "✅" if present else "❌"
-        logger.info(f"   {status_icon} {var}: {'Configuré' if present else 'Manquant'}")
+    cleanup_errors = []
     
-    critical_missing = []
-    if not env_status["BONSAI_URL"]:
-        critical_missing.append("BONSAI_URL")
-    if not env_status["QDRANT_URL"]:
-        critical_missing.append("QDRANT_URL")
+    # Fermer les clients individuellement avec timeout
+    if elastic_client:
+        try:
+            logger.info("🔒 Fermeture client Elasticsearch...")
+            await asyncio.wait_for(elastic_client.close(), timeout=5.0)
+            logger.info("✅ Client Elasticsearch fermé")
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout fermeture Elasticsearch")
+            cleanup_errors.append("Elasticsearch timeout")
+        except Exception as e:
+            logger.error(f"❌ Erreur fermeture Elasticsearch: {e}")
+            cleanup_errors.append(f"Elasticsearch: {e}")
+        finally:
+            elastic_client = None
     
-    if critical_missing:
-        logger.warning(f"⚠️ Variables critiques manquantes: {critical_missing}")
-        logger.warning("💡 Le service démarrera en mode dégradé")
+    if qdrant_client:
+        try:
+            logger.info("🔒 Fermeture client Qdrant...")
+            if hasattr(qdrant_client, 'close'):
+                await asyncio.wait_for(qdrant_client.close(), timeout=5.0)
+            logger.info("✅ Client Qdrant fermé")
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout fermeture Qdrant")
+            cleanup_errors.append("Qdrant timeout")
+        except Exception as e:
+            logger.error(f"❌ Erreur fermeture Qdrant: {e}")
+            cleanup_errors.append(f"Qdrant: {e}")
+        finally:
+            qdrant_client = None
     
-    return env_status
+    # Nettoyer le moteur de recherche
+    if search_engine:
+        try:
+            logger.info("🔒 Fermeture moteur de recherche...")
+            if hasattr(search_engine, 'close'):
+                await asyncio.wait_for(search_engine.close(), timeout=5.0)
+            logger.info("✅ Moteur de recherche fermé")
+        except Exception as e:
+            logger.error(f"❌ Erreur fermeture moteur: {e}")
+            cleanup_errors.append(f"SearchEngine: {e}")
+        finally:
+            search_engine = None
+    
+    # Attendre les tâches de nettoyage enregistrées
+    if cleanup_tasks:
+        try:
+            logger.info(f"🔄 Attente de {len(cleanup_tasks)} tâches de nettoyage...")
+            await asyncio.wait_for(
+                asyncio.gather(*cleanup_tasks, return_exceptions=True),
+                timeout=10.0
+            )
+            logger.info("✅ Tâches de nettoyage terminées")
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout tâches de nettoyage")
+            cleanup_errors.append("Cleanup tasks timeout")
+        except Exception as e:
+            logger.error(f"❌ Erreur tâches de nettoyage: {e}")
+            cleanup_errors.append(f"Cleanup tasks: {e}")
+    
+    cleanup_time = time.time() - start_cleanup
+    
+    if cleanup_errors:
+        logger.warning(f"🟡 Nettoyage terminé avec erreurs en {cleanup_time:.2f}s: {cleanup_errors}")
+    else:
+        logger.info(f"✅ Nettoyage terminé proprement en {cleanup_time:.2f}s")
+    
+    # Marquer l'arrêt comme terminé
+    shutdown_event.set()
 
-# ==================== INITIALISATION DES CLIENTS ====================
+
+def signal_handler(signum, frame):
+    """Gestionnaire de signal pour arrêt propre."""
+    logger.info(f"🛑 Signal {signum} reçu, arrêt en cours...")
+    
+    # Créer la tâche de nettoyage dans la boucle d'événements actuelle
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(cleanup_on_shutdown())
+    except RuntimeError:
+        # Pas de boucle active, créer une nouvelle
+        asyncio.run(cleanup_on_shutdown())
+
+
+def setup_signal_handlers():
+    """Configure les gestionnaires de signaux."""
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Gestionnaire atexit comme backup
+    atexit.register(lambda: asyncio.run(cleanup_on_shutdown()))
+    
+    logger.info("🛡️ Gestionnaires de signaux configurés")
+
 
 async def safe_initialize_elasticsearch() -> Optional[Any]:
     """Initialise Elasticsearch de manière sécurisée avec timeout."""
@@ -99,7 +164,6 @@ async def safe_initialize_elasticsearch() -> Optional[Any]:
         # Import avec gestion d'erreur
         try:
             from search_service.storage.elastic_client_hybrid import HybridElasticClient
-            from config_service.config import settings
         except ImportError as e:
             logger.error(f"❌ Import Elasticsearch échoué: {e}")
             initialization_errors.append(f"Elasticsearch import: {e}")
@@ -116,10 +180,19 @@ async def safe_initialize_elasticsearch() -> Optional[Any]:
         
         logger.info("🔄 Initialisation du client Elasticsearch...")
         try:
-            await asyncio.wait_for(elastic_client.initialize(), timeout=45.0)
+            success = await asyncio.wait_for(elastic_client.initialize(), timeout=45.0)
+            if not success:
+                logger.error("❌ Elasticsearch: initialize() retourné False")
+                initialization_errors.append("Elasticsearch initialization returned False")
+                await elastic_client.close()
+                elastic_client = None
+                return None
         except asyncio.TimeoutError:
             logger.error("❌ Timeout (45s) lors de l'initialisation d'Elasticsearch")
             initialization_errors.append("Elasticsearch timeout during initialization")
+            if elastic_client:
+                await elastic_client.close()
+                elastic_client = None
             return None
         
         # Vérification de l'état
@@ -137,28 +210,40 @@ async def safe_initialize_elasticsearch() -> Optional[Any]:
             except Exception as health_error:
                 logger.warning(f"⚠️ Test de santé Elasticsearch échoué: {health_error}")
             
+            # Enregistrer pour nettoyage
+            register_cleanup_task(elastic_client.close)
+            
             return elastic_client
         else:
             logger.error("❌ Elasticsearch non initialisé (flag _initialized absent/false)")
             initialization_errors.append("Elasticsearch initialization flag not set")
+            if elastic_client:
+                await elastic_client.close()
+                elastic_client = None
             return None
             
     except Exception as e:
         logger.error(f"❌ Erreur lors de l'initialisation d'Elasticsearch: {e}")
         initialization_errors.append(f"Elasticsearch error: {e}")
+        if elastic_client:
+            try:
+                await elastic_client.close()
+            except:
+                pass
+            elastic_client = None
         return None
+
 
 async def safe_initialize_qdrant() -> Optional[Any]:
     """Initialise Qdrant de manière sécurisée avec timeout."""
     global qdrant_client
     
-    logger.info("🎯 Initialisation de Qdrant...")
+    logger.info("🔍 Initialisation de Qdrant...")
     
     try:
         # Import avec gestion d'erreur
         try:
-            from search_service.storage.qdrant_client import QdrantClient
-            from config_service.config import settings
+            from search_service.utils.initialization import initialize_qdrant
         except ImportError as e:
             logger.error(f"❌ Import Qdrant échoué: {e}")
             initialization_errors.append(f"Qdrant import: {e}")
@@ -169,34 +254,32 @@ async def safe_initialize_qdrant() -> Optional[Any]:
             logger.warning("⚠️ QDRANT_URL non configurée - Qdrant ignoré")
             return None
         
-        # Initialisation avec timeout strict
-        logger.info("🔄 Création du client Qdrant...")
-        qdrant_client = QdrantClient()
-        
+        # Initialisation avec timeout
         logger.info("🔄 Initialisation du client Qdrant...")
         try:
-            await asyncio.wait_for(qdrant_client.initialize(), timeout=45.0)
+            success, client, diagnostic = await asyncio.wait_for(
+                initialize_qdrant(), 
+                timeout=30.0
+            )
+            
+            if success and client:
+                logger.info("✅ Qdrant initialisé avec succès")
+                logger.info(f"   Diagnostic: {diagnostic.get('connection_time', 'N/A')}s")
+                
+                # Enregistrer pour nettoyage
+                if hasattr(client, 'close'):
+                    register_cleanup_task(client.close)
+                
+                qdrant_client = client
+                return client
+            else:
+                logger.error(f"❌ Qdrant non initialisé: {diagnostic.get('error', 'Unknown error')}")
+                initialization_errors.append(f"Qdrant error: {diagnostic.get('error', 'Unknown')}")
+                return None
+                
         except asyncio.TimeoutError:
-            logger.error("❌ Timeout (45s) lors de l'initialisation de Qdrant")
+            logger.error("❌ Timeout (30s) lors de l'initialisation de Qdrant")
             initialization_errors.append("Qdrant timeout during initialization")
-            return None
-        
-        # Vérification de l'état
-        if hasattr(qdrant_client, '_initialized') and qdrant_client._initialized:
-            logger.info("✅ Qdrant initialisé avec succès")
-            
-            # Test de santé rapide
-            try:
-                if hasattr(qdrant_client, 'get_collections'):
-                    collections = await asyncio.wait_for(qdrant_client.get_collections(), timeout=10.0)
-                    logger.info(f"✅ Qdrant - Collections disponibles: {len(collections) if collections else 0}")
-            except Exception as health_error:
-                logger.warning(f"⚠️ Test de santé Qdrant échoué: {health_error}")
-            
-            return qdrant_client
-        else:
-            logger.error("❌ Qdrant non initialisé (flag _initialized absent/false)")
-            initialization_errors.append("Qdrant initialization flag not set")
             return None
             
     except Exception as e:
@@ -204,517 +287,360 @@ async def safe_initialize_qdrant() -> Optional[Any]:
         initialization_errors.append(f"Qdrant error: {e}")
         return None
 
-async def create_qdrant_collections():
-    """Crée les collections Qdrant si nécessaire."""
-    if not qdrant_client or not hasattr(qdrant_client, '_initialized') or not qdrant_client._initialized:
-        logger.info("⚠️ Qdrant non disponible - création de collections ignorée")
-        return False
+
+async def initialize_search_engine() -> Optional[Any]:
+    """Initialise le moteur de recherche avec les clients disponibles."""
+    global search_engine
     
-    logger.info("🏗️ Vérification/création des collections Qdrant...")
+    logger.info("🔍 Initialisation du moteur de recherche...")
     
     try:
-        # Import de la fonction de création
+        # Import avec gestion d'erreur
         try:
-            from search_service.utils.initialization import create_collections_if_needed
-        except ImportError:
-            logger.warning("⚠️ Fonction create_collections_if_needed non disponible")
-            return False
+            from search_service.core.search_engine import SearchEngine
+        except ImportError as e:
+            logger.error(f"❌ Import SearchEngine échoué: {e}")
+            initialization_errors.append(f"SearchEngine import: {e}")
+            return None
         
-        # Création avec timeout
-        success = await asyncio.wait_for(
-            create_collections_if_needed(qdrant_client), 
-            timeout=30.0
+        # Vérifier qu'au moins un client est disponible
+        if not elastic_client and not qdrant_client:
+            logger.error("❌ Aucun client disponible pour créer SearchEngine")
+            initialization_errors.append("No clients available for SearchEngine")
+            return None
+        
+        # Créer le moteur de recherche
+        logger.info("🔄 Création du SearchEngine...")
+        search_engine = SearchEngine(
+            elastic_client=elastic_client,
+            qdrant_client=qdrant_client
         )
         
-        if success:
-            logger.info("✅ Collections Qdrant prêtes")
-        else:
-            logger.warning("⚠️ Problème avec les collections Qdrant")
+        # Enregistrer pour nettoyage
+        if hasattr(search_engine, 'close'):
+            register_cleanup_task(search_engine.close)
         
-        return success
+        logger.info("✅ SearchEngine créé avec succès")
+        logger.info(f"   Elasticsearch: {'✅' if elastic_client else '❌'}")
+        logger.info(f"   Qdrant: {'✅' if qdrant_client else '❌'}")
         
-    except asyncio.TimeoutError:
-        logger.error("❌ Timeout lors de la création des collections Qdrant")
-        return False
+        return search_engine
+        
     except Exception as e:
-        logger.error(f"❌ Erreur lors de la création des collections: {e}")
-        return False
+        logger.error(f"❌ Erreur création SearchEngine: {e}")
+        initialization_errors.append(f"SearchEngine error: {e}")
+        return None
 
-# ==================== INITIALISATION DES SERVICES OPTIONNELS ====================
 
-def safe_initialize_ai_services() -> Dict[str, bool]:
-    """Initialise les services IA de manière sécurisée."""
-    global embedding_service, reranker_service
+async def initialize_services():
+    """Initialise tous les services de manière séquentielle."""
+    global elastic_client, qdrant_client, search_engine
     
-    logger.info("🤖 Initialisation des services IA...")
+    logger.info("🚀 === INITIALISATION DES SERVICES ===")
+    start_time = time.time()
     
-    results = {
-        "embedding_service": False,
-        "reranker_service": False
-    }
+    # Réinitialiser les erreurs
+    initialization_errors.clear()
     
-    # Service d'embeddings
+    # 1. Initialiser Elasticsearch
+    elastic_client = await safe_initialize_elasticsearch()
+    
+    # 2. Initialiser Qdrant
+    qdrant_client = await safe_initialize_qdrant()
+    
+    # 3. Initialiser le moteur de recherche
+    search_engine = await initialize_search_engine()
+    
+    # 4. Configurer les routes avec les clients
     try:
-        from search_service.core.embeddings import EmbeddingService
-        embedding_service = EmbeddingService()
-        results["embedding_service"] = True
-        logger.info("✅ Service d'embeddings initialisé")
-    except ImportError:
-        logger.info("ℹ️ Service d'embeddings non disponible (module non trouvé)")
+        from search_service.api.routes import set_clients
+        set_clients(elastic=elastic_client, qdrant=qdrant_client)
+        logger.info("✅ Routes configurées avec les clients")
     except Exception as e:
-        logger.warning(f"⚠️ Erreur service d'embeddings: {e}")
-        embedding_service = None
+        logger.error(f"❌ Erreur configuration routes: {e}")
+        initialization_errors.append(f"Routes configuration: {e}")
     
-    # Service de reranking
-    try:
-        from search_service.core.reranker import RerankerService
-        reranker_service = RerankerService()
-        results["reranker_service"] = True
-        logger.info("✅ Service de reranking initialisé")
-    except ImportError:
-        logger.info("ℹ️ Service de reranking non disponible (module non trouvé)")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur service de reranking: {e}")
-        reranker_service = None
+    total_time = time.time() - start_time
     
-    return results
+    # Résumé de l'initialisation
+    services_count = 0
+    services_status = []
+    
+    if elastic_client:
+        services_count += 1
+        services_status.append("Elasticsearch")
+    else:
+        services_status.append("❌ Elasticsearch")
+    
+    if qdrant_client:
+        services_count += 1
+        services_status.append("Qdrant")
+    else:
+        services_status.append("❌ Qdrant")
+    
+    if search_engine:
+        services_count += 1
+        services_status.append("SearchEngine")
+    else:
+        services_status.append("❌ SearchEngine")
+    
+    logger.info(f"🎯 Initialisation terminée en {total_time:.2f}s")
+    logger.info(f"📊 Services: {services_count}/3 opérationnels")
+    logger.info(f"📋 Statut: {', '.join(services_status)}")
+    
+    if initialization_errors:
+        logger.warning(f"⚠️ Erreurs d'initialisation: {len(initialization_errors)}")
+        for i, error in enumerate(initialization_errors, 1):
+            logger.warning(f"   {i}. {error}")
+    
+    # Le service peut démarrer même avec des erreurs partielles
+    return services_count > 0
 
-def safe_initialize_utilities() -> Dict[str, bool]:
-    """Initialise les utilitaires de manière sécurisée."""
-    global search_cache, metrics_collector
-    
-    logger.info("🛠️ Initialisation des utilitaires...")
-    
-    results = {
-        "cache": False,
-        "metrics": False
-    }
-    
-    # Cache de recherche
-    try:
-        from search_service.utils.cache import SearchCache
-        search_cache = SearchCache()
-        results["cache"] = True
-        logger.info("✅ Cache de recherche initialisé")
-    except ImportError:
-        logger.info("ℹ️ Cache de recherche non disponible (module non trouvé)")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur cache de recherche: {e}")
-        search_cache = None
-    
-    # Collecteur de métriques (placeholder)
-    try:
-        # Pour l'instant, on simule le collecteur de métriques
-        metrics_collector = None  # Sera implémenté plus tard
-        logger.info("ℹ️ Collecteur de métriques désactivé (non implémenté)")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur collecteur de métriques: {e}")
-        metrics_collector = None
-    
-    return results
-
-# ==================== INJECTION DES DÉPENDANCES ====================
-
-def force_inject_dependencies() -> bool:
-    """Force l'injection des dépendances dans les routes."""
-    logger.info("🔗 Injection forcée des dépendances...")
-    
-    try:
-        # Import du module routes
-        try:
-            import search_service.api.routes as routes
-            logger.info("✅ Module routes importé avec succès")
-        except ImportError as e:
-            logger.error(f"❌ Impossible d'importer le module routes: {e}")
-            initialization_errors.append(f"Routes import failed: {e}")
-            return False
-        
-        # Injection avec validation
-        injection_results = {}
-        
-        # Clients principaux
-        routes.elastic_client = elastic_client
-        injection_results["elasticsearch"] = elastic_client is not None
-        logger.info(f"{'✅' if elastic_client else '⚠️'} elastic_client injecté: {type(elastic_client).__name__ if elastic_client else 'None'}")
-        
-        routes.qdrant_client = qdrant_client
-        injection_results["qdrant"] = qdrant_client is not None
-        logger.info(f"{'✅' if qdrant_client else '⚠️'} qdrant_client injecté: {type(qdrant_client).__name__ if qdrant_client else 'None'}")
-        
-        # Services IA
-        routes.embedding_service = embedding_service
-        injection_results["embeddings"] = embedding_service is not None
-        logger.info(f"{'✅' if embedding_service else 'ℹ️'} embedding_service injecté: {type(embedding_service).__name__ if embedding_service else 'None'}")
-        
-        routes.reranker_service = reranker_service
-        injection_results["reranking"] = reranker_service is not None
-        logger.info(f"{'✅' if reranker_service else 'ℹ️'} reranker_service injecté: {type(reranker_service).__name__ if reranker_service else 'None'}")
-        
-        # Utilitaires
-        routes.search_cache = search_cache
-        injection_results["cache"] = search_cache is not None
-        logger.info(f"{'✅' if search_cache else 'ℹ️'} search_cache injecté: {type(search_cache).__name__ if search_cache else 'None'}")
-        
-        routes.metrics_collector = metrics_collector
-        injection_results["metrics"] = metrics_collector is not None
-        logger.info(f"{'ℹ️'} metrics_collector injecté: {type(metrics_collector).__name__ if metrics_collector else 'None'}")
-        
-        # Vérification post-injection
-        verification_passed = True
-        required_attrs = ['elastic_client', 'qdrant_client', 'embedding_service', 'reranker_service', 'search_cache', 'metrics_collector']
-        
-        for attr in required_attrs:
-            if not hasattr(routes, attr):
-                logger.error(f"❌ Attribut {attr} manquant après injection")
-                verification_passed = False
-            else:
-                logger.debug(f"✅ Attribut {attr} présent")
-        
-        # Compter les services critiques injectés
-        critical_services = sum([
-            injection_results.get("elasticsearch", False),
-            injection_results.get("qdrant", False)
-        ])
-        
-        total_services = sum(injection_results.values())
-        
-        logger.info(f"📊 Résumé injection: {total_services}/6 services injectés ({critical_services}/2 critiques)")
-        
-        if critical_services == 0:
-            logger.error("❌ Aucun service critique injecté - fonctionnalité limitée")
-            return False
-        elif critical_services == 1:
-            logger.warning("⚠️ Un seul service critique injecté - mode dégradé")
-            return True
-        else:
-            logger.info("✅ Tous les services critiques injectés - mode optimal")
-            return True
-            
-    except Exception as e:
-        logger.error(f"💥 Erreur critique lors de l'injection: {e}")
-        initialization_errors.append(f"Injection failed: {e}")
-        
-        # Tentative d'injection de fallback
-        try:
-            import search_service.api.routes as routes
-            routes.elastic_client = None
-            routes.qdrant_client = None
-            routes.embedding_service = None
-            routes.reranker_service = None
-            routes.search_cache = None
-            routes.metrics_collector = None
-            logger.warning("⚠️ Injection de fallback (None) effectuée")
-        except Exception as fallback_error:
-            logger.error(f"💥 Impossible d'effectuer l'injection de fallback: {fallback_error}")
-        
-        return False
-
-# ==================== CYCLE DE VIE DE L'APPLICATION ====================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestionnaire du cycle de vie de l'application."""
-    global startup_time, startup_diagnostics
+    # Démarrage
+    logger.info("🚀 Démarrage de l'application...")
+    
+    # Configurer les gestionnaires de signaux
+    setup_signal_handlers()
+    
+    # Initialiser les services
+    services_initialized = await initialize_services()
+    
+    if not services_initialized:
+        logger.error("❌ Aucun service initialisé - arrêt de l'application")
+        raise RuntimeError("Failed to initialize any services")
+    
+    logger.info("🎉 Application prête")
     
     try:
-        # === PHASE DE DÉMARRAGE ===
-        log_startup_banner()
-        startup_time = time.time()
-        
-        logger.info("🚀 Début de l'initialisation robuste...")
-        
-        # 1. Vérification de l'environnement
-        env_status = check_environment_variables()
-        
-        # 2. Initialisation parallèle des clients avec timeout global
-        logger.info("🔄 Initialisation des clients en parallèle...")
-        
-        try:
-            # Lancer les deux initializations en parallèle avec timeout global
-            elasticsearch_task = asyncio.create_task(safe_initialize_elasticsearch())
-            qdrant_task = asyncio.create_task(safe_initialize_qdrant())
-            
-            # Attendre les deux avec timeout global
-            done, pending = await asyncio.wait_for(
-                asyncio.wait([elasticsearch_task, qdrant_task], return_when=asyncio.ALL_COMPLETED),
-                timeout=90.0  # Timeout global de 90 secondes
-            )
-            
-            # Récupérer les résultats
-            elasticsearch_result = elasticsearch_task.result() if elasticsearch_task.done() else None
-            qdrant_result = qdrant_task.result() if qdrant_task.done() else None
-            
-        except asyncio.TimeoutError:
-            logger.error("❌ Timeout global (90s) lors de l'initialisation des clients")
-            initialization_errors.append("Global client initialization timeout")
-            elasticsearch_result = None
-            qdrant_result = None
-        
-        # Assigner les résultats aux variables globales
-        global elastic_client, qdrant_client
-        elastic_client = elasticsearch_result
-        qdrant_client = qdrant_result
-        
-        # 3. Vérifier qu'au moins un service fonctionne
-        services_ready = sum([
-            elastic_client is not None,
-            qdrant_client is not None
-        ])
-        
-        if services_ready == 0:
-            logger.error("🚨 AUCUN service de recherche disponible")
-            logger.error("💡 Le service démarrera quand même pour permettre le debugging")
-        elif services_ready == 1:
-            logger.warning("⚠️ Un seul service de recherche disponible - mode dégradé")
-        else:
-            logger.info("🎉 Tous les services de recherche disponibles - mode optimal")
-        
-        # 4. Création des collections Qdrant si disponible
-        collections_ready = False
-        if qdrant_client:
-            collections_ready = await create_qdrant_collections()
-        
-        # 5. Initialisation des services optionnels
-        ai_services_status = safe_initialize_ai_services()
-        utilities_status = safe_initialize_utilities()
-        
-        # 6. Injection des dépendances
-        injection_success = force_inject_dependencies()
-        
-        # 7. Calcul du temps d'initialisation
-        initialization_time = time.time() - startup_time
-        
-        # 8. Résumé final
-        startup_diagnostics = {
-            "startup_time": startup_time,
-            "initialization_time": initialization_time,
-            "environment": env_status,
-            "services": {
-                "elasticsearch": elastic_client is not None,
-                "qdrant": qdrant_client is not None,
-                "collections_ready": collections_ready,
-                "total_ready": services_ready
-            },
-            "ai_services": ai_services_status,
-            "utilities": utilities_status,
-            "injection_success": injection_success,
-            "initialization_errors": initialization_errors,
-            "status": "SUCCESS" if services_ready > 0 and injection_success else "DEGRADED"
-        }
-        
-        # Log du résumé final
-        logger.info("=" * 60)
-        logger.info("📊 RÉSUMÉ DE L'INITIALISATION")
-        logger.info("=" * 60)
-        logger.info(f"⏱️ Temps d'initialisation: {initialization_time:.2f}s")
-        logger.info(f"🔍 Elasticsearch: {'✅ Prêt' if elastic_client else '❌ Indisponible'}")
-        logger.info(f"🎯 Qdrant: {'✅ Prêt' if qdrant_client else '❌ Indisponible'}")
-        logger.info(f"🏗️ Collections: {'✅ Prêtes' if collections_ready else '⚠️ Non créées'}")
-        logger.info(f"🤖 Services IA: {sum(ai_services_status.values())}/2")
-        logger.info(f"🛠️ Utilitaires: {sum(utilities_status.values())}/2")
-        logger.info(f"🔗 Injection: {'✅ Réussie' if injection_success else '❌ Échouée'}")
-        logger.info(f"🎯 Statut global: {startup_diagnostics['status']}")
-        
-        if initialization_errors:
-            logger.warning("⚠️ Erreurs d'initialisation:")
-            for error in initialization_errors:
-                logger.warning(f"   - {error}")
-        
-        logger.info("=" * 60)
-        logger.info("🎉 Service de recherche Harena démarré")
-        logger.info("=" * 60)
-        
-        # === PHASE D'EXÉCUTION ===
         yield
-        
-    except Exception as e:
-        logger.error(f"💥 Erreur critique durant l'initialisation: {e}", exc_info=True)
-        initialization_errors.append(f"Critical startup error: {e}")
-        
-        # Créer un diagnostic d'urgence
-        startup_diagnostics = {
-            "status": "FAILED",
-            "error": str(e),
-            "initialization_time": time.time() - startup_time if startup_time else 0,
-            "initialization_errors": initialization_errors
-        }
-        
-        # Continuer le démarrage malgré l'erreur pour permettre le debugging
-        yield
-    
     finally:
-        # === PHASE D'ARRÊT ===
-        logger.info("🔄 Arrêt du service de recherche...")
+        # Arrêt
+        logger.info("🛑 Arrêt de l'application...")
+        await cleanup_on_shutdown()
         
-        # Liste des tâches de nettoyage
-        cleanup_tasks = []
-        
-        if elastic_client and hasattr(elastic_client, 'close'):
-            cleanup_tasks.append(("Elasticsearch", elastic_client.close()))
-        
-        if qdrant_client and hasattr(qdrant_client, 'close'):
-            cleanup_tasks.append(("Qdrant", qdrant_client.close()))
-        
-        # Exécution du nettoyage avec timeout individuel
-        for service_name, cleanup_coro in cleanup_tasks:
-            try:
-                await asyncio.wait_for(cleanup_coro, timeout=10.0)
-                logger.info(f"✅ {service_name} fermé proprement")
-            except asyncio.TimeoutError:
-                logger.warning(f"⚠️ Timeout lors de la fermeture de {service_name}")
-            except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture {service_name}: {e}")
-        
-        logger.info("🏁 Service de recherche arrêté proprement")
+        # Attendre que l'arrêt soit terminé
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=15.0)
+            logger.info("✅ Arrêt terminé")
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout arrêt - forçage")
 
-# ==================== CRÉATION DE L'APPLICATION ====================
 
-def create_app() -> FastAPI:
-    """Crée l'application FastAPI avec la configuration robuste."""
+# Création de l'application FastAPI
+app = FastAPI(
+    title="Harena Search Service",
+    description="Service de recherche pour transactions financières",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Configuration CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # À restreindre en production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Gestionnaire d'erreur global pour les connexions fermées
+@app.exception_handler(RuntimeError)
+async def runtime_error_handler(request, exc):
+    """Gestionnaire d'erreur pour les RuntimeError (connexions fermées, etc.)."""
+    error_msg = str(exc).lower()
     
-    logger.info("🏗️ Création de l'application FastAPI...")
+    if "non initialisé" in error_msg or "fermé" in error_msg or "closed" in error_msg:
+        logger.error(f"🔌 Erreur de connexion: {exc}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "Service temporarily unavailable",
+                "detail": "Search service connections are being reestablished",
+                "retry_after": 30,
+                "timestamp": time.time()
+            }
+        )
     
-    # Création de l'app avec le cycle de vie robuste
-    app = FastAPI(
-        title="Harena Search Service",
-        description="Service de recherche hybride pour Harena Finance (Version Robuste)",
-        version="1.0.0",
-        lifespan=lifespan
-    )
-    
-    # Configuration CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    
-    # ==================== ROUTES ESSENTIELLES ====================
-    
-    @app.get("/health")
-    async def health_check():
-        """Check de santé complet."""
-        current_time = time.time()
-        uptime = current_time - startup_time if startup_time else 0
-        
-        # Statut des services
-        services_status = {
-            "elasticsearch": elastic_client is not None and hasattr(elastic_client, '_initialized') and elastic_client._initialized,
-            "qdrant": qdrant_client is not None and hasattr(qdrant_client, '_initialized') and qdrant_client._initialized,
-            "embedding_service": embedding_service is not None,
-            "search_cache": search_cache is not None
+    # Autres RuntimeError
+    logger.error(f"❌ RuntimeError: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc),
+            "timestamp": time.time()
         }
-        
-        healthy_services = sum(services_status.values())
-        core_services = sum([services_status["elasticsearch"], services_status["qdrant"]])
-        
-        overall_status = "healthy" if core_services > 0 else "degraded"
-        
-        return {
-            "status": overall_status,
-            "service": "search_service",
-            "timestamp": current_time,
-            "uptime_seconds": uptime,
-            "services": {
-                "total_healthy": healthy_services,
-                "core_services": core_services,
-                "details": services_status
+    )
+
+
+# Gestionnaire d'erreur pour les timeouts
+@app.exception_handler(asyncio.TimeoutError)
+async def timeout_error_handler(request, exc):
+    """Gestionnaire d'erreur pour les TimeoutError."""
+    logger.error(f"⏰ Timeout: {exc}")
+    return JSONResponse(
+        status_code=504,
+        content={
+            "error": "Request timeout",
+            "detail": "The request took too long to process",
+            "timestamp": time.time()
+        }
+    )
+
+
+# Routes de base
+@app.get("/")
+async def root():
+    """Route racine avec informations de base."""
+    uptime = time.time() - app_start_time
+    
+    return {
+        "service": "Harena Search Service",
+        "version": "1.0.0",
+        "status": "running",
+        "uptime": round(uptime, 2),
+        "services": {
+            "elasticsearch": elastic_client is not None,
+            "qdrant": qdrant_client is not None,
+            "search_engine": search_engine is not None
+        },
+        "timestamp": time.time()
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check détaillé."""
+    uptime = time.time() - app_start_time
+    
+    # Vérifier l'état des services
+    elasticsearch_healthy = False
+    qdrant_healthy = False
+    
+    if elastic_client:
+        try:
+            elasticsearch_healthy = await asyncio.wait_for(
+                elastic_client.is_healthy(), 
+                timeout=5.0
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Health check Elasticsearch échoué: {e}")
+    
+    if qdrant_client:
+        try:
+            qdrant_healthy = await asyncio.wait_for(
+                qdrant_client.is_healthy() if hasattr(qdrant_client, 'is_healthy') else True,
+                timeout=5.0
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Health check Qdrant échoué: {e}")
+    
+    # Déterminer le statut global
+    healthy_services = sum([elasticsearch_healthy, qdrant_healthy])
+    total_services = sum([elastic_client is not None, qdrant_client is not None])
+    
+    if healthy_services == 0:
+        status = "unhealthy"
+        status_code = 503
+    elif healthy_services < total_services:
+        status = "degraded"
+        status_code = 200
+    else:
+        status = "healthy"
+        status_code = 200
+    
+    response_data = {
+        "status": status,
+        "uptime": round(uptime, 2),
+        "services": {
+            "elasticsearch": {
+                "available": elastic_client is not None,
+                "healthy": elasticsearch_healthy,
+                "type": getattr(elastic_client, 'client_type', None) if elastic_client else None
             },
-            "initialization": {
-                "status": startup_diagnostics.get("status", "UNKNOWN"),
-                "initialization_time": startup_diagnostics.get("initialization_time", 0),
-                "errors_count": len(initialization_errors)
+            "qdrant": {
+                "available": qdrant_client is not None,
+                "healthy": qdrant_healthy
+            },
+            "search_engine": {
+                "available": search_engine is not None
             }
-        }
+        },
+        "metrics": {
+            "healthy_services": healthy_services,
+            "total_services": total_services,
+            "initialization_errors": len(initialization_errors)
+        },
+        "timestamp": time.time()
+    }
     
-    @app.get("/diagnostics")
-    async def full_diagnostics():
-        """Diagnostics complets du service."""
-        return {
-            "service": "search_service",
-            "timestamp": time.time(),
-            "startup_diagnostics": startup_diagnostics,
-            "initialization_errors": initialization_errors,
-            "runtime_info": {
-                "uptime_seconds": time.time() - startup_time if startup_time else 0,
-                "clients_status": {
-                    "elasticsearch": {
-                        "available": elastic_client is not None,
-                        "initialized": elastic_client is not None and hasattr(elastic_client, '_initialized') and elastic_client._initialized,
-                        "type": type(elastic_client).__name__ if elastic_client else None
-                    },
-                    "qdrant": {
-                        "available": qdrant_client is not None,
-                        "initialized": qdrant_client is not None and hasattr(qdrant_client, '_initialized') and qdrant_client._initialized,
-                        "type": type(qdrant_client).__name__ if qdrant_client else None
-                    }
-                }
+    return JSONResponse(content=response_data, status_code=status_code)
+
+
+# Inclure les routes de l'API
+try:
+    from search_service.api.routes import router as search_router
+    app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+    logger.info("✅ Routes de recherche incluses")
+except Exception as e:
+    logger.error(f"❌ Erreur inclusion routes: {e}")
+
+
+# Route de debug pour les erreurs d'initialisation
+@app.get("/debug/initialization")
+async def debug_initialization():
+    """Endpoint de debug pour les erreurs d'initialisation."""
+    return {
+        "initialization_errors": initialization_errors,
+        "services": {
+            "elasticsearch": {
+                "client": elastic_client is not None,
+                "type": type(elastic_client).__name__ if elastic_client else None,
+                "initialized": getattr(elastic_client, '_initialized', False) if elastic_client else False
+            },
+            "qdrant": {
+                "client": qdrant_client is not None,
+                "type": type(qdrant_client).__name__ if qdrant_client else None,
+                "initialized": getattr(qdrant_client, '_initialized', False) if qdrant_client else False
+            },
+            "search_engine": {
+                "engine": search_engine is not None,
+                "type": type(search_engine).__name__ if search_engine else None
             }
-        }
-    
-    @app.get("/")
-    async def root():
-        """Endpoint racine avec informations de base."""
-        return {
-            "service": "Harena Search Service",
-            "version": "1.0.0",
-            "status": "online",
-            "documentation": "/docs",
-            "health_check": "/health",
-            "diagnostics": "/diagnostics"
-        }
-    
-    # ==================== ROUTES PRINCIPALES ====================
-    
-    # Tentative d'ajout des routes principales
-    try:
-        from search_service.api.routes import router
-        app.include_router(router, prefix="/api/v1")
-        logger.info("✅ Routes principales ajoutées avec succès")
-        
-        # Note: Routes WebSocket non implémentées pour le moment
-        logger.info("ℹ️ Routes WebSocket non implémentées")
-        
-    except Exception as e:
-        logger.error(f"❌ Impossible d'ajouter les routes principales: {e}")
-        initialization_errors.append(f"Routes loading failed: {e}")
-        
-        # Route de diagnostic d'urgence
-        @app.get("/emergency-diagnostics")
-        async def emergency_diagnostics():
-            return {
-                "error": "Routes principales indisponibles",
-                "reason": str(e),
-                "fallback_mode": True,
-                "startup_diagnostics": startup_diagnostics,
-                "initialization_errors": initialization_errors,
-                "available_endpoints": [
-                    "GET / - Informations de base",
-                    "GET /health - Check de santé",
-                    "GET /diagnostics - Diagnostics complets",
-                    "GET /emergency-diagnostics - Ce diagnostic d'urgence"
-                ]
-            }
-    
-    logger.info("✅ Application FastAPI créée avec succès")
-    return app
+        },
+        "cleanup_tasks": len(cleanup_tasks),
+        "timestamp": time.time()
+    }
 
-# ==================== POINT D'ENTRÉE ====================
 
-# Instance de l'application
-app = create_app()
-
-# Point d'entrée pour le développement local
 if __name__ == "__main__":
-    import uvicorn
+    logger.info("🚀 Démarrage du serveur Search Service...")
     
-    logger.info("🚀 Démarrage en mode développement local...")
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8003,
-        log_level="info",
-        reload=False  # Désactivé pour éviter les conflits avec le cycle de vie
-    )
+    # Configuration du serveur
+    uvicorn_config = {
+        "host": "0.0.0.0",
+        "port": int(settings.PORT) if hasattr(settings, 'PORT') else 8000,
+        "log_level": settings.LOG_LEVEL.lower(),
+        "access_log": True,
+        "loop": "asyncio",
+        "timeout_keep_alive": 30,
+        "timeout_notify": 25,
+        "limit_max_requests": 1000,
+        "limit_concurrency": 100
+    }
+    
+    logger.info(f"📡 Serveur configuré sur {uvicorn_config['host']}:{uvicorn_config['port']}")
+    
+    try:
+        uvicorn.run(app, **uvicorn_config)
+    except KeyboardInterrupt:
+        logger.info("🛑 Arrêt demandé par l'utilisateur")
+    except Exception as e:
+        logger.error(f"❌ Erreur serveur: {e}")
+    finally:
+        logger.info("👋 Serveur arrêté")

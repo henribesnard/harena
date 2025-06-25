@@ -1,6 +1,6 @@
 """
 Client Bonsai compatible - Alternative pour contourner les problèmes de compatibilité.
-VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower'
+VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower' + gestion connexions
 
 Ce client utilise des requêtes HTTP directes pour interagir avec Bonsai
 quand le client Elasticsearch officiel refuse la connexion.
@@ -8,9 +8,9 @@ quand le client Elasticsearch officiel refuse la connexion.
 import logging
 import time
 import json
+import asyncio
 from typing import List, Dict, Any, Optional
 import aiohttp
-import asyncio
 from urllib.parse import urlparse
 
 from config_service.config import settings
@@ -30,6 +30,7 @@ class BonsaiClient:
         self._connection_attempts = 0
         self._last_health_check = None
         self.auth = None
+        self._closed = False  # Flag pour éviter double fermeture
         
     async def initialize(self):
         """Initialise la connexion Bonsai avec HTTP direct."""
@@ -38,6 +39,11 @@ class BonsaiClient:
         if not settings.BONSAI_URL:
             logger.error("❌ BONSAI_URL non configurée")
             return False
+        
+        # Fermer session existante si présente
+        if self.session and not self.session.closed:
+            logger.info("🔄 Fermeture session existante...")
+            await self._safe_close_session()
         
         try:
             # Parser l'URL Bonsai pour extraire les informations
@@ -63,13 +69,15 @@ class BonsaiClient:
                 safe_url += f":{parsed_url.port}"
             logger.info(f"🔗 Connexion Bonsai HTTP: {safe_url}")
             
-            # Créer la session HTTP
-            timeout = aiohttp.ClientTimeout(total=30.0)
+            # Créer la session HTTP avec gestion propre des connexions
+            timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
             connector = aiohttp.TCPConnector(
-                limit=10,
-                limit_per_host=5,
-                keepalive_timeout=30.0,
-                enable_cleanup_closed=True
+                limit=5,  # Réduire le nombre de connexions
+                limit_per_host=3,  # Réduire par host
+                keepalive_timeout=60.0,
+                enable_cleanup_closed=True,
+                force_close=True,  # Forcer fermeture des connexions
+                auto_decompress=False  # Réduire overhead
             )
             
             self.session = aiohttp.ClientSession(
@@ -78,59 +86,94 @@ class BonsaiClient:
                 connector=connector,
                 headers={
                     "Content-Type": "application/json",
-                    "Accept": "application/json"
-                }
+                    "Accept": "application/json",
+                    "Connection": "close"  # Forcer fermeture après chaque requête
+                },
+                connector_owner=True  # Session propriétaire du connector
             )
             
-            # Test de connexion
+            # Test de connexion avec gestion propre
             start_time = time.time()
-            async with self.session.get(f"{self.base_url}/") as response:
-                connection_time = time.time() - start_time
-                
-                if response.status == 200:
-                    cluster_info = await response.json()
-                    logger.info(f"✅ Bonsai connecté en {connection_time:.2f}s")
-                    logger.info(f"   Cluster: {cluster_info.get('cluster_name', 'Unknown')}")
-                    logger.info(f"   Version: {cluster_info.get('version', {}).get('number', 'Unknown')}")
-                else:
-                    logger.error(f"❌ Échec connexion Bonsai: HTTP {response.status}")
-                    return False
+            try:
+                async with self.session.get(f"{self.base_url}/") as response:
+                    connection_time = time.time() - start_time
+                    
+                    if response.status == 200:
+                        cluster_info = await response.json()
+                        logger.info(f"✅ Bonsai connecté en {connection_time:.2f}s")
+                        logger.info(f"   Cluster: {cluster_info.get('cluster_name', 'Unknown')}")
+                        logger.info(f"   Version: {cluster_info.get('version', {}).get('number', 'Unknown')}")
+                    else:
+                        logger.error(f"❌ Échec connexion Bonsai: HTTP {response.status}")
+                        await self._safe_close_session()
+                        return False
+            except Exception as e:
+                logger.error(f"❌ Erreur test connexion: {e}")
+                await self._safe_close_session()
+                return False
             
             # Test de santé du cluster
-            async with self.session.get(f"{self.base_url}/_cluster/health") as response:
-                if response.status == 200:
-                    health = await response.json()
-                    status = health.get("status", "red")
-                    logger.info(f"💚 Santé cluster: {status}")
-                    
-                    if status in ["red"]:
-                        logger.warning("⚠️ Cluster en état critique mais connexion établie")
-                else:
-                    logger.warning(f"⚠️ Impossible de vérifier la santé: HTTP {response.status}")
+            try:
+                async with self.session.get(f"{self.base_url}/_cluster/health") as response:
+                    if response.status == 200:
+                        health = await response.json()
+                        status = health.get("status", "red")
+                        logger.info(f"💚 Santé cluster: {status}")
+                        
+                        if status in ["red"]:
+                            logger.warning("⚠️ Cluster en état critique mais connexion établie")
+                    else:
+                        logger.warning(f"⚠️ Impossible de vérifier la santé: HTTP {response.status}")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur test santé: {e}")
             
             # Test d'existence de l'index
-            async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
-                if response.status == 200:
-                    logger.info(f"✅ Index '{self.index_name}' trouvé")
-                elif response.status == 404:
-                    logger.warning(f"⚠️ Index '{self.index_name}' n'existe pas")
-                else:
-                    logger.warning(f"⚠️ Statut index inconnu: HTTP {response.status}")
+            try:
+                async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
+                    if response.status == 200:
+                        logger.info(f"✅ Index '{self.index_name}' trouvé")
+                    elif response.status == 404:
+                        logger.warning(f"⚠️ Index '{self.index_name}' n'existe pas")
+                    else:
+                        logger.warning(f"⚠️ Statut index inconnu: HTTP {response.status}")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur test index: {e}")
             
             self._initialized = True
+            self._closed = False
             logger.info("🎉 Client Bonsai HTTP initialisé avec succès")
             return True
             
         except Exception as e:
             logger.error(f"❌ Erreur initialisation Bonsai: {e}")
-            if self.session:
-                await self.session.close()
-                self.session = None
+            await self._safe_close_session()
             return False
+    
+    async def _safe_close_session(self):
+        """Ferme la session de manière sécurisée."""
+        if self.session and not self.session.closed:
+            try:
+                # Attendre que toutes les requêtes en cours se terminent
+                await asyncio.sleep(0.1)
+                
+                # Fermer proprement
+                await self.session.close()
+                
+                # Attendre la fermeture effective
+                await asyncio.sleep(0.1)
+                
+                logger.debug("🔒 Session Bonsai fermée proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture session: {e}")
+            finally:
+                self.session = None
     
     async def is_healthy(self) -> bool:
         """Vérifie si le client est sain et fonctionnel."""
-        if not self._initialized or not self.session:
+        if not self._initialized or not self.session or self._closed:
+            return False
+        
+        if self.session.closed:
             return False
         
         try:
@@ -164,8 +207,12 @@ class BonsaiClient:
     ) -> List[Dict[str, Any]]:
         """Recherche des transactions via Bonsai HTTP - VERSION CORRIGÉE."""
         
-        if not self.session or not self._initialized:
-            raise RuntimeError("Client Bonsai non initialisé")
+        if not self.session or not self._initialized or self._closed:
+            raise RuntimeError("Client Bonsai non initialisé ou fermé")
+        
+        if self.session.closed:
+            logger.error("❌ Session fermée, réinitialisation nécessaire")
+            raise RuntimeError("Session fermée")
         
         # VALIDATION CRITIQUE: S'assurer que query est une string
         if not isinstance(query, str):
@@ -329,7 +376,7 @@ class BonsaiClient:
     
     async def index_document(self, doc_id: str, document: Dict[str, Any]) -> bool:
         """Indexe un document."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
             return False
         
         try:
@@ -346,7 +393,7 @@ class BonsaiClient:
     
     async def delete_document(self, doc_id: str) -> bool:
         """Supprime un document."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
             return False
         
         try:
@@ -361,7 +408,10 @@ class BonsaiClient:
     
     async def bulk_index(self, documents: List[Dict[str, Any]]) -> bool:
         """Indexation en lot."""
-        if not self.session or not self._initialized or not documents:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
+            return False
+        
+        if not documents:
             return False
         
         try:
@@ -409,7 +459,7 @@ class BonsaiClient:
     
     async def count_documents(self, user_id: int = None, filters: Dict[str, Any] = None) -> int:
         """Compte le nombre de documents."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
             return 0
         
         try:
@@ -443,7 +493,7 @@ class BonsaiClient:
     
     async def refresh_index(self) -> bool:
         """Force le refresh de l'index pour rendre les documents visibles."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
             return False
         
         try:
@@ -458,8 +508,8 @@ class BonsaiClient:
     
     async def get_index_info(self) -> Dict[str, Any]:
         """Retourne les informations sur l'index."""
-        if not self.session or not self._initialized:
-            return {"error": "Client non initialisé"}
+        if not self.session or not self._initialized or self._closed or self.session.closed:
+            return {"error": "Client non initialisé ou fermé"}
         
         try:
             async with self.session.get(f"{self.base_url}/{self.index_name}") as response:
@@ -474,7 +524,7 @@ class BonsaiClient:
     
     async def create_index(self, mapping: Dict[str, Any] = None) -> bool:
         """Crée l'index avec un mapping optionnel."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
             return False
         
         try:
@@ -509,7 +559,7 @@ class BonsaiClient:
     
     async def delete_index(self) -> bool:
         """Supprime l'index."""
-        if not self.session or not self._initialized:
+        if not self.session or not self._initialized or self._closed or self.session.closed:
             return False
         
         try:
@@ -527,18 +577,27 @@ class BonsaiClient:
     
     async def close(self):
         """Ferme la session HTTP."""
+        if self._closed:
+            return
+        
+        self._closed = True
+        self._initialized = False
+        
         if self.session:
             logger.info("🔒 Fermeture session Bonsai HTTP...")
-            try:
-                await self.session.close()
-            except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture session: {e}")
-            finally:
-                self.session = None
-                self._initialized = False
-                logger.info("✅ Session Bonsai fermée")
+            await self._safe_close_session()
+            logger.info("✅ Session Bonsai fermée")
     
     def __del__(self):
         """Destructeur pour s'assurer que la session est fermée."""
-        if self.session and not self.session.closed:
-            logger.warning("⚠️ Session Bonsai non fermée explicitement")
+        if hasattr(self, '_closed') and not self._closed and hasattr(self, 'session') and self.session and not self.session.closed:
+            logger.warning("⚠️ Session Bonsai non fermée explicitement - nettoyage automatique")
+    
+    async def __aenter__(self):
+        """Support pour 'async with'."""
+        await self.initialize()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Nettoyage automatique lors de la sortie du contexte."""
+        await self.close()

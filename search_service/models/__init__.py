@@ -1,5 +1,6 @@
 """
 Package des modèles pour le service de recherche.
+VERSION CORRIGÉE - Suppression de SearchQuery inexistant
 """
 
 from .requests import (
@@ -8,6 +9,9 @@ from .requests import (
     BulkIndexRequest,
     DeleteUserDataRequest,
     QueryExpansionRequest,
+    UserStatsRequest,
+    DebugSearchRequest,
+    IndexManagementRequest,
     BaseRequest
 )
 
@@ -27,10 +31,18 @@ from .responses import (
     IndexInfoResponse,
     ServiceMetricsResponse,
     BatchOperationResponse,
+    IndexManagementResponse,
+    SimpleTestResponse,
+    ConnectionStatusResponse,
+    SearchCapabilitiesResponse,
+    SystemInfoResponse,
+    ConfigurationResponse,
+    DiagnosticResponse,
+    BenchmarkResponse,
     BaseResponse
 )
 
-# Export de tous les modèles
+# Export de tous les modèles - SANS SearchQuery qui n'existe pas
 __all__ = [
     # Modèles de requêtes
     'SearchRequest',
@@ -38,6 +50,9 @@ __all__ = [
     'BulkIndexRequest',
     'DeleteUserDataRequest',
     'QueryExpansionRequest',
+    'UserStatsRequest',
+    'DebugSearchRequest',
+    'IndexManagementRequest',
     'BaseRequest',
     
     # Modèles de réponses
@@ -56,6 +71,14 @@ __all__ = [
     'IndexInfoResponse',
     'ServiceMetricsResponse',
     'BatchOperationResponse',
+    'IndexManagementResponse',
+    'SimpleTestResponse',
+    'ConnectionStatusResponse',
+    'SearchCapabilitiesResponse',
+    'SystemInfoResponse',
+    'ConfigurationResponse',
+    'DiagnosticResponse',
+    'BenchmarkResponse',
     'BaseResponse'
 ]
 
@@ -63,4 +86,3 @@ __all__ = [
 __version__ = "1.0.0"
 __author__ = "Search Service Team"
 __description__ = "Modèles de données pour le service de recherche Harena"
-

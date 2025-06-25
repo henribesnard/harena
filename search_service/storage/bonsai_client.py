@@ -77,7 +77,7 @@ class BonsaiClient:
                 keepalive_timeout=60.0,
                 enable_cleanup_closed=True,
                 force_close=True,  # Forcer fermeture des connexions
-                auto_decompress=False  # Réduire overhead
+                
             )
             
             self.session = aiohttp.ClientSession(

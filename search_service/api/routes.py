@@ -1,6 +1,6 @@
 """
 Routes API pour le service de recherche.
-VERSION CORRIGÉE - Corrige le bug 'dict' object has no attribute 'lower'
+VERSION CORRIGÉE - Suppression des exception_handler incompatibles avec APIRouter
 """
 import logging
 import time
@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 
 from search_service.core.search_engine import SearchEngine
 from search_service.models.requests import SearchRequest, ReindexRequest
@@ -156,8 +156,8 @@ async def health_check():
     }
     
     if search_engine:
-        search_engine_status["elasticsearch_enabled"] = search_engine.elasticsearch_enabled
-        search_engine_status["qdrant_enabled"] = search_engine.qdrant_enabled
+        search_engine_status["elasticsearch_enabled"] = getattr(search_engine, 'elasticsearch_enabled', False)
+        search_engine_status["qdrant_enabled"] = getattr(search_engine, 'qdrant_enabled', False)
     
     # Déterminer le statut global
     overall_status = "healthy"
@@ -199,9 +199,9 @@ async def search_transactions(
     
     user_id = request.user_id
     query = request.query.strip()
-    search_type = request.type or "hybrid"
-    limit = min(request.limit or 10, 50)
-    use_reranking = request.use_reranking if request.use_reranking is not None else True
+    search_type = getattr(request, 'search_type', 'hybrid')
+    limit = min(getattr(request, 'limit', 10), 50)
+    use_reranking = getattr(request, 'use_reranking', True)
     
     logger.info(f"🔍 Nouvelle recherche pour user {user_id}")
     logger.info(f"   Query: '{query}' (type: {type(query)})")
@@ -231,46 +231,75 @@ async def search_transactions(
     start_time = time.time()
     
     try:
-        # Effectuer la recherche selon le type demandé
-        if search_type == "lexical":
-            results = await search_engine.lexical_search(
+        # Utiliser les nouvelles méthodes du moteur de recherche
+        if hasattr(search_engine, 'search'):
+            # Créer un objet SearchQuery compatible
+            from search_service.models import SearchQuery
+            search_query = SearchQuery(
                 user_id=user_id,
                 query=query,
-                limit=limit
-            )
-        elif search_type == "semantic":
-            results = await search_engine.semantic_search(
-                user_id=user_id,
-                query=query,
-                limit=limit
-            )
-        elif search_type == "hybrid":
-            results = await search_engine.hybrid_search(
-                user_id=user_id,
-                query=query,
+                search_type=search_type,
                 limit=limit,
                 use_reranking=use_reranking
             )
+            
+            search_result = await search_engine.search(search_query)
+            
+            # Convertir en format attendu
+            formatted_results = []
+            for result in search_result.results:
+                formatted_result = {
+                    "id": getattr(result, 'transaction_id', str(getattr(result, 'id', ''))),
+                    "score": getattr(result, 'score', 0.0),
+                    "transaction": getattr(result, 'transaction', {}),
+                    "highlights": getattr(result, 'highlights', {}),
+                    "search_type": getattr(result, 'search_type', search_type)
+                }
+                formatted_results.append(formatted_result)
+            
+            query_time = search_result.processing_time
+            
         else:
-            # Ne devrait jamais arriver grâce à la validation ci-dessus
-            raise HTTPException(
-                status_code=400,
-                detail=f"Type de recherche non supporté: {search_type}"
-            )
-        
-        query_time = time.time() - start_time
-        
-        # Formater les résultats
-        formatted_results = []
-        for result in results:
-            formatted_result = {
-                "id": result.get("id"),
-                "score": result.get("score", 0.0),
-                "transaction": result.get("source", {}),
-                "highlights": result.get("highlights", {}),
-                "search_type": result.get("search_type", search_type)
-            }
-            formatted_results.append(formatted_result)
+            # Fallback vers les anciennes méthodes si elles existent
+            results = []
+            if search_type == "lexical" and hasattr(search_engine, 'lexical_search'):
+                results = await search_engine.lexical_search(
+                    user_id=user_id,
+                    query=query,
+                    limit=limit
+                )
+            elif search_type == "semantic" and hasattr(search_engine, 'semantic_search'):
+                results = await search_engine.semantic_search(
+                    user_id=user_id,
+                    query=query,
+                    limit=limit
+                )
+            elif search_type == "hybrid" and hasattr(search_engine, 'hybrid_search'):
+                results = await search_engine.hybrid_search(
+                    user_id=user_id,
+                    query=query,
+                    limit=limit,
+                    use_reranking=use_reranking
+                )
+            else:
+                raise HTTPException(
+                    status_code=501,
+                    detail=f"Search type {search_type} not implemented"
+                )
+            
+            query_time = time.time() - start_time
+            
+            # Formater les résultats
+            formatted_results = []
+            for result in results:
+                formatted_result = {
+                    "id": result.get("id", ""),
+                    "score": result.get("score", 0.0),
+                    "transaction": result.get("source", {}),
+                    "highlights": result.get("highlights", {}),
+                    "search_type": result.get("search_type", search_type)
+                }
+                formatted_results.append(formatted_result)
         
         logger.info(f"✅ Recherche terminée en {query_time:.3f}s - {len(formatted_results)} résultats")
         
@@ -318,7 +347,7 @@ async def reindex_transactions(
         )
     
     user_id = request.user_id
-    force_refresh = request.force_refresh or False
+    force_refresh = getattr(request, 'force_refresh', False)
     
     if user_id <= 0:
         raise HTTPException(
@@ -331,11 +360,20 @@ async def reindex_transactions(
     start_time = time.time()
     
     try:
-        # Effectuer la réindexation
-        result = await search_engine.reindex_user_transactions(
-            user_id=user_id,
-            force_refresh=force_refresh
-        )
+        # Effectuer la réindexation si la méthode existe
+        if hasattr(search_engine, 'reindex_user_transactions'):
+            result = await search_engine.reindex_user_transactions(
+                user_id=user_id,
+                force_refresh=force_refresh
+            )
+        else:
+            # Fallback si la méthode n'existe pas
+            result = {
+                'processed': 0,
+                'indexed': 0,
+                'errors': 1,
+                'message': 'Reindex method not implemented'
+            }
         
         reindex_time = time.time() - start_time
         
@@ -345,7 +383,7 @@ async def reindex_transactions(
         logger.info(f"   Erreurs: {result.get('errors', 0)}")
         
         return ReindexResponse(
-            success=True,
+            success=result.get('errors', 0) == 0,
             processed=result.get('processed', 0),
             indexed=result.get('indexed', 0),
             errors=result.get('errors', 0),
@@ -384,7 +422,18 @@ async def get_user_stats(
     logger.info(f"📊 Récupération des stats pour user {user_id}")
     
     try:
-        stats = await search_engine.get_user_stats(user_id)
+        # Essayer d'obtenir les stats si la méthode existe
+        if hasattr(search_engine, 'get_user_stats'):
+            stats = await search_engine.get_user_stats(user_id)
+        else:
+            # Fallback avec des stats par défaut
+            stats = {
+                "elasticsearch_count": 0,
+                "qdrant_count": 0,
+                "elasticsearch_available": elastic_client is not None,
+                "qdrant_available": qdrant_client is not None,
+                "last_update": None
+            }
         
         return {
             "user_id": user_id,
@@ -426,7 +475,16 @@ async def delete_user_index(
     start_time = time.time()
     
     try:
-        result = await search_engine.delete_user_data(user_id)
+        # Essayer la suppression si la méthode existe
+        if hasattr(search_engine, 'delete_user_data'):
+            result = await search_engine.delete_user_data(user_id)
+        else:
+            # Fallback
+            result = {
+                "elasticsearch_deleted": 0,
+                "qdrant_deleted": 0,
+                "message": "Delete method not implemented"
+            }
         
         delete_time = time.time() - start_time
         
@@ -478,6 +536,61 @@ async def debug_clients():
     }
 
 
+@router.get("/debug/injection")
+async def debug_injection():
+    """Endpoint de debug pour vérifier l'injection des clients."""
+    global elastic_client, qdrant_client, search_engine
+    
+    injection_status = {
+        "injection_successful": False,
+        "clients_available": {
+            "elastic": elastic_client is not None,
+            "qdrant": qdrant_client is not None
+        },
+        "clients_initialized": {
+            "elastic": getattr(elastic_client, '_initialized', False) if elastic_client else False,
+            "qdrant": getattr(qdrant_client, '_initialized', False) if qdrant_client else False
+        },
+        "search_engine_created": search_engine is not None,
+        "search_engine_capabilities": {},
+        "recommendations": [],
+        "timestamp": time.time()
+    }
+    
+    # Vérifier les capacités du moteur de recherche
+    if search_engine:
+        injection_status["search_engine_capabilities"] = {
+            "has_elastic": hasattr(search_engine, 'elastic_client') and search_engine.elastic_client is not None,
+            "has_qdrant": hasattr(search_engine, 'qdrant_client') and search_engine.qdrant_client is not None,
+            "elasticsearch_enabled": getattr(search_engine, 'elasticsearch_enabled', False),
+            "qdrant_enabled": getattr(search_engine, 'qdrant_enabled', False)
+        }
+    
+    # Déterminer le succès de l'injection
+    injection_status["injection_successful"] = (
+        injection_status["clients_available"]["elastic"] or 
+        injection_status["clients_available"]["qdrant"]
+    ) and injection_status["search_engine_created"]
+    
+    # Générer des recommandations
+    if not injection_status["clients_available"]["elastic"] and not injection_status["clients_available"]["qdrant"]:
+        injection_status["recommendations"].append("Aucun client disponible - vérifiez la configuration")
+    
+    if injection_status["clients_available"]["elastic"] and not injection_status["clients_initialized"]["elastic"]:
+        injection_status["recommendations"].append("Client Elasticsearch disponible mais non initialisé")
+    
+    if injection_status["clients_available"]["qdrant"] and not injection_status["clients_initialized"]["qdrant"]:
+        injection_status["recommendations"].append("Client Qdrant disponible mais non initialisé")
+    
+    if not injection_status["search_engine_created"]:
+        injection_status["recommendations"].append("Moteur de recherche non créé - vérifiez l'injection")
+    
+    if injection_status["injection_successful"]:
+        injection_status["recommendations"].append("Injection réussie - Search Service opérationnel")
+    
+    return injection_status
+
+
 @router.get("/debug/query-expansion")
 async def debug_query_expansion(query: str = Query(..., description="Query à tester")):
     """Endpoint de debug pour tester l'expansion de requêtes."""
@@ -490,21 +603,36 @@ async def debug_query_expansion(query: str = Query(..., description="Query à te
         )
     
     try:
-        from search_service.utils.query_expansion import expand_query_terms
-        
-        logger.info(f"🔍 Test expansion pour: '{query}' (type: {type(query)})")
-        
-        # Tester l'expansion
-        expanded_terms = expand_query_terms(query)
-        
-        return {
-            "original_query": query,
-            "query_type": type(query).__name__,
-            "expanded_terms": expanded_terms,
-            "expanded_count": len(expanded_terms),
-            "search_string": " ".join(expanded_terms),
-            "timestamp": time.time()
-        }
+        # Essayer d'importer et tester l'expansion
+        try:
+            from search_service.utils.query_expansion import expand_query_terms
+            
+            logger.info(f"🔍 Test expansion pour: '{query}' (type: {type(query)})")
+            
+            # Tester l'expansion
+            expanded_terms = expand_query_terms(query)
+            
+            return {
+                "original_query": query,
+                "query_type": type(query).__name__,
+                "expanded_terms": expanded_terms,
+                "expanded_count": len(expanded_terms),
+                "search_string": " ".join(expanded_terms),
+                "expansion_available": True,
+                "timestamp": time.time()
+            }
+        except ImportError:
+            # Module d'expansion non disponible
+            return {
+                "original_query": query,
+                "query_type": type(query).__name__,
+                "expanded_terms": [query],
+                "expanded_count": 1,
+                "search_string": query,
+                "expansion_available": False,
+                "error": "Query expansion module not available",
+                "timestamp": time.time()
+            }
         
     except Exception as e:
         logger.error(f"❌ Erreur test expansion: {e}")
@@ -514,148 +642,9 @@ async def debug_query_expansion(query: str = Query(..., description="Query à te
         )
 
 
-@router.post("/debug/search-raw")
-async def debug_search_raw(
-    user_id: int,
-    query: str,
-    client_type: str = Query("elasticsearch", description="Type de client: elasticsearch ou qdrant"),
-    search_engine: SearchEngine = Depends(get_search_engine)
-):
-    """Endpoint de debug pour tester la recherche directe sur un client."""
-    
-    # Validation des paramètres
-    if not isinstance(query, str):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Query must be a string, got {type(query).__name__}"
-        )
-    
-    if not isinstance(user_id, int) or user_id <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="user_id must be a positive integer"
-        )
-    
-    if client_type not in ["elasticsearch", "qdrant"]:
-        raise HTTPException(
-            status_code=400,
-            detail="client_type must be 'elasticsearch' or 'qdrant'"
-        )
-    
-    logger.info(f"🔍 Debug recherche {client_type} pour user {user_id}: '{query}'")
-    
-    start_time = time.time()
-    
-    try:
-        if client_type == "elasticsearch":
-            if not search_engine.elasticsearch_enabled:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Elasticsearch non disponible"
-                )
-            
-            results = await search_engine.lexical_search(
-                user_id=user_id,
-                query=query,
-                limit=10
-            )
-            
-        elif client_type == "qdrant":
-            if not search_engine.qdrant_enabled:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Qdrant non disponible"
-                )
-            
-            results = await search_engine.semantic_search(
-                user_id=user_id,
-                query=query,
-                limit=10
-            )
-        
-        query_time = time.time() - start_time
-        
-        return {
-            "client_type": client_type,
-            "user_id": user_id,
-            "query": query,
-            "query_type": type(query).__name__,
-            "results_count": len(results),
-            "results": results,
-            "query_time": query_time,
-            "timestamp": time.time()
-        }
-        
-    except Exception as e:
-        query_time = time.time() - start_time
-        logger.error(f"❌ Erreur debug recherche {client_type}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur recherche {client_type}: {str(e)}"
-        )
-
-
-# Handlers d'erreur globaux
-@router.exception_handler(ValueError)
-async def value_error_handler(request, exc):
-    """Gestionnaire d'erreur pour les ValueError."""
-    logger.error(f"❌ ValueError: {exc}")
-    return JSONResponse(
-        status_code=400,
-        content={
-            "error": "Invalid value",
-            "detail": str(exc),
-            "timestamp": time.time()
-        }
-    )
-
-
-@router.exception_handler(TypeError)
-async def type_error_handler(request, exc):
-    """Gestionnaire d'erreur pour les TypeError."""
-    logger.error(f"❌ TypeError: {exc}")
-    return JSONResponse(
-        status_code=400,
-        content={
-            "error": "Invalid type",
-            "detail": str(exc),
-            "timestamp": time.time()
-        }
-    )
-
-
-@router.exception_handler(AttributeError)
-async def attribute_error_handler(request, exc):
-    """Gestionnaire d'erreur pour les AttributeError (notamment le bug dict.lower())."""
-    logger.error(f"❌ AttributeError: {exc}")
-    
-    # Détecter spécifiquement le bug dict.lower()
-    if "'dict' object has no attribute 'lower'" in str(exc):
-        logger.error("🚨 Bug 'dict' object has no attribute 'lower' détecté!")
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": "Query type validation error",
-                "detail": "Query parameter must be a string, received a dict object",
-                "bug_detected": "dict.lower() bug",
-                "solution": "Ensure query parameter is properly validated as string",
-                "timestamp": time.time()
-            }
-        )
-    
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Attribute error",
-            "detail": str(exc),
-            "timestamp": time.time()
-        }
-    )
-
-
-# Fonction d'initialisation pour les clients (appelée depuis main.py)
+# Fonction d'initialisation pour les clients (appelée depuis heroku_app.py)
 def set_clients(elastic=None, qdrant=None):
-    """Configure les clients globaux depuis main.py."""
+    """Configure les clients globaux depuis heroku_app.py."""
     global elastic_client, qdrant_client, search_engine
     
     logger.info("🔧 Configuration des clients dans routes.py")
@@ -674,96 +663,42 @@ def set_clients(elastic=None, qdrant=None):
         logger.warning("⚠️ Aucun client disponible pour créer le moteur de recherche")
 
 
-# Fonctions utilitaires pour les tests
-async def validate_request_data(data: dict) -> dict:
-    """Valide les données de requête entrantes."""
-    validated_data = {}
-    
-    # Valider user_id
-    user_id = data.get('user_id')
-    if not isinstance(user_id, int):
-        try:
-            validated_data['user_id'] = int(user_id)
-        except (ValueError, TypeError):
-            raise ValueError(f"user_id must be an integer, got {type(user_id).__name__}")
-    else:
-        validated_data['user_id'] = user_id
-    
-    if validated_data['user_id'] <= 0:
-        raise ValueError("user_id must be positive")
-    
-    # Valider query
-    query = data.get('query')
-    if not isinstance(query, str):
-        if query is None:
-            raise ValueError("query is required")
-        else:
-            logger.warning(f"Converting query from {type(query).__name__} to string")
-            validated_data['query'] = str(query)
-    else:
-        validated_data['query'] = query.strip()
-    
-    if not validated_data['query']:
-        raise ValueError("query cannot be empty")
-    
-    # Valider type de recherche
-    search_type = data.get('type', 'hybrid')
-    if not isinstance(search_type, str):
-        search_type = str(search_type)
-    
-    if search_type not in ['lexical', 'semantic', 'hybrid']:
-        raise ValueError(f"Invalid search type: {search_type}")
-    
-    validated_data['type'] = search_type
-    
-    # Valider limit
-    limit = data.get('limit', 10)
-    if not isinstance(limit, int):
-        try:
-            validated_data['limit'] = int(limit)
-        except (ValueError, TypeError):
-            validated_data['limit'] = 10
-    else:
-        validated_data['limit'] = limit
-    
-    validated_data['limit'] = max(1, min(validated_data['limit'], 50))
-    
-    # Valider use_reranking
-    use_reranking = data.get('use_reranking', True)
-    if not isinstance(use_reranking, bool):
-        validated_data['use_reranking'] = bool(use_reranking)
-    else:
-        validated_data['use_reranking'] = use_reranking
-    
-    return validated_data
+# Fonctions utilitaires pour validation et debug
+def validate_string_parameter(param_name: str, value: Any) -> str:
+    """Valide qu'un paramètre est une chaîne de caractères."""
+    if not isinstance(value, str):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{param_name} must be a string, got {type(value).__name__}"
+        )
+    return value.strip()
 
 
-def log_request_info(endpoint: str, data: dict):
+def validate_integer_parameter(param_name: str, value: Any, min_value: int = 1) -> int:
+    """Valide qu'un paramètre est un entier valide."""
+    if not isinstance(value, int):
+        try:
+            value = int(value)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{param_name} must be an integer, got {type(value).__name__}"
+            )
+    
+    if value < min_value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{param_name} must be >= {min_value}, got {value}"
+        )
+    
+    return value
+
+
+def log_request_info(endpoint: str, **kwargs):
     """Log les informations de requête pour debug."""
     logger.info(f"📥 {endpoint}:")
-    for key, value in data.items():
+    for key, value in kwargs.items():
         logger.info(f"   {key}: {value} (type: {type(value).__name__})")
-
-
-# Middleware personnalisé pour validation des types
-async def validate_json_types(request, call_next):
-    """Middleware pour valider les types JSON entrants."""
-    try:
-        response = await call_next(request)
-        return response
-    except AttributeError as e:
-        if "'dict' object has no attribute 'lower'" in str(e):
-            logger.error("🚨 Bug dict.lower() intercepté par middleware!")
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": "Request validation error",
-                    "detail": "Query parameter type validation failed",
-                    "bug_intercepted": "dict.lower() bug prevented",
-                    "timestamp": time.time()
-                }
-            )
-        raise e
 
 
 # Export des fonctions et variables importantes
@@ -776,8 +711,9 @@ __all__ = [
     'get_user_stats',
     'delete_user_index',
     'debug_clients',
+    'debug_injection',
     'debug_query_expansion',
-    'debug_search_raw',
-    'validate_request_data',
+    'validate_string_parameter',
+    'validate_integer_parameter',
     'log_request_info'
 ]

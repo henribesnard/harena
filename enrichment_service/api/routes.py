@@ -1,8 +1,16 @@
 """
 Routes API pour le service d'enrichissement avec dual storage.
 
-Ce module définit tous les endpoints pour l'enrichissement et le stockage
+Ce module définit UNIQUEMENT les endpoints pour l'enrichissement et le stockage
 vectoriel des transactions financières dans Qdrant ET Elasticsearch.
+
+RESPONSABILITÉ: ÉCRITURE/STOCKAGE UNIQUEMENT
+- Enrichissement des transactions
+- Synchronisation dual storage
+- Gestion des données (CRUD)
+- Diagnostics de stockage
+
+SUPPRIMÉ: Endpoints de recherche (déplacés vers search_service)
 """
 import logging
 from typing import Dict, Any, List
@@ -19,12 +27,9 @@ from enrichment_service.models import (
     TransactionInput,
     BatchTransactionInput,
     EnrichmentResult,
-    BatchEnrichmentResult,
-    SearchResponse,
-    SearchResult
+    BatchEnrichmentResult
 )
 from enrichment_service.core.processor import TransactionProcessor, DualStorageTransactionProcessor
-from enrichment_service.core.embeddings import embedding_service
 from enrichment_service.storage.qdrant import QdrantStorage
 
 logger = logging.getLogger(__name__)
@@ -76,7 +81,6 @@ async def enrich_single_transaction(
     Returns:
         EnrichmentResult: Résultat de l'enrichissement
     """
-    # Vérifier que la transaction appartient à l'utilisateur actuel
     if transaction.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -115,7 +119,6 @@ async def enrich_batch_transactions(
     Returns:
         BatchEnrichmentResult: Résultat de l'enrichissement du lot
     """
-    # Vérifier que le lot appartient à l'utilisateur actuel
     if batch.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -145,7 +148,7 @@ async def enrich_batch_transactions(
         )
 
 @router.post("/sync/user/{user_id}", response_model=BatchEnrichmentResult)
-async def sync_user_transactions(
+async def sync_user_transactions_legacy(
     user_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -153,13 +156,14 @@ async def sync_user_transactions(
     """
     Synchronise toutes les transactions d'un utilisateur depuis PostgreSQL vers Qdrant (legacy).
     
+    DÉPRÉCIÉ: Utilisez /dual/sync-user pour le dual storage.
+    
     Args:
         user_id: ID de l'utilisateur à synchroniser
         
     Returns:
         BatchEnrichmentResult: Résultat de la synchronisation
     """
-    # Vérifier les permissions
     if user_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -222,8 +226,56 @@ async def sync_user_transactions(
             detail=f"Failed to sync user transactions: {str(e)}"
         )
 
+@router.delete("/user/{user_id}")
+async def delete_user_data_legacy(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Supprime toutes les données vectorielles d'un utilisateur (legacy - Qdrant uniquement).
+    
+    DÉPRÉCIÉ: Utilisez /dual/user-data/{user_id} pour le dual storage.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        
+    Returns:
+        Dict: Résultat de la suppression
+    """
+    if user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    try:
+        processor = get_processor()
+        success = await processor.delete_user_data(user_id)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"All data deleted for user {user_id} (legacy - Qdrant only)",
+                "user_id": user_id,
+                "storage": "qdrant_only"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete user data"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur lors de la suppression pour l'utilisateur {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete user data: {str(e)}"
+        )
+
 # ==========================================
-# NOUVEAUX ENDPOINTS DUAL STORAGE
+# ENDPOINTS DUAL STORAGE (RECOMMANDÉS)
 # ==========================================
 
 @router.post("/dual/sync-user", response_model=BatchEnrichmentResult)
@@ -241,6 +293,8 @@ async def sync_user_dual_storage(
     2. Génère les embeddings OpenAI
     3. Stocke dans Qdrant (recherche sémantique)
     4. Indexe dans Elasticsearch (recherche lexicale)
+    
+    RECOMMANDÉ: Utilisez cet endpoint pour tous les nouveaux déploiements.
     """
     if user_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
@@ -310,37 +364,6 @@ async def sync_user_dual_storage(
             detail=f"Failed to sync user transactions: {str(e)}"
         )
 
-@router.get("/dual/sync-status/{user_id}")
-async def get_dual_sync_status(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Récupère le statut de synchronisation pour un utilisateur dans les deux systèmes.
-    
-    Retourne:
-    - Nombre de documents dans Qdrant
-    - Nombre de documents dans Elasticsearch  
-    - Statut de cohérence entre les deux
-    """
-    if user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    
-    try:
-        dual_processor = get_dual_processor()
-        status_info = await dual_processor.get_sync_status(user_id)
-        return status_info
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur récupération statut sync user {user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get sync status: {str(e)}"
-        )
-
 @router.post("/dual/enrich-transaction", response_model=EnrichmentResult)
 async def enrich_transaction_dual_storage(
     transaction: TransactionInput,
@@ -351,6 +374,8 @@ async def enrich_transaction_dual_storage(
     Enrichit et stocke une transaction dans Qdrant ET Elasticsearch.
     
     Utile pour traiter des transactions individuelles en temps réel.
+    
+    RECOMMANDÉ: Utilisez cet endpoint pour tous les nouveaux déploiements.
     """
     if transaction.user_id != current_user.id:
         raise HTTPException(
@@ -383,6 +408,8 @@ async def delete_user_dual_data(
     Supprime toutes les données d'un utilisateur des deux systèmes de stockage.
     
     ATTENTION: Cette opération est irréversible!
+    
+    RECOMMANDÉ: Utilisez cet endpoint pour tous les nouveaux déploiements.
     """
     if user_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
@@ -391,12 +418,10 @@ async def delete_user_dual_data(
         )
     
     try:
-        # Supprimer de Qdrant
-        qdrant_success = False
-        elasticsearch_success = False
-        
         dual_processor = get_dual_processor()
         
+        # Supprimer de Qdrant
+        qdrant_success = False
         if dual_processor.qdrant_storage:
             try:
                 qdrant_success = await dual_processor.qdrant_storage.delete_user_transactions(user_id)
@@ -404,6 +429,7 @@ async def delete_user_dual_data(
                 logger.error(f"❌ Erreur suppression Qdrant user {user_id}: {e}")
         
         # Supprimer d'Elasticsearch
+        elasticsearch_success = False
         if dual_processor.elasticsearch_client:
             try:
                 elasticsearch_success = await dual_processor.elasticsearch_client.delete_user_transactions(user_id)
@@ -417,6 +443,7 @@ async def delete_user_dual_data(
                 "qdrant_deleted": qdrant_success,
                 "elasticsearch_deleted": elasticsearch_success
             },
+            "storage": "dual_storage",
             "message": "All data deleted successfully" if (qdrant_success and elasticsearch_success) else "Partial deletion"
         }
         
@@ -427,10 +454,47 @@ async def delete_user_dual_data(
             detail=f"Failed to delete user data: {str(e)}"
         )
 
+# ==========================================
+# ENDPOINTS DE DIAGNOSTIC ET MONITORING
+# ==========================================
+
+@router.get("/dual/sync-status/{user_id}")
+async def get_dual_sync_status(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Récupère le statut de synchronisation pour un utilisateur dans les deux systèmes.
+    
+    Retourne:
+    - Nombre de documents dans Qdrant
+    - Nombre de documents dans Elasticsearch  
+    - Statut de cohérence entre les deux
+    """
+    if user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    try:
+        dual_processor = get_dual_processor()
+        status_info = await dual_processor.get_sync_status(user_id)
+        return status_info
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération statut sync user {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get sync status: {str(e)}"
+        )
+
 @router.get("/dual/health")
 async def dual_storage_health():
     """
     Vérifie la santé des deux systèmes de stockage.
+    
+    Retourne l'état de Qdrant et Elasticsearch.
     """
     try:
         dual_processor = get_dual_processor()
@@ -481,214 +545,20 @@ async def dual_storage_health():
             "error": str(e)
         }
 
-# ==========================================
-# ENDPOINTS COMMUNS (RECHERCHE, STATS, ETC.)
-# ==========================================
-
-@router.get("/search", response_model=SearchResponse)
-async def search_transactions(
-    query: str = Query(..., description="Requête de recherche"),
-    limit: int = Query(10, ge=1, le=100, description="Nombre maximum de résultats"),
-    amount_min: float = Query(None, description="Montant minimum"),
-    amount_max: float = Query(None, description="Montant maximum"),
-    transaction_type: str = Query(None, description="Type de transaction (debit/credit)"),
-    date_from: str = Query(None, description="Date de début (YYYY-MM-DD)"),
-    date_to: str = Query(None, description="Date de fin (YYYY-MM-DD)"),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Recherche des transactions par similarité sémantique (Qdrant uniquement).
-    
-    Args:
-        query: Texte de recherche
-        limit: Nombre de résultats
-        amount_min: Montant minimum
-        amount_max: Montant maximum
-        transaction_type: Type de transaction
-        date_from: Date de début
-        date_to: Date de fin
-        
-    Returns:
-        SearchResponse: Résultats de recherche
-    """
-    import time
-    from datetime import datetime
-    
-    start_time = time.time()
-    
-    try:
-        # Générer l'embedding de la requête
-        query_embedding = await embedding_service.generate_embedding(query)
-        
-        # Construire les filtres
-        filters = {}
-        if amount_min is not None:
-            filters["amount_min"] = amount_min
-        if amount_max is not None:
-            filters["amount_max"] = amount_max
-        if transaction_type:
-            filters["transaction_type"] = transaction_type
-        if date_from:
-            try:
-                date_from_dt = datetime.fromisoformat(date_from)
-                filters["date_from"] = date_from_dt.timestamp()
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid date_from format. Use YYYY-MM-DD"
-                )
-        if date_to:
-            try:
-                date_to_dt = datetime.fromisoformat(date_to)
-                filters["date_to"] = date_to_dt.timestamp()
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid date_to format. Use YYYY-MM-DD"
-                )
-        
-        # Effectuer la recherche
-        processor = get_processor()
-        results = await processor.qdrant_storage.search_transactions(
-            query_vector=query_embedding,
-            user_id=current_user.id,
-            limit=limit,
-            filters=filters
-        )
-        
-        processing_time = time.time() - start_time
-        
-        return SearchResponse(
-            query=query,
-            results=results,
-            total_found=len(results),
-            processing_time=processing_time
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erreur lors de la recherche: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search failed: {str(e)}"
-        )
-
-@router.delete("/user/{user_id}")
-async def delete_user_data(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Supprime toutes les données vectorielles d'un utilisateur (legacy - Qdrant uniquement).
-    
-    Args:
-        user_id: ID de l'utilisateur
-        
-    Returns:
-        Dict: Résultat de la suppression
-    """
-    # Vérifier les permissions
-    if user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    
-    try:
-        processor = get_processor()
-        success = await processor.delete_user_data(user_id)
-        
-        if success:
-            return {
-                "status": "success",
-                "message": f"All data deleted for user {user_id}",
-                "user_id": user_id
-            }
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete user data"
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erreur lors de la suppression pour l'utilisateur {user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete user data: {str(e)}"
-        )
-
-@router.get("/user/{user_id}/stats")
-async def get_user_stats(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Récupère les statistiques d'enrichissement d'un utilisateur.
-    
-    Args:
-        user_id: ID de l'utilisateur
-        
-    Returns:
-        Dict: Statistiques de l'utilisateur
-    """
-    # Vérifier les permissions
-    if user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    
-    try:
-        # Stats des deux systèmes si disponibles
-        dual_processor = get_dual_processor()
-        
-        # Stats legacy (Qdrant)
-        legacy_stats = {}
-        try:
-            processor = get_processor()
-            legacy_stats = await processor.get_user_stats(user_id)
-        except Exception as e:
-            logger.error(f"Erreur stats legacy: {e}")
-        
-        # Stats dual storage
-        dual_stats = {}
-        try:
-            dual_stats = await dual_processor.get_sync_status(user_id)
-        except Exception as e:
-            logger.error(f"Erreur stats dual: {e}")
-        
-        return {
-            "user_id": user_id,
-            "timestamp": datetime.now().isoformat(),
-            "legacy_stats": legacy_stats,
-            "dual_storage_stats": dual_stats
-        }
-        
-    except Exception as e:
-        logger.error(f"Erreur lors de la récupération des stats pour {user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get user stats: {str(e)}"
-        )
-
-@router.get("/collection/info")
+@router.get("/legacy/collection-info")
 async def get_collection_info(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Récupère les informations de la collection Qdrant.
+    Récupère les informations de la collection Qdrant (legacy).
     
-    Returns:
-        Dict: Informations de la collection
+    DÉPRÉCIÉ: Informations disponibles via /dual/health.
+    Réservé aux superusers pour diagnostics avancés.
     """
-    # Seuls les superusers peuvent voir les infos de collection
     if not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
+            detail="Insufficient permissions - superuser required"
         )
     
     try:
@@ -701,11 +571,13 @@ async def get_collection_info(
                 "points_count": collection_info.points_count,
                 "status": collection_info.status,
                 "optimizer_status": collection_info.optimizer_status,
-                "vectors_count": collection_info.vectors_count
+                "vectors_count": collection_info.vectors_count,
+                "note": "DÉPRÉCIÉ - Utilisez /dual/health pour les informations générales"
             }
         else:
             return {
-                "status": "Collection not found or not accessible"
+                "status": "Collection not found or not accessible",
+                "note": "DÉPRÉCIÉ - Utilisez /dual/health pour les informations générales"
             }
             
     except Exception as e:

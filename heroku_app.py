@@ -1,10 +1,13 @@
 """
-Application Harena pour déploiement Heroku - Fix définitif des endpoints Search Service.
+Application Harena pour déploiement Heroku - Fix définitif avec SearchEngine injection complète.
 
-PROBLÈME RÉSOLU: Les endpoints search_service n'étaient pas disponibles car l'enregistrement 
-était conditionnel dans un event handler startup et dépendait d'une initialisation complexe qui échouait.
+PROBLÈME RÉSOLU: 
+1. Les endpoints search_service n'étaient pas disponibles car l'enregistrement était conditionnel
+2. SearchEngine n'était jamais créé et injecté dans les routes (cause du 503)
 
-SOLUTION: Enregistrement DIRECT et INCONDITIONNEL du search_service avec les autres services.
+SOLUTION: 
+1. Enregistrement DIRECT et INCONDITIONNEL du search_service
+2. Création et injection EXPLICITE du SearchEngine
 """
 
 import logging
@@ -28,7 +31,7 @@ logger = logging.getLogger("heroku_app")
 # ==================== CONFIGURATION INITIALE ====================
 
 try:
-    logger.info("🚀 Démarrage Harena Finance Platform - Fix Search Service Endpoints")
+    logger.info("🚀 Démarrage Harena Finance Platform - Fix SearchEngine injection complète")
     
     # Correction DATABASE_URL pour Heroku
     DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -371,8 +374,8 @@ try:
         return result
 
     async def initialize_search_service_direct() -> Dict[str, Any]:
-        """Initialise directement le Search Service avec tous les diagnostics."""
-        logger.info("🔧 === INITIALISATION DIRECTE SEARCH SERVICE ===")
+        """Initialise directement le Search Service avec injection SearchEngine complète."""
+        logger.info("🔧 === INITIALISATION DIRECTE SEARCH SERVICE + SEARCHENGINE ===")
         
         initialization_result = {
             "service": "search_service",
@@ -389,6 +392,8 @@ try:
                 "elasticsearch_initialized": False,
                 "qdrant_initialized": False,
                 "clients_injected": False,
+                "search_engine_created": False,  # ⭐ NOUVEAU
+                "search_engine_injected": False,  # ⭐ NOUVEAU
                 "initialization_time": 0,
                 "connectivity": {
                     "elasticsearch": {
@@ -508,14 +513,14 @@ try:
                 initialization_result["details"]["capabilities"]["semantic_search"]
             )
             
-            # Injection DIRECTE dans les routes
+            # ⭐ INJECTION DIRECTE DANS LES ROUTES + CRÉATION SEARCHENGINE ⭐
             if elastic_client or qdrant_client:
                 logger.info("🔗 Injection directe dans les routes...")
                 try:
                     # Forcer l'import et l'injection
                     import search_service.api.routes as routes
                     
-                    # Injection directe
+                    # Injection directe des clients
                     routes.elastic_client = elastic_client
                     routes.qdrant_client = qdrant_client
                     routes.embedding_service = None  # Pas critique pour le test
@@ -523,23 +528,64 @@ try:
                     routes.search_cache = None  # Pas critique pour le test
                     routes.metrics_collector = None  # Pas critique pour le test
                     
-                    # Vérification
+                    # ⭐ FIX CRITIQUE: CRÉER ET INJECTER LE SEARCH_ENGINE ⭐
+                    logger.info("🔧 Création du SearchEngine...")
+                    try:
+                        from search_service.core.search_engine import SearchEngine
+                        
+                        # Créer le SearchEngine avec les clients disponibles
+                        search_engine = SearchEngine(
+                            elastic_client=elastic_client,
+                            qdrant_client=qdrant_client,
+                            cache=None  # Pas critique pour le test
+                        )
+                        
+                        # Injecter le SearchEngine dans les routes
+                        routes.search_engine = search_engine
+                        
+                        logger.info("✅ SearchEngine créé et injecté")
+                        logger.info(f"   - Elasticsearch client: {'✅' if elastic_client else '❌'}")
+                        logger.info(f"   - Qdrant client: {'✅' if qdrant_client else '❌'}")
+                        
+                        # Marquer comme succès
+                        initialization_result["details"]["search_engine_created"] = True
+                        initialization_result["details"]["search_engine_injected"] = True
+                        
+                    except Exception as engine_error:
+                        logger.error(f"❌ Erreur création SearchEngine: {engine_error}")
+                        initialization_result["details"]["search_engine_created"] = False
+                        initialization_result["details"]["search_engine_error"] = str(engine_error)
+                        # Continuer même si SearchEngine échoue
+                    
+                    # Vérification finale
                     elastic_injected = hasattr(routes, 'elastic_client') and routes.elastic_client is not None
                     qdrant_injected = hasattr(routes, 'qdrant_client') and routes.qdrant_client is not None
+                    engine_injected = hasattr(routes, 'search_engine') and routes.search_engine is not None
                     
                     initialization_result["details"]["clients_injected"] = elastic_injected or qdrant_injected
+                    initialization_result["details"]["search_engine_injected"] = engine_injected
                     
                     logger.info(f"✅ Injection directe réussie:")
                     logger.info(f"   - Elasticsearch: {'✅' if elastic_injected else '❌'}")
                     logger.info(f"   - Qdrant: {'✅' if qdrant_injected else '❌'}")
+                    logger.info(f"   - SearchEngine: {'✅' if engine_injected else '❌'}")
                     
                     # Import des routes pour l'enregistrement
                     from search_service.api.routes import router as search_router
                     initialization_result["details"]["importable"] = True
                     initialization_result["details"]["routes_count"] = len(search_router.routes) if hasattr(search_router, 'routes') else 0
                     
-                    # Succès si au moins un client injecté
-                    initialization_result["healthy"] = initialization_result["details"]["clients_injected"]
+                    # ⭐ CONDITION DE SUCCÈS MISE À JOUR ⭐
+                    # Succès si au moins un client injecté ET SearchEngine créé
+                    initialization_result["healthy"] = (
+                        initialization_result["details"]["clients_injected"] and 
+                        initialization_result["details"]["search_engine_created"]
+                    )
+                    
+                    # Si pas de SearchEngine, service dégradé
+                    if not initialization_result["details"]["search_engine_created"]:
+                        initialization_result["healthy"] = False
+                        logger.warning("⚠️ Service dégradé: SearchEngine non créé")
                     
                     # Générer les recommandations
                     recommendations = []
@@ -554,6 +600,8 @@ try:
                         recommendations.append("🔧 Problème d'injection du client Elasticsearch")
                     if not qdrant_injected and initialization_result["details"]["config"]["qdrant_url"]:
                         recommendations.append("🔧 Problème d'injection du client Qdrant")
+                    if not engine_injected:
+                        recommendations.append("🚨 CRITIQUE: SearchEngine non créé - endpoints 503")
                         
                     if elastic_injected and not initialization_result["details"]["connectivity"]["elasticsearch"]["reachable"]:
                         recommendations.append("🌐 Vérifiez la connectivité réseau vers Elasticsearch")
@@ -561,7 +609,7 @@ try:
                         recommendations.append("🌐 Vérifiez la connectivité réseau vers Qdrant")
                         
                     if not recommendations and initialization_result["healthy"]:
-                        recommendations.append("✅ Search Service complètement opérationnel")
+                        recommendations.append("✅ Search Service complètement opérationnel avec SearchEngine")
                         
                     initialization_result["recommendations"] = recommendations
                     
@@ -625,6 +673,7 @@ try:
         if search_service_result["healthy"]:
             capabilities = search_service_result["details"]["capabilities"]
             logger.info(f"   🎯 Capacités: Lexical={capabilities['lexical_search']}, Semantic={capabilities['semantic_search']}, Hybrid={capabilities['hybrid_search']}")
+            logger.info(f"   🔧 SearchEngine: {'✅ Créé' if search_service_result['details']['search_engine_created'] else '❌ Manquant'}")
         
         global search_service_initialization_result
         search_service_initialization_result = search_service_result
@@ -761,10 +810,10 @@ try:
         logger.error(f"❌ Enrichment Service: {e}")
 
     # 4. Search Service (FIX CRITIQUE) - Enregistrement DIRECT et INCONDITIONNEL
-    logger.info("🔍 === ENREGISTREMENT SEARCH SERVICE - FIX CRITIQUE ===")
+    logger.info("🔍 === ENREGISTREMENT SEARCH SERVICE - FIX CRITIQUE AVEC SEARCHENGINE ===")
     try:
         from search_service.api.routes import router as search_router
-        if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 CRITIQUE: Recherche hybride"):
+        if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 CRITIQUE: Recherche hybride avec SearchEngine"):
             app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
             logger.info("🎉 Search Service enregistré avec succès - ENDPOINTS DISPONIBLES")
         else:
@@ -782,6 +831,7 @@ try:
                 "message": "Search service router failed to load",
                 "error": str(e),
                 "fallback_mode": True,
+                "searchengine_missing": True,
                 "timestamp": datetime.now().isoformat()
             }
         
@@ -789,8 +839,9 @@ try:
         async def search_fallback():
             return {
                 "error": "Search service not available",
-                "message": "Router failed to load",
+                "message": "Router failed to load - SearchEngine missing",
                 "original_error": str(e),
+                "recommendation": "Check SearchEngine injection in heroku_app.py",
                 "timestamp": datetime.now().isoformat()
             }
         
@@ -800,6 +851,7 @@ try:
                 "error": "Search service not available",
                 "message": "Router failed to load - debug mode",
                 "original_error": str(e),
+                "searchengine_status": "missing",
                 "timestamp": datetime.now().isoformat()
             }
         
@@ -819,7 +871,7 @@ try:
 
     @app.get("/")
     async def root():
-        """Statut général avec focus spécial sur le Search Service."""
+        """Statut général avec focus spécial sur le Search Service et SearchEngine."""
         uptime = time.time() - startup_time if startup_time else 0
         
         # Résumé global
@@ -845,9 +897,11 @@ try:
                 "configured": search_details.get("config", {}).get("elasticsearch_url", False) and search_details.get("config", {}).get("qdrant_url", False),
                 "healthy": search_status.get("healthy", False),
                 "clients_injected": search_details.get("clients_injected", False),
+                "searchengine_created": search_details.get("search_engine_created", False),  # ⭐ NOUVEAU
+                "searchengine_injected": search_details.get("search_engine_injected", False),  # ⭐ NOUVEAU
                 "elasticsearch_reachable": search_details.get("connectivity", {}).get("elasticsearch", {}).get("reachable", False),
                 "qdrant_reachable": search_details.get("connectivity", {}).get("qdrant", {}).get("reachable", False),
-                "status": "fully_operational" if search_status.get("healthy") and search_details.get("capabilities", {}).get("hybrid_search") else "degraded",
+                "status": "fully_operational" if search_status.get("healthy") and search_details.get("capabilities", {}).get("hybrid_search") and search_details.get("search_engine_created", False) else "degraded",
                 "initialization_time": search_details.get("initialization_time", 0),
                 "capabilities": search_details.get("capabilities", {}),
                 "endpoints_registered": "search_service" in service_registry.get_summary().get("services", [])
@@ -885,6 +939,8 @@ try:
                 "importable": search_status.get("details", {}).get("importable", False),
                 "routes_count": search_status.get("details", {}).get("routes_count", 0),
                 "clients_injected": search_status.get("details", {}).get("clients_injected", False),
+                "searchengine_created": search_status.get("details", {}).get("search_engine_created", False),  # ⭐ NOUVEAU
+                "searchengine_injected": search_status.get("details", {}).get("search_engine_injected", False),  # ⭐ NOUVEAU
                 "elasticsearch_initialized": search_status.get("details", {}).get("elasticsearch_initialized", False),
                 "qdrant_initialized": search_status.get("details", {}).get("qdrant_initialized", False),
                 "connectivity_ok": any([
@@ -893,9 +949,10 @@ try:
                 ])
             },
             "initialization_metrics": {
-                "method": "direct_initialization",
+                "method": "direct_initialization_with_searchengine",
                 "initialization_time": search_status.get("details", {}).get("initialization_time", 0),
-                "clients_injected": search_status.get("details", {}).get("clients_injected", False)
+                "clients_injected": search_status.get("details", {}).get("clients_injected", False),
+                "searchengine_created": search_status.get("details", {}).get("search_engine_created", False)  # ⭐ NOUVEAU
             },
             "configuration": search_status.get("details", {}).get("config", {}),
             "clients_status": {
@@ -907,11 +964,12 @@ try:
             "recommendations": search_status.get("recommendations", []),
             "error": search_status.get("error"),
             "endpoints": [
-                "POST /api/v1/search/search - Recherche de transactions" if search_status.get("healthy") else "❌ POST /api/v1/search/search - Indisponible",
+                "POST /api/v1/search/search - Recherche de transactions" if search_status.get("healthy") else "❌ POST /api/v1/search/search - Indisponible (SearchEngine manquant)",
                 "GET /api/v1/search/health - Santé du service" if search_status.get("healthy") else "❌ GET /api/v1/search/health - Indisponible",
                 "GET /api/v1/search/debug/injection - Debug injection" if search_status.get("healthy") else "❌ GET /api/v1/search/debug/injection - Indisponible",
                 "GET /search-service - Ce diagnostic détaillé"
-            ]
+            ],
+            "critical_note": "SearchEngine création est REQUISE pour éviter les erreurs 503"
         }
 
     @app.get("/services-summary")
@@ -938,6 +996,7 @@ try:
             "search_service_status": {
                 "healthy": search_status.get("healthy", False),
                 "endpoints_registered": "search_service" in registry_summary.get("services", []),
+                "searchengine_created": search_status.get("details", {}).get("search_engine_created", False),  # ⭐ NOUVEAU
                 "capabilities": search_status.get("details", {}).get("capabilities", {}),
                 "error": search_status.get("error")
             },
@@ -946,7 +1005,8 @@ try:
                 "user_management": all_services_status.get("user_service", {}).get("healthy", False),
                 "sync_available": all_services_status.get("sync_service", {}).get("healthy", False),
                 "ai_features": all_services_status.get("conversation_service", {}).get("healthy", False),
-                "search_critical": search_status.get("healthy", False)
+                "search_critical": search_status.get("healthy", False),
+                "searchengine_operational": search_status.get("details", {}).get("search_engine_created", False)  # ⭐ NOUVEAU
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -955,12 +1015,14 @@ try:
     async def version():
         return {
             "version": "1.0.0",
-            "build": "heroku-search-service-endpoints-fix",
+            "build": "heroku-search-service-searchengine-injection-fix",
             "python": sys.version.split()[0],
             "environment": os.environ.get("ENVIRONMENT", "production"),
+            "critical_fix": "SearchEngine injection complète pour éviter 503",
             "diagnostic_features": [
                 "Complete services health check",
                 "DIRECT Search Service registration (unconditional)",
+                "⭐ SearchEngine creation and injection (FIX CRITIQUE)",
                 "Client injection immediate after init",
                 "Connectivity tests with latency monitoring",
                 "Service capabilities assessment",
@@ -984,6 +1046,7 @@ try:
                 "error": exc.detail,
                 "path": request.url.path,
                 "search_service_healthy": search_status.get("healthy", False),
+                "searchengine_created": search_status.get("details", {}).get("search_engine_created", False),
                 "healthy_services": [name for name, status in all_services_status.items() if status.get("healthy")],
                 "timestamp": datetime.now().isoformat()
             }
@@ -992,31 +1055,32 @@ try:
     # ==================== RAPPORT FINAL ====================
 
     logger.info("=" * 80)
-    logger.info("🎯 HARENA FINANCE PLATFORM - SEARCH SERVICE ENDPOINTS FIX")
+    logger.info("🎯 HARENA FINANCE PLATFORM - SEARCH SERVICE + SEARCHENGINE FIX")
     logger.info(f"📊 Services enregistrés: {service_registry.get_summary()['registered']}")
     logger.info(f"❌ Services échoués: {service_registry.get_summary()['failed']}")
     logger.info("🔧 Fonctionnalités:")
     logger.info("   📋 Diagnostic complet de tous les services")
     logger.info("   🔍 Enregistrement DIRECT Search Service (inconditionnel)")
+    logger.info("   ⭐ Création et injection EXPLICITE du SearchEngine (FIX CRITIQUE)")
     logger.info("   🔗 Injection immédiate clients après initialisation")
     logger.info("   🌐 Tests connectivité Elasticsearch & Qdrant avec latence")
     logger.info("   📊 Monitoring capacités en temps réel")
     logger.info("   ⏱️ Métriques d'initialisation détaillées")
     logger.info("   🆘 Endpoints de fallback pour services échoués")
     logger.info("🌐 Endpoints de diagnostic:")
-    logger.info("   GET  / - Statut général avec métriques Search Service")
+    logger.info("   GET  / - Statut général avec métriques Search Service + SearchEngine")
     logger.info("   GET  /health - Santé ultra-détaillée tous services")
     logger.info("   GET  /search-service - Diagnostic approfondi Search Service")
     logger.info("   GET  /services-summary - Résumé synthétique")
     logger.info("🔧 Endpoints principaux:")
-    logger.info("   POST /api/v1/search/search - Recherche de transactions")
+    logger.info("   POST /api/v1/search/search - Recherche de transactions (FIXÉ)")
     logger.info("   GET  /api/v1/search/health - Santé Search Service")
     logger.info("   GET  /api/v1/search/debug/injection - Debug injection")
     logger.info("   POST /api/v1/conversation/chat - Assistant IA")
     logger.info("   GET  /api/v1/sync - Synchronisation Bridge")
     logger.info("   POST /api/v1/users/register - Enregistrement utilisateur")
     logger.info("=" * 80)
-    logger.info("✅ Application Harena prête avec Search Service endpoints fix")
+    logger.info("✅ Application Harena prête avec SearchEngine fix complet")
 
 except Exception as critical_error:
     logger.critical(f"💥 ERREUR CRITIQUE: {critical_error}")

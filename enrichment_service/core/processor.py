@@ -1,8 +1,8 @@
 """
-Processeur principal pour l'enrichissement des transactions.
+Processeur principal pour l'enrichissement des transactions avec dual storage.
 
 Ce module coordonne la structuration, la vectorisation et le stockage
-des transactions financières.
+des transactions financières dans Qdrant ET Elasticsearch.
 """
 import logging
 import time
@@ -44,27 +44,8 @@ def generate_qdrant_id(user_id: int, transaction_id: int) -> str:
     
     return str(point_uuid)
 
-def generate_qdrant_id_hash(user_id: int, transaction_id: int) -> str:
-    """
-    Génère un UUID basé sur un hash SHA256 (alternative).
-    
-    Args:
-        user_id: ID de l'utilisateur
-        transaction_id: ID de la transaction Bridge
-        
-    Returns:
-        str: UUID au format string
-    """
-    unique_string = f"user_{user_id}_tx_{transaction_id}"
-    hash_object = hashlib.sha256(unique_string.encode())
-    hash_hex = hash_object.hexdigest()
-    
-    # Prendre les 32 premiers caractères et formater comme UUID
-    uuid_str = f"{hash_hex[:8]}-{hash_hex[8:12]}-{hash_hex[12:16]}-{hash_hex[16:20]}-{hash_hex[20:32]}"
-    return uuid_str
-
 class TransactionProcessor:
-    """Processeur principal pour l'enrichissement des transactions."""
+    """Processeur legacy pour compatibilité (Qdrant uniquement)."""
     
     def __init__(self, qdrant_storage: QdrantStorage):
         self.qdrant_storage = qdrant_storage
@@ -76,7 +57,7 @@ class TransactionProcessor:
         force_update: bool = False
     ) -> EnrichmentResult:
         """
-        Traite une transaction individuelle.
+        Traite une transaction individuelle (legacy - Qdrant uniquement).
         
         Args:
             transaction: Transaction à traiter
@@ -155,7 +136,7 @@ class TransactionProcessor:
         force_update: bool = False
     ) -> BatchEnrichmentResult:
         """
-        Traite un lot de transactions.
+        Traite un lot de transactions (legacy - Qdrant uniquement).
         
         Args:
             batch_input: Lot de transactions à traiter
@@ -168,7 +149,7 @@ class TransactionProcessor:
         user_id = batch_input.user_id
         transactions = batch_input.transactions
         
-        logger.info(f"Traitement en lot: {len(transactions)} transactions pour l'utilisateur {user_id}")
+        logger.info(f"Traitement en lot (legacy): {len(transactions)} transactions pour l'utilisateur {user_id}")
         
         try:
             # 1. Structurer toutes les transactions
@@ -303,8 +284,7 @@ class TransactionProcessor:
         transactions: List[TransactionInput]
     ) -> BatchEnrichmentResult:
         """
-        Synchronise toutes les transactions d'un utilisateur.
-        Cette méthode est optimisée pour la synchronisation complète.
+        Synchronise toutes les transactions d'un utilisateur (legacy).
         
         Args:
             user_id: ID de l'utilisateur
@@ -313,7 +293,7 @@ class TransactionProcessor:
         Returns:
             BatchEnrichmentResult: Résultat de la synchronisation
         """
-        logger.info(f"Synchronisation complète: {len(transactions)} transactions pour l'utilisateur {user_id}")
+        logger.info(f"Synchronisation complète (legacy): {len(transactions)} transactions pour l'utilisateur {user_id}")
         
         # Créer un batch input
         batch_input = BatchTransactionInput(
@@ -326,7 +306,7 @@ class TransactionProcessor:
     
     async def delete_user_data(self, user_id: int) -> bool:
         """
-        Supprime toutes les données d'un utilisateur.
+        Supprime toutes les données d'un utilisateur (legacy - Qdrant uniquement).
         
         Args:
             user_id: ID de l'utilisateur
@@ -334,7 +314,7 @@ class TransactionProcessor:
         Returns:
             bool: True si la suppression a réussi
         """
-        logger.info(f"Suppression des données pour l'utilisateur {user_id}")
+        logger.info(f"Suppression des données (legacy) pour l'utilisateur {user_id}")
         
         try:
             success = await self.qdrant_storage.delete_user_transactions(user_id)
@@ -349,163 +329,374 @@ class TransactionProcessor:
         except Exception as e:
             logger.error(f"Erreur lors de la suppression pour l'utilisateur {user_id}: {e}")
             return False
+
+class DualStorageTransactionProcessor:
+    """
+    Processeur de transactions avec dual storage (Qdrant + Elasticsearch).
+    Assure la cohérence entre recherche sémantique et lexicale.
+    """
     
-    async def get_user_stats(self, user_id: int) -> Dict[str, Any]:
-        """
-        Récupère les statistiques d'un utilisateur.
+    def __init__(self, qdrant_storage: QdrantStorage, elasticsearch_client):
+        self.qdrant_storage = qdrant_storage
+        self.elasticsearch_client = elasticsearch_client
+        self.embedding_service = embedding_service
         
-        Args:
-            user_id: ID de l'utilisateur
-            
-        Returns:
-            Dict: Statistiques de l'utilisateur
-        """
-        logger.debug(f"Récupération des statistiques pour l'utilisateur {user_id}")
-        
-        try:
-            stats = await self.qdrant_storage.get_user_stats(user_id)
-            
-            return {
-                "user_id": user_id,
-                "total_transactions": stats.get("count", 0),
-                "last_update": stats.get("last_update"),
-                "storage_size_mb": stats.get("storage_size_mb", 0),
-                "embedding_dimension": self.embedding_service.get_embedding_dimension(),
-                "collection_name": self.qdrant_storage.collection_name
-            }
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des stats pour l'utilisateur {user_id}: {e}")
-            return {
-                "user_id": user_id,
-                "total_transactions": 0,
-                "error": str(e)
-            }
-    
-    async def search_transactions(
-        self,
-        user_id: int,
-        query: str,
-        limit: int = 10,
-        filters: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Recherche des transactions pour un utilisateur.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            query: Requête de recherche
-            limit: Nombre maximum de résultats
-            filters: Filtres additionnels
-            
-        Returns:
-            List: Résultats de recherche
-        """
-        logger.debug(f"Recherche pour utilisateur {user_id}: '{query}' (limit: {limit})")
-        
-        try:
-            # 1. Générer l'embedding de la requête
-            query_vector = await self.embedding_service.generate_embedding(query)
-            
-            # 2. Rechercher dans Qdrant
-            results = await self.qdrant_storage.search_transactions(
-                query_vector=query_vector,
-                user_id=user_id,
-                limit=limit,
-                filters=filters
-            )
-            
-            logger.debug(f"Trouvé {len(results)} résultats pour la recherche")
-            return results
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la recherche pour l'utilisateur {user_id}: {e}")
-            return []
-    
-    async def get_transaction_by_id(
-        self,
-        user_id: int,
-        transaction_id: int
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Récupère une transaction spécifique.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            transaction_id: ID de la transaction
-            
-        Returns:
-            Dict: Données de la transaction ou None
-        """
-        try:
-            # Générer l'UUID de la transaction
-            vector_id = generate_qdrant_id(user_id, transaction_id)
-            
-            # Récupérer depuis Qdrant
-            transaction = await self.qdrant_storage.get_transaction_by_id(vector_id)
-            
-            return transaction
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération de la transaction {transaction_id}: {e}")
-            return None
-    
-    async def update_transaction(
-        self,
+    async def process_single_transaction(
+        self, 
         transaction: TransactionInput,
-        force_update: bool = True
+        force_update: bool = False
     ) -> EnrichmentResult:
         """
-        Met à jour une transaction existante.
+        Traite une transaction unique et l'indexe dans Qdrant ET Elasticsearch.
         
         Args:
-            transaction: Nouvelles données de la transaction
-            force_update: Force la mise à jour
+            transaction: Transaction à traiter
+            force_update: Force la mise à jour même si elle existe
             
         Returns:
-            EnrichmentResult: Résultat de la mise à jour
+            EnrichmentResult: Résultat du traitement
         """
-        logger.debug(f"Mise à jour de la transaction {transaction.bridge_transaction_id}")
+        start_time = time.time()
+        user_id = transaction.user_id
+        transaction_id = transaction.bridge_transaction_id
         
-        # Utiliser la méthode de traitement standard avec force_update
-        return await self.process_transaction(transaction, force_update=force_update)
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """
-        Vérifie l'état de santé du processeur.
-        
-        Returns:
-            Dict: État de santé
-        """
-        health_status = {
-            "processor": "ok",
-            "embedding_service": "unknown",
-            "qdrant_storage": "unknown",
-            "timestamp": datetime.now().isoformat()
-        }
+        logger.info(f"🔄 Traitement dual storage transaction {transaction_id} pour user {user_id}")
         
         try:
-            # Vérifier le service d'embeddings
-            if hasattr(self.embedding_service, 'client') and self.embedding_service.client:
-                health_status["embedding_service"] = "ok"
-            else:
-                health_status["embedding_service"] = "not_initialized"
+            # 1. Structurer la transaction
+            structured_tx = StructuredTransaction.from_transaction_input(transaction)
+            logger.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
             
-            # Vérifier Qdrant
-            if hasattr(self.qdrant_storage, 'client') and self.qdrant_storage.client:
-                health_status["qdrant_storage"] = "ok"
-            else:
-                health_status["qdrant_storage"] = "not_initialized"
+            # 2. Générer l'embedding
+            embedding = await self.embedding_service.generate_embedding(
+                structured_tx.searchable_text,
+                text_id=f"user_{user_id}_tx_{transaction_id}"
+            )
             
-            # Test rapide d'embedding
-            test_embedding = await self.embedding_service.generate_embedding("test")
-            if len(test_embedding) > 0:
-                health_status["embedding_test"] = "ok"
+            if not embedding:
+                raise Exception("Failed to generate embedding")
+            
+            # 3. Créer la transaction vectorisée pour Qdrant
+            vector_id = generate_qdrant_id(user_id, transaction_id)
+            vectorized_tx = VectorizedTransaction(
+                id=vector_id,
+                vector=embedding,
+                payload={
+                    **structured_tx.to_qdrant_payload(),
+                    "uuid": vector_id,
+                    "original_id": f"user_{user_id}_tx_{transaction_id}"
+                }
+            )
+            
+            # 4. Stockage dual (Qdrant + Elasticsearch)
+            qdrant_success = False
+            elasticsearch_success = False
+            errors = []
+            
+            # Stocker dans Qdrant
+            if self.qdrant_storage:
+                try:
+                    qdrant_success = await self.qdrant_storage.store_transaction(vectorized_tx)
+                    if qdrant_success:
+                        logger.debug(f"✅ Qdrant: Transaction {transaction_id} stockée")
+                    else:
+                        errors.append("Qdrant storage failed")
+                except Exception as e:
+                    logger.error(f"❌ Erreur Qdrant: {e}")
+                    errors.append(f"Qdrant error: {str(e)}")
             else:
-                health_status["embedding_test"] = "failed"
-                
+                errors.append("Qdrant client not available")
+            
+            # Stocker dans Elasticsearch
+            if self.elasticsearch_client:
+                try:
+                    elasticsearch_success = await self.elasticsearch_client.index_transaction(structured_tx)
+                    if elasticsearch_success:
+                        logger.debug(f"✅ Elasticsearch: Transaction {transaction_id} indexée")
+                    else:
+                        errors.append("Elasticsearch indexing failed")
+                except Exception as e:
+                    logger.error(f"❌ Erreur Elasticsearch: {e}")
+                    errors.append(f"Elasticsearch error: {str(e)}")
+            else:
+                errors.append("Elasticsearch client not available")
+            
+            # 5. Évaluer le succès global
+            processing_time = time.time() - start_time
+            
+            if qdrant_success and elasticsearch_success:
+                status = "success"
+                logger.info(f"🎉 Transaction {transaction_id} traitée avec succès ({processing_time:.3f}s)")
+            elif qdrant_success or elasticsearch_success:
+                status = "partial_success"
+                logger.warning(f"⚠️ Transaction {transaction_id} partiellement traitée ({processing_time:.3f}s)")
+            else:
+                status = "failed"
+                logger.error(f"❌ Échec traitement transaction {transaction_id} ({processing_time:.3f}s)")
+            
+            return EnrichmentResult(
+                transaction_id=transaction_id,
+                user_id=user_id,
+                searchable_text=structured_tx.searchable_text,
+                vector_id=vector_id,
+                metadata={
+                    "qdrant_success": qdrant_success,
+                    "elasticsearch_success": elasticsearch_success,
+                    "storage_backends": {
+                        "qdrant": "success" if qdrant_success else "failed",
+                        "elasticsearch": "success" if elasticsearch_success else "failed"
+                    }
+                },
+                processing_time=processing_time,
+                status=status,
+                error_message="; ".join(errors) if errors else None
+            )
+            
         except Exception as e:
-            health_status["error"] = str(e)
-            health_status["processor"] = "error"
+            processing_time = time.time() - start_time
+            logger.error(f"💥 Exception traitement transaction {transaction_id}: {e}")
+            
+            return EnrichmentResult(
+                transaction_id=transaction_id,
+                user_id=user_id,
+                searchable_text="",
+                vector_id="",
+                metadata={},
+                processing_time=processing_time,
+                status="error",
+                error_message=str(e)
+            )
+    
+    async def sync_user_transactions(
+        self, 
+        user_id: int, 
+        transactions: List[TransactionInput],
+        force_refresh: bool = False
+    ) -> BatchEnrichmentResult:
+        """
+        Synchronise toutes les transactions d'un utilisateur dans les deux systèmes.
         
-        return health_status
+        Args:
+            user_id: ID de l'utilisateur
+            transactions: Liste des transactions à traiter
+            force_refresh: Force la suppression et recréation
+            
+        Returns:
+            BatchEnrichmentResult: Résultat de la synchronisation
+        """
+        start_time = time.time()
+        logger.info(f"🔄 Synchronisation dual storage de {len(transactions)} transactions pour user {user_id}")
+        
+        try:
+            # 1. Optionnel: Nettoyer les données existantes si force_refresh
+            if force_refresh:
+                logger.info(f"🧹 Nettoyage des données existantes pour user {user_id}")
+                
+                # Supprimer de Qdrant
+                if self.qdrant_storage:
+                    try:
+                        await self.qdrant_storage.delete_user_transactions(user_id)
+                        logger.debug("✅ Données Qdrant supprimées")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur suppression Qdrant: {e}")
+                
+                # Supprimer d'Elasticsearch
+                if self.elasticsearch_client:
+                    try:
+                        await self.elasticsearch_client.delete_user_transactions(user_id)
+                        logger.debug("✅ Données Elasticsearch supprimées")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur suppression Elasticsearch: {e}")
+            
+            # 2. Structurer toutes les transactions
+            structured_transactions = []
+            searchable_texts = []
+            
+            for tx in transactions:
+                structured_tx = StructuredTransaction.from_transaction_input(tx)
+                structured_transactions.append(structured_tx)
+                searchable_texts.append(structured_tx.searchable_text)
+            
+            logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
+            
+            # 3. Générer tous les embeddings en lot
+            embeddings = await self.embedding_service.generate_batch_embeddings(
+                searchable_texts, 
+                batch_id=f"user_{user_id}_dual_sync"
+            )
+            
+            if len(embeddings) != len(structured_transactions):
+                raise Exception(f"Mismatch embeddings ({len(embeddings)}) vs transactions ({len(structured_transactions)})")
+            
+            # 4. Préparer les données pour les deux systèmes
+            vectorized_transactions = []
+            
+            for structured_tx, embedding in zip(structured_transactions, embeddings):
+                vector_id = generate_qdrant_id(user_id, structured_tx.transaction_id)
+                
+                vectorized_tx = VectorizedTransaction(
+                    id=vector_id,
+                    vector=embedding,
+                    payload={
+                        **structured_tx.to_qdrant_payload(),
+                        "uuid": vector_id,
+                        "original_id": f"user_{user_id}_tx_{structured_tx.transaction_id}"
+                    }
+                )
+                vectorized_transactions.append(vectorized_tx)
+            
+            # 5. Stockage en lot dans les deux systèmes
+            qdrant_result = {"stored": 0, "errors": 0}
+            elasticsearch_result = {"indexed": 0, "errors": 0}
+            
+            # Qdrant bulk storage
+            if self.qdrant_storage:
+                try:
+                    qdrant_result = await self.qdrant_storage.store_transactions_batch(vectorized_transactions)
+                    logger.info(f"📦 Qdrant: {qdrant_result['stored']}/{qdrant_result['total']} stockées")
+                except Exception as e:
+                    logger.error(f"❌ Erreur stockage Qdrant en lot: {e}")
+                    qdrant_result = {"stored": 0, "errors": len(vectorized_transactions), "total": len(vectorized_transactions)}
+            
+            # Elasticsearch bulk indexing
+            if self.elasticsearch_client:
+                try:
+                    elasticsearch_result = await self.elasticsearch_client.index_transactions_batch(structured_transactions)
+                    logger.info(f"📦 Elasticsearch: {elasticsearch_result['indexed']}/{elasticsearch_result['total']} indexées")
+                except Exception as e:
+                    logger.error(f"❌ Erreur indexation Elasticsearch en lot: {e}")
+                    elasticsearch_result = {"indexed": 0, "errors": len(structured_transactions), "total": len(structured_transactions)}
+            
+            # 6. Compiler le résultat final
+            processing_time = time.time() - start_time
+            total_transactions = len(transactions)
+            
+            # Calculer les succès (intersection des deux systèmes)
+            successful_qdrant = qdrant_result.get("stored", 0)
+            successful_elasticsearch = elasticsearch_result.get("indexed", 0)
+            successful_both = min(successful_qdrant, successful_elasticsearch)
+            
+            failed_count = total_transactions - successful_both
+            
+            # Créer les résultats individuels (simplifiés pour le lot)
+            results = []
+            for i, tx in enumerate(transactions):
+                if i < successful_both:
+                    result = EnrichmentResult(
+                        transaction_id=tx.bridge_transaction_id,
+                        user_id=user_id,
+                        searchable_text=searchable_texts[i][:100] + "...",
+                        vector_id=str(vectorized_transactions[i].id),
+                        metadata={
+                            "batch_processing": True,
+                            "qdrant_success": True,
+                            "elasticsearch_success": True
+                        },
+                        processing_time=processing_time / total_transactions,
+                        status="success"
+                    )
+                else:
+                    result = EnrichmentResult(
+                        transaction_id=tx.bridge_transaction_id,
+                        user_id=user_id,
+                        searchable_text="",
+                        vector_id="",
+                        metadata={"batch_processing": True},
+                        processing_time=0,
+                        status="failed",
+                        error_message="Batch processing failed"
+                    )
+                results.append(result)
+            
+            batch_result = BatchEnrichmentResult(
+                user_id=user_id,
+                total_transactions=total_transactions,
+                successful=successful_both,
+                failed=failed_count,
+                processing_time=processing_time,
+                results=results,
+                errors=[
+                    f"Qdrant errors: {qdrant_result.get('errors', 0)}",
+                    f"Elasticsearch errors: {elasticsearch_result.get('errors', 0)}"
+                ] if (qdrant_result.get('errors', 0) > 0 or elasticsearch_result.get('errors', 0) > 0) else []
+            )
+            
+            logger.info(f"🎉 Synchronisation terminée: {successful_both}/{total_transactions} réussies ({processing_time:.3f}s)")
+            return batch_result
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            logger.error(f"💥 Erreur synchronisation user {user_id}: {e}")
+            
+            return BatchEnrichmentResult(
+                user_id=user_id,
+                total_transactions=len(transactions),
+                successful=0,
+                failed=len(transactions),
+                processing_time=processing_time,
+                results=[],
+                errors=[str(e)]
+            )
+    
+    async def get_sync_status(self, user_id: int) -> Dict[str, Any]:
+        """
+        Récupère le statut de synchronisation pour un utilisateur.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            Dict: Statut de synchronisation des deux systèmes
+        """
+        try:
+            # Compter dans Qdrant (approximatif)
+            qdrant_count = "unknown"
+            if self.qdrant_storage:
+                try:
+                    # Pour Qdrant, on ne peut pas facilement compter par user_id
+                    # On utilise une méthode approximative
+                    qdrant_count = "available_but_not_countable"
+                except Exception:
+                    qdrant_count = "error"
+            
+            # Compter dans Elasticsearch
+            elasticsearch_count = 0
+            if self.elasticsearch_client:
+                try:
+                    elasticsearch_count = await self.elasticsearch_client.get_user_transaction_count(user_id)
+                except Exception as e:
+                    logger.error(f"Erreur comptage Elasticsearch: {e}")
+                    elasticsearch_count = "error"
+            
+            return {
+                "user_id": user_id,
+                "timestamp": datetime.now().isoformat(),
+                "storage_status": {
+                    "qdrant": {
+                        "available": self.qdrant_storage is not None,
+                        "user_documents": qdrant_count,
+                        "collection": self.qdrant_storage.collection_name if self.qdrant_storage else None
+                    },
+                    "elasticsearch": {
+                        "available": self.elasticsearch_client is not None,
+                        "user_documents": elasticsearch_count,
+                        "index": self.elasticsearch_client.index_name if self.elasticsearch_client else None
+                    }
+                },
+                "sync_consistency": {
+                    "elasticsearch_count": elasticsearch_count,
+                    "qdrant_count": qdrant_count
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération statut sync user {user_id}: {e}")
+            return {
+                "user_id": user_id,
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
+                "storage_status": {
+                    "qdrant": {"available": False, "error": "Status check failed"},
+                    "elasticsearch": {"available": False, "error": "Status check failed"}
+                }
+            }

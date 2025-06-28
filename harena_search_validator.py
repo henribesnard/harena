@@ -887,6 +887,7 @@ class HarenaSearchValidatorFixed:
                     
                     # Requête Qdrant corrigée avec test graduel
                     search_success = False
+                    final_result = None
                     
                     # 1. Test simple sans filtre d'abord
                     simple_search_body = {
@@ -935,7 +936,7 @@ class HarenaSearchValidatorFixed:
                                     # Analyser la pertinence sémantique
                                     relevance_score = self.analyze_enhanced_semantic_relevance(points, query_text, test_query)
                                     
-                                    result = {
+                                    final_result = {
                                         "query": query_text,
                                         "description": description,
                                         "search_type": search_type,
@@ -961,12 +962,9 @@ class HarenaSearchValidatorFixed:
                                         ]
                                     }
                                     
-                                    self.results["semantic_results"].append(result)
-                                    quality = result["quality_assessment"]
-                                    self.log("SUCCESS", f"   ✅ {len(points)} résultats, score max: {result['max_score']:.3f}, pertinence: {relevance_score:.1f}% ({quality}), temps: {response_time:.2f}s")
+                                    self.log("SUCCESS", f"   ✅ {len(points)} résultats, score max: {final_result['max_score']:.3f}, pertinence: {relevance_score:.1f}% ({final_result['quality_assessment']}), temps: {response_time:.2f}s")
                                 else:
-                                    # Erreur avec filtre, utiliser résultats simple
-                                    response_time = time.time() - start_time
+                                    # Erreur avec filtre, utiliser résultats simple avec filtrage manuel
                                     simple_data = await response.json()
                                     simple_points = simple_data.get("result", [])
                                     
@@ -977,9 +975,10 @@ class HarenaSearchValidatorFixed:
                                     ]
                                     
                                     if user_points:
+                                        search_success = True
                                         relevance_score = self.analyze_enhanced_semantic_relevance(user_points, query_text, test_query)
                                         
-                                        result = {
+                                        final_result = {
                                             "query": query_text,
                                             "description": description,
                                             "search_type": search_type,
@@ -1003,24 +1002,29 @@ class HarenaSearchValidatorFixed:
                                             ]
                                         }
                                         
-                                        self.results["semantic_results"].append(result)
-                                        quality = result["quality_assessment"]
-                                        self.log("SUCCESS", f"   ✅ {len(user_points)} résultats (filtrage manuel), score max: {result['max_score']:.3f}, pertinence: {relevance_score:.1f}% ({quality})")
-                        
-                        if not search_success:
+                                        self.log("SUCCESS", f"   ✅ {len(user_points)} résultats (filtrage manuel), score max: {final_result['max_score']:.3f}, pertinence: {relevance_score:.1f}% ({final_result['quality_assessment']})")
+                        else:
+                            # Première requête simple a échoué
                             response_time = time.time() - start_time
                             error_text = await response.text()
-                            error_result = {
-                                "query": query_text,
-                                "description": description,
-                                "search_type": search_type,
-                                "expected_results": expected_results,
-                                "success": False,
-                                "error": f"HTTP {response.status} - {error_text}",
-                                "response_time": response_time
-                            }
-                            self.results["semantic_results"].append(error_result)
-                            self.log("ERROR", f"   ❌ HTTP {response.status}")
+                            self.log("ERROR", f"   ❌ Requête simple échouée: HTTP {response.status}")
+                    
+                    # Traitement du résultat final
+                    if search_success and final_result:
+                        self.results["semantic_results"].append(final_result)
+                    else:
+                        # Créer un résultat d'erreur seulement s'il n'y a vraiment aucun succès
+                        error_result = {
+                            "query": query_text,
+                            "description": description,
+                            "search_type": search_type,
+                            "expected_results": expected_results,
+                            "success": False,
+                            "error": "Aucune requête Qdrant n'a réussi",
+                            "response_time": time.time() - start_time
+                        }
+                        self.results["semantic_results"].append(error_result)
+                        self.log("ERROR", f"   ❌ Échec complet de la recherche sémantique")
                 
                 except Exception as e:
                     error_result = {

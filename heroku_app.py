@@ -549,12 +549,23 @@ try:
             try:
                 from search_service.core.embeddings import EmbeddingManager
                 if os.environ.get("OPENAI_API_KEY"):
-                    embedding_manager = EmbeddingManager()
+                    # EmbeddingManager nécessite un primary_service
+                    embedding_manager = EmbeddingManager(primary_service="openai")
                     await embedding_manager.initialize()
                     initialization_result["details"]["components_initialized"]["embedding_manager"] = True
                     logger.info("✅ Embedding Manager initialisé")
             except Exception as e:
                 logger.warning(f"⚠️ Embedding manager initialization failed: {e}")
+            
+            # Query Processor
+            query_processor = None
+            try:
+                from search_service.core.query_processor import QueryProcessor
+                query_processor = QueryProcessor()
+                initialization_result["details"]["components_initialized"]["query_processor"] = True
+                logger.info("✅ Query Processor créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Query processor creation failed: {e}")
             
             # Moteurs de recherche
             lexical_engine = None
@@ -581,9 +592,17 @@ try:
             
             try:
                 from search_service.core.search_engine import HybridSearchEngine
+                from search_service.core.result_merger import ResultMerger
                 if lexical_engine and semantic_engine:
-                    hybrid_engine = HybridSearchEngine(lexical_engine, semantic_engine)
+                    # Créer un result merger
+                    result_merger = ResultMerger()
+                    hybrid_engine = HybridSearchEngine(
+                        lexical_engine=lexical_engine, 
+                        semantic_engine=semantic_engine,
+                        result_merger=result_merger
+                    )
                     initialization_result["details"]["components_initialized"]["hybrid_engine"] = True
+                    initialization_result["details"]["components_initialized"]["result_merger"] = True
                     logger.info("✅ Hybrid Engine créé")
             except Exception as e:
                 logger.warning(f"⚠️ Hybrid engine creation failed: {e}")
@@ -592,24 +611,29 @@ try:
             try:
                 import search_service.api.routes as routes
                 
-                # Injecter tous les composants
-                routes.elasticsearch_client = elasticsearch_client
-                routes.qdrant_client = qdrant_client
-                routes.embedding_manager = embedding_manager
-                routes.lexical_engine = lexical_engine
-                routes.semantic_engine = semantic_engine
-                routes.hybrid_engine = hybrid_engine
+                # Injecter tous les composants directement comme variables globales
+                if hasattr(routes, '__dict__'):
+                    routes.__dict__['elasticsearch_client'] = elasticsearch_client
+                    routes.__dict__['qdrant_client'] = qdrant_client
+                    routes.__dict__['embedding_manager'] = embedding_manager
+                    routes.__dict__['query_processor'] = query_processor
+                    routes.__dict__['lexical_engine'] = lexical_engine
+                    routes.__dict__['semantic_engine'] = semantic_engine
+                    routes.__dict__['hybrid_engine'] = hybrid_engine
                 
                 # Vérifier l'injection
-                injection_indicators = [
+                injection_count = sum([
                     elasticsearch_client is not None,
                     qdrant_client is not None,
                     embedding_manager is not None,
-                    lexical_engine is not None or semantic_engine is not None
-                ]
+                    query_processor is not None,
+                    lexical_engine is not None,
+                    semantic_engine is not None,
+                    hybrid_engine is not None
+                ])
                 
-                initialization_result["details"]["injection_successful"] = any(injection_indicators)
-                logger.info(f"✅ Injection Search Service: {sum(injection_indicators)}/4 composants injectés")
+                initialization_result["details"]["injection_successful"] = injection_count >= 3
+                logger.info(f"✅ Injection Search Service: {injection_count}/7 composants injectés")
                 
             except Exception as e:
                 logger.warning(f"⚠️ Search Service injection failed: {e}")
@@ -869,8 +893,9 @@ try:
         from search_service.api.routes import router as search_router
         if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 Recherche hybride lexicale + sémantique"):
             app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+            logger.info("✅ Search Service routes enregistrées")
     except Exception as e:
-        logger.error(f"❌ Search Service: {e}")
+        logger.error(f"❌ Search Service routes registration: {e}")
 
     # 5. Conversation Service
     try:

@@ -511,67 +511,109 @@ try:
             # Import des composants nécessaires du Search Service
             logger.info("📦 Import des composants Search Service...")
             
-            # 1. Tenter d'initialiser via le main.py du search service
+            # 1. Initialiser directement les clients avec les bons imports
+            elasticsearch_client = None
+            qdrant_client = None
+            embedding_manager = None
+            
+            # Client Elasticsearch
             try:
-                from search_service.main import create_search_app
-                
-                # Créer l'app search (qui va initialiser tous les composants)
-                search_app = create_search_app()
-                
-                # L'app contient maintenant tous les composants initialisés
-                logger.info("✅ Search Service app créée via main.py")
-                
-                # Vérifier les composants via l'état global du main.py
-                try:
-                    from search_service import main as search_main
-                    
-                    # Vérifier chaque composant
-                    initialization_result["details"]["components_initialized"]["elasticsearch_client"] = search_main.elasticsearch_client is not None
-                    initialization_result["details"]["components_initialized"]["qdrant_client"] = search_main.qdrant_client is not None
-                    initialization_result["details"]["components_initialized"]["embedding_manager"] = search_main.embedding_manager is not None
-                    initialization_result["details"]["components_initialized"]["query_processor"] = search_main.query_processor is not None
-                    initialization_result["details"]["components_initialized"]["lexical_engine"] = search_main.lexical_engine is not None
-                    initialization_result["details"]["components_initialized"]["semantic_engine"] = search_main.semantic_engine is not None
-                    initialization_result["details"]["components_initialized"]["hybrid_engine"] = search_main.hybrid_engine is not None
-                    
-                    logger.info("✅ Vérification des composants Search Service terminée")
-                    
-                    # Health check du hybrid engine si disponible
-                    if search_main.hybrid_engine:
-                        try:
-                            health = await search_main.hybrid_engine.health_check()
-                            initialization_result["details"]["health_checks"]["hybrid_engine"] = health
-                            logger.info("✅ Health check hybrid engine réussi")
-                        except Exception as e:
-                            logger.warning(f"⚠️ Health check hybrid engine failed: {e}")
-                            initialization_result["details"]["health_checks"]["hybrid_engine"] = {"status": "unhealthy", "error": str(e)}
-                    
-                    # Injection dans les routes (déjà fait par main.py normalement)
-                    try:
-                        import search_service.api.routes as routes
-                        
-                        # Vérifier que l'injection a eu lieu
-                        injection_indicators = [
-                            hasattr(routes, 'elasticsearch_client') and routes.elasticsearch_client is not None,
-                            hasattr(routes, 'qdrant_client') and routes.qdrant_client is not None,
-                            hasattr(routes, 'hybrid_engine') and routes.hybrid_engine is not None
-                        ]
-                        
-                        initialization_result["details"]["injection_successful"] = any(injection_indicators)
-                        logger.info(f"✅ Injection Search Service: {sum(injection_indicators)}/3 composants injectés")
-                        
-                    except Exception as e:
-                        logger.warning(f"⚠️ Search Service injection check failed: {e}")
-                
-                except Exception as e:
-                    logger.warning(f"⚠️ Search Service components check failed: {e}")
-                    # Fallback: marquer comme partiellement initialisé
+                from search_service.clients.elasticsearch_client import ElasticsearchClient
+                if os.environ.get("BONSAI_URL"):
+                    elasticsearch_client = ElasticsearchClient(
+                        bonsai_url=os.environ.get("BONSAI_URL"),
+                        index_name="harena_transactions"
+                    )
+                    await elasticsearch_client.start()
+                    initialization_result["details"]["components_initialized"]["elasticsearch_client"] = True
+                    logger.info("✅ Elasticsearch Client initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️ Elasticsearch client initialization failed: {e}")
+            
+            # Client Qdrant
+            try:
+                from search_service.clients.qdrant_client import QdrantClient
+                if os.environ.get("QDRANT_URL"):
+                    qdrant_client = QdrantClient(
+                        qdrant_url=os.environ.get("QDRANT_URL"),
+                        api_key=os.environ.get("QDRANT_API_KEY"),
+                        collection_name="financial_transactions"
+                    )
+                    await qdrant_client.start()
+                    initialization_result["details"]["components_initialized"]["qdrant_client"] = True
+                    logger.info("✅ Qdrant Client initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️ Qdrant client initialization failed: {e}")
+            
+            # Service d'embeddings
+            try:
+                from search_service.core.embeddings import EmbeddingManager
+                if os.environ.get("OPENAI_API_KEY"):
+                    embedding_manager = EmbeddingManager()
+                    await embedding_manager.initialize()
+                    initialization_result["details"]["components_initialized"]["embedding_manager"] = True
+                    logger.info("✅ Embedding Manager initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️ Embedding manager initialization failed: {e}")
+            
+            # Moteurs de recherche
+            lexical_engine = None
+            semantic_engine = None
+            hybrid_engine = None
+            
+            try:
+                from search_service.core.lexical_engine import LexicalSearchEngine
+                if elasticsearch_client:
+                    lexical_engine = LexicalSearchEngine(elasticsearch_client)
+                    initialization_result["details"]["components_initialized"]["lexical_engine"] = True
+                    logger.info("✅ Lexical Engine créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Lexical engine creation failed: {e}")
+            
+            try:
+                from search_service.core.semantic_engine import SemanticSearchEngine
+                if qdrant_client and embedding_manager:
+                    semantic_engine = SemanticSearchEngine(qdrant_client, embedding_manager)
+                    initialization_result["details"]["components_initialized"]["semantic_engine"] = True
+                    logger.info("✅ Semantic Engine créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Semantic engine creation failed: {e}")
+            
+            try:
+                from search_service.core.search_engine import HybridSearchEngine
+                if lexical_engine and semantic_engine:
+                    hybrid_engine = HybridSearchEngine(lexical_engine, semantic_engine)
                     initialization_result["details"]["components_initialized"]["hybrid_engine"] = True
-                    initialization_result["details"]["injection_successful"] = True
+                    logger.info("✅ Hybrid Engine créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Hybrid engine creation failed: {e}")
+            
+            # Injection dans les routes
+            try:
+                import search_service.api.routes as routes
+                
+                # Injecter tous les composants
+                routes.elasticsearch_client = elasticsearch_client
+                routes.qdrant_client = qdrant_client
+                routes.embedding_manager = embedding_manager
+                routes.lexical_engine = lexical_engine
+                routes.semantic_engine = semantic_engine
+                routes.hybrid_engine = hybrid_engine
+                
+                # Vérifier l'injection
+                injection_indicators = [
+                    elasticsearch_client is not None,
+                    qdrant_client is not None,
+                    embedding_manager is not None,
+                    lexical_engine is not None or semantic_engine is not None
+                ]
+                
+                initialization_result["details"]["injection_successful"] = any(injection_indicators)
+                logger.info(f"✅ Injection Search Service: {sum(injection_indicators)}/4 composants injectés")
                 
             except Exception as e:
-                logger.error(f"❌ Search Service main app creation failed: {e}")
-                initialization_result["error"] = f"Main app creation failed: {e}"
+                logger.warning(f"⚠️ Search Service injection failed: {e}")
+                initialization_result["error"] = f"Injection failed: {e}"
             
             # Déterminer le statut de santé
             critical_components = [

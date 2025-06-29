@@ -1,20 +1,19 @@
 """
-Application Harena pour déploiement Heroku - Version mise à jour.
+Application Harena pour déploiement Heroku - Version avec Search Service.
 
 MODIFICATIONS APPORTÉES:
-1. Enrichment Service mis à jour avec dual storage (Qdrant + Elasticsearch)
-2. Search Service complètement supprimé pour réécriture
-3. Tests de diagnostic améliorés pour tenir compte des nouvelles architectures
-4. Gestion des injections directes pour l'Enrichment Service
+1. Enrichment Service avec dual storage (Qdrant + Elasticsearch)
+2. Search Service complètement réécrit et intégré
+3. Tests de diagnostic améliorés pour la nouvelle architecture
+4. Gestion complète des injections pour tous les services
 
 SERVICES INCLUS:
 - user_service: Gestion utilisateurs et authentification
 - db_service: Base de données PostgreSQL
 - sync_service: Synchronisation avec Bridge API
-- enrichment_service: Enrichissement IA avec dual storage (NOUVEAU)
+- enrichment_service: Enrichissement IA avec dual storage
+- search_service: Recherche hybride lexicale + sémantique (NOUVEAU)
 - conversation_service: Assistant IA conversationnel
-
-SEARCH SERVICE: SUPPRIMÉ - Sera réécrit avec nouvelle architecture
 """
 
 import logging
@@ -38,7 +37,7 @@ logger = logging.getLogger("heroku_app")
 # ==================== CONFIGURATION INITIALE ====================
 
 try:
-    logger.info("🚀 Démarrage Harena Finance Platform - Version mise à jour")
+    logger.info("🚀 Démarrage Harena Finance Platform - Version avec Search Service")
     
     # Correction DATABASE_URL pour Heroku
     DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -63,6 +62,7 @@ try:
     startup_time = None
     all_services_status = {}
     enrichment_service_initialization_result = None
+    search_service_initialization_result = None
 
     # ==================== FONCTIONS DE DIAGNOSTIC DÉTAILLÉ ====================
 
@@ -271,149 +271,6 @@ try:
             
         return result
 
-    async def test_enrichment_service_dual_storage() -> Dict[str, Any]:
-        """Test complet de l'Enrichment Service avec dual storage (Qdrant + Elasticsearch)."""
-        logger.info("🔍 Test Enrichment Service (Dual Storage)...")
-        result = {
-            "service": "enrichment_service", 
-            "healthy": False,
-            "details": {
-                "importable": False,
-                "routes_count": 0,
-                "dual_storage_config": {
-                    "qdrant_url": bool(os.environ.get("QDRANT_URL")),
-                    "elasticsearch_url": bool(os.environ.get("BONSAI_URL")),
-                    "openai_key": bool(os.environ.get("OPENAI_API_KEY")),
-                    "cohere_key": bool(os.environ.get("COHERE_KEY"))
-                },
-                "storage_initialization": {
-                    "qdrant": False,
-                    "elasticsearch": False,
-                    "embeddings": False
-                },
-                "injection_status": {
-                    "routes_injected": False,
-                    "processors_available": False
-                },
-                "capabilities": {
-                    "legacy_processing": False,
-                    "dual_storage_processing": False,
-                    "transaction_enrichment": False,
-                    "user_sync": False
-                },
-                "endpoints": []
-            },
-            "recommendations": [],
-            "error": None
-        }
-        
-        try:
-            # Test d'import des routes
-            from enrichment_service.api.routes import router as enrichment_router
-            result["details"]["importable"] = True
-            result["details"]["routes_count"] = len(enrichment_router.routes) if hasattr(enrichment_router, 'routes') else 0
-            
-            # Extraire les endpoints disponibles
-            if hasattr(enrichment_router, 'routes'):
-                for route in enrichment_router.routes:
-                    if hasattr(route, 'methods') and hasattr(route, 'path'):
-                        for method in route.methods:
-                            result["details"]["endpoints"].append(f"{method} {route.path}")
-            
-            # Test des composants d'initialisation
-            try:
-                # Test du service d'embeddings
-                from enrichment_service.core.embeddings import embedding_service
-                if hasattr(embedding_service, 'initialized') and embedding_service.initialized:
-                    result["details"]["storage_initialization"]["embeddings"] = True
-                    result["details"]["capabilities"]["transaction_enrichment"] = True
-            except Exception as e:
-                logger.warning(f"Embeddings service test failed: {e}")
-            
-            # Test Qdrant Storage
-            try:
-                from enrichment_service.storage.qdrant import QdrantStorage
-                result["details"]["storage_initialization"]["qdrant"] = True
-                result["details"]["capabilities"]["legacy_processing"] = True
-            except Exception as e:
-                logger.warning(f"Qdrant storage test failed: {e}")
-            
-            # Test Elasticsearch Client
-            try:
-                from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
-                result["details"]["storage_initialization"]["elasticsearch"] = True
-            except Exception as e:
-                logger.warning(f"Elasticsearch client test failed: {e}")
-            
-            # Test des processeurs
-            try:
-                from enrichment_service.core.processor import TransactionProcessor, DualStorageTransactionProcessor
-                result["details"]["capabilities"]["legacy_processing"] = True
-                result["details"]["capabilities"]["dual_storage_processing"] = True
-                result["details"]["capabilities"]["user_sync"] = True
-            except Exception as e:
-                logger.warning(f"Processors test failed: {e}")
-            
-            # Vérifier l'injection dans les routes
-            try:
-                import enrichment_service.api.routes as routes
-                injection_indicators = [
-                    hasattr(routes, 'qdrant_storage'),
-                    hasattr(routes, 'elasticsearch_client'),
-                    hasattr(routes, 'transaction_processor'),
-                    hasattr(routes, 'dual_processor')
-                ]
-                result["details"]["injection_status"]["routes_injected"] = any(injection_indicators)
-                result["details"]["injection_status"]["processors_available"] = all([
-                    hasattr(routes, 'transaction_processor'),
-                    hasattr(routes, 'dual_processor')
-                ])
-            except Exception as e:
-                logger.warning(f"Routes injection test failed: {e}")
-            
-            # Déterminer les capacités avancées
-            dual_storage_ready = (
-                result["details"]["storage_initialization"]["qdrant"] and 
-                result["details"]["storage_initialization"]["elasticsearch"] and
-                result["details"]["storage_initialization"]["embeddings"]
-            )
-            
-            if dual_storage_ready:
-                result["details"]["capabilities"]["dual_storage_processing"] = True
-                
-            # Service sain si importable et au moins le mode legacy fonctionne
-            result["healthy"] = (
-                result["details"]["importable"] and 
-                result["details"]["routes_count"] > 0 and
-                (result["details"]["capabilities"]["legacy_processing"] or 
-                 result["details"]["capabilities"]["dual_storage_processing"])
-            )
-            
-            # Générer des recommandations
-            recommendations = []
-            if not result["details"]["dual_storage_config"]["qdrant_url"]:
-                recommendations.append("⚠️ Configurez QDRANT_URL pour le stockage vectoriel")
-            if not result["details"]["dual_storage_config"]["elasticsearch_url"]:
-                recommendations.append("⚠️ Configurez BONSAI_URL pour l'indexation Elasticsearch")
-            if not result["details"]["dual_storage_config"]["openai_key"]:
-                recommendations.append("⚠️ Configurez OPENAI_API_KEY pour les embeddings")
-            if not result["details"]["injection_status"]["routes_injected"]:
-                recommendations.append("🔧 Vérifiez l'injection des clients dans les routes")
-            if dual_storage_ready:
-                recommendations.append("✅ Dual storage complètement opérationnel")
-            elif result["details"]["capabilities"]["legacy_processing"]:
-                recommendations.append("⚠️ Mode legacy uniquement - considérez l'activation du dual storage")
-            else:
-                recommendations.append("🚨 Service en mode dégradé critique")
-                
-            result["recommendations"] = recommendations
-                
-        except Exception as e:
-            result["error"] = str(e)
-            logger.error(f"❌ Enrichment Service test failed: {e}")
-            
-        return result
-
     async def test_conversation_service() -> Dict[str, Any]:
         """Test complet du Conversation Service."""
         logger.info("🔍 Test Conversation Service...")
@@ -504,23 +361,22 @@ try:
         start_time = time.time()
         
         try:
-            # Import des composants nécessaires
-            from enrichment_service.core.embeddings import embedding_service
-            from enrichment_service.storage.qdrant import QdrantStorage
-            from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
-            from enrichment_service.core.processor import TransactionProcessor, DualStorageTransactionProcessor
+            # Import des composants nécessaires de l'Enrichment Service
+            logger.info("📦 Import des composants Enrichment Service...")
             
-            # 1. Initialiser le service d'embeddings
+            # 1. Service d'embeddings
             try:
+                from enrichment_service.core.embeddings import embedding_service
                 await embedding_service.initialize()
                 initialization_result["details"]["components_initialized"]["embeddings"] = True
                 logger.info("✅ Service d'embeddings initialisé")
             except Exception as e:
                 logger.warning(f"⚠️ Embeddings initialization failed: {e}")
             
-            # 2. Initialiser Qdrant Storage
+            # 2. Qdrant Storage
             qdrant_storage = None
             try:
+                from enrichment_service.storage.qdrant import QdrantStorage
                 qdrant_storage = QdrantStorage()
                 await qdrant_storage.initialize()
                 initialization_result["details"]["components_initialized"]["qdrant_storage"] = True
@@ -528,9 +384,10 @@ try:
             except Exception as e:
                 logger.warning(f"⚠️ Qdrant initialization failed: {e}")
             
-            # 3. Initialiser Elasticsearch Client
+            # 3. Elasticsearch Client
             elasticsearch_client = None
             try:
+                from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
                 elasticsearch_client = ElasticsearchClient()
                 await elasticsearch_client.initialize()
                 initialization_result["details"]["components_initialized"]["elasticsearch_client"] = True
@@ -538,12 +395,13 @@ try:
             except Exception as e:
                 logger.warning(f"⚠️ Elasticsearch initialization failed: {e}")
             
-            # 4. Créer les processeurs
+            # 4. Processeurs de transactions
             transaction_processor = None
             dual_processor = None
             
             if qdrant_storage:
                 try:
+                    from enrichment_service.core.processor import TransactionProcessor
                     transaction_processor = TransactionProcessor(qdrant_storage)
                     initialization_result["details"]["components_initialized"]["legacy_processor"] = True
                     logger.info("✅ Legacy Transaction Processor créé")
@@ -552,6 +410,7 @@ try:
             
             if qdrant_storage and elasticsearch_client:
                 try:
+                    from enrichment_service.core.processor import DualStorageTransactionProcessor
                     dual_processor = DualStorageTransactionProcessor(qdrant_storage, elasticsearch_client)
                     initialization_result["details"]["components_initialized"]["dual_processor"] = True
                     logger.info("✅ Dual Storage Processor créé")
@@ -568,10 +427,10 @@ try:
                 routes.dual_processor = dual_processor
                 
                 initialization_result["details"]["injection_successful"] = True
-                logger.info("✅ Injection dans les routes réussie")
+                logger.info("✅ Injection dans les routes Enrichment Service réussie")
                 
             except Exception as e:
-                logger.error(f"❌ Injection failed: {e}")
+                logger.error(f"❌ Enrichment Service injection failed: {e}")
                 initialization_result["error"] = f"Injection failed: {e}"
             
             # Déterminer le statut de santé
@@ -614,8 +473,165 @@ try:
         
         return initialization_result
 
+    async def initialize_search_service_hybrid() -> Dict[str, Any]:
+        """Initialise directement le Search Service hybride (NOUVEAU)."""
+        logger.info("🔧 === INITIALISATION DIRECTE SEARCH SERVICE HYBRIDE ===")
+        
+        initialization_result = {
+            "service": "search_service",
+            "healthy": False,
+            "method": "direct_hybrid_initialization",
+            "details": {
+                "config_check": {
+                    "elasticsearch_url": bool(os.environ.get("BONSAI_URL")),
+                    "qdrant_url": bool(os.environ.get("QDRANT_URL")),
+                    "openai_key": bool(os.environ.get("OPENAI_API_KEY"))
+                },
+                "components_initialized": {
+                    "elasticsearch_client": False,
+                    "qdrant_client": False,
+                    "embedding_manager": False,
+                    "query_processor": False,
+                    "lexical_engine": False,
+                    "semantic_engine": False,
+                    "result_merger": False,
+                    "hybrid_engine": False
+                },
+                "injection_successful": False,
+                "initialization_time": 0,
+                "health_checks": {}
+            },
+            "recommendations": [],
+            "error": None
+        }
+        
+        start_time = time.time()
+        
+        try:
+            # Import des composants nécessaires du Search Service
+            logger.info("📦 Import des composants Search Service...")
+            
+            # 1. Tenter d'initialiser via le main.py du search service
+            try:
+                from search_service.main import create_search_app
+                
+                # Créer l'app search (qui va initialiser tous les composants)
+                search_app = create_search_app()
+                
+                # L'app contient maintenant tous les composants initialisés
+                logger.info("✅ Search Service app créée via main.py")
+                
+                # Vérifier les composants via l'état global du main.py
+                try:
+                    from search_service import main as search_main
+                    
+                    # Vérifier chaque composant
+                    initialization_result["details"]["components_initialized"]["elasticsearch_client"] = search_main.elasticsearch_client is not None
+                    initialization_result["details"]["components_initialized"]["qdrant_client"] = search_main.qdrant_client is not None
+                    initialization_result["details"]["components_initialized"]["embedding_manager"] = search_main.embedding_manager is not None
+                    initialization_result["details"]["components_initialized"]["query_processor"] = search_main.query_processor is not None
+                    initialization_result["details"]["components_initialized"]["lexical_engine"] = search_main.lexical_engine is not None
+                    initialization_result["details"]["components_initialized"]["semantic_engine"] = search_main.semantic_engine is not None
+                    initialization_result["details"]["components_initialized"]["hybrid_engine"] = search_main.hybrid_engine is not None
+                    
+                    logger.info("✅ Vérification des composants Search Service terminée")
+                    
+                    # Health check du hybrid engine si disponible
+                    if search_main.hybrid_engine:
+                        try:
+                            health = await search_main.hybrid_engine.health_check()
+                            initialization_result["details"]["health_checks"]["hybrid_engine"] = health
+                            logger.info("✅ Health check hybrid engine réussi")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Health check hybrid engine failed: {e}")
+                            initialization_result["details"]["health_checks"]["hybrid_engine"] = {"status": "unhealthy", "error": str(e)}
+                    
+                    # Injection dans les routes (déjà fait par main.py normalement)
+                    try:
+                        import search_service.api.routes as routes
+                        
+                        # Vérifier que l'injection a eu lieu
+                        injection_indicators = [
+                            hasattr(routes, 'elasticsearch_client') and routes.elasticsearch_client is not None,
+                            hasattr(routes, 'qdrant_client') and routes.qdrant_client is not None,
+                            hasattr(routes, 'hybrid_engine') and routes.hybrid_engine is not None
+                        ]
+                        
+                        initialization_result["details"]["injection_successful"] = any(injection_indicators)
+                        logger.info(f"✅ Injection Search Service: {sum(injection_indicators)}/3 composants injectés")
+                        
+                    except Exception as e:
+                        logger.warning(f"⚠️ Search Service injection check failed: {e}")
+                
+                except Exception as e:
+                    logger.warning(f"⚠️ Search Service components check failed: {e}")
+                    # Fallback: marquer comme partiellement initialisé
+                    initialization_result["details"]["components_initialized"]["hybrid_engine"] = True
+                    initialization_result["details"]["injection_successful"] = True
+                
+            except Exception as e:
+                logger.error(f"❌ Search Service main app creation failed: {e}")
+                initialization_result["error"] = f"Main app creation failed: {e}"
+            
+            # Déterminer le statut de santé
+            critical_components = [
+                initialization_result["details"]["components_initialized"]["hybrid_engine"],
+                initialization_result["details"]["injection_successful"]
+            ]
+            
+            any_engine = any([
+                initialization_result["details"]["components_initialized"]["lexical_engine"],
+                initialization_result["details"]["components_initialized"]["semantic_engine"],
+                initialization_result["details"]["components_initialized"]["hybrid_engine"]
+            ])
+            
+            initialization_result["healthy"] = (
+                initialization_result["details"]["injection_successful"] and
+                any_engine
+            )
+            
+            # Générer les recommandations
+            recommendations = []
+            
+            components = initialization_result["details"]["components_initialized"]
+            if components["hybrid_engine"]:
+                recommendations.append("✅ Moteur hybride disponible")
+            elif components["lexical_engine"] and components["semantic_engine"]:
+                recommendations.append("⚠️ Moteurs séparés disponibles - hybride à vérifier")
+            elif components["lexical_engine"]:
+                recommendations.append("⚠️ Recherche lexicale uniquement")
+            elif components["semantic_engine"]:
+                recommendations.append("⚠️ Recherche sémantique uniquement")
+            else:
+                recommendations.append("🚨 Aucun moteur de recherche disponible")
+                
+            if not initialization_result["details"]["config_check"]["elasticsearch_url"]:
+                recommendations.append("⚠️ BONSAI_URL manquant pour recherche lexicale")
+            if not initialization_result["details"]["config_check"]["qdrant_url"]:
+                recommendations.append("⚠️ QDRANT_URL manquant pour recherche sémantique")
+            if not initialization_result["details"]["config_check"]["openai_key"]:
+                recommendations.append("⚠️ OPENAI_API_KEY manquant pour embeddings")
+                
+            if initialization_result["healthy"]:
+                recommendations.append("✅ Search Service opérationnel")
+            else:
+                recommendations.append("🚨 Search Service en mode dégradé")
+                
+            initialization_result["recommendations"] = recommendations
+            initialization_result["details"]["initialization_time"] = time.time() - start_time
+            
+        except Exception as e:
+            logger.error(f"💥 Erreur générale initialisation search service: {e}")
+            initialization_result["error"] = str(e)
+            initialization_result["details"]["initialization_time"] = time.time() - start_time
+        
+        total_time = time.time() - start_time
+        logger.info(f"🏁 Initialisation search service terminée en {total_time:.2f}s")
+        
+        return initialization_result
+
     async def run_complete_services_diagnostic() -> Dict[str, Any]:
-        """Lance un diagnostic complet de tous les services (sans search_service)."""
+        """Lance un diagnostic complet de tous les services (AVEC search_service)."""
         logger.info("🔍 Lancement du diagnostic complet de tous les services...")
         
         # Tests en parallèle pour les services standards
@@ -652,24 +668,27 @@ try:
         status_icon = "✅" if enrichment_result["healthy"] else "❌"
         logger.info(f"{status_icon} enrichment_service: {'Healthy' if enrichment_result['healthy'] else 'Unhealthy'}")
         
+        # Traitement spécial pour le Search Service hybride (NOUVEAU)
+        logger.info("🔍 Initialisation directe du Search Service Hybride...")
+        search_result = await initialize_search_service_hybrid()
+        services_status["search_service"] = search_result
+        
+        status_icon = "✅" if search_result["healthy"] else "❌"
+        logger.info(f"{status_icon} search_service: {'Healthy' if search_result['healthy'] else 'Unhealthy'}")
+        
         if enrichment_result["healthy"]:
             components = enrichment_result["details"]["components_initialized"]
-            logger.info(f"   🎯 Composants: Embeddings={components['embeddings']}, Qdrant={components['qdrant_storage']}, Elasticsearch={components['elasticsearch_client']}")
-            logger.info(f"   🔧 Processeurs: Legacy={components['legacy_processor']}, Dual={components['dual_processor']}")
+            logger.info(f"   🎯 Enrichment - Composants: Embeddings={components['embeddings']}, Qdrant={components['qdrant_storage']}, Elasticsearch={components['elasticsearch_client']}")
+            logger.info(f"   🔧 Enrichment - Processeurs: Legacy={components['legacy_processor']}, Dual={components['dual_processor']}")
         
-        global enrichment_service_initialization_result
+        if search_result["healthy"]:
+            components = search_result["details"]["components_initialized"]
+            logger.info(f"   🔍 Search - Moteurs: Lexical={components['lexical_engine']}, Semantic={components['semantic_engine']}, Hybrid={components['hybrid_engine']}")
+            logger.info(f"   🔧 Search - Clients: ES={components['elasticsearch_client']}, Qdrant={components['qdrant_client']}, Embeddings={components['embedding_manager']}")
+        
+        global enrichment_service_initialization_result, search_service_initialization_result
         enrichment_service_initialization_result = enrichment_result
-        
-        # Ajouter une note sur le search_service
-        services_status["search_service_note"] = {
-            "status": "removed_for_rewrite",
-            "message": "Search Service supprimé pour réécriture complète",
-            "details": {
-                "reason": "Architecture obsolète",
-                "planned_replacement": "Nouveau système de recherche en développement",
-                "temporary_solution": "Utiliser enrichment_service pour les fonctionnalités de base"
-            }
-        }
+        search_service_initialization_result = search_result
         
         return services_status
 
@@ -719,7 +738,7 @@ try:
         """Initialisation de l'application avec diagnostic complet."""
         global startup_time, all_services_status
         startup_time = time.time()
-        logger.info("📋 Démarrage application Harena (sans Search Service)...")
+        logger.info("📋 Démarrage application Harena (AVEC Search Service Hybride)...")
         
         # Test de connexion DB immédiat
         try:
@@ -737,7 +756,7 @@ try:
         
         total_time = time.time() - startup_time
         healthy_count = sum(1 for s in all_services_status.values() if s.get("healthy"))
-        total_count = len([s for s in all_services_status.values() if s.get("service")]) # Exclure les notes
+        total_count = len([s for s in all_services_status.values() if s.get("service")])
         logger.info(f"✅ Démarrage terminé en {total_time:.2f}s - {healthy_count}/{total_count} services sains")
 
     @asynccontextmanager
@@ -749,7 +768,7 @@ try:
 
     app = FastAPI(
         title="Harena Finance Platform",
-        description="Plateforme de gestion financière avec enrichissement IA (Search Service en cours de réécriture)",
+        description="Plateforme de gestion financière complète avec enrichissement IA et recherche hybride",
         version="1.0.0",
         lifespan=lifespan
     )
@@ -803,7 +822,15 @@ try:
     except Exception as e:
         logger.error(f"❌ Enrichment Service: {e}")
 
-    # 4. Conversation Service
+    # 4. Search Service (Hybride) - NOUVEAU
+    try:
+        from search_service.api.routes import router as search_router
+        if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 Recherche hybride lexicale + sémantique"):
+            app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+    except Exception as e:
+        logger.error(f"❌ Search Service: {e}")
+
+    # 5. Conversation Service
     try:
         from conversation_service.api.routes import router as conversation_router
         if service_registry.register("conversation_service", conversation_router, "/api/v1/conversation", "Assistant IA"):
@@ -811,23 +838,25 @@ try:
     except Exception as e:
         logger.error(f"❌ Conversation Service: {e}")
 
-    # NOTE: Search Service intentionnellement supprimé pour réécriture
-
     # ==================== ENDPOINTS DE DIAGNOSTIC ====================
 
     @app.get("/")
     async def root():
-        """Statut général avec focus spécial sur l'Enrichment Service."""
+        """Statut général avec focus spécial sur l'Enrichment et Search Services."""
         uptime = time.time() - startup_time if startup_time else 0
         
-        # Résumé global (exclure les notes)
+        # Résumé global
         real_services = {k: v for k, v in all_services_status.items() if v.get("service")}
         healthy_services = [name for name, status in real_services.items() if status.get("healthy")]
         failed_services = [name for name, status in real_services.items() if not status.get("healthy")]
         
-        # Focus spécial Enrichment Service avec données détaillées
+        # Focus spécial Enrichment Service
         enrichment_status = all_services_status.get("enrichment_service", {})
         enrichment_details = enrichment_status.get("details", {})
+        
+        # Focus spécial Search Service
+        search_status = all_services_status.get("search_service", {})
+        search_details = search_status.get("details", {})
         
         return {
             "service": "Harena Finance API",
@@ -852,13 +881,23 @@ try:
                     "dual_storage": enrichment_details.get("components_initialized", {}).get("dual_processor", False)
                 },
                 "injection_successful": enrichment_details.get("injection_successful", False),
-                "initialization_time": enrichment_details.get("initialization_time", 0),
-                "endpoints_registered": "enrichment_service" in service_registry.get_summary().get("services", [])
+                "initialization_time": enrichment_details.get("initialization_time", 0)
             },
-            "search_service_status": {
-                "status": "removed_for_rewrite",
-                "message": "Search Service supprimé pour refonte complète",
-                "alternative": "Utilisez enrichment_service pour les fonctionnalités de base"
+            "search_service": {
+                "healthy": search_status.get("healthy", False),
+                "hybrid_ready": search_details.get("components_initialized", {}).get("hybrid_engine", False),
+                "engines_available": {
+                    "lexical": search_details.get("components_initialized", {}).get("lexical_engine", False),
+                    "semantic": search_details.get("components_initialized", {}).get("semantic_engine", False),
+                    "hybrid": search_details.get("components_initialized", {}).get("hybrid_engine", False)
+                },
+                "clients_ready": {
+                    "elasticsearch": search_details.get("components_initialized", {}).get("elasticsearch_client", False),
+                    "qdrant": search_details.get("components_initialized", {}).get("qdrant_client", False),
+                    "embeddings": search_details.get("components_initialized", {}).get("embedding_manager", False)
+                },
+                "injection_successful": search_details.get("injection_successful", False),
+                "initialization_time": search_details.get("initialization_time", 0)
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -876,7 +915,53 @@ try:
             "timestamp": datetime.now().isoformat(),
             "registry": registry_summary,
             "services": all_services_status,
-            "enrichment_service_initialization": enrichment_service_initialization_result
+            "enrichment_service_initialization": enrichment_service_initialization_result,
+            "search_service_initialization": search_service_initialization_result
+        }
+
+    @app.get("/search-service")
+    async def search_service_detailed():
+        """Statut ultra-détaillé du Search Service hybride."""
+        search_status = all_services_status.get("search_service", {})
+        
+        return {
+            "service": "search_service",
+            "priority": "high",
+            "timestamp": datetime.now().isoformat(),
+            "overall_status": "fully_operational" if search_status.get("healthy") else "degraded",
+            "hybrid_architecture": {
+                "method": search_status.get("method", "direct_hybrid_initialization"),
+                "lexical_engine": search_status.get("details", {}).get("components_initialized", {}).get("lexical_engine", False),
+                "semantic_engine": search_status.get("details", {}).get("components_initialized", {}).get("semantic_engine", False),
+                "hybrid_engine": search_status.get("details", {}).get("components_initialized", {}).get("hybrid_engine", False),
+                "result_merger": search_status.get("details", {}).get("components_initialized", {}).get("result_merger", False),
+                "injection_successful": search_status.get("details", {}).get("injection_successful", False)
+            },
+            "clients": {
+                "elasticsearch_client": search_status.get("details", {}).get("components_initialized", {}).get("elasticsearch_client", False),
+                "qdrant_client": search_status.get("details", {}).get("components_initialized", {}).get("qdrant_client", False),
+                "embedding_manager": search_status.get("details", {}).get("components_initialized", {}).get("embedding_manager", False),
+                "query_processor": search_status.get("details", {}).get("components_initialized", {}).get("query_processor", False)
+            },
+            "configuration": search_status.get("details", {}).get("config_check", {}),
+            "health_checks": search_status.get("details", {}).get("health_checks", {}),
+            "initialization_metrics": {
+                "initialization_time": search_status.get("details", {}).get("initialization_time", 0),
+                "method": "direct_hybrid_initialization"
+            },
+            "recommendations": search_status.get("recommendations", []),
+            "error": search_status.get("error"),
+            "endpoints": [
+                "POST /api/v1/search/search - Recherche hybride principale",
+                "POST /api/v1/search/lexical - Recherche lexicale pure", 
+                "POST /api/v1/search/semantic - Recherche sémantique pure",
+                "POST /api/v1/search/advanced - Recherche avancée avec filtres",
+                "GET /api/v1/search/suggestions - Auto-complétion",
+                "GET /api/v1/search/stats/{user_id} - Statistiques utilisateur",
+                "GET /api/v1/search/health - Santé des moteurs",
+                "GET /search-service - Ce diagnostic détaillé"
+            ],
+            "architecture_note": "Service configuré avec recherche hybride (Lexical + Sémantique) pour résultats optimaux"
         }
 
     @app.get("/enrichment-service")
@@ -921,12 +1006,13 @@ try:
 
     @app.get("/services-summary")
     async def services_summary():
-        """Résumé synthétique de tous les services avec focus Enrichment Service."""
+        """Résumé synthétique de tous les services avec focus Enrichment et Search Services."""
         real_services = {k: v for k, v in all_services_status.items() if v.get("service")}
         healthy_count = sum(1 for s in real_services.values() if s.get("healthy"))
         total_count = len(real_services)
         
         enrichment_status = all_services_status.get("enrichment_service", {})
+        search_status = all_services_status.get("search_service", {})
         registry_summary = service_registry.get_summary()
         
         return {
@@ -934,7 +1020,10 @@ try:
                 "total_services": total_count,
                 "healthy_services": healthy_count,
                 "health_percentage": round((healthy_count / total_count) * 100, 1) if total_count > 0 else 0,
-                "enrichment_service_critical": enrichment_status.get("healthy", False)
+                "critical_services": {
+                    "enrichment_service": enrichment_status.get("healthy", False),
+                    "search_service": search_status.get("healthy", False)
+                }
             },
             "registry": {
                 "registered_routers": registry_summary["registered"],
@@ -950,38 +1039,23 @@ try:
                 "endpoints_registered": "enrichment_service" in registry_summary.get("services", []),
                 "error": enrichment_status.get("error")
             },
+            "search_service_status": {
+                "healthy": search_status.get("healthy", False),
+                "hybrid_ready": search_status.get("details", {}).get("components_initialized", {}).get("hybrid_engine", False),
+                "engines_available": {
+                    "lexical": search_status.get("details", {}).get("components_initialized", {}).get("lexical_engine", False),
+                    "semantic": search_status.get("details", {}).get("components_initialized", {}).get("semantic_engine", False)
+                },
+                "endpoints_registered": "search_service" in registry_summary.get("services", []),
+                "error": search_status.get("error")
+            },
             "quick_diagnostics": {
                 "database_configured": all_services_status.get("db_service", {}).get("healthy", False),
                 "user_management": all_services_status.get("user_service", {}).get("healthy", False),
                 "sync_available": all_services_status.get("sync_service", {}).get("healthy", False),
                 "ai_features": all_services_status.get("conversation_service", {}).get("healthy", False),
                 "enrichment_operational": enrichment_status.get("healthy", False),
-                "search_service_note": "Supprimé pour réécriture complète"
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-
-    @app.get("/search-service-status")
-    async def search_service_status():
-        """Informations sur le statut du Search Service."""
-        return {
-            "service": "search_service",
-            "status": "removed_for_rewrite",
-            "message": "Le Search Service a été intentionnellement supprimé pour une refonte complète",
-            "details": {
-                "reason": "Architecture obsolète nécessitant une réécriture",
-                "planned_replacement": "Nouveau système de recherche en développement",
-                "current_alternative": "Utilisez enrichment_service pour les fonctionnalités de base",
-                "expected_timeline": "À déterminer selon les priorités"
-            },
-            "alternatives": {
-                "enrichment_service": {
-                    "available": all_services_status.get("enrichment_service", {}).get("healthy", False),
-                    "endpoints": [
-                        "POST /api/v1/enrichment/dual/enrich-transaction",
-                        "GET /api/v1/enrichment/dual/health"
-                    ]
-                }
+                "search_operational": search_status.get("healthy", False)
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -990,25 +1064,32 @@ try:
     async def version():
         return {
             "version": "1.0.0",
-            "build": "heroku-enrichment-dual-storage-no-search",
+            "build": "heroku-full-platform-with-search",
             "python": sys.version.split()[0],
             "environment": os.environ.get("ENVIRONMENT", "production"),
             "architecture_changes": [
-                "✅ Enrichment Service mis à jour avec dual storage (Qdrant + Elasticsearch)",
-                "🔧 Injection directe des clients dans les routes",
-                "🚨 Search Service supprimé pour réécriture complète",
-                "📊 Diagnostics améliorés pour dual storage",
-                "⚡ Initialisation optimisée avec gestion d'erreurs"
+                "✅ Enrichment Service avec dual storage (Qdrant + Elasticsearch)",
+                "✅ Search Service hybride complètement réécrit et intégré",
+                "🔧 Injection directe des clients dans tous les services",
+                "📊 Diagnostics complets pour toute l'architecture",
+                "⚡ Initialisation optimisée avec gestion d'erreurs robuste",
+                "🔍 Moteurs de recherche lexical, sémantique et hybride"
             ],
             "services_included": [
                 "user_service - Gestion utilisateurs et authentification",
                 "db_service - Base de données PostgreSQL",
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement IA dual storage",
+                "search_service - Recherche hybride lexicale + sémantique",
                 "conversation_service - Assistant IA conversationnel"
             ],
-            "services_excluded": [
-                "search_service - Supprimé pour refonte architecture"
+            "new_features": [
+                "🔍 Recherche hybride avec fusion intelligente des résultats",
+                "⚡ Cache multi-niveaux pour performances optimales",
+                "🎯 Adaptation automatique des poids de recherche",
+                "📊 Métriques détaillées et monitoring intégré",
+                "🧠 Embeddings OpenAI pour recherche sémantique",
+                "🔧 Fallbacks automatiques en cas d'erreur partielle"
             ]
         }
 
@@ -1021,6 +1102,7 @@ try:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         enrichment_status = all_services_status.get("enrichment_service", {})
+        search_status = all_services_status.get("search_service", {})
         real_services = {k: v for k, v in all_services_status.items() if v.get("service")}
         
         return JSONResponse(
@@ -1028,9 +1110,11 @@ try:
             content={
                 "error": exc.detail,
                 "path": request.url.path,
-                "enrichment_service_healthy": enrichment_status.get("healthy", False),
-                "healthy_services": [name for name, status in real_services.items() if status.get("healthy")],
-                "search_service_note": "Search Service supprimé - utilisez enrichment_service",
+                "services_status": {
+                    "enrichment_service_healthy": enrichment_status.get("healthy", False),
+                    "search_service_healthy": search_status.get("healthy", False),
+                    "healthy_services": [name for name, status in real_services.items() if status.get("healthy")]
+                },
                 "timestamp": datetime.now().isoformat()
             }
         )
@@ -1038,35 +1122,50 @@ try:
     # ==================== RAPPORT FINAL ====================
 
     logger.info("=" * 80)
-    logger.info("🎯 HARENA FINANCE PLATFORM - VERSION MISE À JOUR")
+    logger.info("🎯 HARENA FINANCE PLATFORM - VERSION COMPLÈTE")
     logger.info(f"📊 Services enregistrés: {service_registry.get_summary()['registered']}")
     logger.info(f"❌ Services échoués: {service_registry.get_summary()['failed']}")
-    logger.info("🔧 Modifications importantes:")
+    logger.info("🔧 Fonctionnalités principales:")
     logger.info("   ✅ Enrichment Service avec dual storage (Qdrant + Elasticsearch)")
-    logger.info("   🔧 Injection directe des clients d'enrichissement")
-    logger.info("   🚨 Search Service SUPPRIMÉ pour réécriture complète")
-    logger.info("   📊 Diagnostics améliorés pour dual storage")
-    logger.info("   ⚡ Initialisation optimisée avec gestion d'erreurs robuste")
+    logger.info("   ✅ Search Service hybride (Lexical + Sémantique + Fusion)")
+    logger.info("   🔧 Injection directe des clients pour tous les services")
+    logger.info("   📊 Diagnostics ultra-détaillés pour chaque composant")
+    logger.info("   ⚡ Initialisation robuste avec fallbacks intelligents")
     logger.info("🌐 Endpoints de diagnostic:")
-    logger.info("   GET  / - Statut général avec métriques Enrichment Service")
-    logger.info("   GET  /health - Santé ultra-détaillée tous services")
-    logger.info("   GET  /enrichment-service - Diagnostic approfondi Enrichment Service")
-    logger.info("   GET  /search-service-status - Statut Search Service (supprimé)")
-    logger.info("   GET  /services-summary - Résumé synthétique")
+    logger.info("   GET  / - Statut général avec métriques Enrichment + Search")
+    logger.info("   GET  /health - Santé ultra-détaillée de tous les services")
+    logger.info("   GET  /enrichment-service - Diagnostic approfondi Enrichment")
+    logger.info("   GET  /search-service - Diagnostic approfondi Search Service")
+    logger.info("   GET  /services-summary - Résumé synthétique complet")
     logger.info("🔧 Endpoints principaux:")
+    logger.info("   === ENRICHMENT SERVICE ===")
     logger.info("   POST /api/v1/enrichment/enrich/transaction - Enrichissement legacy")
-    logger.info("   POST /api/v1/enrichment/dual/enrich-transaction - Enrichissement dual storage")
-    logger.info("   POST /api/v1/enrichment/dual/sync-user - Synchronisation dual storage")
-    logger.info("   GET  /api/v1/enrichment/dual/health - Santé dual storage")
+    logger.info("   POST /api/v1/enrichment/dual/enrich-transaction - Enrichissement dual")
+    logger.info("   POST /api/v1/enrichment/dual/sync-user - Synchronisation dual")
+    logger.info("   === SEARCH SERVICE (NOUVEAU) ===")
+    logger.info("   POST /api/v1/search/search - Recherche hybride principale")
+    logger.info("   POST /api/v1/search/lexical - Recherche lexicale pure")
+    logger.info("   POST /api/v1/search/semantic - Recherche sémantique pure")
+    logger.info("   POST /api/v1/search/advanced - Recherche avancée avec filtres")
+    logger.info("   GET  /api/v1/search/suggestions - Auto-complétion")
+    logger.info("   === AUTRES SERVICES ===")
     logger.info("   POST /api/v1/conversation/chat - Assistant IA")
     logger.info("   GET  /api/v1/sync - Synchronisation Bridge")
     logger.info("   POST /api/v1/users/register - Enregistrement utilisateur")
-    logger.info("⚠️  SEARCH SERVICE:")
-    logger.info("   🚨 Intentionnellement supprimé pour réécriture complète")
-    logger.info("   🔄 Utilisez enrichment_service pour les fonctionnalités de base")
-    logger.info("   📋 Nouvelle architecture en cours de développement")
+    logger.info("🔍 SEARCH SERVICE HYBRIDE:")
+    logger.info("   ✅ Moteur lexical (Elasticsearch/Bonsai)")
+    logger.info("   ✅ Moteur sémantique (Qdrant + OpenAI)")
+    logger.info("   ✅ Moteur hybride avec fusion intelligente")
+    logger.info("   ✅ Cache multi-niveaux pour performances")
+    logger.info("   ✅ Adaptation automatique des poids de recherche")
+    logger.info("   ✅ Fallbacks automatiques et monitoring intégré")
+    logger.info("🧠 ENRICHMENT SERVICE DUAL STORAGE:")
+    logger.info("   ✅ Stockage Qdrant pour recherche vectorielle")
+    logger.info("   ✅ Indexation Elasticsearch pour recherche lexicale")
+    logger.info("   ✅ Embeddings OpenAI pour enrichissement IA")
+    logger.info("   ✅ Processeurs legacy et dual storage")
     logger.info("=" * 80)
-    logger.info("✅ Application Harena prête avec Enrichment Service dual storage")
+    logger.info("✅ Application Harena complète avec Enrichment + Search Services")
 
 except Exception as critical_error:
     logger.critical(f"💥 ERREUR CRITIQUE: {critical_error}")

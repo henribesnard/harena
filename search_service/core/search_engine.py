@@ -2,17 +2,18 @@
 Moteur de recherche hybride principal - Chef d'orchestre.
 
 Ce module coordonne les recherches lexicale et sémantique pour fournir
-des résultats optimaux via différentes stratégies de fusion.
+des résultats optimaux via différentes stratégies de fusion intelligentes.
 """
 import asyncio
 import logging
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
 
 from search_service.core.lexical_engine import LexicalSearchEngine, LexicalSearchResult
 from search_service.core.semantic_engine import SemanticSearchEngine, SemanticSearchResult
+from search_service.core.result_merger import ResultMerger, FusionStrategy, FusionConfig, FusionResult
 from search_service.core.query_processor import QueryProcessor, QueryAnalysis
 from search_service.models.search_types import SearchType, SearchQuality, SortOrder
 from search_service.models.responses import SearchResultItem, SearchResponse
@@ -21,31 +22,46 @@ from search_service.utils.cache import SearchCache
 logger = logging.getLogger(__name__)
 
 
-class FusionStrategy(Enum):
-    """Stratégies de fusion des résultats."""
-    WEIGHTED_AVERAGE = "weighted_average"
-    RANK_FUSION = "rank_fusion"
-    SCORE_NORMALIZATION = "score_normalization"
-    RECIPROCAL_RANK_FUSION = "reciprocal_rank_fusion"
-
-
 @dataclass
 class HybridSearchConfig:
     """Configuration pour la recherche hybride."""
+    # Poids par défaut pour la fusion
     default_lexical_weight: float = 0.6
     default_semantic_weight: float = 0.4
-    fusion_strategy: FusionStrategy = FusionStrategy.WEIGHTED_AVERAGE
+    
+    # Stratégie de fusion par défaut
+    fusion_strategy: FusionStrategy = FusionStrategy.ADAPTIVE_FUSION
+    
+    # Paramètres de qualité et performance
     min_results_for_fusion: int = 2
     max_results_per_engine: int = 50
+    
+    # Cache
     enable_cache: bool = True
     cache_ttl_seconds: int = 300
+    
+    # Adaptation automatique des poids
     adaptive_weighting: bool = True
     quality_boost_factor: float = 0.2
+    
+    # Timeouts
+    search_timeout: float = 15.0
+    lexical_timeout: float = 5.0
+    semantic_timeout: float = 8.0
+    
+    # Fallback et resilience
+    enable_fallback: bool = True
+    min_engine_success: int = 1  # Au moins 1 moteur doit réussir
+    
+    # Optimisations
+    enable_parallel_search: bool = True
+    enable_early_termination: bool = True
+    early_termination_threshold: float = 0.9
 
 
 @dataclass
 class HybridSearchResult:
-    """Résultat d'une recherche hybride."""
+    """Résultat d'une recherche hybride complète."""
     results: List[SearchResultItem]
     total_found: int
     search_type: SearchType
@@ -56,7 +72,15 @@ class HybridSearchResult:
     processing_time_ms: float
     quality: SearchQuality
     cache_hit: bool = False
+    
+    # Détails des moteurs
+    lexical_result: Optional[LexicalSearchResult] = None
+    semantic_result: Optional[SemanticSearchResult] = None
+    fusion_result: Optional[FusionResult] = None
+    
+    # Debug et métriques
     debug_info: Optional[Dict[str, Any]] = None
+    performance_metrics: Optional[Dict[str, Any]] = None
 
 
 class HybridSearchEngine:
@@ -69,9 +93,10 @@ class HybridSearchEngine:
     Responsabilités:
     - Orchestration des recherches parallèles
     - Fusion intelligente des résultats
-    - Gestion du cache
+    - Gestion du cache global
     - Adaptation des poids selon la qualité
     - Métriques de performance globales
+    - Fallback en cas d'erreur partielle
     """
     
     def __init__(
@@ -79,14 +104,16 @@ class HybridSearchEngine:
         lexical_engine: Optional[LexicalSearchEngine] = None,
         semantic_engine: Optional[SemanticSearchEngine] = None,
         query_processor: Optional[QueryProcessor] = None,
+        result_merger: Optional[ResultMerger] = None,
         config: Optional[HybridSearchConfig] = None
     ):
         self.lexical_engine = lexical_engine
         self.semantic_engine = semantic_engine
         self.query_processor = query_processor or QueryProcessor()
+        self.result_merger = result_merger or ResultMerger()
         self.config = config or HybridSearchConfig()
         
-        # Cache de résultats
+        # Cache de résultats hybrides
         self.cache = SearchCache(
             max_size=1000,
             ttl_seconds=self.config.cache_ttl_seconds
@@ -96,8 +123,16 @@ class HybridSearchEngine:
         self.search_count = 0
         self.cache_hits = 0
         self.total_processing_time = 0.0
+        self.engine_failures = {"lexical": 0, "semantic": 0, "both": 0}
+        self.search_type_usage = {search_type.value: 0 for search_type in SearchType}
         self.fusion_stats = {strategy.value: 0 for strategy in FusionStrategy}
         self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
+        self.performance_stats = {
+            "fast_searches": 0,  # < 2s
+            "normal_searches": 0,  # 2-5s
+            "slow_searches": 0,  # > 5s
+            "timeout_searches": 0
+        }
         
         logger.info("Hybrid search engine initialized")
     
@@ -120,67 +155,514 @@ class HybridSearchEngine:
         Effectue une recherche hybride intelligente.
         
         Args:
-            query: Requête de recherche
+            query: Terme de recherche
             user_id: ID de l'utilisateur
             search_type: Type de recherche (LEXICAL, SEMANTIC, HYBRID)
-            limit: Nombre de résultats à retourner
+            limit: Nombre de résultats
             offset: Décalage pour pagination
-            lexical_weight: Poids pour recherche lexicale (0-1)
-            semantic_weight: Poids pour recherche sémantique (0-1)
-            similarity_threshold: Seuil de similarité sémantique
+            lexical_weight: Poids pour la recherche lexicale
+            semantic_weight: Poids pour la recherche sémantique
+            similarity_threshold: Seuil de similarité pour recherche sémantique
             sort_order: Ordre de tri des résultats
-            filters: Filtres à appliquer
+            filters: Filtres additionnels
             use_cache: Utiliser le cache si disponible
-            debug: Retourner informations de debug
+            debug: Inclure informations de debug
             
         Returns:
-            HybridSearchResult avec résultats fusionnés
+            Résultats de recherche hybride
+            
+        Raises:
+            Exception: Si tous les moteurs échouent
         """
         start_time = time.time()
         self.search_count += 1
         
-        # Normaliser et analyser la requête
-        query_analysis = self.query_processor.process_query(query)
-        processed_query = query_analysis.processed_query
+        # Validation des paramètres
+        if not query or not query.strip():
+            raise ValueError("Query cannot be empty")
         
-        # Vérifier le cache d'abord
+        if search_type not in SearchType:
+            raise ValueError(f"Invalid search type: {search_type}")
+        
+        # Génération de la clé de cache
         cache_key = None
         if use_cache and self.cache:
             cache_key = self._generate_cache_key(
-                processed_query, user_id, search_type, limit, offset,
+                query, user_id, search_type, limit, offset, 
                 lexical_weight, semantic_weight, similarity_threshold,
                 sort_order, filters
             )
+            
+            # Vérifier le cache
             cached_result = self.cache.get(cache_key)
             if cached_result:
                 self.cache_hits += 1
                 cached_result.cache_hit = True
+                logger.debug(f"Cache hit for hybrid search: {cache_key[:16]}...")
                 return cached_result
         
-        # Déterminer les poids adaptatifs
-        weights = self._calculate_adaptive_weights(
-            query_analysis, lexical_weight, semantic_weight
+        try:
+            # Analyser la requête
+            query_analysis = self.query_processor.process_query(query)
+            
+            # Déterminer les poids optimaux
+            weights = self._determine_search_weights(
+                query_analysis, lexical_weight, semantic_weight, search_type
+            )
+            
+            # Exécuter la recherche selon le type
+            result = await asyncio.wait_for(
+                self._execute_search_strategy(
+                    query, user_id, search_type, query_analysis, weights,
+                    limit, offset, similarity_threshold, sort_order, filters, debug
+                ),
+                timeout=self.config.search_timeout
+            )
+            
+            # Calculer les métriques finales
+            processing_time = (time.time() - start_time) * 1000
+            self.total_processing_time += processing_time
+            result.processing_time_ms = processing_time
+            
+            # Mettre à jour les statistiques
+            self._update_search_statistics(result, processing_time)
+            
+            # Mettre en cache si activé
+            if use_cache and self.cache and cache_key:
+                self.cache.put(cache_key, result)
+            
+            return result
+            
+        except asyncio.TimeoutError:
+            self.performance_stats["timeout_searches"] += 1
+            logger.error(f"Search timeout after {self.config.search_timeout}s")
+            raise Exception("Search timeout")
+            
+        except Exception as e:
+            logger.error(f"Hybrid search failed: {e}", exc_info=True)
+            raise Exception(f"Search error: {str(e)}")
+    
+    async def _execute_search_strategy(
+        self,
+        query: str,
+        user_id: int,
+        search_type: SearchType,
+        query_analysis: QueryAnalysis,
+        weights: Dict[str, float],
+        limit: int,
+        offset: int,
+        similarity_threshold: Optional[float],
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> HybridSearchResult:
+        """Exécute la stratégie de recherche selon le type."""
+        
+        if search_type == SearchType.LEXICAL:
+            return await self._execute_lexical_only(
+                query, user_id, limit, offset, sort_order, filters, debug
+            )
+        elif search_type == SearchType.SEMANTIC:
+            return await self._execute_semantic_only(
+                query, user_id, limit, offset, similarity_threshold, sort_order, filters, debug
+            )
+        else:  # HYBRID
+            return await self._execute_hybrid_search(
+                query, user_id, query_analysis, weights, limit, offset, 
+                similarity_threshold, sort_order, filters, debug
+            )
+    
+    async def _execute_lexical_only(
+        self,
+        query: str,
+        user_id: int,
+        limit: int,
+        offset: int,
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> HybridSearchResult:
+        """Exécute une recherche lexicale uniquement."""
+        if not self.lexical_engine:
+            raise Exception("Lexical engine not available")
+        
+        try:
+            lexical_result = await asyncio.wait_for(
+                self.lexical_engine.search(
+                    query=query,
+                    user_id=user_id,
+                    limit=limit,
+                    offset=offset,
+                    sort_order=sort_order,
+                    filters=filters,
+                    debug=debug
+                ),
+                timeout=self.config.lexical_timeout
+            )
+            
+            return HybridSearchResult(
+                results=lexical_result.results,
+                total_found=lexical_result.total_found,
+                search_type=SearchType.LEXICAL,
+                lexical_results_count=len(lexical_result.results),
+                semantic_results_count=0,
+                fusion_strategy="lexical_only",
+                weights_used={"lexical_weight": 1.0, "semantic_weight": 0.0},
+                processing_time_ms=lexical_result.processing_time_ms,
+                quality=lexical_result.quality,
+                lexical_result=lexical_result,
+                debug_info={"strategy": "lexical_only"} if debug else None
+            )
+            
+        except Exception as e:
+            self.engine_failures["lexical"] += 1
+            logger.error(f"Lexical-only search failed: {e}")
+            raise Exception("Lexical search failed")
+    
+    async def _execute_semantic_only(
+        self,
+        query: str,
+        user_id: int,
+        limit: int,
+        offset: int,
+        similarity_threshold: Optional[float],
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> HybridSearchResult:
+        """Exécute une recherche sémantique uniquement."""
+        if not self.semantic_engine:
+            raise Exception("Semantic engine not available")
+        
+        try:
+            semantic_result = await asyncio.wait_for(
+                self.semantic_engine.search(
+                    query=query,
+                    user_id=user_id,
+                    limit=limit,
+                    offset=offset,
+                    similarity_threshold=similarity_threshold,
+                    sort_order=sort_order,
+                    filters=filters,
+                    debug=debug
+                ),
+                timeout=self.config.semantic_timeout
+            )
+            
+            return HybridSearchResult(
+                results=semantic_result.results,
+                total_found=semantic_result.total_found,
+                search_type=SearchType.SEMANTIC,
+                lexical_results_count=0,
+                semantic_results_count=len(semantic_result.results),
+                fusion_strategy="semantic_only",
+                weights_used={"lexical_weight": 0.0, "semantic_weight": 1.0},
+                processing_time_ms=semantic_result.processing_time_ms,
+                quality=semantic_result.quality,
+                semantic_result=semantic_result,
+                debug_info={"strategy": "semantic_only"} if debug else None
+            )
+            
+        except Exception as e:
+            self.engine_failures["semantic"] += 1
+            logger.error(f"Semantic-only search failed: {e}")
+            raise Exception("Semantic search failed")
+    
+    async def _execute_hybrid_search(
+        self,
+        query: str,
+        user_id: int,
+        query_analysis: QueryAnalysis,
+        weights: Dict[str, float],
+        limit: int,
+        offset: int,
+        similarity_threshold: Optional[float],
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> HybridSearchResult:
+        """Exécute une recherche hybride avec fusion."""
+        if not self.lexical_engine or not self.semantic_engine:
+            raise Exception("Both lexical and semantic engines required for hybrid search")
+        
+        # Limite élargie pour meilleure fusion
+        expanded_limit = min(limit + offset + 10, self.config.max_results_per_engine)
+        
+        # Créer les tâches de recherche
+        lexical_task = self._safe_lexical_search(
+            query, user_id, expanded_limit, 0, SortOrder.RELEVANCE, filters, debug
         )
         
-        # Exécuter la stratégie de recherche appropriée
-        search_results = await self._execute_search_strategy(
-            processed_query, user_id, search_type, weights, limit, offset,
-            similarity_threshold, sort_order, filters, debug
+        semantic_task = self._safe_semantic_search(
+            query, user_id, expanded_limit, 0, similarity_threshold, 
+            SortOrder.RELEVANCE, filters, debug
         )
         
-        # Finaliser le résultat
-        result = self._finalize_search_result(
-            search_results, query_analysis, start_time, debug
+        # Exécuter les recherches
+        if self.config.enable_parallel_search:
+            # Recherches en parallèle
+            lexical_result, semantic_result = await asyncio.gather(
+                lexical_task, semantic_task, return_exceptions=True
+            )
+        else:
+            # Recherches séquentielles
+            lexical_result = await lexical_task
+            semantic_result = await semantic_task
+        
+        # Traiter les résultats et exceptions
+        lexical_success = not isinstance(lexical_result, Exception)
+        semantic_success = not isinstance(semantic_result, Exception)
+        
+        if isinstance(lexical_result, Exception):
+            logger.warning(f"Lexical search failed in hybrid: {lexical_result}")
+            lexical_result = None
+            self.engine_failures["lexical"] += 1
+        
+        if isinstance(semantic_result, Exception):
+            logger.warning(f"Semantic search failed in hybrid: {semantic_result}")
+            semantic_result = None
+            self.engine_failures["semantic"] += 1
+        
+        # Vérifier qu'au moins un moteur a réussi
+        successful_engines = sum([lexical_success, semantic_success])
+        
+        if successful_engines < self.config.min_engine_success:
+            self.engine_failures["both"] += 1
+            raise Exception("All search engines failed")
+        
+        # Fallback si un seul moteur a réussi
+        if not lexical_result and semantic_result:
+            return self._create_fallback_result(
+                semantic_result, SearchType.SEMANTIC, "semantic_fallback", weights, debug
+            )
+        
+        if not semantic_result and lexical_result:
+            return self._create_fallback_result(
+                lexical_result, SearchType.LEXICAL, "lexical_fallback", weights, debug
+            )
+        
+        # Fusion des résultats
+        try:
+            fusion_result = self.result_merger.fuse_results(
+                lexical_result=lexical_result,
+                semantic_result=semantic_result,
+                query_analysis=query_analysis,
+                strategy=self.config.fusion_strategy,
+                weights=weights,
+                limit=limit,
+                offset=offset,
+                sort_order=sort_order,
+                debug=debug
+            )
+            
+            # Mise à jour des statistiques de fusion
+            self.fusion_stats[fusion_result.fusion_strategy] += 1
+            
+            return HybridSearchResult(
+                results=fusion_result.results,
+                total_found=fusion_result.lexical_count + fusion_result.semantic_count,
+                search_type=SearchType.HYBRID,
+                lexical_results_count=fusion_result.lexical_count,
+                semantic_results_count=fusion_result.semantic_count,
+                fusion_strategy=fusion_result.fusion_strategy,
+                weights_used=fusion_result.weights_used,
+                processing_time_ms=0.0,  # Sera calculé plus tard
+                quality=fusion_result.quality,
+                lexical_result=lexical_result,
+                semantic_result=semantic_result,
+                fusion_result=fusion_result,
+                debug_info=self._create_hybrid_debug_info(
+                    lexical_result, semantic_result, fusion_result
+                ) if debug else None
+            )
+            
+        except Exception as e:
+            logger.error(f"Result fusion failed: {e}")
+            
+            # Fallback vers le meilleur résultat individuel
+            if lexical_result and semantic_result:
+                if lexical_result.quality.value >= semantic_result.quality.value:
+                    return self._create_fallback_result(
+                        lexical_result, SearchType.LEXICAL, "fusion_failed_lexical", weights, debug
+                    )
+                else:
+                    return self._create_fallback_result(
+                        semantic_result, SearchType.SEMANTIC, "fusion_failed_semantic", weights, debug
+                    )
+            
+            raise Exception("Hybrid search and fusion failed")
+    
+    async def _safe_lexical_search(
+        self,
+        query: str,
+        user_id: int,
+        limit: int,
+        offset: int,
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> Optional[LexicalSearchResult]:
+        """Recherche lexicale sécurisée avec timeout."""
+        try:
+            return await asyncio.wait_for(
+                self.lexical_engine.search(
+                    query=query,
+                    user_id=user_id,
+                    limit=limit,
+                    offset=offset,
+                    sort_order=sort_order,
+                    filters=filters,
+                    debug=debug
+                ),
+                timeout=self.config.lexical_timeout
+            )
+        except Exception as e:
+            logger.warning(f"Safe lexical search failed: {e}")
+            raise e
+    
+    async def _safe_semantic_search(
+        self,
+        query: str,
+        user_id: int,
+        limit: int,
+        offset: int,
+        similarity_threshold: Optional[float],
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]],
+        debug: bool
+    ) -> Optional[SemanticSearchResult]:
+        """Recherche sémantique sécurisée avec timeout."""
+        try:
+            return await asyncio.wait_for(
+                self.semantic_engine.search(
+                    query=query,
+                    user_id=user_id,
+                    limit=limit,
+                    offset=offset,
+                    similarity_threshold=similarity_threshold,
+                    sort_order=sort_order,
+                    filters=filters,
+                    debug=debug
+                ),
+                timeout=self.config.semantic_timeout
+            )
+        except Exception as e:
+            logger.warning(f"Safe semantic search failed: {e}")
+            raise e
+    
+    def _determine_search_weights(
+        self,
+        query_analysis: QueryAnalysis,
+        lexical_weight: Optional[float],
+        semantic_weight: Optional[float],
+        search_type: SearchType
+    ) -> Dict[str, float]:
+        """Détermine les poids optimaux pour la recherche."""
+        
+        # Si les poids sont fournis explicitement
+        if lexical_weight is not None and semantic_weight is not None:
+            # Normaliser pour que la somme = 1.0
+            total = lexical_weight + semantic_weight
+            if total > 0:
+                return {
+                    "lexical_weight": lexical_weight / total,
+                    "semantic_weight": semantic_weight / total
+                }
+        
+        # Pour recherche non-hybride
+        if search_type == SearchType.LEXICAL:
+            return {"lexical_weight": 1.0, "semantic_weight": 0.0}
+        elif search_type == SearchType.SEMANTIC:
+            return {"lexical_weight": 0.0, "semantic_weight": 1.0}
+        
+        # Adaptation automatique pour recherche hybride
+        if self.config.adaptive_weighting:
+            return self._calculate_adaptive_weights(query_analysis)
+        
+        # Poids par défaut
+        return {
+            "lexical_weight": self.config.default_lexical_weight,
+            "semantic_weight": self.config.default_semantic_weight
+        }
+    
+    def _calculate_adaptive_weights(self, query_analysis: QueryAnalysis) -> Dict[str, float]:
+        """Calcule les poids adaptatifs basés sur l'analyse de requête."""
+        
+        base_lexical = self.config.default_lexical_weight
+        base_semantic = self.config.default_semantic_weight
+        
+        # Facteurs d'ajustement
+        lexical_boost = 0.0
+        semantic_boost = 0.0
+        
+        # Requêtes avec phrases exactes -> favoriser lexical
+        if query_analysis.has_exact_phrases:
+            lexical_boost += 0.2
+        
+        # Requêtes courtes et spécifiques -> favoriser lexical
+        if len(query_analysis.key_terms) <= 2:
+            lexical_boost += 0.1
+        
+        # Requêtes avec entités financières -> équilibrer
+        if query_analysis.has_financial_entities:
+            # Rééquilibrer vers 50/50
+            target_lexical = 0.5
+            target_semantic = 0.5
+            base_lexical = (base_lexical + target_lexical) / 2
+            base_semantic = (base_semantic + target_semantic) / 2
+        
+        # Requêtes longues et complexes -> favoriser sémantique
+        if len(query_analysis.key_terms) > 5:
+            semantic_boost += 0.15
+        
+        # Requêtes interrogatives -> favoriser sémantique
+        if query_analysis.is_question:
+            semantic_boost += 0.1
+        
+        # Appliquer les ajustements
+        lexical_weight = max(0.1, min(0.9, base_lexical + lexical_boost - semantic_boost))
+        semantic_weight = 1.0 - lexical_weight
+        
+        return {
+            "lexical_weight": lexical_weight,
+            "semantic_weight": semantic_weight
+        }
+    
+    def _create_fallback_result(
+        self,
+        single_result: Union[LexicalSearchResult, SemanticSearchResult],
+        search_type: SearchType,
+        strategy: str,
+        weights: Dict[str, float],
+        debug: bool
+    ) -> HybridSearchResult:
+        """Crée un résultat de fallback à partir d'un seul moteur."""
+        
+        if isinstance(single_result, LexicalSearchResult):
+            lexical_count = len(single_result.results)
+            semantic_count = 0
+            lexical_result = single_result
+            semantic_result = None
+        else:
+            lexical_count = 0
+            semantic_count = len(single_result.results)
+            lexical_result = None
+            semantic_result = single_result
+        
+        return HybridSearchResult(
+            results=single_result.results,
+            total_found=single_result.total_found,
+            search_type=search_type,
+            lexical_results_count=lexical_count,
+            semantic_results_count=semantic_count,
+            fusion_strategy=strategy,
+            weights_used=weights,
+            processing_time_ms=single_result.processing_time_ms,
+            quality=single_result.quality,
+            lexical_result=lexical_result,
+            semantic_result=semantic_result,
+            debug_info={"fallback": True, "strategy": strategy} if debug else None
         )
-        
-        # Mettre en cache si activé
-        if use_cache and self.cache and cache_key:
-            self.cache.set(cache_key, result)
-        
-        # Mettre à jour les métriques
-        self._update_metrics(result)
-        
-        return result
     
     def _generate_cache_key(
         self,
@@ -196,916 +678,511 @@ class HybridSearchEngine:
         filters: Optional[Dict[str, Any]]
     ) -> str:
         """Génère une clé de cache unique pour la requête."""
-        key_parts = [
-            f"q:{hash(query)}",
-            f"u:{user_id}",
-            f"t:{search_type.value}",
-            f"l:{limit}",
-            f"o:{offset}",
-            f"lw:{lexical_weight}",
-            f"sw:{semantic_weight}",
-            f"st:{similarity_threshold}",
-            f"so:{sort_order.value}",
-            f"f:{hash(str(filters)) if filters else 'none'}"
-        ]
-        return ":".join(key_parts)
-    
-    def _calculate_adaptive_weights(
-        self,
-        query_analysis: QueryAnalysis,
-        lexical_weight: Optional[float],
-        semantic_weight: Optional[float]
-    ) -> Dict[str, float]:
-        """Calcule les poids adaptatifs selon l'analyse de requête."""
-        if not self.config.adaptive_weighting:
-            # Utiliser poids fournis ou par défaut
-            lw = lexical_weight or self.config.default_lexical_weight
-            sw = semantic_weight or self.config.default_semantic_weight
-            
-            # Normaliser pour que la somme soit 1
-            total = lw + sw
-            if total > 0:
-                return {"lexical": lw / total, "semantic": sw / total}
-            else:
-                return {"lexical": 0.5, "semantic": 0.5}
+        import hashlib
         
-        # Adaptation basée sur le type et la confiance de la requête
-        base_lexical = self.config.default_lexical_weight
-        base_semantic = self.config.default_semantic_weight
-        
-        # Ajustements selon le type de requête
-        if query_analysis.query_type == "exact_match":
-            # Favoriser lexical pour correspondances exactes
-            base_lexical += 0.2
-            base_semantic -= 0.2
-        elif query_analysis.query_type == "conceptual":
-            # Favoriser sémantique pour requêtes conceptuelles
-            base_lexical -= 0.15
-            base_semantic += 0.15
-        elif query_analysis.query_type == "amount_focused":
-            # Équilibrer pour requêtes de montant
-            base_lexical += 0.1
-            base_semantic -= 0.1
-        
-        # Ajustement selon la confiance
-        confidence_factor = (query_analysis.confidence - 0.5) * 0.1
-        if query_analysis.query_type in ["exact_match", "amount_focused"]:
-            base_lexical += confidence_factor
-            base_semantic -= confidence_factor
-        else:
-            base_lexical -= confidence_factor
-            base_semantic += confidence_factor
-        
-        # Assurer que les poids restent dans [0.1, 0.9]
-        base_lexical = max(0.1, min(0.9, base_lexical))
-        base_semantic = max(0.1, min(0.9, base_semantic))
-        
-        # Normaliser
-        total = base_lexical + base_semantic
-        return {
-            "lexical": base_lexical / total,
-            "semantic": base_semantic / total
+        cache_data = {
+            "query": query.lower().strip(),
+            "user_id": user_id,
+            "search_type": search_type.value,
+            "limit": limit,
+            "offset": offset,
+            "lexical_weight": lexical_weight,
+            "semantic_weight": semantic_weight,
+            "similarity_threshold": similarity_threshold,
+            "sort_order": sort_order.value,
+            "filters": filters or {}
         }
+        
+        cache_str = str(sorted(cache_data.items()))
+        return f"hybrid_{hashlib.md5(cache_str.encode()).hexdigest()}"
     
-    async def _execute_search_strategy(
-        self,
-        query: str,
-        user_id: int,
-        strategy: SearchType,
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        similarity_threshold: Optional[float],
-        sort_order: SortOrder,
-        filters: Optional[Dict[str, Any]],
-        debug: bool
-    ) -> Dict[str, Any]:
-        """Exécute la stratégie de recherche appropriée."""
-        if strategy == SearchType.LEXICAL:
-            return await self._execute_lexical_only(
-                query, user_id, limit, offset, sort_order, filters, debug
-            )
-        elif strategy == SearchType.SEMANTIC:
-            return await self._execute_semantic_only(
-                query, user_id, limit, offset, similarity_threshold, sort_order, filters, debug
-            )
-        else:  # HYBRID
-            return await self._execute_hybrid_search(
-                query, user_id, weights, limit, offset, 
-                similarity_threshold, sort_order, filters, debug
-            )
-    
-    async def _execute_lexical_only(
-        self,
-        query: str,
-        user_id: int,
-        limit: int,
-        offset: int,
-        sort_order: SortOrder,
-        filters: Optional[Dict[str, Any]],
-        debug: bool
-    ) -> Dict[str, Any]:
-        """Exécute une recherche lexicale uniquement."""
-        if not self.lexical_engine:
-            raise Exception("Lexical engine not available")
+    def _update_search_statistics(self, result: HybridSearchResult, processing_time: float) -> None:
+        """Met à jour les statistiques de recherche."""
         
-        lexical_result = await self.lexical_engine.search(
-            query=query,
-            user_id=user_id,
-            limit=limit,
-            offset=offset,
-            sort_order=sort_order,
-            filters=filters,
-            debug=debug
-        )
+        # Statistiques par type de recherche
+        self.search_type_usage[result.search_type.value] += 1
         
-        return {
-            "search_type": SearchType.LEXICAL,
-            "lexical_result": lexical_result,
-            "semantic_result": None,
-            "fusion_strategy": "lexical_only"
-        }
-    
-    async def _execute_semantic_only(
-        self,
-        query: str,
-        user_id: int,
-        limit: int,
-        offset: int,
-        similarity_threshold: Optional[float],
-        sort_order: SortOrder,
-        filters: Optional[Dict[str, Any]],
-        debug: bool
-    ) -> Dict[str, Any]:
-        """Exécute une recherche sémantique uniquement."""
-        if not self.semantic_engine:
-            raise Exception("Semantic engine not available")
-        
-        semantic_result = await self.semantic_engine.search(
-            query=query,
-            user_id=user_id,
-            limit=limit,
-            offset=offset,
-            similarity_threshold=similarity_threshold,
-            sort_order=sort_order,
-            filters=filters,
-            debug=debug
-        )
-        
-        return {
-            "search_type": SearchType.SEMANTIC,
-            "lexical_result": None,
-            "semantic_result": semantic_result,
-            "fusion_strategy": "semantic_only"
-        }
-    
-    async def _execute_hybrid_search(
-        self,
-        query: str,
-        user_id: int,
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        similarity_threshold: Optional[float],
-        sort_order: SortOrder,
-        filters: Optional[Dict[str, Any]],
-        debug: bool
-    ) -> Dict[str, Any]:
-        """Exécute une recherche hybride avec fusion."""
-        if not self.lexical_engine or not self.semantic_engine:
-            raise Exception("Both lexical and semantic engines required for hybrid search")
-        
-        # Recherches en parallèle avec limite élargie pour meilleure fusion
-        expanded_limit = min(limit + offset + 10, self.config.max_results_per_engine)
-        
-        lexical_task = self.lexical_engine.search(
-            query=query,
-            user_id=user_id,
-            limit=expanded_limit,
-            offset=0,  # Pas d'offset pour la fusion
-            sort_order=SortOrder.RELEVANCE,  # Toujours par pertinence pour fusion
-            filters=filters,
-            debug=debug
-        )
-        
-        semantic_task = self.semantic_engine.search(
-            query=query,
-            user_id=user_id,
-            limit=expanded_limit,
-            offset=0,
-            similarity_threshold=similarity_threshold,
-            sort_order=SortOrder.RELEVANCE,
-            filters=filters,
-            debug=debug
-        )
-        
-        # Attendre les deux résultats
-        lexical_result, semantic_result = await asyncio.gather(
-            lexical_task, semantic_task, return_exceptions=True
-        )
-        
-        # Vérifier les exceptions
-        if isinstance(lexical_result, Exception):
-            logger.warning(f"Lexical search failed in hybrid: {lexical_result}")
-            lexical_result = None
-        
-        if isinstance(semantic_result, Exception):
-            logger.warning(f"Semantic search failed in hybrid: {semantic_result}")
-            semantic_result = None
-        
-        if not lexical_result and not semantic_result:
-            raise Exception("Both search engines failed")
-        
-        # Fusionner les résultats
-        fused_results = self._fuse_search_results(
-            lexical_result, semantic_result, weights, limit, offset, sort_order
-        )
-        
-        return {
-            "search_type": SearchType.HYBRID,
-            "lexical_result": lexical_result,
-            "semantic_result": semantic_result,
-            "fused_results": fused_results,
-            "fusion_strategy": self.config.fusion_strategy.value,
-            "weights_used": weights
-        }
-    
-    def _fuse_search_results(
-        self,
-        lexical_result: Optional[LexicalSearchResult],
-        semantic_result: Optional[SemanticSearchResult],
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        sort_order: SortOrder
-    ) -> List[SearchResultItem]:
-        """Fusionne les résultats lexicaux et sémantiques."""
-        if self.config.fusion_strategy == FusionStrategy.WEIGHTED_AVERAGE:
-            return self._weighted_average_fusion(
-                lexical_result, semantic_result, weights, limit, offset, sort_order
-            )
-        elif self.config.fusion_strategy == FusionStrategy.RANK_FUSION:
-            return self._rank_fusion(
-                lexical_result, semantic_result, weights, limit, offset, sort_order
-            )
-        elif self.config.fusion_strategy == FusionStrategy.RECIPROCAL_RANK_FUSION:
-            return self._reciprocal_rank_fusion(
-                lexical_result, semantic_result, weights, limit, offset, sort_order
-            )
-        else:  # SCORE_NORMALIZATION
-            return self._score_normalization_fusion(
-                lexical_result, semantic_result, weights, limit, offset, sort_order
-            )
-    
-    def _weighted_average_fusion(
-        self,
-        lexical_result: Optional[LexicalSearchResult],
-        semantic_result: Optional[SemanticSearchResult],
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        sort_order: SortOrder
-    ) -> List[SearchResultItem]:
-        """Fusion par moyenne pondérée des scores normalisés."""
-        # Collecter tous les résultats avec scores normalisés
-        all_results = {}
-        
-        # Ajouter résultats lexicaux
-        if lexical_result and lexical_result.results:
-            lexical_weight = weights.get("lexical", 0.5)
-            for result in lexical_result.results:
-                transaction_id = result.transaction_id
-                
-                # Normaliser le score lexical (0-1)
-                normalized_score = self._normalize_lexical_score(result.score, lexical_result.max_score)
-                weighted_score = normalized_score * lexical_weight
-                
-                all_results[transaction_id] = {
-                    "item": result,
-                    "lexical_score": normalized_score,
-                    "semantic_score": 0.0,
-                    "combined_score": weighted_score,
-                    "sources": ["lexical"]
-                }
-        
-        # Ajouter résultats sémantiques
-        if semantic_result and semantic_result.results:
-            semantic_weight = weights.get("semantic", 0.5)
-            for result in semantic_result.results:
-                transaction_id = result.transaction_id
-                
-                # Score sémantique déjà normalisé (0-1)
-                normalized_score = result.score
-                weighted_score = normalized_score * semantic_weight
-                
-                if transaction_id in all_results:
-                    # Combiner avec résultat existant
-                    existing = all_results[transaction_id]
-                    existing["normalized_score"] += weighted_score
-                    existing["sources"].append("semantic")
-                    existing["item"].combined_score = existing["normalized_score"]
-                else:
-                    # Nouveau résultat
-                    all_results[transaction_id] = {
-                        "item": result,
-                        "normalized_score": weighted_score,
-                        "sources": ["semantic"]
-                    }
-        
-        # Boost pour convergence
-        for result_data in all_results.values():
-            if len(result_data["sources"]) == 2:
-                boost = self.config.quality_boost_factor
-                result_data["normalized_score"] *= (1 + boost)
-                result_data["item"].combined_score = result_data["normalized_score"]
-        
-        # Trier par score normalisé
-        sorted_results = sorted(
-            all_results.values(),
-            key=lambda x: x["normalized_score"],
-            reverse=True
-        )
-        
-        result_items = [data["item"] for data in sorted_results]
-        if sort_order != SortOrder.RELEVANCE:
-            result_items = self._apply_final_sorting(result_items, sort_order)
-        
-        start_idx = offset
-        end_idx = offset + limit
-        return result_items[start_idx:end_idx]
-    
-    def _normalize_lexical_score(self, score: float, max_score: float) -> float:
-        """Normalise un score lexical entre 0 et 1."""
-        if max_score <= 0:
-            return 0.0
-        
-        # Normalisation logarithmique pour les scores Elasticsearch
-        normalized = min(score / max_score, 1.0)
-        
-        # Ajustement pour améliorer la distribution
-        return min(normalized * 1.2, 1.0)
-    
-    def _apply_final_sorting(
-        self, 
-        results: List[SearchResultItem], 
-        sort_order: SortOrder
-    ) -> List[SearchResultItem]:
-        """Applique le tri final aux résultats fusionnés."""
-        if sort_order == SortOrder.DATE_DESC:
-            return sorted(results, key=lambda x: (x.transaction_date, x.combined_score), reverse=True)
-        elif sort_order == SortOrder.DATE_ASC:
-            return sorted(results, key=lambda x: (x.transaction_date, x.combined_score))
-        elif sort_order == SortOrder.AMOUNT_DESC:
-            return sorted(results, key=lambda x: (abs(x.amount), x.combined_score), reverse=True)
-        elif sort_order == SortOrder.AMOUNT_ASC:
-            return sorted(results, key=lambda x: (abs(x.amount), x.combined_score))
-        else:
-            return results  # Déjà trié par pertinence
-    
-    def _finalize_search_result(
-        self,
-        search_results: Dict[str, Any],
-        query_analysis: QueryAnalysis,
-        start_time: float,
-        debug: bool
-    ) -> HybridSearchResult:
-        """Finalise le résultat de recherche."""
-        processing_time = (time.time() - start_time) * 1000
-        self.total_processing_time += processing_time
-        
-        search_type = search_results["search_type"]
-        lexical_result = search_results.get("lexical_result")
-        semantic_result = search_results.get("semantic_result")
-        
-        # Déterminer les résultats finaux
-        if search_type == SearchType.HYBRID:
-            final_results = search_results.get("fused_results", [])
-            fusion_strategy = search_results.get("fusion_strategy", "unknown")
-            weights_used = search_results.get("weights_used", {})
-        elif search_type == SearchType.LEXICAL and lexical_result:
-            final_results = lexical_result.results
-            fusion_strategy = "lexical_only"
-            weights_used = {"lexical": 1.0, "semantic": 0.0}
-        elif search_type == SearchType.SEMANTIC and semantic_result:
-            final_results = semantic_result.results
-            fusion_strategy = "semantic_only"
-            weights_used = {"lexical": 0.0, "semantic": 1.0}
-        else:
-            final_results = []
-            fusion_strategy = "failed"
-            weights_used = {}
-        
-        # Calculer la qualité globale
-        quality = self._calculate_overall_quality(
-            lexical_result, semantic_result, final_results, search_type
-        )
-        
-        # Informations de debug
-        debug_info = None
-        if debug:
-            debug_info = {
-                "query_analysis": {
-                    "original_query": query_analysis.original_query,
-                    "query_type": query_analysis.query_type,
-                    "confidence": query_analysis.confidence,
-                    "detected_entities": query_analysis.detected_entities
-                },
-                "lexical_debug": lexical_result.debug_info if lexical_result else None,
-                "semantic_debug": semantic_result.debug_info if semantic_result else None,
-                "fusion_details": {
-                    "strategy": fusion_strategy,
-                    "weights": weights_used,
-                    "total_candidates": (
-                        len(lexical_result.results) if lexical_result else 0
-                    ) + (
-                        len(semantic_result.results) if semantic_result else 0
-                    )
-                }
-            }
-        
-        return HybridSearchResult(
-            results=final_results,
-            total_found=len(final_results),
-            search_type=search_type,
-            lexical_results_count=len(lexical_result.results) if lexical_result else 0,
-            semantic_results_count=len(semantic_result.results) if semantic_result else 0,
-            fusion_strategy=fusion_strategy,
-            weights_used=weights_used,
-            processing_time_ms=processing_time,
-            quality=quality,
-            debug_info=debug_info
-        )
-    
-    def _calculate_overall_quality(
-        self,
-        lexical_result: Optional[LexicalSearchResult],
-        semantic_result: Optional[SemanticSearchResult],
-        final_results: List[SearchResultItem],
-        search_type: SearchType
-    ) -> SearchQuality:
-        """Calcule la qualité globale de la recherche."""
-        if not final_results:
-            return SearchQuality.FAILED
-        
-        # Calculs de base
-        total_results = len(final_results)
-        avg_score = sum(getattr(r, 'combined_score', r.score) for r in final_results) / total_results
-        
-        # Facteurs de qualité selon le type de recherche
-        if search_type == SearchType.HYBRID:
-            # Qualité hybride basée sur convergence et scores
-            lexical_count = len(lexical_result.results) if lexical_result else 0
-            semantic_count = len(semantic_result.results) if semantic_result else 0
-            
-            # Bonus pour convergence des moteurs
-            convergence_bonus = 0
-            if lexical_count > 0 and semantic_count > 0:
-                # Calculer taux de convergence (résultats communs)
-                if lexical_result and semantic_result:
-                    lexical_ids = {r.transaction_id for r in lexical_result.results}
-                    semantic_ids = {r.transaction_id for r in semantic_result.results}
-                    common_ids = lexical_ids.intersection(semantic_ids)
-                    convergence_rate = len(common_ids) / max(len(lexical_ids), len(semantic_ids))
-                    convergence_bonus = convergence_rate * 0.2
-            
-            # Score combiné avec bonus
-            quality_score = avg_score + convergence_bonus
-            
-            if quality_score >= 0.8:
-                return SearchQuality.EXCELLENT
-            elif quality_score >= 0.6:
-                return SearchQuality.GOOD
-            elif quality_score >= 0.4:
-                return SearchQuality.AVERAGE
-            else:
-                return SearchQuality.POOR
-        
-        elif search_type == SearchType.LEXICAL:
-            # Qualité lexicale basée sur scores et nombre de résultats
-            if avg_score >= 0.7 and total_results >= 5:
-                return SearchQuality.EXCELLENT
-            elif avg_score >= 0.5 and total_results >= 3:
-                return SearchQuality.GOOD
-            elif avg_score >= 0.3:
-                return SearchQuality.AVERAGE
-            else:
-                return SearchQuality.POOR
-        
-        else:  # SEMANTIC
-            # Qualité sémantique basée sur seuils de similarité
-            if avg_score >= 0.85:
-                return SearchQuality.EXCELLENT
-            elif avg_score >= 0.75:
-                return SearchQuality.GOOD
-            elif avg_score >= 0.6:
-                return SearchQuality.AVERAGE
-            else:
-                return SearchQuality.POOR
-    
-    def _update_metrics(self, result: HybridSearchResult):
-        """Met à jour les métriques globales."""
-        self.fusion_stats[result.fusion_strategy] += 1
+        # Statistiques de qualité
         self.quality_distribution[result.quality.value] += 1
+        
+        # Statistiques de performance
+        if processing_time < 2000:  # < 2s
+            self.performance_stats["fast_searches"] += 1
+        elif processing_time < 5000:  # 2-5s
+            self.performance_stats["normal_searches"] += 1
+        else:  # > 5s
+            self.performance_stats["slow_searches"] += 1
     
-    async def suggest_query_improvements(
+    def _create_hybrid_debug_info(
         self,
-        query: str,
-        user_id: int,
-        search_result: HybridSearchResult
-    ) -> List[str]:
-        """Suggère des améliorations de requête basées sur les résultats hybrides."""
-        suggestions = []
+        lexical_result: Optional[LexicalSearchResult],
+        semantic_result: Optional[SemanticSearchResult],
+        fusion_result: FusionResult
+    ) -> Dict[str, Any]:
+        """Crée les informations de debug pour recherche hybride."""
         
-        # Suggestions basées sur la qualité
-        if search_result.quality == SearchQuality.FAILED:
-            suggestions.append("Essayez des termes plus généraux")
-            suggestions.append("Vérifiez l'orthographe de votre requête")
-        elif search_result.quality == SearchQuality.POOR:
-            suggestions.append("Ajoutez des mots-clés plus spécifiques")
-            if search_result.semantic_results_count > search_result.lexical_results_count:
-                suggestions.append("Essayez des termes exacts plutôt que conceptuels")
-        
-        # Suggestions basées sur les résultats par moteur
-        if search_result.lexical_results_count == 0 and search_result.semantic_results_count > 0:
-            suggestions.append("Vos termes sont corrects conceptuellement, essayez des mots-clés plus précis")
-        elif search_result.semantic_results_count == 0 and search_result.lexical_results_count > 0:
-            suggestions.append("Essayez des termes plus généraux ou des synonymes")
-        
-        # Suggestions basées sur l'analyse de requête
-        query_analysis = self.query_processor.process_query(query)
-        if not query_analysis.detected_entities.get("categories") and len(query.split()) == 1:
-            suggestions.append("Ajoutez du contexte (ex: 'restaurant italien' au lieu de 'restaurant')")
-        
-        return suggestions[:3]  # Maximum 3 suggestions
-    
-    def get_engine_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques complètes du moteur hybride."""
-        avg_processing_time = (
-            self.total_processing_time / self.search_count 
-            if self.search_count > 0 else 0
-        )
-        
-        cache_hit_rate = (
-            self.cache_hits / self.search_count * 100 
-            if self.search_count > 0 else 0
-        )
-        
-        return {
-            "total_searches": self.search_count,
-            "cache_hits": self.cache_hits,
-            "cache_hit_rate_percent": round(cache_hit_rate, 2),
-            "avg_processing_time_ms": round(avg_processing_time, 2),
-            "fusion_strategy_usage": dict(self.fusion_stats),
-            "quality_distribution": dict(self.quality_distribution),
-            "engines_status": {
-                "lexical_available": self.lexical_engine is not None,
-                "semantic_available": self.semantic_engine is not None,
-                "query_processor_available": self.query_processor is not None
+        debug_info = {
+            "strategy": "hybrid",
+            "fusion_strategy": fusion_result.fusion_strategy,
+            "engines_used": {
+                "lexical": lexical_result is not None,
+                "semantic": semantic_result is not None
             },
-            "config": {
-                "fusion_strategy": self.config.fusion_strategy.value,
-                "default_weights": {
-                    "lexical": self.config.default_lexical_weight,
-                    "semantic": self.config.default_semantic_weight
-                },
-                "adaptive_weighting": self.config.adaptive_weighting,
-                "cache_enabled": self.config.enable_cache,
-                "cache_ttl_seconds": self.config.cache_ttl_seconds
+            "result_counts": {
+                "lexical": len(lexical_result.results) if lexical_result else 0,
+                "semantic": len(semantic_result.results) if semantic_result else 0,
+                "fused": len(fusion_result.results),
+                "duplicates_removed": fusion_result.duplicates_removed
+            },
+            "quality_scores": {
+                "lexical": lexical_result.quality.value if lexical_result else None,
+                "semantic": semantic_result.quality.value if semantic_result else None,
+                "fused": fusion_result.quality.value
+            },
+            "processing_times": {
+                "lexical": lexical_result.processing_time_ms if lexical_result else None,
+                "semantic": semantic_result.processing_time_ms if semantic_result else None,
+                "fusion": fusion_result.processing_time_ms
             }
         }
+        
+        # Ajouter les infos de debug de la fusion si disponibles
+        if fusion_result.debug_info:
+            debug_info["fusion_debug"] = fusion_result.debug_info
+        
+        return debug_info
     
     async def health_check(self) -> Dict[str, Any]:
-        """Vérifie la santé du moteur hybride et de ses composants."""
+        """Vérifie la santé du moteur hybride."""
         health_status = {
             "status": "healthy",
-            "timestamp": time.time(),
-            "components": {}
+            "engines": {},
+            "metrics": self.get_metrics()
         }
         
-        # Vérifier moteur lexical
+        # Vérifier les moteurs individuels
         if self.lexical_engine:
             try:
                 lexical_health = await self.lexical_engine.health_check()
-                health_status["components"]["lexical_engine"] = lexical_health
+                health_status["engines"]["lexical"] = lexical_health
             except Exception as e:
-                health_status["components"]["lexical_engine"] = {
-                    "status": "unhealthy",
-                    "error": str(e)
-                }
+                health_status["engines"]["lexical"] = {"status": "unhealthy", "error": str(e)}
                 health_status["status"] = "degraded"
         else:
-            health_status["components"]["lexical_engine"] = {
-                "status": "unavailable",
-                "error": "Engine not initialized"
-            }
+            health_status["engines"]["lexical"] = {"status": "not_configured"}
         
-        # Vérifier moteur sémantique
         if self.semantic_engine:
             try:
                 semantic_health = await self.semantic_engine.health_check()
-                health_status["components"]["semantic_engine"] = semantic_health
+                health_status["engines"]["semantic"] = semantic_health
             except Exception as e:
-                health_status["components"]["semantic_engine"] = {
-                    "status": "unhealthy",
-                    "error": str(e)
-                }
+                health_status["engines"]["semantic"] = {"status": "unhealthy", "error": str(e)}
                 health_status["status"] = "degraded"
         else:
-            health_status["components"]["semantic_engine"] = {
-                "status": "unavailable",
-                "error": "Engine not initialized"
-            }
+            health_status["engines"]["semantic"] = {"status": "not_configured"}
         
-        # Vérifier processeur de requêtes
-        health_status["components"]["query_processor"] = {
-            "status": "healthy" if self.query_processor else "unavailable"
-        }
+        # Vérifier qu'au moins un moteur est disponible
+        available_engines = sum(
+            1 for engine_health in health_status["engines"].values()
+            if engine_health.get("status") == "healthy"
+        )
         
-        # Vérifier cache
-        if self.cache:
-            cache_stats = self.cache.get_stats()
-            health_status["components"]["cache"] = {
-                "status": "healthy",
-                "stats": cache_stats
-            }
-        else:
-            health_status["components"]["cache"] = {
-                "status": "disabled"
-            }
-        
-        # Déterminer statut global
-        component_statuses = [
-            comp.get("status", "unknown") 
-            for comp in health_status["components"].values()
-        ]
-        
-        if any(status == "unhealthy" for status in component_statuses):
+        if available_engines == 0:
             health_status["status"] = "unhealthy"
-        elif any(status in ["degraded", "unavailable"] for status in component_statuses):
-            health_status["status"] = "degraded"
         
         return health_status
     
-    async def cleanup(self):
-        """Nettoie les ressources du moteur hybride."""
-        logger.info("Cleaning up hybrid search engine...")
+    def get_metrics(self) -> Dict[str, Any]:
+        """Retourne les métriques du moteur hybride."""
+        avg_processing_time = (
+            self.total_processing_time / self.search_count
+            if self.search_count > 0 else 0
+        )
         
-        # Nettoyer le cache
+        cache_hit_rate = self.cache_hits / self.search_count if self.search_count > 0 else 0
+        
+        # Calculer les taux d'échec
+        total_failures = sum(self.engine_failures.values())
+        failure_rate = total_failures / self.search_count if self.search_count > 0 else 0
+        
+        return {
+            "engine_type": "hybrid",
+            "search_count": self.search_count,
+            "total_processing_time_ms": self.total_processing_time,
+            "average_processing_time_ms": avg_processing_time,
+            "cache_hits": self.cache_hits,
+            "cache_hit_rate": cache_hit_rate,
+            
+            "engine_failures": self.engine_failures,
+            "total_failures": total_failures,
+            "failure_rate": failure_rate,
+            
+            "search_type_usage": self.search_type_usage,
+            "fusion_strategy_usage": self.fusion_stats,
+            "quality_distribution": self.quality_distribution,
+            "performance_distribution": self.performance_stats,
+            
+            "cache_stats": self.cache.get_stats() if self.cache else None,
+            
+            "engine_metrics": {
+                "lexical": self.lexical_engine.get_metrics() if self.lexical_engine else None,
+                "semantic": self.semantic_engine.get_metrics() if self.semantic_engine else None,
+                "result_merger": self.result_merger.get_metrics()
+            }
+        }
+    
+    def get_performance_summary(self) -> Dict[str, Any]:
+        """Retourne un résumé des performances."""
+        total_searches = sum(self.performance_stats.values())
+        
+        if total_searches == 0:
+            return {"message": "No searches performed yet"}
+        
+        return {
+            "total_searches": total_searches,
+            "performance_breakdown": {
+                "fast_searches_pct": (self.performance_stats["fast_searches"] / total_searches) * 100,
+                "normal_searches_pct": (self.performance_stats["normal_searches"] / total_searches) * 100,
+                "slow_searches_pct": (self.performance_stats["slow_searches"] / total_searches) * 100,
+                "timeout_searches_pct": (self.performance_stats["timeout_searches"] / total_searches) * 100
+            },
+            "average_response_time_ms": self.total_processing_time / self.search_count,
+            "cache_efficiency": (self.cache_hits / self.search_count) * 100,
+            "reliability": {
+                "success_rate": ((self.search_count - sum(self.engine_failures.values())) / self.search_count) * 100,
+                "lexical_failure_rate": (self.engine_failures["lexical"] / self.search_count) * 100,
+                "semantic_failure_rate": (self.engine_failures["semantic"] / self.search_count) * 100,
+                "both_engines_failure_rate": (self.engine_failures["both"] / self.search_count) * 100
+            }
+        }
+    
+    async def suggest_search_improvements(self, query: str, user_id: int) -> Dict[str, Any]:
+        """Suggère des améliorations pour une requête de recherche."""
+        
+        # Analyser la requête
+        query_analysis = self.query_processor.process_query(query)
+        
+        suggestions = {
+            "original_query": query,
+            "analysis": {
+                "key_terms": query_analysis.key_terms,
+                "has_exact_phrases": query_analysis.has_exact_phrases,
+                "has_financial_entities": query_analysis.has_financial_entities,
+                "is_question": query_analysis.is_question
+            },
+            "recommendations": []
+        }
+        
+        # Suggestions basées sur l'analyse
+        if len(query_analysis.key_terms) == 1:
+            suggestions["recommendations"].append({
+                "type": "expand_query",
+                "message": "Votre requête est très courte. Ajoutez des mots-clés pour des résultats plus précis.",
+                "example": f"{query} montant date"
+            })
+        
+        if len(query_analysis.key_terms) > 8:
+            suggestions["recommendations"].append({
+                "type": "simplify_query",
+                "message": "Votre requête est très longue. Simplifiez-la pour de meilleurs résultats.",
+                "example": " ".join(query_analysis.key_terms[:4])
+            })
+        
+        if not query_analysis.has_financial_entities and not query_analysis.has_exact_phrases:
+            suggestions["recommendations"].append({
+                "type": "add_context",
+                "message": "Ajoutez du contexte financier pour améliorer la précision.",
+                "examples": [
+                    f"{query} transaction",
+                    f"{query} paiement",
+                    f"{query} virement"
+                ]
+            })
+        
+        # Suggestions de recherche alternatives
+        alternative_searches = []
+        
+        # Recherche par montant si pas spécifié
+        if not any(term.replace("€", "").replace(",", "").replace(".", "").isdigit() for term in query_analysis.key_terms):
+            alternative_searches.append({
+                "type": "amount_search",
+                "suggestion": f"{query} montant supérieur 100",
+                "description": "Rechercher par montant"
+            })
+        
+        # Recherche par période si pas spécifiée
+        if not any(word in query.lower() for word in ["mois", "semaine", "jour", "janvier", "février", "mars"]):
+            alternative_searches.append({
+                "type": "time_search",
+                "suggestion": f"{query} ce mois",
+                "description": "Limiter à une période"
+            })
+        
+        suggestions["alternative_searches"] = alternative_searches
+        
+        # Recommandations de type de recherche
+        recommended_search_type = self._recommend_search_type(query_analysis)
+        suggestions["recommended_search_type"] = {
+            "type": recommended_search_type.value,
+            "reason": self._explain_search_type_recommendation(query_analysis, recommended_search_type)
+        }
+        
+        return suggestions
+    
+    def _recommend_search_type(self, query_analysis: QueryAnalysis) -> SearchType:
+        """Recommande le type de recherche optimal."""
+        
+        # Recherche lexicale pour phrases exactes
+        if query_analysis.has_exact_phrases:
+            return SearchType.LEXICAL
+        
+        # Recherche sémantique pour questions complexes
+        if query_analysis.is_question and len(query_analysis.key_terms) > 3:
+            return SearchType.SEMANTIC
+        
+        # Recherche hybride par défaut
+        return SearchType.HYBRID
+    
+    def _explain_search_type_recommendation(
+        self, 
+        query_analysis: QueryAnalysis, 
+        recommended_type: SearchType
+    ) -> str:
+        """Explique pourquoi ce type de recherche est recommandé."""
+        
+        if recommended_type == SearchType.LEXICAL:
+            if query_analysis.has_exact_phrases:
+                return "Votre requête contient des phrases exactes, la recherche lexicale sera plus précise."
+            return "Recherche lexicale recommandée pour cette requête spécifique."
+        
+        elif recommended_type == SearchType.SEMANTIC:
+            if query_analysis.is_question:
+                return "Votre question nécessite une compréhension contextuelle, la recherche sémantique est optimale."
+            return "Recherche sémantique recommandée pour capturer le sens de votre requête."
+        
+        else:  # HYBRID
+            return "La recherche hybride combine les avantages lexical et sémantique pour des résultats optimaux."
+    
+    async def benchmark_search_types(
+        self, 
+        query: str, 
+        user_id: int,
+        iterations: int = 3
+    ) -> Dict[str, Any]:
+        """Compare les performances des différents types de recherche."""
+        
+        benchmark_results = {
+            "query": query,
+            "iterations": iterations,
+            "results": {}
+        }
+        
+        search_types = [SearchType.LEXICAL, SearchType.SEMANTIC, SearchType.HYBRID]
+        
+        for search_type in search_types:
+            type_results = []
+            
+            for i in range(iterations):
+                try:
+                    start_time = time.time()
+                    
+                    result = await self.search(
+                        query=query,
+                        user_id=user_id,
+                        search_type=search_type,
+                        limit=10,
+                        use_cache=False  # Désactiver le cache pour mesures précises
+                    )
+                    
+                    processing_time = (time.time() - start_time) * 1000
+                    
+                    type_results.append({
+                        "iteration": i + 1,
+                        "processing_time_ms": processing_time,
+                        "results_count": len(result.results),
+                        "quality": result.quality.value,
+                        "total_found": result.total_found
+                    })
+                    
+                except Exception as e:
+                    type_results.append({
+                        "iteration": i + 1,
+                        "error": str(e),
+                        "processing_time_ms": None,
+                        "results_count": 0,
+                        "quality": "failed"
+                    })
+            
+            # Calculer les statistiques moyennes
+            successful_runs = [r for r in type_results if "error" not in r]
+            
+            if successful_runs:
+                avg_time = sum(r["processing_time_ms"] for r in successful_runs) / len(successful_runs)
+                avg_results = sum(r["results_count"] for r in successful_runs) / len(successful_runs)
+                
+                benchmark_results["results"][search_type.value] = {
+                    "successful_iterations": len(successful_runs),
+                    "failed_iterations": len(type_results) - len(successful_runs),
+                    "average_processing_time_ms": avg_time,
+                    "average_results_count": avg_results,
+                    "success_rate": len(successful_runs) / iterations,
+                    "detailed_results": type_results
+                }
+            else:
+                benchmark_results["results"][search_type.value] = {
+                    "successful_iterations": 0,
+                    "failed_iterations": iterations,
+                    "success_rate": 0.0,
+                    "detailed_results": type_results
+                }
+        
+        # Déterminer le meilleur type
+        best_type = None
+        best_score = 0
+        
+        for search_type, stats in benchmark_results["results"].items():
+            if stats["successful_iterations"] > 0:
+                # Score composite basé sur succès, vitesse et résultats
+                speed_score = 1000 / stats.get("average_processing_time_ms", 1000)  # Plus rapide = meilleur
+                results_score = stats.get("average_results_count", 0)
+                success_score = stats["success_rate"] * 100
+                
+                composite_score = speed_score + results_score + success_score
+                
+                if composite_score > best_score:
+                    best_score = composite_score
+                    best_type = search_type
+        
+        benchmark_results["recommendation"] = {
+            "best_search_type": best_type,
+            "score": best_score,
+            "reason": f"Meilleur équilibre performance/résultats/fiabilité" if best_type else "Aucun type n'a réussi"
+        }
+        
+        return benchmark_results
+    
+    def clear_cache(self) -> None:
+        """Vide le cache du moteur hybride."""
         if self.cache:
             self.cache.clear()
+            logger.info("Hybrid engine cache cleared")
         
-        # Nettoyer les moteurs
-        if self.lexical_engine and hasattr(self.lexical_engine, 'cleanup'):
-            await self.lexical_engine.cleanup()
+        # Vider aussi les caches des moteurs individuels
+        if self.lexical_engine:
+            self.lexical_engine.clear_cache()
         
-        if self.semantic_engine and hasattr(self.semantic_engine, 'cleanup'):
-            await self.semantic_engine.cleanup()
-        
-        # Réinitialiser les métriques
+        if self.semantic_engine:
+            self.semantic_engine.clear_cache()
+    
+    def reset_metrics(self) -> None:
+        """Remet à zéro toutes les métriques."""
         self.search_count = 0
         self.cache_hits = 0
         self.total_processing_time = 0.0
+        self.engine_failures = {"lexical": 0, "semantic": 0, "both": 0}
+        self.search_type_usage = {search_type.value: 0 for search_type in SearchType}
         self.fusion_stats = {strategy.value: 0 for strategy in FusionStrategy}
         self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
+        self.performance_stats = {
+            "fast_searches": 0,
+            "normal_searches": 0,
+            "slow_searches": 0,
+            "timeout_searches": 0
+        }
         
-        logger.info("Hybrid search engine cleanup completed")
+        # Reset des métriques des moteurs individuels
+        if self.lexical_engine:
+            self.lexical_engine.reset_metrics()
+        
+        if self.semantic_engine:
+            self.semantic_engine.reset_metrics()
+        
+        self.result_merger.reset_metrics()
+        
+        logger.info("All hybrid engine metrics reset")
     
-    def __str__(self) -> str:
-        """Représentation string du moteur hybride."""
-        return (
-            f"HybridSearchEngine("
-            f"fusion_strategy={self.config.fusion_strategy.value}, "
-            f"searches={self.search_count}, "
-            f"cache_hits={self.cache_hits}, "
-            f"lexical={'✓' if self.lexical_engine else '✗'}, "
-            f"semantic={'✓' if self.semantic_engine else '✗'}"
-            f")"
-        )
+    def update_config(self, new_config: HybridSearchConfig) -> None:
+        """Met à jour la configuration du moteur hybride."""
+        old_config = self.config
+        self.config = new_config
+        
+        # Recréer le cache si les paramètres ont changé
+        if (old_config.cache_ttl_seconds != new_config.cache_ttl_seconds or
+            old_config.enable_cache != new_config.enable_cache):
+            
+            if new_config.enable_cache:
+                self.cache = SearchCache(
+                    max_size=1000,
+                    ttl_seconds=new_config.cache_ttl_seconds
+                )
+            else:
+                self.cache = None
+        
+        logger.info("Hybrid engine configuration updated")
     
-    def __repr__(self) -> str:
-        """Représentation détaillée du moteur hybride."""
-        return self.__str__()
+    async def warmup(self, warmup_queries: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Réchauffe le moteur avec des requêtes prédéfinies."""
         
-        # Appliquer boost pour résultats trouvés par les deux moteurs
-        for result_data in all_results.values():
-            if len(result_data["sources"]) == 2:
-                # Boost pour convergence des deux moteurs
-                boost = self.config.quality_boost_factor
-                result_data["combined_score"] *= (1 + boost)
-                result_data["item"].combined_score = result_data["combined_score"]
+        default_warmup_queries = [
+            "restaurant",
+            "supermarché", 
+            "essence",
+            "virement bancaire",
+            "carte bleue",
+            "pharmacie",
+            "transport",
+            "salaire"
+        ]
         
-        # Trier par score combiné
-        sorted_results = sorted(
-            all_results.values(),
-            key=lambda x: x["combined_score"],
-            reverse=True
-        )
+        queries = warmup_queries or default_warmup_queries
         
-        # Extraire les items et appliquer pagination
-        result_items = [data["item"] for data in sorted_results]
+        warmup_results = {
+            "queries_count": len(queries),
+            "successful_warmups": 0,
+            "failed_warmups": 0,
+            "total_time_ms": 0.0,
+            "details": []
+        }
         
-        # Appliquer tri final si différent de pertinence
-        if sort_order != SortOrder.RELEVANCE:
-            result_items = self._apply_final_sorting(result_items, sort_order)
+        logger.info(f"Starting warmup with {len(queries)} queries")
         
-        # Pagination
-        start_idx = offset
-        end_idx = offset + limit
-        return result_items[start_idx:end_idx]
-    
-    def _rank_fusion(
-        self,
-        lexical_result: Optional[LexicalSearchResult],
-        semantic_result: Optional[SemanticSearchResult],
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        sort_order: SortOrder
-    ) -> List[SearchResultItem]:
-        """Fusion basée sur les rangs avec poids."""
-        all_results = {}
-        
-        # Ajouter résultats lexicaux avec scores basés sur le rang
-        if lexical_result and lexical_result.results:
-            lexical_weight = weights.get("lexical", 0.5)
-            for rank, result in enumerate(lexical_result.results):
-                transaction_id = result.transaction_id
-                # Score basé sur le rang inverse (rang 0 = score 1.0)
-                rank_score = 1.0 / (rank + 1)
-                weighted_score = rank_score * lexical_weight
+        for query in queries:
+            try:
+                start_time = time.time()
                 
-                all_results[transaction_id] = {
-                    "item": result,
-                    "lexical_rank": rank,
-                    "semantic_rank": -1,
-                    "combined_score": weighted_score,
-                    "sources": ["lexical"]
-                }
-        
-        # Ajouter résultats sémantiques
-        if semantic_result and semantic_result.results:
-            semantic_weight = weights.get("semantic", 0.5)
-            for rank, result in enumerate(semantic_result.results):
-                transaction_id = result.transaction_id
-                rank_score = 1.0 / (rank + 1)
-                weighted_score = rank_score * semantic_weight
+                # Test avec utilisateur par défaut
+                result = await self.search(
+                    query=query,
+                    user_id=1,
+                    search_type=SearchType.HYBRID,
+                    limit=5,
+                    use_cache=True
+                )
                 
-                if transaction_id in all_results:
-                    # Combiner avec résultat lexical
-                    existing = all_results[transaction_id]
-                    existing["semantic_rank"] = rank
-                    existing["combined_score"] += weighted_score
-                    existing["sources"].append("semantic")
-                    existing["item"].combined_score = existing["combined_score"]
-                else:
-                    # Nouveau résultat sémantique
-                    all_results[transaction_id] = {
-                        "item": result,
-                        "lexical_rank": -1,
-                        "semantic_rank": rank,
-                        "combined_score": weighted_score,
-                        "sources": ["semantic"]
-                    }
+                processing_time = (time.time() - start_time) * 1000
+                warmup_results["total_time_ms"] += processing_time
+                warmup_results["successful_warmups"] += 1
+                
+                warmup_results["details"].append({
+                    "query": query,
+                    "success": True,
+                    "processing_time_ms": processing_time,
+                    "results_count": len(result.results)
+                })
+                
+            except Exception as e:
+                warmup_results["failed_warmups"] += 1
+                warmup_results["details"].append({
+                    "query": query,
+                    "success": False,
+                    "error": str(e)
+                })
         
-        # Boost pour apparition dans les deux listes
-        for result_data in all_results.values():
-            if len(result_data["sources"]) == 2:
-                boost = self.config.quality_boost_factor
-                result_data["combined_score"] *= (1 + boost)
-                result_data["item"].combined_score = result_data["combined_score"]
-        
-        # Trier et paginer
-        sorted_results = sorted(
-            all_results.values(),
-            key=lambda x: x["combined_score"],
-            reverse=True
+        warmup_results["average_time_ms"] = (
+            warmup_results["total_time_ms"] / warmup_results["successful_warmups"]
+            if warmup_results["successful_warmups"] > 0 else 0
         )
         
-        result_items = [data["item"] for data in sorted_results]
-        if sort_order != SortOrder.RELEVANCE:
-            result_items = self._apply_final_sorting(result_items, sort_order)
+        logger.info(f"Warmup completed: {warmup_results['successful_warmups']}/{len(queries)} successful")
         
-        start_idx = offset
-        end_idx = offset + limit
-        return result_items[start_idx:end_idx]
-    
-    def _reciprocal_rank_fusion(
-        self,
-        lexical_result: Optional[LexicalSearchResult],
-        semantic_result: Optional[SemanticSearchResult],
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        sort_order: SortOrder
-    ) -> List[SearchResultItem]:
-        """Fusion par rang réciproque (RRF)."""
-        k = 60  # Constante pour RRF
-        all_results = {}
-        
-        # Traiter résultats lexicaux
-        if lexical_result and lexical_result.results:
-            lexical_weight = weights.get("lexical", 0.5)
-            for rank, result in enumerate(lexical_result.results):
-                transaction_id = result.transaction_id
-                rrf_score = lexical_weight * (1.0 / (k + rank + 1))
-                
-                all_results[transaction_id] = {
-                    "item": result,
-                    "rrf_score": rrf_score,
-                    "sources": ["lexical"]
-                }
-        
-        # Traiter résultats sémantiques
-        if semantic_result and semantic_result.results:
-            semantic_weight = weights.get("semantic", 0.5)
-            for rank, result in enumerate(semantic_result.results):
-                transaction_id = result.transaction_id
-                rrf_score = semantic_weight * (1.0 / (k + rank + 1))
-                
-                if transaction_id in all_results:
-                    # Additionner les scores RRF
-                    existing = all_results[transaction_id]
-                    existing["rrf_score"] += rrf_score
-                    existing["sources"].append("semantic")
-                    existing["item"].combined_score = existing["rrf_score"]
-                else:
-                    # Nouveau résultat
-                    all_results[transaction_id] = {
-                        "item": result,
-                        "rrf_score": rrf_score,
-                        "sources": ["semantic"]
-                    }
-        
-        # Bonus pour convergence
-        for result_data in all_results.values():
-            if len(result_data["sources"]) == 2:
-                boost = self.config.quality_boost_factor
-                result_data["rrf_score"] *= (1 + boost)
-                result_data["item"].combined_score = result_data["rrf_score"]
-        
-        # Trier par score RRF
-        sorted_results = sorted(
-            all_results.values(),
-            key=lambda x: x["rrf_score"],
-            reverse=True
-        )
-        
-        result_items = [data["item"] for data in sorted_results]
-        if sort_order != SortOrder.RELEVANCE:
-            result_items = self._apply_final_sorting(result_items, sort_order)
-        
-        start_idx = offset
-        end_idx = offset + limit
-        return result_items[start_idx:end_idx]
-    
-    def _score_normalization_fusion(
-        self,
-        lexical_result: Optional[LexicalSearchResult],
-        semantic_result: Optional[SemanticSearchResult],
-        weights: Dict[str, float],
-        limit: int,
-        offset: int,
-        sort_order: SortOrder
-    ) -> List[SearchResultItem]:
-        """Fusion avec normalisation Z-score."""
-        all_results = {}
-        
-        # Calculer statistiques pour normalisation
-        lexical_scores = []
-        semantic_scores = []
-        
-        if lexical_result and lexical_result.results:
-            lexical_scores = [r.score for r in lexical_result.results]
-        
-        if semantic_result and semantic_result.results:
-            semantic_scores = [r.score for r in semantic_result.results]
-        
-        # Moyennes et écarts-types
-        lexical_mean = sum(lexical_scores) / len(lexical_scores) if lexical_scores else 0
-        lexical_std = (sum((x - lexical_mean) ** 2 for x in lexical_scores) / len(lexical_scores)) ** 0.5 if len(lexical_scores) > 1 else 1
-        
-        semantic_mean = sum(semantic_scores) / len(semantic_scores) if semantic_scores else 0
-        semantic_std = (sum((x - semantic_mean) ** 2 for x in semantic_scores) / len(semantic_scores)) ** 0.5 if len(semantic_scores) > 1 else 1
-        
-        # Normaliser et combiner
-        if lexical_result and lexical_result.results:
-            lexical_weight = weights.get("lexical", 0.5)
-            for result in lexical_result.results:
-                transaction_id = result.transaction_id
-                z_score = (result.score - lexical_mean) / lexical_std if lexical_std > 0 else 0
-                normalized_score = max(0, min(1, (z_score + 3) / 6))  # Normaliser Z-score à [0,1]
-                weighted_score = normalized_score * lexical_weight
-                
-                all_results[transaction_id] = {
-                    "item": result,
-                    "normalized_score": weighted_score,
-                    "sources": ["lexical"]
-                }
-        
-        if semantic_result and semantic_result.results:
-            semantic_weight = weights.get("semantic", 0.5)
-            for result in semantic_result.results:
-                transaction_id = result.transaction_id
-                z_score = (result.score - semantic_mean) / semantic_std if semantic_std > 0 else 0
-                normalized_score = max(0, min(1, (z_score + 3) / 6))
-                weighted_score = normalized_score * semantic_weight
+        return warmup_results

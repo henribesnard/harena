@@ -1,18 +1,21 @@
 """
 Moteur de recherche lexicale pour Elasticsearch/Bonsai.
 
-Ce module implémente la recherche lexicale optimisée pour les transactions
-financières, basé sur les résultats du validateur harena_search_validator.
+Ce module implémente la recherche lexicale complète avec requêtes optimisées,
+filtres avancés, highlighting et évaluation de qualité.
 """
+import asyncio
 import logging
 import time
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+from enum import Enum
 
 from search_service.clients.elasticsearch_client import ElasticsearchClient
 from search_service.core.query_processor import QueryProcessor, QueryAnalysis
-from search_service.models.search_types import SearchQuality, SortOrder
+from search_service.models.search_types import SearchType, SearchQuality, SortOrder
 from search_service.models.responses import SearchResultItem
+from search_service.utils.cache import SearchCache
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +23,41 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LexicalSearchConfig:
     """Configuration pour la recherche lexicale."""
-    max_results: int = 50
-    min_score: float = 1.0
-    highlight_enabled: bool = True
-    fuzzy_enabled: bool = True
-    synonym_expansion: bool = True
-    boost_merchant_field: float = 5.0
-    boost_description_field: float = 3.0
+    # Boost factors pour différents champs
     boost_exact_phrase: float = 10.0
+    boost_merchant_name: float = 5.0
+    boost_primary_description: float = 3.0
+    boost_searchable_text: float = 4.0
+    boost_clean_description: float = 2.5
+    
+    # Configuration des requêtes
+    enable_fuzzy: bool = True
+    enable_wildcards: bool = True
+    enable_synonyms: bool = True
+    minimum_should_match: str = "1"
+    fuzziness_level: str = "AUTO"
+    
+    # Configuration du highlighting
+    highlight_enabled: bool = True
+    highlight_fragment_size: int = 150
+    highlight_max_fragments: int = 3
+    highlight_pre_tags: List[str] = None
+    highlight_post_tags: List[str] = None
+    
+    # Filtres et seuils
+    min_score_threshold: float = 1.0
+    max_results: int = 50
+    
+    # Performance
+    timeout_seconds: float = 5.0
+    enable_cache: bool = True
+    cache_ttl_seconds: int = 300
+    
+    def __post_init__(self):
+        if self.highlight_pre_tags is None:
+            self.highlight_pre_tags = ["<mark>"]
+        if self.highlight_post_tags is None:
+            self.highlight_post_tags = ["</mark>"]
 
 
 @dataclass
@@ -35,40 +65,48 @@ class LexicalSearchResult:
     """Résultat d'une recherche lexicale."""
     results: List[SearchResultItem]
     total_found: int
-    max_score: float
-    avg_score: float
     processing_time_ms: float
-    quality: SearchQuality
     query_used: str
+    highlights_count: int
+    quality: SearchQuality
+    elasticsearch_query: Optional[Dict[str, Any]] = None
     debug_info: Optional[Dict[str, Any]] = None
 
 
 class LexicalSearchEngine:
     """
-    Moteur de recherche lexicale optimisé pour Elasticsearch.
+    Moteur de recherche lexicale utilisant Elasticsearch.
     
-    Implémente les optimisations identifiées par le validateur:
-    - Requêtes multi-stratégies avec boost améliorés
-    - Correspondances exactes privilégiées
-    - Champs merchant_name avec boost élevé
-    - Gestion des wildcards et fuzzy search
-    - Highlighting optimisé
+    Responsabilités:
+    - Construction de requêtes Elasticsearch optimisées
+    - Gestion des filtres et du highlighting
+    - Correspondances exactes et floues
+    - Boosting intelligent des champs
+    - Évaluation de la qualité des résultats
     """
     
     def __init__(
         self,
         elasticsearch_client: ElasticsearchClient,
-        query_processor: QueryProcessor,
+        query_processor: Optional[QueryProcessor] = None,
         config: Optional[LexicalSearchConfig] = None
     ):
-        self.es_client = elasticsearch_client
-        self.query_processor = query_processor
+        self.elasticsearch_client = elasticsearch_client
+        self.query_processor = query_processor or QueryProcessor()
         self.config = config or LexicalSearchConfig()
         
-        # Métriques
+        # Cache pour les résultats
+        self.cache = SearchCache(
+            max_size=1000,
+            ttl_seconds=self.config.cache_ttl_seconds
+        ) if self.config.enable_cache else None
+        
+        # Métriques de performance
         self.search_count = 0
         self.total_processing_time = 0.0
-        self.error_count = 0
+        self.cache_hits = 0
+        self.failed_searches = 0
+        self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
         
         logger.info("Lexical search engine initialized")
     
@@ -83,7 +121,7 @@ class LexicalSearchEngine:
         debug: bool = False
     ) -> LexicalSearchResult:
         """
-        Effectue une recherche lexicale optimisée.
+        Effectue une recherche lexicale dans Elasticsearch.
         
         Args:
             query: Terme de recherche
@@ -96,762 +134,649 @@ class LexicalSearchEngine:
             
         Returns:
             Résultats de recherche lexicale
+            
+        Raises:
+            Exception: Si la recherche échoue
         """
         start_time = time.time()
         self.search_count += 1
         
+        # Génération de la clé de cache
+        cache_key = None
+        if self.cache:
+            cache_key = self._generate_cache_key(
+                query, user_id, limit, offset, sort_order, filters
+            )
+            
+            # Vérifier le cache
+            cached_result = self.cache.get(cache_key)
+            if cached_result:
+                self.cache_hits += 1
+                logger.debug(f"Cache hit for lexical search: {cache_key}")
+                return cached_result
+        
         try:
             # 1. Analyser et traiter la requête
             query_analysis = self.query_processor.process_query(query)
-            optimized_query = self.query_processor.optimize_for_lexical_search(query_analysis)
+            optimized_query = self._optimize_query_for_elasticsearch(query_analysis)
             
-            # 2. Construire et exécuter la requête Elasticsearch
-            es_results = await self.es_client.search_transactions(
-                query=optimized_query,
-                user_id=user_id,
-                limit=min(limit, self.config.max_results),
-                offset=offset,
-                filters=filters,
-                include_highlights=self.config.highlight_enabled,
-                explain=debug
+            # 2. Construire la requête Elasticsearch
+            es_query = self._build_elasticsearch_query(
+                optimized_query, query_analysis, user_id, filters, debug, sort_order
             )
             
-            # 3. Traiter les résultats
-            processed_results = self._process_elasticsearch_results(
-                es_results, query_analysis, debug
+            # 3. Exécuter la recherche avec timeout
+            search_response = await asyncio.wait_for(
+                self.elasticsearch_client.search(
+                    index="harena_transactions",
+                    body=es_query,
+                    size=limit,
+                    from_=offset
+                ),
+                timeout=self.config.timeout_seconds
             )
             
-            # 4. Appliquer le tri si nécessaire
-            if sort_order != SortOrder.RELEVANCE:
-                processed_results = self._apply_custom_sorting(processed_results, sort_order)
+            # 4. Traiter les résultats
+            results = self._process_elasticsearch_results(
+                search_response, query_analysis, debug
+            )
             
-            # 5. Calculer les métriques de qualité
+            # 5. Calculer les métriques
             processing_time = (time.time() - start_time) * 1000
             self.total_processing_time += processing_time
             
-            quality = self._assess_search_quality(processed_results, query_analysis)
+            # 6. Évaluer la qualité
+            quality = self._assess_lexical_quality(results, query_analysis)
+            self.quality_distribution[quality.value] += 1
             
-            # 6. Construire le résultat final
-            lexical_result = LexicalSearchResult(
-                results=processed_results.results[:limit],
-                total_found=processed_results.total_found,
-                max_score=processed_results.max_score,
-                avg_score=processed_results.avg_score,
+            # 7. Construire le résultat
+            result = LexicalSearchResult(
+                results=results,
+                total_found=search_response.get("hits", {}).get("total", {}).get("value", 0),
                 processing_time_ms=processing_time,
-                quality=quality,
                 query_used=optimized_query,
-                debug_info=processed_results.debug_info if debug else None
+                highlights_count=sum(1 for r in results if r.highlights),
+                quality=quality,
+                elasticsearch_query=es_query if debug else None,
+                debug_info=self._extract_debug_info(search_response) if debug else None
             )
             
-            logger.debug(
-                f"Lexical search completed: {len(processed_results.results)} results, "
-                f"quality: {quality}, time: {processing_time:.2f}ms"
-            )
+            # 8. Mettre en cache si activé
+            if self.cache and cache_key:
+                self.cache.put(cache_key, result)
             
-            return lexical_result
+            return result
             
-        except Exception as e:
-            self.error_count += 1
-            processing_time = (time.time() - start_time) * 1000
-            logger.error(f"Lexical search failed: {e}")
-            
-            return LexicalSearchResult(
-                results=[],
-                total_found=0,
-                max_score=0.0,
-                avg_score=0.0,
-                processing_time_ms=processing_time,
-                quality=SearchQuality.FAILED,
-                query_used=query,
-                debug_info={"error": str(e)} if debug else None
-            )
-    
-    def _process_elasticsearch_results(
-        self,
-        es_results: Dict[str, Any],
-        query_analysis: QueryAnalysis,
-        debug: bool = False
-    ) -> 'ProcessedSearchResults':
-        """Traite les résultats bruts d'Elasticsearch."""
-        hits = es_results.get("hits", {}).get("hits", [])
-        total = es_results.get("hits", {}).get("total", {})
-        total_found = total.get("value", 0) if isinstance(total, dict) else total
-        
-        processed_results = []
-        scores = []
-        
-        for hit in hits:
-            result_item = self._convert_es_hit_to_result_item(hit, query_analysis)
-            if result_item and result_item.score >= self.config.min_score:
-                processed_results.append(result_item)
-                scores.append(result_item.score)
-        
-        # Calculer les statistiques
-        max_score = max(scores) if scores else 0.0
-        avg_score = sum(scores) / len(scores) if scores else 0.0
-        
-        # Informations de debug
-        debug_info = None
-        if debug:
-            debug_info = {
-                "elasticsearch_query": es_results.get("_query", {}),
-                "total_hits": total_found,
-                "max_score_es": es_results.get("hits", {}).get("max_score", 0),
-                "filtered_results": len(processed_results),
-                "score_distribution": self._calculate_score_distribution(scores),
-                "query_analysis": {
-                    "original_query": query_analysis.original_query,
-                    "cleaned_query": query_analysis.cleaned_query,
-                    "expanded_query": query_analysis.expanded_query,
-                    "detected_entities": query_analysis.detected_entities
-                }
-            }
-        
-        return ProcessedSearchResults(
-            results=processed_results,
-            total_found=total_found,
-            max_score=max_score,
-            avg_score=avg_score,
-            debug_info=debug_info
-        )
-    
-    def _convert_es_hit_to_result_item(
-        self,
-        hit: Dict[str, Any],
-        query_analysis: QueryAnalysis
-    ) -> Optional[SearchResultItem]:
-        """Convertit un hit Elasticsearch en SearchResultItem."""
-        try:
-            source = hit.get("_source", {})
-            score = hit.get("_score", 0.0)
-            highlights = hit.get("highlight", {})
-            
-            # Calculer des scores détaillés si disponibles
-            lexical_score = score
-            semantic_score = None  # N/A pour recherche lexicale
-            combined_score = score
-            
-            # Créer l'item de résultat
-            result_item = SearchResultItem(
-                transaction_id=source.get("transaction_id"),
-                user_id=source.get("user_id"),
-                account_id=source.get("account_id"),
-                score=score,
-                lexical_score=lexical_score,
-                semantic_score=semantic_score,
-                combined_score=combined_score,
-                primary_description=source.get("primary_description", ""),
-                searchable_text=source.get("searchable_text", ""),
-                merchant_name=source.get("merchant_name"),
-                amount=source.get("amount", 0.0),
-                currency_code=source.get("currency_code", "EUR"),
-                transaction_type=source.get("transaction_type", ""),
-                transaction_date=source.get("transaction_date", ""),
-                created_at=source.get("created_at"),
-                category_id=source.get("category_id"),
-                operation_type=source.get("operation_type"),
-                highlights=highlights if highlights else None,
-                metadata={
-                    "elasticsearch_score": score,
-                    "search_type": "lexical",
-                    "query_type": query_analysis.query_type,
-                    "boost_applied": self._identify_boost_factors(hit, query_analysis)
-                }
-            )
-            
-            return result_item
+        except asyncio.TimeoutError:
+            self.failed_searches += 1
+            logger.error(f"Lexical search timeout after {self.config.timeout_seconds}s")
+            raise Exception("Search timeout")
             
         except Exception as e:
-            logger.warning(f"Failed to convert ES hit to result item: {e}")
-            return None
+            self.failed_searches += 1
+            logger.error(f"Lexical search failed: {e}", exc_info=True)
+            raise Exception(f"Lexical search error: {str(e)}")
     
-    def _identify_boost_factors(
-        self,
-        hit: Dict[str, Any],
-        query_analysis: QueryAnalysis
-    ) -> List[str]:
-        """Identifie les facteurs de boost appliqués à un résultat."""
-        boost_factors = []
-        
-        source = hit.get("_source", {})
-        highlights = hit.get("highlight", {})
-        query_terms = query_analysis.cleaned_query.lower().split()
-        
-        # Boost pour correspondance exacte
-        searchable_text = source.get("searchable_text", "").lower()
-        primary_desc = source.get("primary_description", "").lower()
-        
-        if query_analysis.cleaned_query.lower() in searchable_text:
-            boost_factors.append("exact_phrase_match")
-        
-        if query_analysis.cleaned_query.lower() in primary_desc:
-            boost_factors.append("description_exact_match")
-        
-        # Boost pour merchant_name
-        merchant_name = source.get("merchant_name", "").lower()
-        if any(term in merchant_name for term in query_terms):
-            boost_factors.append("merchant_name_match")
-        
-        # Boost pour highlighting (indique correspondance forte)
-        if highlights:
-            if "merchant_name" in highlights:
-                boost_factors.append("merchant_highlighted")
-            if "searchable_text" in highlights:
-                boost_factors.append("searchable_text_highlighted")
-            if "primary_description" in highlights:
-                boost_factors.append("description_highlighted")
-        
-        # Boost pour catégorie détectée
-        if query_analysis.detected_entities.get("categories"):
-            categories = query_analysis.detected_entities["categories"]
-            for category in categories:
-                if category.lower() in searchable_text or category.lower() in primary_desc:
-                    boost_factors.append(f"category_match_{category}")
-        
-        return boost_factors
-    
-    def _apply_custom_sorting(
-        self,
-        results: 'ProcessedSearchResults',
-        sort_order: SortOrder
-    ) -> 'ProcessedSearchResults':
-        """Applique un tri personnalisé aux résultats."""
-        if sort_order == SortOrder.RELEVANCE:
-            # Déjà trié par pertinence
-            return results
-        
-        sorted_results = results.results.copy()
-        
-        if sort_order == SortOrder.DATE_DESC:
-            sorted_results.sort(
-                key=lambda x: (x.transaction_date, x.score), 
-                reverse=True
-            )
-        elif sort_order == SortOrder.DATE_ASC:
-            sorted_results.sort(
-                key=lambda x: (x.transaction_date, x.score)
-            )
-        elif sort_order == SortOrder.AMOUNT_DESC:
-            sorted_results.sort(
-                key=lambda x: (abs(x.amount), x.score), 
-                reverse=True
-            )
-        elif sort_order == SortOrder.AMOUNT_ASC:
-            sorted_results.sort(
-                key=lambda x: (abs(x.amount), x.score)
-            )
-        
-        return ProcessedSearchResults(
-            results=sorted_results,
-            total_found=results.total_found,
-            max_score=results.max_score,
-            avg_score=results.avg_score,
-            debug_info=results.debug_info
-        )
-    
-    def _assess_search_quality(
-        self,
-        results: 'ProcessedSearchResults',
-        query_analysis: QueryAnalysis
-    ) -> SearchQuality:
-        """Évalue la qualité des résultats de recherche."""
-        if not results.results:
-            return SearchQuality.FAILED
-        
-        # Facteurs de qualité basés sur le validateur
-        quality_score = 0.0
-        
-        # 1. Score moyen des résultats
-        if results.avg_score >= 50:
-            quality_score += 0.4
-        elif results.avg_score >= 20:
-            quality_score += 0.2
-        
-        # 2. Nombre de résultats pertinents
-        if len(results.results) >= 5:
-            quality_score += 0.2
-        elif len(results.results) >= 1:
-            quality_score += 0.1
-        
-        # 3. Correspondance avec entités détectées
-        if self._check_entity_relevance(results, query_analysis):
-            quality_score += 0.2
-        
-        # 4. Diversity des résultats (pas tous identiques)
-        if self._check_result_diversity(results):
-            quality_score += 0.1
-        
-        # 5. Présence de highlights (indique correspondance forte)
-        highlighted_results = sum(1 for r in results.results if r.highlights)
-        if highlighted_results > 0:
-            quality_score += 0.1 * (highlighted_results / len(results.results))
-        
-        # Convertir en enum
-        if quality_score >= 0.9:
-            return SearchQuality.EXCELLENT
-        elif quality_score >= 0.7:
-            return SearchQuality.GOOD
-        elif quality_score >= 0.5:
-            return SearchQuality.MEDIUM
-        elif quality_score >= 0.3:
-            return SearchQuality.POOR
-        else:
-            return SearchQuality.FAILED
-    
-    def _check_entity_relevance(
-        self,
-        results: 'ProcessedSearchResults',
-        query_analysis: QueryAnalysis
-    ) -> bool:
-        """Vérifie si les résultats correspondent aux entités détectées."""
-        entities = query_analysis.detected_entities
-        
-        # Vérifier correspondance des montants
-        if entities.get("amounts"):
-            expected_amounts = [a["value"] for a in entities["amounts"]]
-            for result in results.results[:5]:  # Top 5 résultats
-                result_amount = abs(result.amount)
-                for expected in expected_amounts:
-                    if abs(result_amount - expected) / max(result_amount, expected) < 0.2:  # 20% de tolérance
-                        return True
-        
-        # Vérifier correspondance des catégories
-        if entities.get("categories"):
-            expected_categories = set(cat.lower() for cat in entities["categories"])
-            for result in results.results[:5]:
-                result_text = f"{result.searchable_text} {result.primary_description}".lower()
-                if any(cat in result_text for cat in expected_categories):
-                    return True
-        
-        # Si pas d'entités spécifiques, considérer comme pertinent
-        if not entities.get("amounts") and not entities.get("categories"):
-            return True
-        
-        return False
-    
-    def _check_result_diversity(self, results: 'ProcessedSearchResults') -> bool:
-        """Vérifie la diversité des résultats."""
-        if len(results.results) < 2:
-            return True
-        
-        # Vérifier diversité des descriptions
-        descriptions = set()
-        merchants = set()
-        
-        for result in results.results[:10]:
-            descriptions.add(result.primary_description.lower().strip())
-            if result.merchant_name:
-                merchants.add(result.merchant_name.lower().strip())
-        
-        # Au moins 60% de descriptions uniques
-        description_diversity = len(descriptions) / len(results.results[:10])
-        return description_diversity >= 0.6
-    
-    def _calculate_score_distribution(self, scores: List[float]) -> Dict[str, Any]:
-        """Calcule la distribution des scores."""
-        if not scores:
-            return {}
-        
-        return {
-            "min": min(scores),
-            "max": max(scores),
-            "avg": sum(scores) / len(scores),
-            "median": sorted(scores)[len(scores) // 2],
-            "count": len(scores),
-            "std_dev": self._calculate_std_dev(scores)
-        }
-    
-    def _calculate_std_dev(self, values: List[float]) -> float:
-        """Calcule l'écart-type."""
-        if len(values) < 2:
-            return 0.0
-        
-        mean = sum(values) / len(values)
-        variance = sum((x - mean) ** 2 for x in values) / len(values)
-        return variance ** 0.5
-    
-    async def suggest_query_improvements(
+    def _generate_cache_key(
         self,
         query: str,
         user_id: int,
-        search_results: LexicalSearchResult
-    ) -> List[str]:
-        """Suggère des améliorations de requête basées sur les résultats."""
-        suggestions = []
+        limit: int,
+        offset: int,
+        sort_order: SortOrder,
+        filters: Optional[Dict[str, Any]]
+    ) -> str:
+        """Génère une clé de cache pour la requête."""
+        import hashlib
         
-        # Si peu de résultats, suggérer des variantes
-        if len(search_results.results) < 3:
-            query_analysis = self.query_processor.process_query(query)
-            alternatives = self.query_processor.generate_alternative_queries(query_analysis)
-            
-            for alt_query in alternatives[:3]:
-                suggestions.append(f"Essayez: '{alt_query}'")
+        # Créer une représentation unique de la requête
+        cache_data = {
+            "query": query.lower().strip(),
+            "user_id": user_id,
+            "limit": limit,
+            "offset": offset,
+            "sort_order": sort_order.value,
+            "filters": filters or {}
+        }
         
-        # Si résultats de faible qualité, suggérer simplification
-        if search_results.quality in [SearchQuality.POOR, SearchQuality.FAILED]:
-            keywords = query.split()
-            if len(keywords) > 2:
-                simplified = ' '.join(keywords[:2])
-                suggestions.append(f"Simplifiez: '{simplified}'")
-        
-        # Suggérer ajout de filtres si entités détectées
-        query_analysis = self.query_processor.process_query(query)
-        if query_analysis.suggested_filters:
-            suggestions.append("Utilisez des filtres de date ou montant pour affiner")
-        
-        return suggestions[:5]  # Maximum 5 suggestions
+        # Sérialiser et hasher
+        cache_str = str(sorted(cache_data.items()))
+        return f"lexical_{hashlib.md5(cache_str.encode()).hexdigest()}"
     
-    async def explain_search_results(
+    def _optimize_query_for_elasticsearch(self, query_analysis: QueryAnalysis) -> str:
+        """Optimise la requête pour Elasticsearch."""
+        # Utiliser la requête enrichie si disponible
+        if query_analysis.enriched_query:
+            return query_analysis.enriched_query
+        
+        # Sinon utiliser la requête nettoyée
+        return query_analysis.cleaned_query or query_analysis.original_query
+    
+    def _build_elasticsearch_query(
         self,
         query: str,
-        transaction_id: int,
-        user_id: int
+        query_analysis: QueryAnalysis,
+        user_id: int,
+        filters: Optional[Dict[str, Any]],
+        debug: bool,
+        sort_order: SortOrder = SortOrder.RELEVANCE
     ) -> Dict[str, Any]:
-        """Explique pourquoi une transaction spécifique apparaît dans les résultats."""
-        try:
-            # Rechercher avec explication activée
-            es_results = await self.es_client.search_transactions(
-                query=query,
-                user_id=user_id,
-                limit=50,
-                filters={"transaction_ids": [transaction_id]},
-                explain=True
-            )
-            
-            # Trouver la transaction dans les résultats
-            target_hit = None
-            for hit in es_results.get("hits", {}).get("hits", []):
-                if hit["_source"]["transaction_id"] == transaction_id:
-                    target_hit = hit
-                    break
-            
-            if not target_hit:
-                return {"error": "Transaction not found in search results"}
-            
-            # Analyser l'explication
-            explanation = target_hit.get("_explanation", {})
-            score = target_hit.get("_score", 0)
-            source = target_hit["_source"]
-            
-            return {
-                "transaction_id": transaction_id,
-                "score": score,
-                "explanation": self._parse_es_explanation(explanation),
-                "matching_fields": self._identify_matching_fields(target_hit, query),
-                "transaction_data": {
-                    "description": source.get("primary_description"),
-                    "merchant": source.get("merchant_name"),
-                    "amount": source.get("amount"),
-                    "date": source.get("transaction_date")
-                },
-                "boost_factors": self._identify_boost_factors(target_hit, self.query_processor.process_query(query))
+        """Construit la requête Elasticsearch optimisée."""
+        
+        # Construire les clauses de requête avec boosting
+        query_clauses = []
+        
+        # 1. Correspondance exacte de phrase (boost très élevé)
+        if query_analysis.has_exact_phrases:
+            for phrase in query_analysis.exact_phrases:
+                query_clauses.append({
+                    "multi_match": {
+                        "query": phrase,
+                        "fields": [
+                            f"primary_description^{self.config.boost_exact_phrase}",
+                            f"merchant_name^{self.config.boost_merchant_name * 1.5}",
+                            f"searchable_text^{self.config.boost_searchable_text}"
+                        ],
+                        "type": "phrase",
+                        "boost": self.config.boost_exact_phrase
+                    }
+                })
+        
+        # 2. Correspondance multi-champs principale
+        query_clauses.append({
+            "multi_match": {
+                "query": query,
+                "fields": [
+                    f"primary_description^{self.config.boost_primary_description}",
+                    f"merchant_name^{self.config.boost_merchant_name}",
+                    f"searchable_text^{self.config.boost_searchable_text}",
+                    f"clean_description^{self.config.boost_clean_description}"
+                ],
+                "type": "best_fields",
+                "fuzziness": self.config.fuzziness_level if self.config.enable_fuzzy else "0",
+                "minimum_should_match": self.config.minimum_should_match,
+                "boost": 1.0
             }
-            
-        except Exception as e:
-            return {"error": f"Failed to explain search result: {e}"}
-    
-    def _parse_es_explanation(self, explanation: Dict[str, Any]) -> Dict[str, Any]:
-        """Parse l'explication Elasticsearch en format lisible."""
-        if not explanation:
-            return {}
+        })
         
-        return {
-            "total_score": explanation.get("value", 0),
-            "description": explanation.get("description", ""),
-            "details": self._extract_explanation_details(explanation.get("details", []))
-        }
-    
-    def _extract_explanation_details(self, details: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Extrait les détails de l'explication."""
-        extracted = []
-        
-        for detail in details:
-            extracted.append({
-                "component": detail.get("description", ""),
-                "score": detail.get("value", 0),
-                "sub_details": self._extract_explanation_details(detail.get("details", []))
+        # 3. Recherche avec préfixes pour correspondances partielles
+        if self.config.enable_wildcards and len(query) > 2:
+            query_clauses.append({
+                "multi_match": {
+                    "query": query,
+                    "fields": [
+                        f"primary_description.keyword^{self.config.boost_primary_description * 0.8}",
+                        f"merchant_name.keyword^{self.config.boost_merchant_name * 0.8}",
+                        "searchable_text^2.0"
+                    ],
+                    "type": "phrase_prefix",
+                    "boost": 0.6
+                }
             })
         
-        return extracted
-    
-    def _identify_matching_fields(self, hit: Dict[str, Any], query: str) -> List[str]:
-        """Identifie les champs qui correspondent à la requête."""
-        matching_fields = []
-        source = hit["_source"]
-        highlights = hit.get("highlight", {})
+        # 4. Correspondances partielles avec wildcards
+        if self.config.enable_wildcards and len(query) > 3:
+            wildcard_query = f"*{query.lower()}*"
+            query_clauses.append({
+                "wildcard": {
+                    "primary_description": {
+                        "value": wildcard_query,
+                        "boost": 0.4
+                    }
+                }
+            })
+            query_clauses.append({
+                "wildcard": {
+                    "merchant_name": {
+                        "value": wildcard_query,
+                        "boost": 0.5
+                    }
+                }
+            })
         
-        query_terms = query.lower().split()
+        # 5. Recherche par termes individuels pour améliorer le rappel
+        if query_analysis.key_terms:
+            for term in query_analysis.key_terms:
+                if len(term) > 2:  # Éviter les termes trop courts
+                    query_clauses.append({
+                        "multi_match": {
+                            "query": term,
+                            "fields": [
+                                "primary_description^1.5",
+                                "merchant_name^2.0",
+                                "searchable_text^1.2"
+                            ],
+                            "type": "cross_fields",
+                            "boost": 0.3
+                        }
+                    })
         
-        # Vérifier les highlights d'abord
-        for field in highlights:
-            matching_fields.append(f"{field} (highlighted)")
-        
-        # Vérifier les correspondances dans les champs principaux
-        fields_to_check = {
-            "searchable_text": source.get("searchable_text", ""),
-            "primary_description": source.get("primary_description", ""),
-            "merchant_name": source.get("merchant_name", "")
+        # Construction de la requête principale
+        main_query = {
+            "bool": {
+                "should": query_clauses,
+                "minimum_should_match": 1
+            }
         }
         
-        for field_name, field_value in fields_to_check.items():
-            if field_value and any(term in field_value.lower() for term in query_terms):
-                if f"{field_name} (highlighted)" not in matching_fields:
-                    matching_fields.append(field_name)
+        # Construire la requête complète avec filtres
+        es_query = {
+            "query": {
+                "bool": {
+                    "must": [main_query],
+                    "filter": [
+                        {"term": {"user_id": user_id}}
+                    ]
+                }
+            },
+            "min_score": self.config.min_score_threshold
+        }
         
-        return matching_fields
+        # Ajouter les filtres additionnels
+        if filters:
+            self._add_filters_to_query(es_query, filters)
+        
+        # Ajouter le highlighting
+        if self.config.highlight_enabled:
+            es_query["highlight"] = {
+                "fields": {
+                    "primary_description": {
+                        "fragment_size": self.config.highlight_fragment_size,
+                        "number_of_fragments": self.config.highlight_max_fragments,
+                        "type": "unified"
+                    },
+                    "merchant_name": {
+                        "fragment_size": 100,
+                        "number_of_fragments": 1,
+                        "type": "unified"
+                    },
+                    "searchable_text": {
+                        "fragment_size": self.config.highlight_fragment_size,
+                        "number_of_fragments": 2,
+                        "type": "unified"
+                    }
+                },
+                "pre_tags": self.config.highlight_pre_tags,
+                "post_tags": self.config.highlight_post_tags,
+                "require_field_match": False
+            }
+        
+        # Ajouter le tri
+        if sort_order != SortOrder.RELEVANCE:
+            es_query["sort"] = self._build_sort_clause(sort_order)
+        
+        # Ajouter l'explication pour debug
+        if debug:
+            es_query["explain"] = True
+        
+        return es_query
     
-    def get_engine_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques du moteur lexical."""
+    def _add_filters_to_query(self, es_query: Dict[str, Any], filters: Dict[str, Any]) -> None:
+        """Ajoute les filtres à la requête Elasticsearch."""
+        filter_clauses = es_query["query"]["bool"]["filter"]
+        
+        # Filtres par type de transaction
+        if filters.get("transaction_type"):
+            filter_clauses.append({
+                "term": {"transaction_type": filters["transaction_type"]}
+            })
+        
+        # Filtres par montant
+        if filters.get("amount_range"):
+            amount_range = filters["amount_range"]
+            range_filter = {"range": {"amount": {}}}
+            
+            if amount_range.get("min") is not None:
+                range_filter["range"]["amount"]["gte"] = amount_range["min"]
+            if amount_range.get("max") is not None:
+                range_filter["range"]["amount"]["lte"] = amount_range["max"]
+            
+            if range_filter["range"]["amount"]:  # Ajouter seulement si des limites sont définies
+                filter_clauses.append(range_filter)
+        
+        # Filtres par date
+        if filters.get("date_range"):
+            date_range = filters["date_range"]
+            range_filter = {"range": {"transaction_date": {}}}
+            
+            if date_range.get("start"):
+                range_filter["range"]["transaction_date"]["gte"] = date_range["start"]
+            if date_range.get("end"):
+                range_filter["range"]["transaction_date"]["lte"] = date_range["end"]
+            
+            if range_filter["range"]["transaction_date"]:
+                filter_clauses.append(range_filter)
+        
+        # Filtres par compte
+        if filters.get("account_ids") and filters["account_ids"]:
+            filter_clauses.append({
+                "terms": {"account_id": filters["account_ids"]}
+            })
+        
+        # Filtres par catégorie
+        if filters.get("category_ids") and filters["category_ids"]:
+            filter_clauses.append({
+                "terms": {"category_id": filters["category_ids"]}
+            })
+        
+        # Filtres par marchand
+        if filters.get("merchant_names") and filters["merchant_names"]:
+            filter_clauses.append({
+                "terms": {"merchant_name.keyword": filters["merchant_names"]}
+            })
+        
+        # Filtre par période (derniers N jours)
+        if filters.get("last_days"):
+            filter_clauses.append({
+                "range": {
+                    "transaction_date": {
+                        "gte": f"now-{filters['last_days']}d/d"
+                    }
+                }
+            })
+    
+    def _build_sort_clause(self, sort_order: SortOrder) -> List[Dict[str, Any]]:
+        """Construit la clause de tri."""
+        if sort_order == SortOrder.DATE_DESC:
+            return [
+                {"transaction_date": {"order": "desc"}},
+                {"_score": {"order": "desc"}}
+            ]
+        elif sort_order == SortOrder.DATE_ASC:
+            return [
+                {"transaction_date": {"order": "asc"}},
+                {"_score": {"order": "desc"}}
+            ]
+        elif sort_order == SortOrder.AMOUNT_DESC:
+            return [
+                {"amount": {"order": "desc"}},
+                {"_score": {"order": "desc"}}
+            ]
+        elif sort_order == SortOrder.AMOUNT_ASC:
+            return [
+                {"amount": {"order": "asc"}},
+                {"_score": {"order": "desc"}}
+            ]
+        else:  # RELEVANCE par défaut
+            return [{"_score": {"order": "desc"}}]
+    
+    def _process_elasticsearch_results(
+        self,
+        search_response: Dict[str, Any],
+        query_analysis: QueryAnalysis,
+        debug: bool
+    ) -> List[SearchResultItem]:
+        """Traite les résultats Elasticsearch en SearchResultItem."""
+        results = []
+        
+        hits = search_response.get("hits", {}).get("hits", [])
+        
+        for hit in hits:
+            source = hit["_source"]
+            
+            # Extraire les highlights
+            highlights = None
+            if hit.get("highlight"):
+                highlights = {
+                    field: fragments
+                    for field, fragments in hit["highlight"].items()
+                    if fragments  # Garder seulement les champs avec highlights
+                }
+            
+            # Informations de debug
+            explanation = None
+            if debug and hit.get("_explanation"):
+                explanation = {
+                    "value": hit["_explanation"].get("value"),
+                    "description": hit["_explanation"].get("description"),
+                    "details": hit["_explanation"].get("details", [])[:3]  # Limiter les détails
+                }
+            
+            # Construire les métadonnées
+            metadata = {
+                "search_engine": "lexical",
+                "elasticsearch_score": hit["_score"],
+                "index": hit["_index"],
+                "doc_id": hit["_id"]
+            }
+            
+            if debug:
+                metadata["debug"] = {
+                    "shard": hit.get("_shard"),
+                    "node": hit.get("_node"),
+                    "explanation": explanation
+                }
+            
+            result_item = SearchResultItem(
+                transaction_id=source["transaction_id"],
+                user_id=source["user_id"],
+                account_id=source.get("account_id"),
+                score=hit["_score"],
+                lexical_score=hit["_score"],  # Pour recherche lexicale pure
+                semantic_score=None,
+                combined_score=hit["_score"],
+                primary_description=source["primary_description"],
+                searchable_text=source.get("searchable_text"),
+                merchant_name=source.get("merchant_name"),
+                amount=source["amount"],
+                currency_code=source.get("currency_code", "EUR"),
+                transaction_type=source["transaction_type"],
+                transaction_date=source["transaction_date"],
+                created_at=source.get("created_at"),
+                category_id=source.get("category_id"),
+                operation_type=source.get("operation_type"),
+                highlights=highlights,
+                metadata=metadata,
+                explanation=explanation
+            )
+            
+            results.append(result_item)
+        
+        return results
+    
+    def _extract_debug_info(self, search_response: Dict[str, Any]) -> Dict[str, Any]:
+        """Extrait les informations de debug de la réponse Elasticsearch."""
+        return {
+            "took": search_response.get("took"),
+            "timed_out": search_response.get("timed_out"),
+            "shards": search_response.get("_shards"),
+            "hits_total": search_response.get("hits", {}).get("total"),
+            "max_score": search_response.get("hits", {}).get("max_score")
+        }
+    
+    def _assess_lexical_quality(
+        self,
+        results: List[SearchResultItem],
+        query_analysis: QueryAnalysis
+    ) -> SearchQuality:
+        """Évalue la qualité des résultats lexicaux."""
+        if not results:
+            return SearchQuality.POOR
+        
+        # Calculer différents aspects de qualité
+        score_quality = self._assess_score_distribution(results)
+        highlight_quality = self._assess_highlight_coverage(results)
+        relevance_quality = self._assess_relevance_indicators(results, query_analysis)
+        diversity_quality = self._assess_result_diversity(results)
+        
+        # Moyenne pondérée des qualités
+        overall_quality = (
+            score_quality * 0.35 +
+            highlight_quality * 0.25 +
+            relevance_quality * 0.30 +
+            diversity_quality * 0.10
+        )
+        
+        # Conversion en enum de qualité
+        if overall_quality >= 0.8:
+            return SearchQuality.EXCELLENT
+        elif overall_quality >= 0.6:
+            return SearchQuality.GOOD
+        elif overall_quality >= 0.4:
+            return SearchQuality.MEDIUM
+        else:
+            return SearchQuality.POOR
+    
+    def _assess_score_distribution(self, results: List[SearchResultItem]) -> float:
+        """Évalue la distribution des scores."""
+        if not results:
+            return 0.0
+        
+        scores = [r.score for r in results if r.score]
+        if not scores:
+            return 0.0
+        
+        max_score = max(scores)
+        min_score = min(scores)
+        
+        # Score trop bas = mauvaise qualité
+        if max_score <= self.config.min_score_threshold:
+            return 0.2
+        
+        # Calculer la variance relative
+        if len(scores) > 1:
+            avg_score = sum(scores) / len(scores)
+            variance = sum((s - avg_score) ** 2 for s in scores) / len(scores)
+            relative_variance = variance / (avg_score ** 2) if avg_score > 0 else 0
+        else:
+            relative_variance = 0
+        
+        # Normaliser la qualité (score max entre 1-20 typiquement pour ES)
+        normalized_max = min(max_score / 15.0, 1.0)
+        
+        # Bonus pour une bonne distribution des scores
+        distribution_bonus = min(relative_variance * 2, 0.3)
+        
+        return min(normalized_max + distribution_bonus, 1.0)
+    
+    def _assess_highlight_coverage(self, results: List[SearchResultItem]) -> float:
+        """Évalue la couverture des highlights."""
+        if not results:
+            return 0.0
+        
+        highlighted_results = sum(1 for r in results if r.highlights)
+        coverage = highlighted_results / len(results)
+        
+        # Bonus si les highlights sont riches (plusieurs champs)
+        total_highlight_fields = sum(
+            len(r.highlights) for r in results if r.highlights
+        )
+        
+        if highlighted_results > 0:
+            avg_fields_per_highlight = total_highlight_fields / highlighted_results
+            field_bonus = min((avg_fields_per_highlight - 1) * 0.2, 0.3)
+        else:
+            field_bonus = 0
+        
+        return min(coverage + field_bonus, 1.0)
+    
+    def _assess_relevance_indicators(
+        self,
+        results: List[SearchResultItem],
+        query_analysis: QueryAnalysis
+    ) -> float:
+        """Évalue les indicateurs de pertinence."""
+        if not results or not query_analysis.key_terms:
+            return 0.5  # Neutre si pas d'analyse
+        
+        relevance_scores = []
+        
+        for result in results:
+            # Construire le texte à analyser
+            text_to_check = " ".join(filter(None, [
+                result.primary_description,
+                result.merchant_name,
+                result.searchable_text
+            ])).lower()
+            
+            # Compter les termes qui matchent
+            matching_terms = sum(
+                1 for term in query_analysis.key_terms
+                if term.lower() in text_to_check
+            )
+            
+            # Calculer le ratio de pertinence
+            if query_analysis.key_terms:
+                term_coverage = matching_terms / len(query_analysis.key_terms)
+            else:
+                term_coverage = 0
+            
+            # Bonus pour la longueur du texte (plus d'informations)
+            text_length_bonus = min(len(text_to_check) / 200, 0.2)
+            
+            result_relevance = min(term_coverage + text_length_bonus, 1.0)
+            relevance_scores.append(result_relevance)
+        
+        return sum(relevance_scores) / len(relevance_scores) if relevance_scores else 0.0
+    
+    def _assess_result_diversity(self, results: List[SearchResultItem]) -> float:
+        """Évalue la diversité des résultats."""
+        if len(results) <= 1:
+            return 1.0
+        
+        # Diversité par marchand
+        merchants = {r.merchant_name for r in results if r.merchant_name}
+        merchant_diversity = len(merchants) / len(results)
+        
+        # Diversité par catégorie
+        categories = {r.category_id for r in results if r.category_id}
+        category_diversity = len(categories) / len(results) if categories else 0.5
+        
+        # Diversité par montant (répartition)
+        amounts = [r.amount for r in results if r.amount]
+        if len(amounts) > 1:
+            amount_range = max(amounts) - min(amounts)
+            amount_diversity = min(amount_range / max(amounts), 1.0) if max(amounts) > 0 else 0
+        else:
+            amount_diversity = 0.5
+        
+        # Moyenne pondérée
+        return (merchant_diversity * 0.5 + category_diversity * 0.3 + amount_diversity * 0.2)
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Retourne les métriques du moteur lexical."""
         avg_processing_time = (
             self.total_processing_time / self.search_count
             if self.search_count > 0 else 0
         )
         
-        error_rate = self.error_count / self.search_count if self.search_count > 0 else 0
+        cache_hit_rate = self.cache_hits / self.search_count if self.search_count > 0 else 0
+        failure_rate = self.failed_searches / self.search_count if self.search_count > 0 else 0
         
         return {
             "engine_type": "lexical",
             "search_count": self.search_count,
-            "error_count": self.error_count,
-            "error_rate": error_rate,
-            "avg_processing_time_ms": avg_processing_time,
-            "config": {
-                "max_results": self.config.max_results,
-                "min_score": self.config.min_score,
-                "highlight_enabled": self.config.highlight_enabled,
-                "fuzzy_enabled": self.config.fuzzy_enabled,
-                "synonym_expansion": self.config.synonym_expansion
-            },
-            "elasticsearch_client_stats": self.es_client.get_metrics()
+            "total_processing_time_ms": self.total_processing_time,
+            "average_processing_time_ms": avg_processing_time,
+            "cache_hits": self.cache_hits,
+            "cache_hit_rate": cache_hit_rate,
+            "failed_searches": self.failed_searches,
+            "failure_rate": failure_rate,
+            "quality_distribution": self.quality_distribution,
+            "cache_stats": self.cache.get_stats() if self.cache else None
         }
     
-    def reset_stats(self):
-        """Remet à zéro les statistiques."""
-        self.search_count = 0
-        self.total_processing_time = 0.0
-        self.error_count = 0
-        logger.info("Lexical search engine stats reset")
+    def clear_cache(self) -> None:
+        """Vide le cache du moteur lexical."""
+        if self.cache:
+            self.cache.clear()
+            logger.info("Lexical engine cache cleared")
     
-    async def warmup(self, user_id: int) -> bool:
-        """Réchauffe le moteur avec des requêtes de test."""
-        warmup_queries = [
-            "restaurant", "virement", "carte bancaire", 
-            "supermarché", "essence", "pharmacie"
-        ]
-        
-        success_count = 0
-        
-        for query in warmup_queries:
-            try:
-                result = await self.search(query, user_id, limit=5)
-                if result.quality != SearchQuality.FAILED:
-                    success_count += 1
-                    
-                # Petit délai entre les requêtes
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                logger.warning(f"Warmup query '{query}' failed: {e}")
-        
-        warmup_success = success_count >= len(warmup_queries) // 2
-        logger.info(f"Lexical engine warmup: {success_count}/{len(warmup_queries)} queries successful")
-        
-        return warmup_success
-
-
-@dataclass
-class ProcessedSearchResults:
-    """Résultats traités de recherche."""
-    results: List[SearchResultItem]
-    total_found: int
-    max_score: float
-    avg_score: float
-    debug_info: Optional[Dict[str, Any]] = None
-
-
-class LexicalSearchOptimizer:
-    """Optimiseur pour les requêtes lexicales."""
-    
-    def __init__(self):
-        # Patterns de requêtes optimisées
-        self.optimization_patterns = {
-            "single_word": self._optimize_single_word,
-            "amount_query": self._optimize_amount_query,
-            "merchant_query": self._optimize_merchant_query,
-            "category_query": self._optimize_category_query,
-            "date_query": self._optimize_date_query,
-            "complex_query": self._optimize_complex_query
-        }
-        
-        logger.info("Lexical search optimizer initialized")
-    
-    def optimize_query(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """
-        Optimise une requête pour la recherche lexicale.
-        
-        Args:
-            query_analysis: Analyse de la requête
-            search_context: Contexte de recherche (historique, préférences)
+    async def health_check(self) -> Dict[str, Any]:
+        """Vérifie la santé du moteur lexical."""
+        try:
+            # Test simple de connectivité
+            health = await self.elasticsearch_client.health()
             
-        Returns:
-            Requête optimisée
-        """
-        query_type = query_analysis.query_type
-        
-        # Sélectionner l'optimiseur approprié
-        if len(query_analysis.cleaned_query.split()) == 1:
-            optimizer = self.optimization_patterns["single_word"]
-        elif query_analysis.detected_entities.get("amounts"):
-            optimizer = self.optimization_patterns["amount_query"]
-        elif query_analysis.detected_entities.get("categories"):
-            optimizer = self.optimization_patterns["category_query"]
-        elif "merchant" in query_type or "restaurant" in query_analysis.cleaned_query:
-            optimizer = self.optimization_patterns["merchant_query"]
-        elif query_analysis.detected_entities.get("dates"):
-            optimizer = self.optimization_patterns["date_query"]
-        else:
-            optimizer = self.optimization_patterns["complex_query"]
-        
-        return optimizer(query_analysis, search_context)
-    
-    def _optimize_single_word(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Optimise les requêtes à un seul mot."""
-        word = query_analysis.cleaned_query
-        
-        # Ajouter des variantes et synonymes
-        variations = [word]
-        
-        # Ajouter des synonymes financiers
-        if word in FINANCIAL_SYNONYMS:
-            variations.extend(FINANCIAL_SYNONYMS[word][:3])
-        
-        # Ajouter des wildcard pour capturer les variantes
-        if len(word) > 3:
-            variations.append(f"{word}*")
-        
-        return " ".join(set(variations))
-    
-    def _optimize_amount_query(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Optimise les requêtes avec montants."""
-        base_query = query_analysis.cleaned_query
-        
-        # Supprimer les montants pour se concentrer sur le contexte
-        text_only = base_query
-        for amount in query_analysis.detected_entities.get("amounts", []):
-            text_only = text_only.replace(amount["raw"], "")
-        
-        text_only = " ".join(text_only.split())  # Nettoyer les espaces
-        
-        if text_only:
-            return text_only
-        else:
-            # Si seul montant, rechercher des transactions similaires
-            return "transaction paiement achat"
-    
-    def _optimize_merchant_query(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Optimise les requêtes de marchands."""
-        query = query_analysis.cleaned_query
-        
-        # Prioriser le champ merchant_name
-        merchant_terms = []
-        
-        # Extraire les termes qui pourraient être des noms de marchands
-        words = query.split()
-        for word in words:
-            if len(word) > 2 and word not in ["chez", "au", "à", "le", "la", "les"]:
-                merchant_terms.append(word)
-        
-        # Ajouter des variantes courantes
-        if "restaurant" in query or "resto" in query:
-            merchant_terms.extend(["restaurant", "resto", "brasserie"])
-        
-        return " ".join(set(merchant_terms))
-    
-    def _optimize_category_query(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Optimise les requêtes de catégories."""
-        categories = query_analysis.detected_entities.get("categories", [])
-        base_query = query_analysis.cleaned_query
-        
-        # Combiner la requête originale avec les termes de catégorie
-        category_terms = []
-        for category in categories:
-            if category in FINANCIAL_SYNONYMS:
-                category_terms.extend(FINANCIAL_SYNONYMS[category][:3])
-            else:
-                category_terms.append(category)
-        
-        all_terms = [base_query] + category_terms
-        return " ".join(set(all_terms))
-    
-    def _optimize_date_query(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Optimise les requêtes avec dates."""
-        base_query = query_analysis.cleaned_query
-        
-        # Supprimer les dates pour se concentrer sur le contenu
-        text_only = base_query
-        for date_info in query_analysis.detected_entities.get("dates", []):
-            text_only = text_only.replace(date_info["raw"], "")
-        
-        text_only = " ".join(text_only.split())
-        
-        # Note: Les filtres de date seront appliqués séparément
-        return text_only if text_only else "transaction"
-    
-    def _optimize_complex_query(
-        self,
-        query_analysis: QueryAnalysis,
-        search_context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Optimise les requêtes complexes."""
-        # Pour les requêtes complexes, utiliser la requête étendue
-        expanded = query_analysis.expanded_query
-        
-        # Limiter le nombre de termes pour éviter la dilution
-        terms = expanded.split()
-        if len(terms) > 8:
-            # Garder les termes les plus importants
-            important_terms = []
-            
-            # Prioriser les termes de la requête originale
-            original_terms = set(query_analysis.cleaned_query.split())
-            for term in terms:
-                if term in original_terms:
-                    important_terms.append(term)
-            
-            # Ajouter d'autres termes jusqu'à 8
-            for term in terms:
-                if term not in important_terms and len(important_terms) < 8:
-                    important_terms.append(term)
-            
-            return " ".join(important_terms)
-        
-        return expanded
-
-
-# Import pour éviter la référence circulaire
-import asyncio
-from search_service.models.search_types import FINANCIAL_SYNONYMS
+            return {
+                "status": "healthy",
+                "elasticsearch_status": health.get("status", "unknown"),
+                "metrics": self.get_metrics()
+            }
+        except Exception as e:
+            logger.error(f"Lexical engine health check failed: {e}")
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "metrics": self.get_metrics()
+            }

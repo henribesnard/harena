@@ -262,15 +262,30 @@ class SemanticSearchEngine:
     
     def _optimize_query_for_semantic_search(self, query_analysis: QueryAnalysis) -> str:
         """Optimise la requête pour la recherche sémantique."""
-        # Pour la recherche sémantique, on privilégie le contexte et le sens
-        if self.config.enable_query_expansion and query_analysis.enriched_query:
-            return query_analysis.enriched_query
+        # CORRECTION: Utiliser 'expanded_query' au lieu de 'enriched_query'
+        if (self.config.enable_query_expansion and 
+            hasattr(query_analysis, 'expanded_query') and 
+            query_analysis.expanded_query):
+            return query_analysis.expanded_query
         
         # Utiliser la requête nettoyée avec expansion contextuelle
         base_query = query_analysis.cleaned_query or query_analysis.original_query
         
+        # CORRECTION: Vérifier l'existence de l'attribut has_financial_entities de manière sécurisée
+        has_financial_entities = False
+        if hasattr(query_analysis, 'has_financial_entities'):
+            has_financial_entities = query_analysis.has_financial_entities
+        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
+            # Vérifier s'il y a des entités financières (montants, catégories, etc.)
+            entities = query_analysis.detected_entities
+            has_financial_entities = (
+                entities.get('amounts', []) or 
+                entities.get('categories', []) or
+                any(word in base_query.lower() for word in ['euro', '€', 'montant', 'prix', 'coût'])
+            )
+        
         # Ajouter du contexte financier si pertinent
-        if query_analysis.has_financial_entities:
+        if has_financial_entities:
             financial_context = " transaction financière"
             if "transaction" not in base_query.lower():
                 base_query += financial_context
@@ -279,17 +294,50 @@ class SemanticSearchEngine:
     
     def _determine_optimal_threshold(self, query_analysis: QueryAnalysis) -> float:
         """Détermine le seuil de similarité optimal basé sur l'analyse de requête."""
+        
+        # CORRECTION: Vérifier les attributs disponibles de manière sécurisée
+        has_exact_phrases = False
+        has_financial_entities = False
+        key_terms = []
+        is_question = False
+        
+        # Vérifier has_exact_phrases
+        if hasattr(query_analysis, 'has_exact_phrases'):
+            has_exact_phrases = query_analysis.has_exact_phrases
+        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            # Fallback: créer une phrase exacte pour les requêtes courtes
+            has_exact_phrases = len(query_analysis.cleaned_query.split()) <= 3
+        
+        # Vérifier has_financial_entities
+        if hasattr(query_analysis, 'has_financial_entities'):
+            has_financial_entities = query_analysis.has_financial_entities
+        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
+            entities = query_analysis.detected_entities
+            has_financial_entities = bool(entities.get('amounts', []) or entities.get('categories', []))
+        
+        # Obtenir key_terms
+        if hasattr(query_analysis, 'key_terms'):
+            key_terms = query_analysis.key_terms or []
+        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
+            key_terms = query_analysis.detected_entities.get('keywords', [])
+        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            key_terms = query_analysis.cleaned_query.split()
+        
+        # Vérifier is_question
+        if hasattr(query_analysis, 'is_question'):
+            is_question = query_analysis.is_question
+        elif hasattr(query_analysis, 'original_query') and query_analysis.original_query:
+            is_question = any(word in query_analysis.original_query.lower() 
+                             for word in ["quoi", "comment", "pourquoi", "où", "quand", "?"])
+        
         # Seuil strict pour requêtes très spécifiques
-        if (query_analysis.has_exact_phrases or 
-            query_analysis.has_financial_entities or
-            len(query_analysis.key_terms) <= 2):
+        if (has_exact_phrases or 
+            has_financial_entities or
+            len(key_terms) <= 2):
             return self.config.similarity_threshold_strict
         
         # Seuil relâché pour requêtes génériques ou exploratoires
-        elif (len(query_analysis.key_terms) > 5 or
-              query_analysis.is_question or
-              any(word in query_analysis.original_query.lower() 
-                  for word in ["quoi", "comment", "pourquoi", "où", "quand"])):
+        elif (len(key_terms) > 5 or is_question):
             return self.config.similarity_threshold_loose
         
         # Seuil par défaut
@@ -712,8 +760,21 @@ class SemanticSearchEngine:
         query_analysis: QueryAnalysis
     ) -> float:
         """Évalue la pertinence contextuelle des résultats."""
-        if not results or not query_analysis.key_terms:
+        if not results:
             return 0.5
+        
+        # CORRECTION: Obtenir key_terms de manière sécurisée
+        key_terms = []
+        if hasattr(query_analysis, 'key_terms') and query_analysis.key_terms:
+            key_terms = query_analysis.key_terms
+        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
+            key_terms = query_analysis.detected_entities.get('keywords', [])
+        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            # Fallback: utiliser les mots de la requête nettoyée
+            key_terms = query_analysis.cleaned_query.split()
+        
+        if not key_terms:
+            return 0.5  # Neutre si pas de termes à analyser
         
         relevance_scores = []
         
@@ -727,11 +788,11 @@ class SemanticSearchEngine:
             
             # Vérifier la présence des termes clés
             matching_terms = sum(
-                1 for term in query_analysis.key_terms
+                1 for term in key_terms
                 if term.lower() in context
             )
             
-            term_relevance = matching_terms / len(query_analysis.key_terms)
+            term_relevance = matching_terms / len(key_terms)
             
             # Bonus pour richesse du contexte
             context_richness = min(len(context.split()) / 10, 1.0)
@@ -741,6 +802,40 @@ class SemanticSearchEngine:
             relevance_scores.append(result_relevance)
         
         return sum(relevance_scores) / len(relevance_scores) if relevance_scores else 0.0
+    
+    async def count_user_points(self, user_id: int) -> int:
+        """Compte le nombre de points pour un utilisateur dans Qdrant."""
+        try:
+            # Utiliser une recherche avec un vecteur neutre pour compter
+            count_result = await self.qdrant_client.count(
+                collection_name=self.config.collection_name,
+                count_filter={
+                    "must": [{"key": "user_id", "match": {"value": user_id}}]
+                }
+            )
+            
+            return count_result.get("count", 0) if count_result else 0
+        except Exception as e:
+            logger.error(f"Failed to count points for user {user_id}: {e}")
+            return 0
+    
+    async def advanced_search(
+        self,
+        query: str,
+        user_id: int,
+        filters: Dict[str, Any],
+        limit: int = 20,
+        offset: int = 0
+    ) -> SemanticSearchResult:
+        """Effectue une recherche avancée avec filtres."""
+        return await self.search(
+            query=query,
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            filters=filters,
+            debug=False
+        )
     
     def get_metrics(self) -> Dict[str, Any]:
         """Retourne les métriques du moteur sémantique."""
@@ -877,8 +972,20 @@ class SemanticSearchEngine:
             
             # 3. Traiter les résultats et exclure la transaction de référence
             if search_results:
+                # Créer un QueryAnalysis vide pour le traitement
+                empty_analysis = QueryAnalysis(
+                    original_query="",
+                    cleaned_query="",
+                    expanded_query="",
+                    detected_entities={},
+                    query_type="similarity",
+                    confidence=1.0,
+                    suggested_filters={},
+                    processing_notes=[]
+                )
+                
                 processed_results = self._process_qdrant_results(
-                    search_results, QueryAnalysis(), False
+                    search_results, empty_analysis, False
                 )
                 
                 # Exclure la transaction de référence
@@ -923,9 +1030,21 @@ class SemanticSearchEngine:
             )
             
             if search_results:
+                # Créer un QueryAnalysis vide pour le traitement
+                empty_analysis = QueryAnalysis(
+                    original_query="",
+                    cleaned_query="",
+                    expanded_query="",
+                    detected_entities={},
+                    query_type="outlier_detection",
+                    confidence=1.0,
+                    suggested_filters={},
+                    processing_notes=[]
+                )
+                
                 # Traiter les résultats
                 processed_results = self._process_qdrant_results(
-                    search_results, QueryAnalysis(), False
+                    search_results, empty_analysis, False
                 )
                 
                 # Filtrer les outliers (scores très bas)

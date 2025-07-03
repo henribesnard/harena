@@ -245,9 +245,9 @@ class LexicalSearchEngine:
     
     def _optimize_query_for_elasticsearch(self, query_analysis: QueryAnalysis) -> str:
         """Optimise la requête pour Elasticsearch."""
-        # Utiliser la requête enrichie si disponible
-        if query_analysis.enriched_query:
-            return query_analysis.enriched_query
+        # CORRECTION: Utiliser 'expanded_query' au lieu de 'enriched_query'
+        if hasattr(query_analysis, 'expanded_query') and query_analysis.expanded_query:
+            return query_analysis.expanded_query
         
         # Sinon utiliser la requête nettoyée
         return query_analysis.cleaned_query or query_analysis.original_query
@@ -267,20 +267,28 @@ class LexicalSearchEngine:
         query_clauses = []
         
         # 1. Correspondance exacte de phrase (boost très élevé)
-        if query_analysis.has_exact_phrases:
-            for phrase in query_analysis.exact_phrases:
-                query_clauses.append({
-                    "multi_match": {
-                        "query": phrase,
-                        "fields": [
-                            f"primary_description^{self.config.boost_exact_phrase}",
-                            f"merchant_name^{self.config.boost_merchant_name * 1.5}",
-                            f"searchable_text^{self.config.boost_searchable_text}"
-                        ],
-                        "type": "phrase",
-                        "boost": self.config.boost_exact_phrase
-                    }
-                })
+        # CORRECTION: Vérifier l'existence de l'attribut de manière sécurisée
+        exact_phrases = []
+        if hasattr(query_analysis, 'exact_phrases') and query_analysis.exact_phrases:
+            exact_phrases = query_analysis.exact_phrases
+        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            # Fallback: créer une phrase exacte pour les requêtes courtes
+            if len(query_analysis.cleaned_query.split()) <= 3:
+                exact_phrases = [query_analysis.cleaned_query]
+        
+        for phrase in exact_phrases:
+            query_clauses.append({
+                "multi_match": {
+                    "query": phrase,
+                    "fields": [
+                        f"primary_description^{self.config.boost_exact_phrase}",
+                        f"merchant_name^{self.config.boost_merchant_name * 1.5}",
+                        f"searchable_text^{self.config.boost_searchable_text}"
+                    ],
+                    "type": "phrase",
+                    "boost": self.config.boost_exact_phrase
+                }
+            })
         
         # 2. Correspondance multi-champs principale
         query_clauses.append({
@@ -335,21 +343,30 @@ class LexicalSearchEngine:
             })
         
         # 5. Recherche par termes individuels pour améliorer le rappel
-        if query_analysis.key_terms:
-            for term in query_analysis.key_terms:
-                if len(term) > 2:  # Éviter les termes trop courts
-                    query_clauses.append({
-                        "multi_match": {
-                            "query": term,
-                            "fields": [
-                                "primary_description^1.5",
-                                "merchant_name^2.0",
-                                "searchable_text^1.2"
-                            ],
-                            "type": "cross_fields",
-                            "boost": 0.3
-                        }
-                    })
+        # CORRECTION: Obtenir key_terms de manière sécurisée
+        key_terms = []
+        if hasattr(query_analysis, 'key_terms') and query_analysis.key_terms:
+            key_terms = query_analysis.key_terms
+        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
+            key_terms = query_analysis.detected_entities.get('keywords', [])
+        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            # Fallback: utiliser les mots de la requête nettoyée
+            key_terms = query_analysis.cleaned_query.split()
+        
+        for term in key_terms:
+            if len(term) > 2:  # Éviter les termes trop courts
+                query_clauses.append({
+                    "multi_match": {
+                        "query": term,
+                        "fields": [
+                            "primary_description^1.5",
+                            "merchant_name^2.0",
+                            "searchable_text^1.2"
+                        ],
+                        "type": "cross_fields",
+                        "boost": 0.3
+                    }
+                })
         
         # Construction de la requête principale
         main_query = {
@@ -676,8 +693,21 @@ class LexicalSearchEngine:
         query_analysis: QueryAnalysis
     ) -> float:
         """Évalue les indicateurs de pertinence."""
-        if not results or not query_analysis.key_terms:
-            return 0.5  # Neutre si pas d'analyse
+        if not results:
+            return 0.5  # Neutre si pas de résultats
+        
+        # CORRECTION: Obtenir key_terms de manière sécurisée
+        key_terms = []
+        if hasattr(query_analysis, 'key_terms') and query_analysis.key_terms:
+            key_terms = query_analysis.key_terms
+        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
+            key_terms = query_analysis.detected_entities.get('keywords', [])
+        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            # Fallback: utiliser les mots de la requête nettoyée
+            key_terms = query_analysis.cleaned_query.split()
+        
+        if not key_terms:
+            return 0.5  # Neutre si pas de termes à analyser
         
         relevance_scores = []
         
@@ -691,15 +721,12 @@ class LexicalSearchEngine:
             
             # Compter les termes qui matchent
             matching_terms = sum(
-                1 for term in query_analysis.key_terms
+                1 for term in key_terms
                 if term.lower() in text_to_check
             )
             
             # Calculer le ratio de pertinence
-            if query_analysis.key_terms:
-                term_coverage = matching_terms / len(query_analysis.key_terms)
-            else:
-                term_coverage = 0
+            term_coverage = matching_terms / len(key_terms) if key_terms else 0
             
             # Bonus pour la longueur du texte (plus d'informations)
             text_length_bonus = min(len(text_to_check) / 200, 0.2)
@@ -732,6 +759,43 @@ class LexicalSearchEngine:
         
         # Moyenne pondérée
         return (merchant_diversity * 0.5 + category_diversity * 0.3 + amount_diversity * 0.2)
+    
+    async def count_user_documents(self, user_id: int) -> int:
+        """Compte le nombre de documents pour un utilisateur."""
+        try:
+            count_query = {
+                "query": {
+                    "term": {"user_id": user_id}
+                }
+            }
+            
+            response = await self.elasticsearch_client.count(
+                index="harena_transactions",
+                body=count_query
+            )
+            
+            return response.get("count", 0)
+        except Exception as e:
+            logger.error(f"Failed to count documents for user {user_id}: {e}")
+            return 0
+    
+    async def advanced_search(
+        self,
+        query: str,
+        user_id: int,
+        filters: Dict[str, Any],
+        limit: int = 20,
+        offset: int = 0
+    ) -> LexicalSearchResult:
+        """Effectue une recherche avancée avec filtres."""
+        return await self.search(
+            query=query,
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            filters=filters,
+            debug=False
+        )
     
     def get_metrics(self) -> Dict[str, Any]:
         """Retourne les métriques du moteur lexical."""
@@ -780,3 +844,78 @@ class LexicalSearchEngine:
                 "error": str(e),
                 "metrics": self.get_metrics()
             }
+    
+    async def get_suggestions(self, query: str, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+        """Génère des suggestions basées sur une requête partielle."""
+        try:
+            # Construire une requête de suggestion
+            suggest_query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}},
+                            {"prefix": {"primary_description": query.lower()}}
+                        ]
+                    }
+                },
+                "aggs": {
+                    "suggestions": {
+                        "terms": {
+                            "field": "primary_description.keyword",
+                            "size": limit,
+                            "include": f".*{query.lower()}.*"
+                        }
+                    }
+                },
+                "size": 0
+            }
+            
+            response = await self.elasticsearch_client.search(
+                index="harena_transactions",
+                body=suggest_query
+            )
+            
+            suggestions = []
+            buckets = response.get("aggregations", {}).get("suggestions", {}).get("buckets", [])
+            
+            for bucket in buckets:
+                suggestions.append({
+                    "text": bucket["key"],
+                    "frequency": bucket["doc_count"],
+                    "type": "description"
+                })
+            
+            return suggestions
+            
+        except Exception as e:
+            logger.error(f"Failed to get suggestions: {e}")
+            return []
+    
+    def update_config(self, new_config: LexicalSearchConfig) -> None:
+        """Met à jour la configuration du moteur."""
+        old_config = self.config
+        self.config = new_config
+        
+        # Recréer le cache si les paramètres ont changé
+        if (old_config.cache_ttl_seconds != new_config.cache_ttl_seconds or
+            old_config.enable_cache != new_config.enable_cache):
+            
+            if new_config.enable_cache:
+                self.cache = SearchCache(
+                    max_size=1000,
+                    ttl_seconds=new_config.cache_ttl_seconds
+                )
+            else:
+                self.cache = None
+        
+        logger.info("Lexical engine configuration updated")
+    
+    def reset_metrics(self) -> None:
+        """Remet à zéro les métriques de performance."""
+        self.search_count = 0
+        self.total_processing_time = 0.0
+        self.cache_hits = 0
+        self.failed_searches = 0
+        self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
+        
+        logger.info("Lexical engine metrics reset")

@@ -9,6 +9,15 @@ import logging
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
+from sqlalchemy.orm import Session
+
+# Imports pour l'authentification JWT
+from db_service.session import get_db
+from db_service.models.user import User
+from user_service.services.users import get_user_by_id
+from config_service.config import settings
+from user_service.core.security import ALGORITHM
 
 logger = logging.getLogger(__name__)
 
@@ -20,21 +29,86 @@ rate_limit_storage: Dict[str, Dict[str, Any]] = {}
 
 
 async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Récupère l'utilisateur actuel à partir du token d'authentification JWT.
+    
+    Utilise la même logique que user_service pour une cohérence d'authentification.
+    """
+    # Si pas de token, mode développement avec utilisateur par défaut
+    if not credentials:
+        logger.warning("Aucun token fourni - Mode développement")
+        return {
+            "id": 34,
+            "username": "test_user",
+            "is_superuser": False,
+            "permissions": ["search:read"],
+            "is_active": True
+        }
+    
+    token = credentials.credentials
+    
+    # Exception pour tokens invalides
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication token",
+        headers={"WWW-Authenticate": "Bearer"}
+    )
+    
+    try:
+        # Décoder le token JWT
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        user_id: Optional[str] = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+            
+        # Récupérer l'utilisateur depuis la base de données
+        user = get_user_by_id(db, user_id=int(user_id))
+        if user is None:
+            raise credentials_exception
+            
+        # Vérifier que l'utilisateur est actif
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Inactive user"
+            )
+        
+        # Retourner les informations utilisateur au format attendu
+        return {
+            "id": user.id,
+            "username": user.email,  # Utiliser l'email comme username
+            "is_superuser": getattr(user, 'is_superuser', False),
+            "permissions": ["search:read"],  # Permissions de base pour la recherche
+            "is_active": user.is_active,
+            "email": user.email,
+            "first_name": getattr(user, 'first_name', None),
+            "last_name": getattr(user, 'last_name', None)
+        }
+        
+    except JWTError as e:
+        logger.error(f"Erreur JWT: {e}")
+        raise credentials_exception
+    except Exception as e:
+        logger.error(f"Erreur inattendue lors de l'authentification: {e}")
+        raise credentials_exception
+
+
+async def get_current_user_fallback(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Dict[str, Any]:
     """
-    Récupère l'utilisateur actuel à partir du token d'authentification.
+    Version de fallback sans base de données pour les tests.
     
-    Note: Cette implémentation est simplifiée pour la démonstration.
-    En production, il faudrait intégrer avec le user_service.
+    À utiliser si la base de données n'est pas disponible.
     """
-    # Pour la démonstration, on simule un utilisateur
-    # En production, valider le token avec le user_service
-    
     if not credentials:
-        # Mode développement - utilisateur par défaut
         return {
-            "id": 34,  # ID de test du validateur
+            "id": 34,
             "username": "test_user",
             "is_superuser": False,
             "permissions": ["search:read"]
@@ -42,33 +116,32 @@ async def get_current_user(
     
     token = credentials.credentials
     
-    # Simulation de validation de token
-    # En production: appeler user_service pour valider
-    if token == "admin_token":
+    try:
+        # Décoder le token JWT sans vérifier la base de données
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        user_id: Optional[str] = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token"
+            )
+            
         return {
-            "id": 1,
-            "username": "admin",
-            "is_superuser": True,
-            "permissions": ["search:read", "search:admin", "metrics:read"]
+            "id": int(user_id),
+            "username": f"user_{user_id}",
+            "is_superuser": False,
+            "permissions": ["search:read"],
+            "is_active": True
         }
-    elif token.startswith("user_"):
-        try:
-            user_id = int(token.split("_")[1])
-            return {
-                "id": user_id,
-                "username": f"user_{user_id}",
-                "is_superuser": False,
-                "permissions": ["search:read"]
-            }
-        except (IndexError, ValueError):
-            pass
-    
-    # Token invalide
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication token",
-        headers={"WWW-Authenticate": "Bearer"}
-    )
+        
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
 
 
 async def get_admin_user(
@@ -164,79 +237,42 @@ async def rate_limit(request: Request) -> None:
         request: Requête FastAPI
         
     Raises:
-        HTTPException: Si la limite de taux est dépassée
+        HTTPException: Si la limite est dépassée
     """
     client_ip = request.client.host
     current_time = time.time()
     
-    # Configuration du rate limiting
-    window_size = 60  # 1 minute
-    max_requests = 60  # 60 requêtes par minute
+    # Nettoyage des anciens enregistrements (plus de 1 minute)
+    cutoff_time = current_time - 60
+    for ip in list(rate_limit_storage.keys()):
+        if rate_limit_storage[ip]["last_request"] < cutoff_time:
+            del rate_limit_storage[ip]
     
-    # Nettoyer les anciennes entrées
-    _cleanup_rate_limit_storage(current_time, window_size)
-    
-    # Vérifier la limite pour cette IP
+    # Vérifier/mettre à jour pour l'IP actuelle
     if client_ip not in rate_limit_storage:
         rate_limit_storage[client_ip] = {
-            "requests": [],
-            "blocked_until": 0
+            "count": 1,
+            "last_request": current_time,
+            "window_start": current_time
         }
+    else:
+        # Réinitialiser si nouvelle fenêtre (1 minute)
+        if current_time - rate_limit_storage[client_ip]["window_start"] > 60:
+            rate_limit_storage[client_ip] = {
+                "count": 1,
+                "last_request": current_time,
+                "window_start": current_time
+            }
+        else:
+            rate_limit_storage[client_ip]["count"] += 1
+            rate_limit_storage[client_ip]["last_request"] = current_time
     
-    client_data = rate_limit_storage[client_ip]
-    
-    # Vérifier si l'IP est temporairement bloquée
-    if current_time < client_data["blocked_until"]:
-        remaining_time = int(client_data["blocked_until"] - current_time)
+    # Vérifier la limite (60 requêtes par minute)
+    if rate_limit_storage[client_ip]["count"] > 60:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded. Try again in {remaining_time} seconds",
-            headers={"Retry-After": str(remaining_time)}
+            detail="Rate limit exceeded. Maximum 60 requests per minute."
         )
-    
-    # Ajouter cette requête
-    client_data["requests"].append(current_time)
-    
-    # Compter les requêtes dans la fenêtre actuelle
-    recent_requests = [
-        req_time for req_time in client_data["requests"]
-        if current_time - req_time <= window_size
-    ]
-    
-    client_data["requests"] = recent_requests
-    
-    # Vérifier la limite
-    if len(recent_requests) > max_requests:
-        # Bloquer temporairement
-        client_data["blocked_until"] = current_time + 60  # 1 minute de blocage
-        
-        logger.warning(f"Rate limit exceeded for IP {client_ip}")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded. Please slow down",
-            headers={"Retry-After": "60"}
-        )
-
-
-def _cleanup_rate_limit_storage(current_time: float, window_size: int) -> None:
-    """Nettoie le stockage du rate limiting."""
-    to_remove = []
-    
-    for ip, data in rate_limit_storage.items():
-        # Supprimer les requêtes anciennes
-        data["requests"] = [
-            req_time for req_time in data["requests"]
-            if current_time - req_time <= window_size * 2  # Garder un peu plus longtemps
-        ]
-        
-        # Supprimer les IPs inactives
-        if (not data["requests"] and 
-            current_time > data["blocked_until"] and 
-            current_time - max(data["requests"] + [0]) > window_size * 5):
-            to_remove.append(ip)
-    
-    for ip in to_remove:
-        del rate_limit_storage[ip]
 
 
 async def validate_user_access(
@@ -244,7 +280,7 @@ async def validate_user_access(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> int:
     """
-    Valide que l'utilisateur peut accéder aux données d'un autre utilisateur.
+    Valide que l'utilisateur peut accéder aux données demandées.
     
     Args:
         user_id: ID de l'utilisateur cible
@@ -466,80 +502,3 @@ async def require_permission(permission: str):
 require_search_permission = require_permission("search:read")
 require_admin_permission = require_permission("search:admin")
 require_metrics_permission = require_permission("metrics:read")
-
-
-# Middleware de logging des requêtes de recherche
-async def log_search_request(request: Request) -> None:
-    """
-    Log les requêtes de recherche pour analyse.
-    
-    Args:
-        request: Requête FastAPI
-    """
-    if request.method == "POST" or "search" in request.url.path:
-        start_time = time.time()
-        
-        # Log basique de la requête
-        logger.info(
-            f"Search request: {request.method} {request.url.path} "
-            f"from {request.client.host}"
-        )
-        
-        # Stocker le temps de début pour calculer la durée
-        request.state.start_time = start_time
-
-
-def get_request_duration(request: Request) -> float:
-    """
-    Calcule la durée de traitement d'une requête.
-    
-    Args:
-        request: Requête FastAPI
-        
-    Returns:
-        Durée en secondes
-    """
-    start_time = getattr(request.state, "start_time", time.time())
-    return time.time() - start_time
-
-
-# Cache des permissions pour éviter les appels répétés
-permission_cache: Dict[str, Dict[str, Any]] = {}
-
-
-def cache_user_permissions(user_id: int, permissions: Dict[str, Any]) -> None:
-    """
-    Met en cache les permissions d'un utilisateur.
-    
-    Args:
-        user_id: ID de l'utilisateur
-        permissions: Permissions à cacher
-    """
-    permission_cache[str(user_id)] = {
-        "permissions": permissions,
-        "cached_at": time.time()
-    }
-
-
-def get_cached_permissions(user_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Récupère les permissions mises en cache.
-    
-    Args:
-        user_id: ID de l'utilisateur
-        
-    Returns:
-        Permissions si en cache et valides, None sinon
-    """
-    cache_key = str(user_id)
-    if cache_key in permission_cache:
-        cached_data = permission_cache[cache_key]
-        
-        # Vérifier l'âge du cache (5 minutes)
-        if time.time() - cached_data["cached_at"] < 300:
-            return cached_data["permissions"]
-        else:
-            # Supprimer l'entrée expirée
-            del permission_cache[cache_key]
-    
-    return None

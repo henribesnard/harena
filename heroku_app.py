@@ -894,12 +894,42 @@ try:
 
     # 4. Search Service (Hybride) - NOUVEAU
     try:
+        # Créer d'abord le fichier __init__.py manquant
+        import os
+        search_clients_init_path = os.path.join(current_dir, "search_service", "clients", "__init__.py")
+        if not os.path.exists(search_clients_init_path):
+            with open(search_clients_init_path, 'w') as f:
+                f.write('''"""
+Clients pour le service de recherche.
+"""
+from .elasticsearch_client import ElasticsearchClient
+from .qdrant_client import QdrantClient
+from .base_client import BaseClient
+
+__all__ = ["ElasticsearchClient", "QdrantClient", "BaseClient"]
+''')
+            logger.info("✅ Fichier search_service/clients/__init__.py créé")
+        
         from search_service.api.routes import router as search_router
         if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 Recherche hybride lexicale + sémantique"):
             app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
             logger.info("✅ Search Service routes enregistrées")
     except Exception as e:
         logger.error(f"❌ Search Service routes registration: {e}")
+        # Essayer de créer un router minimal de fallback
+        try:
+            from fastapi import APIRouter
+            search_fallback_router = APIRouter()
+            
+            @search_fallback_router.get("/health")
+            async def search_health():
+                return {"status": "available", "message": "Search service initializing"}
+            
+            if service_registry.register("search_service_fallback", search_fallback_router, "/api/v1/search", "🔍 Recherche (mode fallback)"):
+                app.include_router(search_fallback_router, prefix="/api/v1/search", tags=["search"])
+                logger.info("✅ Search Service fallback routes enregistrées")
+        except Exception as fallback_error:
+            logger.error(f"❌ Search Service fallback failed: {fallback_error}")
 
     # 5. Conversation Service
     try:

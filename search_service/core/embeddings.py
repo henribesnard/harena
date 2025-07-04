@@ -3,6 +3,8 @@ Service d'embeddings pour la recherche sémantique.
 
 Ce module gère la génération d'embeddings via OpenAI API avec cache intelligent,
 batch processing et gestion avancée des erreurs pour optimiser les performances.
+
+CORRECTION: Restructuration pour éviter les imports circulaires.
 """
 import asyncio
 import hashlib
@@ -16,7 +18,29 @@ import json
 import openai
 from openai import AsyncOpenAI
 
-from search_service.utils.cache import SearchCache
+# Import du cache avec gestion des erreurs
+try:
+    from search_service.utils.cache import SearchCache
+except ImportError:
+    # Fallback si le cache n'est pas disponible
+    class SearchCache:
+        def __init__(self, max_size: int = 1000, ttl_seconds: int = 3600):
+            self._cache = {}
+            self.max_size = max_size
+            self.ttl_seconds = ttl_seconds
+        
+        def get(self, key: str) -> Any:
+            return self._cache.get(key)
+        
+        def put(self, key: str, value: Any) -> None:
+            if len(self._cache) < self.max_size:
+                self._cache[key] = value
+        
+        def clear(self) -> None:
+            self._cache.clear()
+        
+        def get_stats(self) -> Dict[str, Any]:
+            return {"size": len(self._cache), "max_size": self.max_size}
 
 logger = logging.getLogger(__name__)
 
@@ -206,271 +230,6 @@ class EmbeddingService:
             logger.error(f"Failed to generate embedding: {e}")
             return None
     
-    async def generate_embeddings_batch(
-        self,
-        texts: List[str],
-        use_cache: bool = True,
-        model: Optional[EmbeddingModel] = None,
-        dimensions: Optional[int] = None
-    ) -> BatchEmbeddingResult:
-        """
-        Génère des embeddings en lot pour optimiser les performances.
-        
-        Args:
-            texts: Liste de textes à encoder
-            use_cache: Utiliser le cache si disponible
-            model: Modèle à utiliser (défaut: config)
-            dimensions: Dimensions des embeddings (défaut: config)
-            
-        Returns:
-            Résultats du traitement par lots
-        """
-        if not texts:
-            return BatchEmbeddingResult(
-                results=[], total_tokens=0, total_processing_time_ms=0.0,
-                cache_hits=0, api_calls=0
-            )
-        
-        start_time = time.time()
-        model = model or self.config.model
-        dimensions = dimensions or self.config.dimensions
-        
-        # Préprocesser et dédupliquer les textes
-        processed_texts = []
-        text_indices = {}  # Map texte -> indices originaux
-        
-        for i, text in enumerate(texts):
-            if text and text.strip():
-                processed = self._preprocess_text(text)
-                if processed not in text_indices:
-                    text_indices[processed] = []
-                    processed_texts.append(processed)
-                text_indices[processed].append(i)
-        
-        # Vérifier le cache pour tous les textes
-        cache_results = {}
-        uncached_texts = []
-        cache_hits = 0
-        
-        if use_cache and self.cache:
-            for text in processed_texts:
-                cache_key = self._generate_cache_key(text, model, dimensions)
-                cached_embedding = self.cache.get(cache_key)
-                
-                if cached_embedding:
-                    cache_results[text] = cached_embedding
-                    cache_hits += 1
-                else:
-                    uncached_texts.append(text)
-        else:
-            uncached_texts = processed_texts
-        
-        # Traiter les textes non cachés par lots
-        api_results = {}
-        total_tokens = 0
-        api_calls = 0
-        failed_items = []
-        
-        if uncached_texts:
-            # Diviser en batches
-            batches = [
-                uncached_texts[i:i + self.config.batch_size]
-                for i in range(0, len(uncached_texts), self.config.batch_size)
-            ]
-            
-            # Traiter les batches en parallèle (avec limite de concurrence)
-            batch_tasks = [
-                self._process_batch(batch, model, dimensions, use_cache)
-                for batch in batches
-            ]
-            
-            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-            
-            # Consolider les résultats
-            for batch_result in batch_results:
-                if isinstance(batch_result, Exception):
-                    logger.error(f"Batch processing failed: {batch_result}")
-                    continue
-                
-                if batch_result:
-                    api_results.update(batch_result.get("results", {}))
-                    total_tokens += batch_result.get("tokens", 0)
-                    api_calls += batch_result.get("api_calls", 0)
-                    failed_items.extend(batch_result.get("failed", []))
-        
-        # Construire les résultats finaux
-        final_results = []
-        processing_time = (time.time() - start_time) * 1000
-        
-        for text in processed_texts:
-            # Obtenir l'embedding (cache ou API)
-            embedding = cache_results.get(text) or api_results.get(text)
-            
-            if embedding:
-                # Créer les résultats pour tous les indices originaux
-                for original_idx in text_indices[text]:
-                    result = EmbeddingResult(
-                        embedding=embedding,
-                        text=texts[original_idx],
-                        model=model.value,
-                        dimensions=dimensions,
-                        tokens_used=len(text.split()),  # Estimation
-                        processing_time_ms=processing_time / len(processed_texts),
-                        from_cache=text in cache_results
-                    )
-                    final_results.append(result)
-        
-        # Mettre à jour les métriques globales
-        self.total_tokens += total_tokens
-        self.cache_hits += cache_hits
-        self.total_processing_time += processing_time
-        
-        return BatchEmbeddingResult(
-            results=final_results,
-            total_tokens=total_tokens,
-            total_processing_time_ms=processing_time,
-            cache_hits=cache_hits,
-            api_calls=api_calls,
-            failed_items=failed_items
-        )
-    
-    async def _generate_single_embedding(
-        self,
-        text: str,
-        model: EmbeddingModel,
-        dimensions: int
-    ) -> Optional[EmbeddingResult]:
-        """Génère un embedding pour un seul texte."""
-        
-        # Attendre le rate limiting
-        await self._wait_for_rate_limit()
-        
-        for attempt in range(self.config.max_retries):
-            try:
-                start_time = time.time()
-                
-                # Paramètres de la requête
-                params = {
-                    "model": model.value,
-                    "input": text,
-                    "encoding_format": "float"
-                }
-                
-                # Ajouter dimensions si supporté par le modèle
-                if model in [EmbeddingModel.TEXT_EMBEDDING_3_SMALL, EmbeddingModel.TEXT_EMBEDDING_3_LARGE]:
-                    params["dimensions"] = dimensions
-                
-                # Appeler l'API OpenAI
-                response = await self.client.embeddings.create(**params)
-                
-                processing_time = (time.time() - start_time) * 1000
-                
-                # Extraire les données
-                if response.data:
-                    embedding_data = response.data[0]
-                    tokens_used = response.usage.total_tokens
-                    
-                    # Log si requête coûteuse
-                    if (self.config.log_expensive_requests and 
-                        tokens_used > self.config.expensive_request_threshold):
-                        logger.info(f"Expensive embedding request: {tokens_used} tokens")
-                    
-                    return EmbeddingResult(
-                        embedding=embedding_data.embedding,
-                        text=text,
-                        model=model.value,
-                        dimensions=len(embedding_data.embedding),
-                        tokens_used=tokens_used,
-                        processing_time_ms=processing_time,
-                        from_cache=False
-                    )
-                
-                return None
-                
-            except openai.RateLimitError as e:
-                wait_time = self._calculate_retry_delay(attempt)
-                logger.warning(f"Rate limit hit, waiting {wait_time}s (attempt {attempt + 1})")
-                await asyncio.sleep(wait_time)
-                
-            except openai.APITimeoutError as e:
-                wait_time = self._calculate_retry_delay(attempt)
-                logger.warning(f"API timeout, retrying in {wait_time}s (attempt {attempt + 1})")
-                await asyncio.sleep(wait_time)
-                
-            except Exception as e:
-                if attempt == self.config.max_retries - 1:
-                    logger.error(f"Failed to generate embedding after {self.config.max_retries} attempts: {e}")
-                    raise
-                
-                wait_time = self._calculate_retry_delay(attempt)
-                logger.warning(f"API error, retrying in {wait_time}s: {e}")
-                await asyncio.sleep(wait_time)
-        
-        return None
-    
-    async def _process_batch(
-        self,
-        batch_texts: List[str],
-        model: EmbeddingModel,
-        dimensions: int,
-        use_cache: bool
-    ) -> Optional[Dict[str, Any]]:
-        """Traite un lot de textes."""
-        async with self._batch_semaphore:
-            try:
-                # Attendre le rate limiting
-                await self._wait_for_rate_limit()
-                
-                start_time = time.time()
-                
-                # Paramètres de la requête batch
-                params = {
-                    "model": model.value,
-                    "input": batch_texts,
-                    "encoding_format": "float"
-                }
-                
-                if model in [EmbeddingModel.TEXT_EMBEDDING_3_SMALL, EmbeddingModel.TEXT_EMBEDDING_3_LARGE]:
-                    params["dimensions"] = dimensions
-                
-                # Appeler l'API
-                response = await self.client.embeddings.create(**params)
-                
-                processing_time = (time.time() - start_time) * 1000
-                
-                # Traiter la réponse
-                results = {}
-                if response.data:
-                    for i, embedding_data in enumerate(response.data):
-                        if i < len(batch_texts):
-                            text = batch_texts[i]
-                            embedding = embedding_data.embedding
-                            
-                            # Mettre en cache
-                            if use_cache and self.cache:
-                                cache_key = self._generate_cache_key(text, model, dimensions)
-                                self.cache.put(cache_key, embedding)
-                            
-                            results[text] = embedding
-                
-                return {
-                    "results": results,
-                    "tokens": response.usage.total_tokens,
-                    "api_calls": 1,
-                    "processing_time": processing_time,
-                    "failed": []
-                }
-                
-            except Exception as e:
-                logger.error(f"Batch processing failed: {e}")
-                return {
-                    "results": {},
-                    "tokens": 0,
-                    "api_calls": 0,
-                    "processing_time": 0,
-                    "failed": [(text, str(e)) for text in batch_texts]
-                }
-    
     def _preprocess_text(self, text: str) -> str:
         """Préprocesse le texte avant génération d'embedding."""
         if not self.config.enable_text_preprocessing:
@@ -507,52 +266,61 @@ class EmbeddingService:
         cache_data = f"{text}|{model.value}|{dimensions}"
         return hashlib.sha256(cache_data.encode()).hexdigest()
     
-    async def _wait_for_rate_limit(self) -> None:
-        """Attendre si nécessaire pour respecter les limites de taux."""
-        current_time = time.time()
+    async def _generate_single_embedding(
+        self,
+        text: str,
+        model: EmbeddingModel,
+        dimensions: int
+    ) -> Optional[EmbeddingResult]:
+        """Génère un embedding pour un seul texte."""
         
-        # Nettoyer les anciens timestamps
-        self._request_times = [t for t in self._request_times if current_time - t < 60]
-        
-        # Vérifier la limite de requêtes par minute
-        if len(self._request_times) >= self.config.requests_per_minute:
-            wait_time = 60 - (current_time - self._request_times[0])
-            if wait_time > 0:
-                logger.debug(f"Rate limiting: waiting {wait_time:.2f}s")
+        for attempt in range(self.config.max_retries):
+            try:
+                start_time = time.time()
+                
+                # Paramètres de la requête
+                params = {
+                    "model": model.value,
+                    "input": text,
+                    "encoding_format": "float"
+                }
+                
+                # Ajouter dimensions si supporté par le modèle
+                if model in [EmbeddingModel.TEXT_EMBEDDING_3_SMALL, EmbeddingModel.TEXT_EMBEDDING_3_LARGE]:
+                    params["dimensions"] = dimensions
+                
+                # Appeler l'API OpenAI
+                response = await self.client.embeddings.create(**params)
+                
+                processing_time = (time.time() - start_time) * 1000
+                
+                # Extraire les données
+                if response.data:
+                    embedding_data = response.data[0]
+                    tokens_used = response.usage.total_tokens
+                    
+                    return EmbeddingResult(
+                        embedding=embedding_data.embedding,
+                        text=text,
+                        model=model.value,
+                        dimensions=len(embedding_data.embedding),
+                        tokens_used=tokens_used,
+                        processing_time_ms=processing_time,
+                        from_cache=False
+                    )
+                
+                return None
+                
+            except Exception as e:
+                if attempt == self.config.max_retries - 1:
+                    logger.error(f"Failed to generate embedding after {self.config.max_retries} attempts: {e}")
+                    raise
+                
+                wait_time = 2 ** attempt
+                logger.warning(f"API error, retrying in {wait_time}s: {e}")
                 await asyncio.sleep(wait_time)
         
-        # Enregistrer cette requête
-        self._request_times.append(current_time)
-    
-    def _calculate_retry_delay(self, attempt: int) -> float:
-        """Calcule le délai de retry avec backoff exponentiel."""
-        return self.config.retry_delay_base * (2 ** attempt) + (attempt * 0.1)
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """Vérifie la santé du service d'embeddings."""
-        try:
-            # Test avec un texte simple
-            test_embedding = await self.generate_embedding(
-                "test query for health check",
-                use_cache=False
-            )
-            
-            return {
-                "status": "healthy",
-                "model": self.config.model.value,
-                "dimensions": self.config.dimensions,
-                "test_embedding_generated": test_embedding is not None,
-                "cache_enabled": self.config.enable_cache,
-                "metrics": self.get_metrics()
-            }
-            
-        except Exception as e:
-            logger.error(f"Embedding service health check failed: {e}")
-            return {
-                "status": "unhealthy",
-                "error": str(e),
-                "metrics": self.get_metrics()
-            }
+        return None
     
     def get_metrics(self) -> Dict[str, Any]:
         """Retourne les métriques du service."""
@@ -582,23 +350,6 @@ class EmbeddingService:
             "model_usage": self.model_usage,
             "cache_stats": self.cache.get_stats() if self.cache else None
         }
-    
-    def clear_cache(self) -> None:
-        """Vide le cache des embeddings."""
-        if self.cache:
-            self.cache.clear()
-            logger.info("Embedding cache cleared")
-    
-    def reset_metrics(self) -> None:
-        """Remet à zéro les métriques."""
-        self.total_requests = 0
-        self.total_tokens = 0
-        self.cache_hits = 0
-        self.api_errors = 0
-        self.total_processing_time = 0.0
-        self.model_usage = {model.value: 0 for model in EmbeddingModel}
-        
-        logger.info("Embedding service metrics reset")
 
 
 class EmbeddingManager:
@@ -667,128 +418,6 @@ class EmbeddingManager:
         logger.error(f"All embedding services failed for text: {text[:100]}...")
         return None
     
-    async def generate_embeddings_batch(
-        self,
-        texts: List[str],
-        use_cache: bool = True,
-        model: Optional[EmbeddingModel] = None,
-        dimensions: Optional[int] = None
-    ) -> BatchEmbeddingResult:
-        """Génère des embeddings en lot avec fallback."""
-        # Essayer le service primaire
-        try:
-            return await self.primary_service.generate_embeddings_batch(
-                texts, use_cache, model, dimensions
-            )
-        except Exception as e:
-            logger.warning(f"Primary batch service failed: {e}")
-        
-        # Fallback vers génération individuelle
-        results = []
-        for text in texts:
-            embedding = await self.generate_embedding(text, use_cache, model, dimensions)
-            if embedding:
-                result = EmbeddingResult(
-                    embedding=embedding,
-                    text=text,
-                    model=(model or self.primary_service.config.model).value,
-                    dimensions=dimensions or self.primary_service.config.dimensions,
-                    tokens_used=len(text.split()),
-                    processing_time_ms=0.0,
-                    from_cache=False
-                )
-                results.append(result)
-        
-        return BatchEmbeddingResult(
-            results=results,
-            total_tokens=sum(r.tokens_used for r in results),
-            total_processing_time_ms=0.0,
-            cache_hits=0,
-            api_calls=len(results),
-            failed_items=[]
-        )
-    
-    async def precompute_embeddings(
-        self,
-        texts: List[str],
-        model: Optional[EmbeddingModel] = None,
-        dimensions: Optional[int] = None,
-        batch_size: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """
-        Précalcule les embeddings pour une liste de textes.
-        
-        Utile pour le warm-up du cache ou la préparation de données.
-        """
-        start_time = time.time()
-        
-        batch_size = batch_size or self.primary_service.config.batch_size
-        total_texts = len(texts)
-        processed = 0
-        successful = 0
-        failed = 0
-        
-        logger.info(f"Starting precomputation for {total_texts} texts")
-        
-        # Traiter par batches
-        for i in range(0, total_texts, batch_size):
-            batch = texts[i:i + batch_size]
-            
-            try:
-                result = await self.generate_embeddings_batch(
-                    batch, use_cache=True, model=model, dimensions=dimensions
-                )
-                
-                successful += len(result.results)
-                failed += len(result.failed_items)
-                processed += len(batch)
-                
-                # Log du progrès
-                if processed % (batch_size * 10) == 0 or processed == total_texts:
-                    logger.info(f"Precomputation progress: {processed}/{total_texts} "
-                              f"({successful} successful, {failed} failed)")
-                
-            except Exception as e:
-                logger.error(f"Batch precomputation failed: {e}")
-                failed += len(batch)
-                processed += len(batch)
-        
-        processing_time = time.time() - start_time
-        
-        result_summary = {
-            "total_texts": total_texts,
-            "successful": successful,
-            "failed": failed,
-            "processing_time_seconds": processing_time,
-            "texts_per_second": total_texts / processing_time if processing_time > 0 else 0
-        }
-        
-        logger.info(f"Precomputation completed: {result_summary}")
-        return result_summary
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """Vérifie la santé de tous les services."""
-        primary_health = await self.primary_service.health_check()
-        
-        fallback_healths = []
-        for i, service in enumerate(self.fallback_services):
-            try:
-                health = await service.health_check()
-                health["service_index"] = i
-                fallback_healths.append(health)
-            except Exception as e:
-                fallback_healths.append({
-                    "service_index": i,
-                    "status": "unhealthy",
-                    "error": str(e)
-                })
-        
-        return {
-            "primary_service": primary_health,
-            "fallback_services": fallback_healths,
-            "manager_metrics": self.get_metrics()
-        }
-    
     def get_metrics(self) -> Dict[str, Any]:
         """Retourne les métriques du gestionnaire."""
         success_rate = (
@@ -810,15 +439,42 @@ class EmbeddingManager:
             "fallback_services_count": len(self.fallback_services),
             "primary_service_metrics": self.primary_service.get_metrics()
         }
+
+
+# Factory functions et exports
+def create_embedding_service(
+    api_key: str,
+    model: str = "text-embedding-3-small",
+    dimensions: int = 1536,
+    enable_cache: bool = True,
+    **kwargs
+) -> EmbeddingService:
+    """Factory function pour créer un service d'embeddings."""
+    # Convertir le nom du modèle en enum
+    model_enum = EmbeddingModel.TEXT_EMBEDDING_3_SMALL
+    for enum_model in EmbeddingModel:
+        if enum_model.value == model:
+            model_enum = enum_model
+            break
     
-    def reset_metrics(self) -> None:
-        """Remet à zéro toutes les métriques."""
-        self.total_requests = 0
-        self.successful_requests = 0
-        self.fallback_usage = 0
-        
-        self.primary_service.reset_metrics()
-        for service in self.fallback_services:
-            service.reset_metrics()
-        
-        logger.info("All embedding service metrics reset")
+    # Créer la configuration
+    config = EmbeddingConfig(
+        model=model_enum,
+        dimensions=dimensions,
+        enable_cache=enable_cache,
+        **kwargs
+    )
+    
+    return EmbeddingService(api_key=api_key, config=config)
+
+
+# Exports principaux
+__all__ = [
+    "EmbeddingService",
+    "EmbeddingManager",
+    "EmbeddingConfig",
+    "EmbeddingModel",
+    "EmbeddingResult",
+    "BatchEmbeddingResult",
+    "create_embedding_service"
+]

@@ -595,6 +595,8 @@ class HybridSearchEngine:
         lexical_boost = 0.0
         semantic_boost = 0.0
         
+        # CORRECTION: Utiliser les propriétés correctes de QueryAnalysis
+        
         # Requêtes avec phrases exactes -> favoriser lexical
         if query_analysis.has_exact_phrases:
             lexical_boost += 0.2

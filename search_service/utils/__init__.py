@@ -2,31 +2,61 @@
 Utilitaires pour le service de recherche.
 
 Ce module expose les utilitaires communs utilisés
-par le service de recherche.
+par le service de recherche hybride.
 """
 
-from .cache import (
-    SearchCache,
-    MultiLevelCache,
-    global_cache,
-    get_search_cache,
-    get_embedding_cache,
-    get_query_analysis_cache,
-    get_suggestions_cache,
-    generate_cache_key,
-    cache_with_ttl,
-    get_cache_metrics
+# Stratégies de fusion
+from .fusion_strategies import (
+    FusionStrategy,
+    FusionConfig,
+    ScoreNormalizer,
+    FusionStrategyExecutor
+)
+
+# Utilitaires de fusion
+from .fusion_utils import (
+    create_fused_item,
+    create_transaction_signature,
+    calculate_signature_similarity,
+    deduplicate_results,
+    diversify_results,
+    apply_quality_boost
+)
+
+# Évaluation de qualité
+from .quality_assessment import (
+    QualityAssessor,
+    quality_to_score,
+    calculate_quality_metrics
+)
+
+# Optimisation des poids
+from .weight_optimizer import (
+    WeightOptimizer,
+    AdaptiveWeightManager
 )
 
 __all__ = [
-    "SearchCache",
-    "MultiLevelCache",
-    "global_cache",
-    "get_search_cache",
-    "get_embedding_cache",
-    "get_query_analysis_cache", 
-    "get_suggestions_cache",
-    "generate_cache_key",
-    "cache_with_ttl",
-    "get_cache_metrics"
+    # Stratégies de fusion
+    "FusionStrategy",
+    "FusionConfig", 
+    "ScoreNormalizer",
+    "FusionStrategyExecutor",
+    
+    # Utilitaires de fusion
+    "create_fused_item",
+    "create_transaction_signature",
+    "calculate_signature_similarity",
+    "deduplicate_results",
+    "diversify_results",
+    "apply_quality_boost",
+    
+    # Évaluation de qualité
+    "QualityAssessor",
+    "quality_to_score",
+    "calculate_quality_metrics",
+    
+    # Optimisation des poids
+    "WeightOptimizer",
+    "AdaptiveWeightManager"
 ]

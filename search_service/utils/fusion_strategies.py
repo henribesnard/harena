@@ -56,6 +56,16 @@ class FusionConfig:
     enable_adaptive_weighting: bool = True
     max_results: int = 100
     
+    # === PARAMÈTRES AJOUTÉS POUR CORRIGER L'ERREUR ===
+    # Déduplication
+    enable_deduplication: bool = True
+    dedup_similarity_threshold: float = 0.95
+    
+    # Diversification 
+    enable_diversification: bool = True
+    diversity_factor: float = 0.1
+    max_same_merchant: int = 3
+    
     def __post_init__(self):
         """Normalise automatiquement les poids après initialisation."""
         total = self.default_lexical_weight + self.default_semantic_weight

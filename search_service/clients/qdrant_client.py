@@ -117,6 +117,175 @@ class QdrantClient(BaseClient):
         except Exception as e:
             return False, {"error": str(e)}
     
+    # ============================================================================
+    # MÉTHODES MANQUANTES AJOUTÉES POUR COMPATIBILITÉ AVEC LES MOTEURS
+    # ============================================================================
+    
+    async def search(
+        self,
+        collection_name: str,
+        query_vector: List[float],
+        query_filter: Optional[Dict[str, Any]] = None,
+        limit: int = 20,
+        score_threshold: Optional[float] = None,
+        with_payload: bool = True,
+        with_vectors: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Effectue une recherche vectorielle dans Qdrant (méthode générique).
+        
+        Cette méthode est utilisée par le semantic_engine.py et doit être
+        compatible avec l'interface attendue.
+        
+        Args:
+            collection_name: Nom de la collection
+            query_vector: Vecteur de requête
+            query_filter: Filtres à appliquer
+            limit: Nombre de résultats
+            score_threshold: Seuil de score minimum
+            with_payload: Inclure les métadonnées
+            with_vectors: Inclure les vecteurs
+            
+        Returns:
+            Liste des résultats de recherche
+        """
+        search_request = {
+            "vector": query_vector,
+            "limit": limit,
+            "with_payload": with_payload,
+            "with_vector": with_vectors
+        }
+        
+        if query_filter:
+            search_request["filter"] = query_filter
+        
+        if score_threshold is not None:
+            search_request["score_threshold"] = score_threshold
+        
+        async def _search():
+            async with self.session.post(
+                f"{self.base_url}/collections/{collection_name}/points/search",
+                json=search_request
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("result", [])
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Search failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_search, "search")
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Vérifie la santé du service Qdrant (méthode générique).
+        
+        Cette méthode est utilisée par les health checks et doit retourner
+        un format standard.
+        
+        Returns:
+            Statut de santé du service
+        """
+        return await self._perform_health_check()
+    
+    async def count(
+        self,
+        collection_name: str,
+        count_filter: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Compte les points dans une collection (méthode générique).
+        
+        Cette méthode est utilisée par les moteurs pour compter les points.
+        
+        Args:
+            collection_name: Nom de la collection
+            count_filter: Filtres à appliquer
+            
+        Returns:
+            Résultat du comptage
+        """
+        count_request = {}
+        if count_filter:
+            count_request["filter"] = count_filter
+        
+        async def _count():
+            async with self.session.post(
+                f"{self.base_url}/collections/{collection_name}/points/count",
+                json=count_request
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("result", {})
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Count failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_count, "count")
+    
+    async def get_collection_info(self, collection_name: str) -> Dict[str, Any]:
+        """
+        Obtient les informations d'une collection (méthode générique).
+        
+        Cette méthode est utilisée par les moteurs pour obtenir les infos de collection.
+        
+        Args:
+            collection_name: Nom de la collection
+            
+        Returns:
+            Informations de la collection
+        """
+        async def _get_info():
+            async with self.session.get(
+                f"{self.base_url}/collections/{collection_name}"
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("result", {})
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Get collection info failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_get_info, "get_collection_info")
+    
+    async def get_vector(
+        self,
+        collection_name: str,
+        point_id: Union[int, str]
+    ) -> Optional[List[float]]:
+        """
+        Récupère le vecteur d'un point spécifique (méthode générique).
+        
+        Cette méthode est utilisée par les moteurs pour récupérer des vecteurs.
+        
+        Args:
+            collection_name: Nom de la collection
+            point_id: ID du point
+            
+        Returns:
+            Vecteur du point ou None si non trouvé
+        """
+        async def _get_vector():
+            async with self.session.get(
+                f"{self.base_url}/collections/{collection_name}/points/{point_id}",
+                params={"with_vector": "true"}
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    point_data = result.get("result", {})
+                    return point_data.get("vector")
+                elif response.status == 404:
+                    return None
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Get vector failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_get_vector, "get_vector")
+    
+    # ============================================================================
+    # MÉTHODES SPÉCIALISÉES EXISTANTES
+    # ============================================================================
+    
     async def search_similar_transactions(
         self,
         query_vector: List[float],
@@ -466,19 +635,26 @@ class QdrantClient(BaseClient):
             logger.error(f"Error counting points: {e}")
             return 0
     
-    async def get_collection_info(self) -> Dict[str, Any]:
+    # Version surchargée pour compatibilité (utilise collection_name par défaut)
+    async def get_collection_info(self, collection_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Récupère les informations de la collection.
+        
+        Args:
+            collection_name: Nom de la collection (optionnel, utilise self.collection_name par défaut)
         
         Returns:
             Informations détaillées de la collection
         """
+        target_collection = collection_name or self.collection_name
+        
         async def _get_info():
             async with self.session.get(
-                f"{self.base_url}/collections/{self.collection_name}"
+                f"{self.base_url}/collections/{target_collection}"
             ) as response:
                 if response.status == 200:
-                    return await response.json()
+                    result = await response.json()
+                    return result.get("result", {})
                 else:
                     error_text = await response.text()
                     raise Exception(f"Collection info failed: HTTP {response.status} - {error_text}")

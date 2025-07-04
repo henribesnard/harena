@@ -27,6 +27,212 @@ class QueryAnalysis:
     confidence: float
     suggested_filters: Dict[str, Any]
     processing_notes: List[str]
+    
+    # ============================================================================
+    # PROPRIÉTÉS MANQUANTES AJOUTÉES POUR COMPATIBILITÉ AVEC LES MOTEURS
+    # ============================================================================
+    
+    @property
+    def key_terms(self) -> List[str]:
+        """
+        Retourne les termes clés extraits de la requête.
+        
+        Cette propriété est utilisée par les moteurs lexical et sémantique
+        pour analyser les mots-clés importants.
+        
+        Returns:
+            Liste des mots-clés extraits
+        """
+        return self.detected_entities.get('keywords', [])
+    
+    @property
+    def has_exact_phrases(self) -> bool:
+        """
+        Vérifie si la requête contient des phrases exactes.
+        
+        Cette propriété est utilisée par les moteurs pour déterminer
+        si des correspondances de phrase exacte doivent être privilégiées.
+        
+        Returns:
+            True si la requête contient des phrases exactes
+        """
+        # Détecter les guillemets dans la requête originale
+        if '"' in self.original_query:
+            return True
+        
+        # Considérer les requêtes courtes comme des phrases exactes potentielles
+        if len(self.cleaned_query.split()) <= 3 and len(self.cleaned_query.split()) > 0:
+            return True
+        
+        # Détecter des patterns de phrases exactes
+        exact_phrase_patterns = [
+            r'\b\w+\s+\w+\b',  # Deux mots consécutifs
+            r'[A-Z][a-z]+\s+[A-Z][a-z]+',  # Noms propres
+        ]
+        
+        for pattern in exact_phrase_patterns:
+            if re.search(pattern, self.original_query):
+                return True
+        
+        return False
+    
+    @property
+    def has_financial_entities(self) -> bool:
+        """
+        Vérifie si la requête contient des entités financières.
+        
+        Cette propriété est utilisée par les moteurs pour adapter
+        leur stratégie de recherche aux requêtes financières.
+        
+        Returns:
+            True si la requête contient des entités financières
+        """
+        entities = self.detected_entities
+        
+        # Vérifier la présence d'entités financières extraites
+        has_amounts = bool(entities.get('amounts', []))
+        has_categories = bool(entities.get('categories', []))
+        
+        if has_amounts or has_categories:
+            return True
+        
+        # Vérifier la présence de mots-clés financiers dans le texte
+        financial_keywords = [
+            'euro', '€', 'montant', 'prix', 'coût', 'transaction', 'virement',
+            'paiement', 'carte', 'bancaire', 'banque', 'compte', 'solde',
+            'débit', 'crédit', 'facture', 'achat', 'vente', 'remboursement',
+            'salaire', 'paie', 'pension', 'allocation', 'frais', 'commission'
+        ]
+        
+        query_lower = self.cleaned_query.lower()
+        return any(keyword in query_lower for keyword in financial_keywords)
+    
+    @property
+    def is_question(self) -> bool:
+        """
+        Vérifie si la requête est une question.
+        
+        Cette propriété est utilisée par les moteurs pour adapter
+        leur traitement aux requêtes interrogatives.
+        
+        Returns:
+            True si la requête est une question
+        """
+        # Vérifier la présence d'un point d'interrogation
+        if self.original_query.endswith('?'):
+            return True
+        
+        # Vérifier la présence de mots interrogatifs
+        question_words = [
+            "quoi", "comment", "pourquoi", "où", "quand", "qui", 
+            "quel", "quelle", "quels", "quelles", "combien",
+            "qu'est-ce", "est-ce", "y a-t-il", "peut-on", "peut-il"
+        ]
+        
+        query_lower = self.original_query.lower()
+        
+        # Vérifier si la requête commence par un mot interrogatif
+        for word in question_words:
+            if query_lower.startswith(word) or f" {word} " in query_lower:
+                return True
+        
+        # Vérifier des patterns interrogatifs
+        interrogative_patterns = [
+            r'\bcomment\s+',
+            r'\bpourquoi\s+',
+            r'\bquand\s+',
+            r'\boù\s+',
+            r'\bque\s+',
+            r'\bqui\s+',
+            r'\bcombien\s+'
+        ]
+        
+        for pattern in interrogative_patterns:
+            if re.search(pattern, query_lower):
+                return True
+        
+        return False
+    
+    @property
+    def exact_phrases(self) -> List[str]:
+        """
+        Retourne les phrases exactes détectées dans la requête.
+        
+        Returns:
+            Liste des phrases exactes
+        """
+        phrases = []
+        
+        # Extraire les phrases entre guillemets
+        quoted_phrases = re.findall(r'"([^"]*)"', self.original_query)
+        phrases.extend(quoted_phrases)
+        
+        # Si pas de guillemets mais requête courte, considérer comme phrase exacte
+        if not phrases and self.has_exact_phrases:
+            if len(self.cleaned_query.split()) <= 3:
+                phrases.append(self.cleaned_query)
+        
+        return phrases
+    
+    @property
+    def financial_entities_summary(self) -> Dict[str, Any]:
+        """
+        Retourne un résumé des entités financières détectées.
+        
+        Returns:
+            Résumé structuré des entités financières
+        """
+        entities = self.detected_entities
+        
+        return {
+            "amounts_count": len(entities.get('amounts', [])),
+            "dates_count": len(entities.get('dates', [])),
+            "categories_count": len(entities.get('categories', [])),
+            "has_amounts": bool(entities.get('amounts', [])),
+            "has_dates": bool(entities.get('dates', [])),
+            "has_categories": bool(entities.get('categories', [])),
+            "amount_range": self._get_amount_range(),
+            "date_range": self._get_date_range(),
+            "detected_categories": entities.get('categories', [])
+        }
+    
+    def _get_amount_range(self) -> Optional[Dict[str, float]]:
+        """Calcule la fourchette de montants détectés."""
+        amounts = self.detected_entities.get('amounts', [])
+        if not amounts:
+            return None
+        
+        values = [a['value'] for a in amounts]
+        return {
+            "min": min(values),
+            "max": max(values),
+            "count": len(values)
+        }
+    
+    def _get_date_range(self) -> Optional[Dict[str, str]]:
+        """Calcule la fourchette de dates détectées."""
+        dates = self.detected_entities.get('dates', [])
+        if not dates:
+            return None
+        
+        date_objects = []
+        for d in dates:
+            if isinstance(d.get('date'), str):
+                try:
+                    date_objects.append(datetime.fromisoformat(d['date']))
+                except ValueError:
+                    continue
+            elif isinstance(d.get('date'), datetime):
+                date_objects.append(d['date'])
+        
+        if not date_objects:
+            return None
+        
+        return {
+            "start": min(date_objects).isoformat(),
+            "end": max(date_objects).isoformat(),
+            "count": len(date_objects)
+        }
 
 
 @dataclass
@@ -448,7 +654,7 @@ class QueryProcessor:
         optimized_parts.append(analysis.cleaned_query)
         
         # Mots-clés importants
-        important_keywords = [kw for kw in analysis.detected_entities["keywords"] if len(kw) > 3]
+        important_keywords = [kw for kw in analysis.key_terms if len(kw) > 3]
         if important_keywords:
             optimized_parts.extend(important_keywords[:3])  # Top 3 mots-clés
         
@@ -617,7 +823,7 @@ class QueryProcessor:
         alternatives = []
         
         # Requête simplifiée (mots-clés uniquement)
-        keywords = [kw for kw in analysis.detected_entities["keywords"] if len(kw) > 2]
+        keywords = [kw for kw in analysis.key_terms if len(kw) > 2]
         if len(keywords) > 1:
             alternatives.append(" ".join(keywords[:3]))
         
@@ -668,7 +874,7 @@ class QueryProcessor:
             difficulty["factors"].append("Single word query")
             difficulty["lexical_difficulty"] = "easy"
         
-        if not analysis.detected_entities["keywords"]:
+        if not analysis.key_terms:
             difficulty["factors"].append("No clear keywords")
             difficulty["overall_difficulty"] = "hard"
         

@@ -116,6 +116,107 @@ class ElasticsearchClient(BaseClient):
         except Exception:
             return False
     
+    # ============================================================================
+    # MÉTHODES MANQUANTES AJOUTÉES POUR COMPATIBILITÉ AVEC LES MOTEURS
+    # ============================================================================
+    
+    async def search(
+        self,
+        index: str,
+        body: Dict[str, Any],
+        size: int = 20,
+        from_: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Effectue une recherche Elasticsearch (méthode générique).
+        
+        Cette méthode est utilisée par le lexical_engine.py et doit être
+        compatible avec l'interface attendue.
+        
+        Args:
+            index: Nom de l'index
+            body: Corps de la requête Elasticsearch
+            size: Nombre de résultats
+            from_: Offset pour pagination
+            
+        Returns:
+            Résultats de la recherche
+        """
+        # Ajouter size et from_ au body si pas déjà présents
+        if "size" not in body:
+            body["size"] = size
+        if "from" not in body:
+            body["from"] = from_
+        
+        async def _search():
+            async with self.session.post(
+                f"{self.base_url}/{index}/_search",
+                json=body
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Search failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_search, "search")
+    
+    async def health(self) -> Dict[str, Any]:
+        """
+        Vérifie la santé d'Elasticsearch (méthode générique).
+        
+        Cette méthode est utilisée par les health checks et doit retourner
+        un format standard.
+        
+        Returns:
+            Statut de santé du cluster
+        """
+        async def _health():
+            async with self.session.get(
+                f"{self.base_url}/_cluster/health"
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Health check failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_health, "health")
+    
+    async def count(
+        self,
+        index: str,
+        body: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Compte les documents correspondant à une requête (méthode générique).
+        
+        Cette méthode est utilisée par les moteurs pour compter les documents.
+        
+        Args:
+            index: Nom de l'index
+            body: Corps de la requête de comptage
+            
+        Returns:
+            Résultat du comptage
+        """
+        async def _count():
+            async with self.session.post(
+                f"{self.base_url}/{index}/_count",
+                json=body
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Count failed: HTTP {response.status} - {error_text}")
+        
+        return await self.execute_with_retry(_count, "count")
+    
+    # ============================================================================
+    # MÉTHODES SPÉCIALISÉES EXISTANTES
+    # ============================================================================
+    
     async def search_transactions(
         self,
         query: str,

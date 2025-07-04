@@ -245,8 +245,8 @@ class LexicalSearchEngine:
     
     def _optimize_query_for_elasticsearch(self, query_analysis: QueryAnalysis) -> str:
         """Optimise la requête pour Elasticsearch."""
-        # CORRECTION: Utiliser 'expanded_query' au lieu de 'enriched_query'
-        if hasattr(query_analysis, 'expanded_query') and query_analysis.expanded_query:
+        # CORRECTION: Utiliser l'attribut expanded_query directement (maintenant disponible)
+        if query_analysis.expanded_query:
             return query_analysis.expanded_query
         
         # Sinon utiliser la requête nettoyée
@@ -267,14 +267,8 @@ class LexicalSearchEngine:
         query_clauses = []
         
         # 1. Correspondance exacte de phrase (boost très élevé)
-        # CORRECTION: Vérifier l'existence de l'attribut de manière sécurisée
-        exact_phrases = []
-        if hasattr(query_analysis, 'exact_phrases') and query_analysis.exact_phrases:
-            exact_phrases = query_analysis.exact_phrases
-        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
-            # Fallback: créer une phrase exacte pour les requêtes courtes
-            if len(query_analysis.cleaned_query.split()) <= 3:
-                exact_phrases = [query_analysis.cleaned_query]
+        # CORRECTION: Utiliser la propriété exact_phrases
+        exact_phrases = query_analysis.exact_phrases
         
         for phrase in exact_phrases:
             query_clauses.append({
@@ -343,15 +337,8 @@ class LexicalSearchEngine:
             })
         
         # 5. Recherche par termes individuels pour améliorer le rappel
-        # CORRECTION: Obtenir key_terms de manière sécurisée
-        key_terms = []
-        if hasattr(query_analysis, 'key_terms') and query_analysis.key_terms:
-            key_terms = query_analysis.key_terms
-        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
-            key_terms = query_analysis.detected_entities.get('keywords', [])
-        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
-            # Fallback: utiliser les mots de la requête nettoyée
-            key_terms = query_analysis.cleaned_query.split()
+        # CORRECTION: Utiliser la propriété key_terms
+        key_terms = query_analysis.key_terms
         
         for term in key_terms:
             if len(term) > 2:  # Éviter les termes trop courts
@@ -696,15 +683,8 @@ class LexicalSearchEngine:
         if not results:
             return 0.5  # Neutre si pas de résultats
         
-        # CORRECTION: Obtenir key_terms de manière sécurisée
-        key_terms = []
-        if hasattr(query_analysis, 'key_terms') and query_analysis.key_terms:
-            key_terms = query_analysis.key_terms
-        elif hasattr(query_analysis, 'detected_entities') and query_analysis.detected_entities:
-            key_terms = query_analysis.detected_entities.get('keywords', [])
-        elif hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
-            # Fallback: utiliser les mots de la requête nettoyée
-            key_terms = query_analysis.cleaned_query.split()
+        # CORRECTION: Utiliser la propriété key_terms
+        key_terms = query_analysis.key_terms
         
         if not key_terms:
             return 0.5  # Neutre si pas de termes à analyser

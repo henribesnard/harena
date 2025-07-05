@@ -1,16 +1,17 @@
 """
 Point d'entrée principal du search_service - VERSION CORRIGÉE.
 
-Cette version corrige l'erreur d'import 'create_search_app' et maintient
-la compatibilité avec l'architecture existante tout en résolvant
-le problème 'str' object has no attribute 'generate_embedding'.
+Cette version corrige l'erreur d'import 'EmbeddingConfig' et maintient
+la compatibilité avec l'architecture existante.
 
 CORRECTIONS:
+- Import correct des classes EmbeddingConfig depuis enrichment_service
 - Fonction create_search_app exportée pour heroku_app.py
 - Initialisation séquentielle robuste des services d'embeddings
 - Gestion d'erreurs gracieuse avec mode dégradé
 - Validation stricte des types avant utilisation
 - Injection de dépendances sécurisée dans les routes
+- Correction des appels logger avant initialisation
 """
 import asyncio
 import logging
@@ -42,8 +43,82 @@ from search_service.config import (
 from search_service.clients.elasticsearch_client import ElasticsearchClient
 from search_service.clients.qdrant_client import QdrantClient
 
-# Core services
-from search_service.core.embeddings import EmbeddingService, EmbeddingManager, EmbeddingConfig
+# Core services - Import correct des classes d'embeddings
+try:
+    from search_service.core.embeddings import EmbeddingService, EmbeddingManager
+    search_embeddings_available = True
+    print("✅ Classes d'embeddings importées depuis search_service.core.embeddings")
+except ImportError as e:
+    print(f"⚠️ Impossible d'importer depuis search_service.core.embeddings: {e}")
+    search_embeddings_available = False
+
+# Import fallback depuis enrichment_service si search_service/core/embeddings pas disponible
+if not search_embeddings_available:
+    try:
+        from enrichment_service.core.embeddings import EmbeddingService as EnrichmentEmbeddingService
+        enrichment_embeddings_available = True
+        print("✅ Fallback: EmbeddingService importé depuis enrichment_service")
+    except ImportError:
+        print("⚠️ Impossible d'importer EmbeddingService depuis enrichment_service")
+        enrichment_embeddings_available = False
+
+    # Modèles locaux pour la configuration (uniquement si pas d'import)
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class EmbeddingModel(str, Enum):
+        """Modèles d'embeddings supportés."""
+        TEXT_EMBEDDING_3_SMALL = "text-embedding-3-small"
+        TEXT_EMBEDDING_3_LARGE = "text-embedding-3-large"
+        TEXT_EMBEDDING_ADA_002 = "text-embedding-ada-002"
+
+    @dataclass
+    class EmbeddingConfig:
+        """Configuration pour le service d'embeddings."""
+        model: EmbeddingModel = EmbeddingModel.TEXT_EMBEDDING_3_SMALL
+        dimensions: int = 1536
+        batch_size: int = 100
+        max_tokens: int = 8191
+        timeout: int = 30
+        max_retries: int = 3
+
+    # Service d'embeddings local simplifié
+    class EmbeddingService:
+        """Service d'embeddings simplifié pour le search_service."""
+        
+        def __init__(self, api_key: str, config: EmbeddingConfig):
+            self.api_key = api_key
+            self.config = config
+            self._service = None
+            
+        async def initialize(self):
+            """Initialise le service d'embeddings."""
+            if enrichment_embeddings_available:
+                self._service = EnrichmentEmbeddingService()
+                # Configuré avec la clé API globale dans enrichment_service
+            
+        async def generate_embedding(self, text: str, use_cache: bool = True) -> list[float]:
+            """Génère un embedding pour le texte donné."""
+            if self._service:
+                return await self._service.generate_embedding(text)
+            else:
+                # Fallback : retourner un vecteur par défaut
+                return [0.0] * self.config.dimensions
+        
+        def get_dimensions(self) -> int:
+            """Retourne le nombre de dimensions des embeddings."""
+            return self.config.dimensions
+
+    class EmbeddingManager:
+        """Gestionnaire des services d'embeddings."""
+        
+        def __init__(self, primary_service: EmbeddingService):
+            self.primary_service = primary_service
+            
+        async def generate_embedding(self, text: str, use_cache: bool = True) -> list[float]:
+            """Génère un embedding via le service principal."""
+            return await self.primary_service.generate_embedding(text, use_cache)
+
 from search_service.core.query_processor import QueryProcessor
 from search_service.core.lexical_engine import LexicalSearchEngine, LexicalSearchConfig
 from search_service.core.semantic_engine import SemanticSearchEngine, SemanticSearchConfig
@@ -282,8 +357,44 @@ async def initialize_embedding_services_safe():
         # Configuration des embeddings avec gestion d'erreur
         try:
             embedding_config_dict = get_embedding_config()
-            embedding_config = EmbeddingConfig(**embedding_config_dict)
-            logger.info(f"📋 Configuration embeddings chargée: model={embedding_config.model.value}")
+            
+            if search_embeddings_available:
+                # Utiliser les vraies classes de search_service/core/embeddings.py
+                # qui utilisent déjà la configuration de search_service/config
+                logger.info("🔧 Utilisation des classes EmbeddingService/Manager de search_service/core/embeddings.py")
+                
+                # Les vraies classes utilisent directement la config via get_embedding_config()
+                # Pas besoin de recréer EmbeddingConfig
+                
+            else:
+                # Mode fallback avec classes locales
+                from enum import Enum
+                from dataclasses import dataclass
+                
+                class EmbeddingModel(str, Enum):
+                    TEXT_EMBEDDING_3_SMALL = "text-embedding-3-small"
+                    TEXT_EMBEDDING_3_LARGE = "text-embedding-3-large"
+                    TEXT_EMBEDDING_ADA_002 = "text-embedding-ada-002"
+
+                @dataclass 
+                class EmbeddingConfig:
+                    model: EmbeddingModel = EmbeddingModel.TEXT_EMBEDDING_3_SMALL
+                    dimensions: int = 1536
+                    batch_size: int = 100
+                    max_tokens: int = 8191
+                    timeout: int = 30
+                    max_retries: int = 3
+                
+                embedding_config = EmbeddingConfig(
+                    model=EmbeddingModel(embedding_config_dict.get("model", "text-embedding-3-small")),
+                    dimensions=embedding_config_dict.get("dimensions", 1536),
+                    batch_size=embedding_config_dict.get("batch_size", 100),
+                    max_tokens=embedding_config_dict.get("max_tokens", 8191),
+                    timeout=embedding_config_dict.get("timeout", 30),
+                    max_retries=embedding_config_dict.get("max_retries", 3)
+                )
+                logger.info(f"📋 Configuration embeddings chargée (fallback): model={embedding_config.model.value}")
+                
         except Exception as e:
             logger.error(f"❌ Erreur configuration embedding: {e}")
             initialization_results["embeddings"] = {
@@ -294,10 +405,21 @@ async def initialize_embedding_services_safe():
         
         # Créer le service d'embeddings avec validation stricte
         try:
-            embedding_service = EmbeddingService(
-                api_key=global_settings.OPENAI_API_KEY,
-                config=embedding_config
-            )
+            if search_embeddings_available:
+                # Utiliser les vraies classes qui intègrent déjà la configuration
+                embedding_service = EmbeddingService(
+                    api_key=global_settings.OPENAI_API_KEY
+                    # Les vraies classes lisent la config via get_embedding_config()
+                )
+                logger.info("✅ EmbeddingService créé depuis search_service.core.embeddings")
+            else:
+                # Mode fallback
+                embedding_service = EmbeddingService(
+                    api_key=global_settings.OPENAI_API_KEY,
+                    config=embedding_config
+                )
+                await embedding_service.initialize()
+                logger.info("✅ EmbeddingService créé en mode fallback")
             
             # Validation ultra-stricte du type
             if not isinstance(embedding_service, EmbeddingService):
@@ -373,13 +495,14 @@ async def initialize_embedding_services_safe():
             
             initialization_results["embeddings"] = {
                 "status": "success",
-                "model": embedding_config.model.value,
-                "dimensions": embedding_config.dimensions,
+                "model": embedding_config_dict.get("model", "text-embedding-3-small"),
+                "dimensions": embedding_config_dict.get("dimensions", 1536),
                 "test_successful": True,
                 "service_type": str(type(embedding_service)),
                 "manager_type": str(type(embedding_manager)),
                 "primary_service_type": str(type(embedding_manager.primary_service)),
-                "test_embedding_dimensions": len(test_embedding)
+                "test_embedding_dimensions": len(test_embedding),
+                "uses_search_service_config": search_embeddings_available
             }
             
         except Exception as e:

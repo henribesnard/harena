@@ -9,7 +9,8 @@ from typing import List, Dict, Any, Optional
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     CollectionInfo, VectorParams, Distance, PointStruct,
-    Filter, FieldCondition, Match, Range, SearchRequest
+    Filter, FieldCondition, Match, Range, SearchRequest,
+    PayloadSchemaType
 )
 from qdrant_client.http.exceptions import UnexpectedResponse
 
@@ -73,6 +74,10 @@ class QdrantStorage:
                 )
                 
                 logger.info(f"Collection {self.collection_name} créée avec succès (dimension: {self.vector_dimension})")
+                
+                # Créer les index pour les champs de filtrage
+                await self._create_payload_indexes()
+                
             else:
                 logger.info(f"Collection {self.collection_name} existe déjà")
                 
@@ -86,9 +91,73 @@ class QdrantStorage:
                         f"vs configuration ({self.vector_dimension})"
                     )
                 
+                # S'assurer que les index existent même pour une collection existante
+                await self._create_payload_indexes()
+                
         except Exception as e:
             logger.error(f"Erreur lors de la création de la collection: {e}")
             raise
+
+    async def _create_payload_indexes(self):
+        """Crée les index sur les champs payload pour accélérer les recherches filtrées."""
+        try:
+            # Index obligatoire pour user_id (utilisé dans tous les filtres)
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="user_id",
+                field_schema=PayloadSchemaType.INTEGER
+            )
+            logger.info("✅ Index créé sur user_id")
+            
+            # Index pour is_deleted (utilisé dans les filtres)
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="is_deleted",
+                field_schema=PayloadSchemaType.BOOL
+            )
+            logger.info("✅ Index créé sur is_deleted")
+            
+            # Index pour amount_abs (filtres par montant)
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="amount_abs",
+                field_schema=PayloadSchemaType.FLOAT
+            )
+            logger.info("✅ Index créé sur amount_abs")
+            
+            # Index pour transaction_type (filtres par type)
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="transaction_type",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+            logger.info("✅ Index créé sur transaction_type")
+            
+            # Index pour timestamp (filtres par date)
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="timestamp",
+                field_schema=PayloadSchemaType.DATETIME
+            )
+            logger.info("✅ Index créé sur timestamp")
+            
+            # Index pour transaction_id (recherches par ID)
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="transaction_id",
+                field_schema=PayloadSchemaType.INTEGER
+            )
+            logger.info("✅ Index créé sur transaction_id")
+            
+            logger.info("🎯 Tous les index payload créés avec succès")
+            
+        except Exception as e:
+            # Si l'index existe déjà, Qdrant retourne une erreur, mais c'est OK
+            if "already exists" in str(e).lower() or "index_already_exists" in str(e).lower():
+                logger.info("ℹ️ Certains index existent déjà - OK")
+            else:
+                logger.warning(f"⚠️ Erreur lors de la création des index: {e}")
+                # Ne pas lever l'exception car les index peuvent déjà exister
     
     async def store_transaction(self, transaction: VectorizedTransaction) -> bool:
         """

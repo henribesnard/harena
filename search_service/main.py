@@ -105,23 +105,26 @@ async def startup_event():
         # 2. Initialiser les clients de base de données
         await initialize_clients()
         
-        # 3. Initialiser les services d'embeddings
+        # 3. Initialiser les services d'embeddings (CORRIGÉ)
         await initialize_embedding_services()
         
-        # 4. Initialiser les moteurs de recherche
+        # 4. Validation des services d'embeddings (NOUVEAU)
+        validate_embedding_injection()
+        
+        # 5. Initialiser les moteurs de recherche
         await initialize_search_engines()
         
-        # 5. Initialiser le moteur hybride
+        # 6. Initialiser le moteur hybride
         await initialize_hybrid_engine()
         
-        # 6. Injecter les dépendances dans les routes
+        # 7. Injecter les dépendances dans les routes (CORRIGÉ)
         inject_dependencies_into_routes()
         
-        # 7. Effectuer les vérifications de santé
+        # 8. Effectuer les vérifications de santé
         await perform_health_checks()
         
-        # 8. Optionnel: Warmup du système
-        if global_settings.SEARCH_WARMUP_ENABLED:
+        # 9. Optionnel: Warmup du système
+        if getattr(global_settings, 'SEARCH_WARMUP_ENABLED', False):
             await warmup_search_engines()
         
         logger.info("🎉 Initialisation complète du Search Service terminée")
@@ -171,21 +174,28 @@ async def initialize_clients():
     
     # Initialiser le client Elasticsearch
     try:
-        es_config = get_elasticsearch_config()
-        elasticsearch_client = ElasticsearchClient(
-            url=global_settings.BONSAI_URL,
-            **es_config
-        )
-        
-        # Test de connectivité
-        await elasticsearch_client.health()
-        logger.info("✅ Client Elasticsearch initialisé et connecté")
-        
-        initialization_results["elasticsearch"] = {
-            "status": "success",
-            "url": global_settings.BONSAI_URL,
-            "connected": True
-        }
+        if global_settings.BONSAI_URL:
+            es_config = get_elasticsearch_config()
+            elasticsearch_client = ElasticsearchClient(
+                url=global_settings.BONSAI_URL,
+                **es_config
+            )
+            
+            # Test de connectivité
+            await elasticsearch_client.health()
+            logger.info("✅ Client Elasticsearch initialisé et connecté")
+            
+            initialization_results["elasticsearch"] = {
+                "status": "success",
+                "url": global_settings.BONSAI_URL,
+                "connected": True
+            }
+        else:
+            logger.warning("⚠️ BONSAI_URL non configuré, Elasticsearch désactivé")
+            initialization_results["elasticsearch"] = {
+                "status": "disabled",
+                "reason": "BONSAI_URL not configured"
+            }
         
     except Exception as e:
         logger.error(f"❌ Échec initialisation Elasticsearch: {e}")
@@ -197,22 +207,29 @@ async def initialize_clients():
     
     # Initialiser le client Qdrant
     try:
-        qdrant_config = get_qdrant_config()
-        qdrant_client = QdrantClient(
-            url=global_settings.QDRANT_URL,
-            api_key=global_settings.QDRANT_API_KEY,
-            **qdrant_config
-        )
-        
-        # Test de connectivité
-        await qdrant_client.health_check()
-        logger.info("✅ Client Qdrant initialisé et connecté")
-        
-        initialization_results["qdrant"] = {
-            "status": "success",
-            "url": global_settings.QDRANT_URL,
-            "connected": True
-        }
+        if global_settings.QDRANT_URL and global_settings.QDRANT_API_KEY:
+            qdrant_config = get_qdrant_config()
+            qdrant_client = QdrantClient(
+                url=global_settings.QDRANT_URL,
+                api_key=global_settings.QDRANT_API_KEY,
+                **qdrant_config
+            )
+            
+            # Test de connectivité
+            await qdrant_client.health_check()
+            logger.info("✅ Client Qdrant initialisé et connecté")
+            
+            initialization_results["qdrant"] = {
+                "status": "success",
+                "url": global_settings.QDRANT_URL,
+                "connected": True
+            }
+        else:
+            logger.warning("⚠️ QDRANT_URL ou QDRANT_API_KEY non configuré, Qdrant désactivé")
+            initialization_results["qdrant"] = {
+                "status": "disabled",
+                "reason": "QDRANT_URL or QDRANT_API_KEY not configured"
+            }
         
     except Exception as e:
         logger.error(f"❌ Échec initialisation Qdrant: {e}")
@@ -228,24 +245,33 @@ async def initialize_clients():
 
 
 async def initialize_embedding_services():
-    """Initialise les services d'embeddings."""
+    """Initialise les services d'embeddings avec vérifications renforcées."""
     global embedding_service, embedding_manager
     
     logger.info("🤖 Initialisation des services d'embeddings...")
     
     try:
+        # Vérifier la clé API OpenAI
         if not global_settings.OPENAI_API_KEY:
             logger.warning("⚠️ OPENAI_API_KEY non définie, service d'embeddings désactivé")
             initialization_results["embeddings"] = {
                 "status": "disabled",
                 "reason": "OPENAI_API_KEY not configured"
             }
+            embedding_service = None
+            embedding_manager = None
             return
+        
+        # Log de debug pour la clé API (masquée)
+        api_key_preview = f"{global_settings.OPENAI_API_KEY[:10]}..." if global_settings.OPENAI_API_KEY else "None"
+        logger.info(f"🔑 OPENAI_API_KEY trouvée: {api_key_preview}")
         
         # Configuration des embeddings
         embedding_config = EmbeddingConfig(
             **get_embedding_config()
         )
+        
+        logger.info(f"📋 Configuration embeddings: model={embedding_config.model.value}, dimensions={embedding_config.dimensions}")
         
         # Créer le service d'embeddings principal
         embedding_service = EmbeddingService(
@@ -253,8 +279,27 @@ async def initialize_embedding_services():
             config=embedding_config
         )
         
-        # Créer le gestionnaire avec fallbacks éventuels
+        # Vérification que l'instance est bien créée
+        if not isinstance(embedding_service, EmbeddingService):
+            raise Exception(f"Expected EmbeddingService instance, got {type(embedding_service)}")
+        
+        logger.info(f"✅ EmbeddingService créé: {type(embedding_service)}")
+        
+        # Créer le gestionnaire avec l'instance vérifiée
         embedding_manager = EmbeddingManager(embedding_service)
+        
+        # Vérification que le gestionnaire est bien créé
+        if not isinstance(embedding_manager, EmbeddingManager):
+            raise Exception(f"Expected EmbeddingManager instance, got {type(embedding_manager)}")
+        
+        # Vérification que l'injection s'est bien passée
+        if not hasattr(embedding_manager, 'primary_service'):
+            raise Exception("EmbeddingManager.primary_service not set correctly")
+            
+        if not isinstance(embedding_manager.primary_service, EmbeddingService):
+            raise Exception(f"Primary service has wrong type: {type(embedding_manager.primary_service)}")
+        
+        logger.info(f"✅ EmbeddingManager créé avec primary_service: {type(embedding_manager.primary_service)}")
         
         # Test de génération d'embedding
         test_embedding = await embedding_service.generate_embedding(
@@ -262,25 +307,87 @@ async def initialize_embedding_services():
             use_cache=False
         )
         
-        if test_embedding:
-            logger.info("✅ Services d'embeddings initialisés et testés")
+        if test_embedding and len(test_embedding) > 0:
+            logger.info(f"✅ Test d'embedding réussi: {len(test_embedding)} dimensions")
             initialization_results["embeddings"] = {
                 "status": "success",
                 "model": embedding_config.model.value,
                 "dimensions": embedding_config.dimensions,
-                "test_successful": True
+                "test_successful": True,
+                "service_type": str(type(embedding_service)),
+                "manager_type": str(type(embedding_manager)),
+                "primary_service_type": str(type(embedding_manager.primary_service)),
+                "test_embedding_dimensions": len(test_embedding)
             }
         else:
-            raise Exception("Test d'embedding échoué")
+            raise Exception("Test d'embedding échoué: embedding vide ou None")
         
     except Exception as e:
         logger.error(f"❌ Échec initialisation embeddings: {e}")
+        logger.error(f"❌ OPENAI_API_KEY présente: {bool(global_settings.OPENAI_API_KEY)}")
+        logger.error(f"❌ Type embedding_service: {type(embedding_service) if 'embedding_service' in locals() else 'undefined'}")
+        logger.error(f"❌ Type embedding_manager: {type(embedding_manager) if 'embedding_manager' in locals() else 'undefined'}")
+        
         initialization_results["embeddings"] = {
             "status": "failed",
-            "error": str(e)
+            "error": str(e),
+            "debug_info": {
+                "api_key_present": bool(global_settings.OPENAI_API_KEY),
+                "embedding_service_type": str(type(embedding_service)) if 'embedding_service' in locals() else None,
+                "embedding_manager_type": str(type(embedding_manager)) if 'embedding_manager' in locals() else None
+            }
         }
         embedding_service = None
         embedding_manager = None
+        # Ne pas lever l'exception pour permettre au service de fonctionner en mode dégradé
+
+
+def validate_embedding_injection():
+    """Valide que l'injection des services d'embeddings s'est bien passée."""
+    global embedding_service, embedding_manager
+    
+    logger.info("🔍 Validation de l'injection des services d'embeddings...")
+    
+    errors = []
+    warnings = []
+    
+    # Validation embedding_service
+    if embedding_service is None:
+        warnings.append("embedding_service is None - recherche sémantique désactivée")
+    elif not isinstance(embedding_service, EmbeddingService):
+        errors.append(f"embedding_service has wrong type: {type(embedding_service)}")
+    else:
+        logger.info(f"✅ embedding_service valid: {type(embedding_service)}")
+    
+    # Validation embedding_manager
+    if embedding_manager is None:
+        warnings.append("embedding_manager is None - recherche sémantique désactivée")
+    elif not isinstance(embedding_manager, EmbeddingManager):
+        errors.append(f"embedding_manager has wrong type: {type(embedding_manager)}")
+    elif not hasattr(embedding_manager, 'primary_service'):
+        errors.append("embedding_manager has no primary_service attribute")
+    elif not isinstance(embedding_manager.primary_service, EmbeddingService):
+        errors.append(f"embedding_manager.primary_service has wrong type: {type(embedding_manager.primary_service)}")
+    elif not hasattr(embedding_manager.primary_service, 'generate_embedding'):
+        errors.append("embedding_manager.primary_service has no generate_embedding method")
+    else:
+        logger.info(f"✅ embedding_manager valid with primary_service: {type(embedding_manager.primary_service)}")
+    
+    # Affichage des résultats
+    if errors:
+        logger.error("🚨 EMBEDDING INJECTION VALIDATION FAILED:")
+        for error in errors:
+            logger.error(f"   ❌ {error}")
+        raise RuntimeError(f"Embedding injection validation failed: {'; '.join(errors)}")
+    
+    if warnings:
+        logger.warning("⚠️ EMBEDDING INJECTION WARNINGS:")
+        for warning in warnings:
+            logger.warning(f"   ⚠️ {warning}")
+    
+    logger.info("✅ Validation de l'injection des embeddings réussie")
+    
+    return len(errors) == 0
 
 
 async def initialize_search_engines():
@@ -359,7 +466,12 @@ async def initialize_search_engines():
                     "health": health
                 }
             else:
-                raise Exception(f"Semantic engine unhealthy: {health}")
+                logger.warning(f"⚠️ Moteur sémantique en état dégradé: {health}")
+                initialization_results["semantic_engine"] = {
+                    "status": "degraded",
+                    "health": health
+                }
+                # Ne pas désactiver complètement, garder en mode dégradé
                 
         except Exception as e:
             logger.error(f"❌ Échec initialisation moteur sémantique: {e}")
@@ -369,7 +481,13 @@ async def initialize_search_engines():
             }
             semantic_engine = None
     else:
-        reason = "Qdrant not available" if not qdrant_client else "Embeddings not available"
+        reason_parts = []
+        if not qdrant_client:
+            reason_parts.append("Qdrant not available")
+        if not embedding_manager:
+            reason_parts.append("Embeddings not available")
+        reason = " and ".join(reason_parts)
+        
         logger.warning(f"⚠️ Moteur sémantique désactivé ({reason})")
         initialization_results["semantic_engine"] = {
             "status": "disabled",
@@ -423,7 +541,7 @@ async def initialize_hybrid_engine():
         
         available_engines = sum(
             1 for engine_health in health["engines"].values()
-            if engine_health.get("status") == "healthy"
+            if engine_health.get("status") in ["healthy", "degraded"]
         )
         
         if available_engines > 0:
@@ -448,20 +566,58 @@ async def initialize_hybrid_engine():
 def inject_dependencies_into_routes():
     """Injecte les services dans le module routes pour utilisation globale."""
     
-    # Import du module routes pour injection
-    from search_service.api import routes
+    logger.info("💉 Injection des dépendances dans les routes...")
     
-    # Injecter toutes les dépendances
-    routes.elasticsearch_client = elasticsearch_client
-    routes.qdrant_client = qdrant_client
-    routes.embedding_manager = embedding_manager
-    routes.query_processor = query_processor
-    routes.lexical_engine = lexical_engine
-    routes.semantic_engine = semantic_engine
-    routes.result_merger = result_merger
-    routes.hybrid_engine = hybrid_engine
-    
-    logger.info("✅ Dépendances injectées dans les routes")
+    try:
+        # Import du module routes pour injection
+        from search_service.api import routes
+        
+        # Injecter toutes les dépendances avec vérification
+        routes.elasticsearch_client = elasticsearch_client
+        routes.qdrant_client = qdrant_client
+        routes.embedding_manager = embedding_manager
+        routes.query_processor = query_processor
+        routes.lexical_engine = lexical_engine
+        routes.semantic_engine = semantic_engine
+        routes.result_merger = result_merger
+        routes.hybrid_engine = hybrid_engine
+        
+        # Vérification de l'injection
+        injection_success = {
+            "elasticsearch_client": routes.elasticsearch_client is not None,
+            "qdrant_client": routes.qdrant_client is not None,
+            "embedding_manager": routes.embedding_manager is not None,
+            "query_processor": routes.query_processor is not None,
+            "lexical_engine": routes.lexical_engine is not None,
+            "semantic_engine": routes.semantic_engine is not None,
+            "result_merger": routes.result_merger is not None,
+            "hybrid_engine": routes.hybrid_engine is not None
+        }
+        
+        successful_injections = sum(injection_success.values())
+        total_injections = len(injection_success)
+        
+        logger.info(f"✅ Dépendances injectées dans les routes: {successful_injections}/{total_injections}")
+        
+        # Log détaillé des injections
+        for component, success in injection_success.items():
+            status = "✅" if success else "❌"
+            logger.info(f"   {status} {component}: {success}")
+        
+        initialization_results["dependency_injection"] = {
+            "status": "success",
+            "successful_injections": successful_injections,
+            "total_injections": total_injections,
+            "details": injection_success
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Échec injection des dépendances: {e}")
+        initialization_results["dependency_injection"] = {
+            "status": "failed",
+            "error": str(e)
+        }
+        raise
 
 
 async def perform_health_checks():
@@ -488,8 +644,12 @@ async def perform_health_checks():
     # Check des services
     if embedding_service:
         try:
-            embedding_health = await embedding_service.health_check()
-            health_results["embeddings"] = embedding_health
+            # Test simple sans health_check s'il n'existe pas
+            test_embedding = await embedding_service.generate_embedding("test", use_cache=False)
+            health_results["embeddings"] = {
+                "status": "healthy" if test_embedding else "unhealthy",
+                "test_successful": bool(test_embedding)
+            }
         except Exception as e:
             health_results["embeddings"] = {"status": "unhealthy", "error": str(e)}
     
@@ -506,7 +666,7 @@ async def perform_health_checks():
     # Compter les composants sains
     healthy_components = sum(
         1 for health in health_results.values()
-        if health.get("status") == "healthy"
+        if health.get("status") in ["healthy", "degraded"]
     )
     
     logger.info(f"✅ Health checks terminés: {healthy_components}/{len(health_results)} composants sains")
@@ -521,16 +681,39 @@ async def warmup_search_engines():
         return
     
     try:
-        warmup_result = await hybrid_engine.warmup()
+        # Requêtes de warmup simples
+        warmup_queries = [
+            "test",
+            "paiement",
+            "achat",
+            "virement",
+            "carte bancaire"
+        ]
+        
+        successful_warmups = 0
+        total_time = 0
+        
+        for query in warmup_queries:
+            try:
+                start_time = time.time()
+                # Test simple de recherche
+                await hybrid_engine.search(query, user_id=1, limit=1)
+                end_time = time.time()
+                
+                successful_warmups += 1
+                total_time += (end_time - start_time) * 1000
+                
+            except Exception as e:
+                logger.warning(f"Warmup failed for query '{query}': {e}")
         
         initialization_results["warmup"] = {
             "status": "completed",
-            "successful_queries": warmup_result["successful_warmups"],
-            "total_queries": warmup_result["queries_count"],
-            "total_time_ms": warmup_result["total_time_ms"]
+            "successful_queries": successful_warmups,
+            "total_queries": len(warmup_queries),
+            "total_time_ms": total_time
         }
         
-        logger.info(f"✅ Warmup terminé: {warmup_result['successful_warmups']}/{warmup_result['queries_count']} requêtes")
+        logger.info(f"✅ Warmup terminé: {successful_warmups}/{len(warmup_queries)} requêtes")
         
     except Exception as e:
         logger.error(f"❌ Échec du warmup: {e}")
@@ -584,14 +767,14 @@ def create_search_app() -> FastAPI:
         description="Service de recherche hybride pour transactions financières",
         version="1.0.0",
         lifespan=lifespan,
-        docs_url="/docs" if global_settings.DEBUG else None,
-        redoc_url="/redoc" if global_settings.DEBUG else None
+        docs_url="/docs" if getattr(global_settings, 'DEBUG', False) else None,
+        redoc_url="/redoc" if getattr(global_settings, 'DEBUG', False) else None
     )
     
     # Configuration CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if global_settings.DEBUG else ["https://harena.app"],
+        allow_origins=["*"] if getattr(global_settings, 'DEBUG', False) else ["https://harena.app"],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"]
@@ -622,11 +805,35 @@ def create_search_app() -> FastAPI:
             }
         }
     
+    # Route de debugging pour les embeddings
+    @app.get("/debug/embedding")
+    async def debug_embedding():
+        """Informations de debug sur les services d'embeddings."""
+        return {
+            "embedding_service": {
+                "exists": embedding_service is not None,
+                "type": str(type(embedding_service)) if embedding_service else None,
+                "has_generate_method": hasattr(embedding_service, 'generate_embedding') if embedding_service else False
+            },
+            "embedding_manager": {
+                "exists": embedding_manager is not None,
+                "type": str(type(embedding_manager)) if embedding_manager else None,
+                "has_primary_service": hasattr(embedding_manager, 'primary_service') if embedding_manager else False,
+                "primary_service_type": str(type(embedding_manager.primary_service)) if embedding_manager and hasattr(embedding_manager, 'primary_service') else None,
+                "can_generate": hasattr(embedding_manager.primary_service, 'generate_embedding') if embedding_manager and hasattr(embedding_manager, 'primary_service') else False
+            },
+            "openai_api_key": {
+                "configured": bool(global_settings.OPENAI_API_KEY),
+                "preview": f"{global_settings.OPENAI_API_KEY[:10]}..." if global_settings.OPENAI_API_KEY else None
+            },
+            "initialization_results": initialization_results.get("embeddings", {})
+        }
+    
     # Route d'information détaillée (admin)
     @app.get("/info")
     async def service_info():
         """Informations détaillées du service (admin)."""
-        if not global_settings.DEBUG:
+        if not getattr(global_settings, 'DEBUG', False):
             raise HTTPException(status_code=404, detail="Not found")
         
         metrics = {}
@@ -637,8 +844,69 @@ def create_search_app() -> FastAPI:
             "service": "search_service",
             "initialization_results": initialization_results,
             "metrics": metrics,
-            "performance_summary": hybrid_engine.get_performance_summary() if hybrid_engine else None
+            "performance_summary": hybrid_engine.get_performance_summary() if hybrid_engine else None,
+            "components_status": {
+                "elasticsearch_client": {
+                    "available": elasticsearch_client is not None,
+                    "type": str(type(elasticsearch_client)) if elasticsearch_client else None
+                },
+                "qdrant_client": {
+                    "available": qdrant_client is not None,
+                    "type": str(type(qdrant_client)) if qdrant_client else None
+                },
+                "embedding_service": {
+                    "available": embedding_service is not None,
+                    "type": str(type(embedding_service)) if embedding_service else None
+                },
+                "embedding_manager": {
+                    "available": embedding_manager is not None,
+                    "type": str(type(embedding_manager)) if embedding_manager else None,
+                    "primary_service_type": str(type(embedding_manager.primary_service)) if embedding_manager and hasattr(embedding_manager, 'primary_service') else None
+                },
+                "lexical_engine": {
+                    "available": lexical_engine is not None,
+                    "type": str(type(lexical_engine)) if lexical_engine else None
+                },
+                "semantic_engine": {
+                    "available": semantic_engine is not None,
+                    "type": str(type(semantic_engine)) if semantic_engine else None
+                },
+                "hybrid_engine": {
+                    "available": hybrid_engine is not None,
+                    "type": str(type(hybrid_engine)) if hybrid_engine else None
+                }
+            }
         }
+    
+    # Route de test pour les embeddings
+    @app.post("/test/embedding")
+    async def test_embedding_endpoint(text: str = "test query"):
+        """Test de génération d'embedding (admin/debug)."""
+        if not getattr(global_settings, 'DEBUG', False):
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        if not embedding_manager:
+            raise HTTPException(status_code=503, detail="Embedding service not available")
+        
+        try:
+            start_time = time.time()
+            embedding = await embedding_manager.generate_embedding(text, use_cache=False)
+            end_time = time.time()
+            
+            return {
+                "success": True,
+                "text": text,
+                "embedding_dimensions": len(embedding) if embedding else 0,
+                "processing_time_ms": (end_time - start_time) * 1000,
+                "embedding_preview": embedding[:5] if embedding else None
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "text": text,
+                "error": str(e),
+                "error_type": str(type(e))
+            }
     
     # Gestionnaire d'erreurs global
     @app.exception_handler(Exception)
@@ -648,7 +916,8 @@ def create_search_app() -> FastAPI:
             status_code=500,
             content={
                 "error": "Internal server error",
-                "detail": str(exc) if global_settings.DEBUG else "Une erreur est survenue"
+                "detail": str(exc) if getattr(global_settings, 'DEBUG', False) else "Une erreur est survenue",
+                "service": "search_service"
             }
         )
     
@@ -660,7 +929,7 @@ if __name__ == "__main__":
     app = create_search_app()
     
     # Configuration de développement
-    if global_settings.DEBUG:
+    if getattr(global_settings, 'DEBUG', False):
         uvicorn.run(
             app,
             host="0.0.0.0",
@@ -673,6 +942,6 @@ if __name__ == "__main__":
         uvicorn.run(
             app,
             host="0.0.0.0",
-            port=int(global_settings.PORT or 8003),
+            port=int(getattr(global_settings, 'PORT', 8003)),
             log_level="warning"
         )

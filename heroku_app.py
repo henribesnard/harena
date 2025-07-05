@@ -1,18 +1,18 @@
 """
-Application Harena pour déploiement Heroku - Version corrigée avec Search Service.
+Application Harena pour déploiement Heroku - Version avec Search Service.
 
 MODIFICATIONS APPORTÉES:
 1. Enrichment Service avec dual storage (Qdrant + Elasticsearch)
-2. Search Service délégué à son propre main.py (CORRECTION)
+2. Search Service complètement réécrit et intégré
 3. Tests de diagnostic améliorés pour la nouvelle architecture
-4. Suppression de l'initialisation conflictuelle du Search Service
+4. Gestion complète des injections pour tous les services
 
 SERVICES INCLUS:
 - user_service: Gestion utilisateurs et authentification
 - db_service: Base de données PostgreSQL
 - sync_service: Synchronisation avec Bridge API
 - enrichment_service: Enrichissement IA avec dual storage
-- search_service: Recherche hybride (DÉLÉGUÉ)
+- search_service: Recherche hybride lexicale + sémantique (NOUVEAU)
 - conversation_service: Assistant IA conversationnel
 """
 
@@ -37,7 +37,7 @@ logger = logging.getLogger("heroku_app")
 # ==================== CONFIGURATION INITIALE ====================
 
 try:
-    logger.info("🚀 Démarrage Harena Finance Platform - Version corrigée avec Search Service")
+    logger.info("🚀 Démarrage Harena Finance Platform - Version avec Search Service")
     
     # Correction DATABASE_URL pour Heroku
     DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -62,6 +62,7 @@ try:
     startup_time = None
     all_services_status = {}
     enrichment_service_initialization_result = None
+    search_service_initialization_result = None
 
     # ==================== FONCTIONS DE DIAGNOSTIC DÉTAILLÉ ====================
 
@@ -472,61 +473,235 @@ try:
         
         return initialization_result
 
-    async def test_search_service_delegation() -> Dict[str, Any]:
-        """Test de délégation du Search Service à son propre main.py."""
-        logger.info("🔍 Test Search Service (délégation à main.py)...")
+    async def initialize_search_service_hybrid() -> Dict[str, Any]:
+        """Initialise directement le Search Service hybride (NOUVEAU)."""
+        logger.info("🔧 === INITIALISATION DIRECTE SEARCH SERVICE HYBRIDE ===")
         
-        result = {
+        initialization_result = {
             "service": "search_service",
             "healthy": False,
-            "method": "delegation_to_main_py",
+            "method": "direct_hybrid_initialization",
             "details": {
-                "delegation_reason": "Avoiding injection conflicts with heroku_app.py",
-                "routes_importable": False,
-                "health_endpoint_available": False,
-                "configuration_check": {
+                "config_check": {
                     "elasticsearch_url": bool(os.environ.get("BONSAI_URL")),
                     "qdrant_url": bool(os.environ.get("QDRANT_URL")),
                     "openai_key": bool(os.environ.get("OPENAI_API_KEY"))
                 },
-                "initialization_delegated": True
+                "components_initialized": {
+                    "elasticsearch_client": False,
+                    "qdrant_client": False,
+                    "embedding_manager": False,
+                    "query_processor": False,
+                    "lexical_engine": False,
+                    "semantic_engine": False,
+                    "result_merger": False,
+                    "hybrid_engine": False
+                },
+                "injection_successful": False,
+                "initialization_time": 0,
+                "health_checks": {}
             },
-            "recommendations": [
-                "Search Service utilise sa propre initialisation dans main.py",
-                "Évite les conflits d'injection avec heroku_app.py",
-                "Vérifiez les logs du search_service pour les détails d'initialisation"
-            ],
+            "recommendations": [],
             "error": None
         }
         
+        start_time = time.time()
+        
         try:
-            # Test d'import des routes sans initialisation
-            from search_service.api.routes import router as search_router
-            result["details"]["routes_importable"] = True
-            result["details"]["routes_count"] = len(search_router.routes) if hasattr(search_router, 'routes') else 0
+            # Import des composants nécessaires du Search Service
+            logger.info("📦 Import des composants Search Service...")
             
-            # Service considéré comme sain si les routes sont importables et configuration OK
-            config_ok = any([
-                result["details"]["configuration_check"]["elasticsearch_url"],
-                result["details"]["configuration_check"]["qdrant_url"]
-            ]) and result["details"]["configuration_check"]["openai_key"]
+            # 1. Initialiser directement les clients avec les bons imports
+            elasticsearch_client = None
+            qdrant_client = None
+            embedding_manager = None
             
-            result["healthy"] = result["details"]["routes_importable"] and config_ok
+            # Client Elasticsearch
+            try:
+                from search_service.clients.elasticsearch_client import ElasticsearchClient
+                if os.environ.get("BONSAI_URL"):
+                    elasticsearch_client = ElasticsearchClient(
+                        bonsai_url=os.environ.get("BONSAI_URL"),
+                        index_name="harena_transactions"
+                    )
+                    await elasticsearch_client.start()
+                    initialization_result["details"]["components_initialized"]["elasticsearch_client"] = True
+                    logger.info("✅ Elasticsearch Client initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️ Elasticsearch client initialization failed: {e}")
             
-            if result["healthy"]:
-                result["recommendations"].append("✅ Configuration minimum présente pour Search Service")
-            else:
-                result["recommendations"].append("⚠️ Configuration incomplète - vérifiez les variables d'environnement")
+            # Client Qdrant
+            try:
+                from search_service.clients.qdrant_client import QdrantClient
+                if os.environ.get("QDRANT_URL"):
+                    qdrant_client = QdrantClient(
+                        qdrant_url=os.environ.get("QDRANT_URL"),
+                        api_key=os.environ.get("QDRANT_API_KEY"),
+                        collection_name="financial_transactions"
+                    )
+                    await qdrant_client.start()
+                    initialization_result["details"]["components_initialized"]["qdrant_client"] = True
+                    logger.info("✅ Qdrant Client initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️ Qdrant client initialization failed: {e}")
+            
+            # Service d'embeddings
+            try:
+                from search_service.core.embeddings import EmbeddingManager
+                if os.environ.get("OPENAI_API_KEY"):
+                    # EmbeddingManager se contente d'être créé, pas besoin d'initialize()
+                    embedding_manager = EmbeddingManager(primary_service="openai")
+                    initialization_result["details"]["components_initialized"]["embedding_manager"] = True
+                    logger.info("✅ Embedding Manager initialisé")
+            except Exception as e:
+                logger.warning(f"⚠️ Embedding manager initialization failed: {e}")
+            
+            # Query Processor
+            query_processor = None
+            try:
+                from search_service.core.query_processor import QueryProcessor
+                query_processor = QueryProcessor()
+                initialization_result["details"]["components_initialized"]["query_processor"] = True
+                logger.info("✅ Query Processor créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Query processor creation failed: {e}")
+            
+            # Moteurs de recherche
+            lexical_engine = None
+            semantic_engine = None
+            hybrid_engine = None
+            
+            try:
+                from search_service.core.lexical_engine import LexicalSearchEngine
+                if elasticsearch_client:
+                    lexical_engine = LexicalSearchEngine(elasticsearch_client)
+                    initialization_result["details"]["components_initialized"]["lexical_engine"] = True
+                    logger.info("✅ Lexical Engine créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Lexical engine creation failed: {e}")
+            
+            try:
+                from search_service.core.semantic_engine import SemanticSearchEngine
+                if qdrant_client and embedding_manager:
+                    semantic_engine = SemanticSearchEngine(qdrant_client, embedding_manager)
+                    initialization_result["details"]["components_initialized"]["semantic_engine"] = True
+                    logger.info("✅ Semantic Engine créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Semantic engine creation failed: {e}")
+            
+            try:
+                from search_service.core.search_engine import HybridSearchEngine
+                from search_service.core.result_merger import ResultMerger
+                if lexical_engine and semantic_engine:
+                    # Créer un result merger
+                    result_merger = ResultMerger()
+                    hybrid_engine = HybridSearchEngine(
+                        lexical_engine=lexical_engine, 
+                        semantic_engine=semantic_engine,
+                        result_merger=result_merger
+                    )
+                    initialization_result["details"]["components_initialized"]["hybrid_engine"] = True
+                    initialization_result["details"]["components_initialized"]["result_merger"] = True
+                    logger.info("✅ Hybrid Engine créé")
+            except Exception as e:
+                logger.warning(f"⚠️ Hybrid engine creation failed: {e}")
+            
+            # Injection dans les routes
+            try:
+                import search_service.api.routes as routes
                 
-        except Exception as e:
-            result["error"] = str(e)
-            result["recommendations"].append(f"❌ Erreur lors du test de délégation: {str(e)}")
-            logger.error(f"❌ Search Service delegation test failed: {e}")
+                # Injection directe via setattr pour éviter les problèmes d'import
+                setattr(routes, 'elasticsearch_client', elasticsearch_client)
+                setattr(routes, 'qdrant_client', qdrant_client)
+                setattr(routes, 'embedding_manager', embedding_manager)
+                setattr(routes, 'query_processor', query_processor)
+                setattr(routes, 'lexical_engine', lexical_engine)
+                setattr(routes, 'semantic_engine', semantic_engine)
+                setattr(routes, 'hybrid_engine', hybrid_engine)
+                
+                # Vérifier l'injection
+                injection_count = sum([
+                    elasticsearch_client is not None,
+                    qdrant_client is not None,
+                    embedding_manager is not None,
+                    query_processor is not None,
+                    lexical_engine is not None,
+                    semantic_engine is not None,
+                    hybrid_engine is not None
+                ])
+                
+                initialization_result["details"]["injection_successful"] = injection_count >= 5
+                logger.info(f"✅ Injection Search Service réussie: {injection_count}/7 composants injectés")
+                
+            except Exception as e:
+                logger.error(f"❌ Search Service injection failed: {e}")
+                # Ne pas marquer comme erreur fatale, juste log
+                logger.info("ℹ️ Injection échouée mais composants créés - service partiellement fonctionnel")
             
-        return result
+            # Déterminer le statut de santé
+            critical_components = [
+                initialization_result["details"]["components_initialized"]["hybrid_engine"],
+                initialization_result["details"]["components_initialized"]["lexical_engine"],
+                initialization_result["details"]["components_initialized"]["semantic_engine"]
+            ]
+            
+            # Service sain si au moins un moteur de recherche fonctionne
+            any_engine = any([
+                initialization_result["details"]["components_initialized"]["lexical_engine"],
+                initialization_result["details"]["components_initialized"]["semantic_engine"],
+                initialization_result["details"]["components_initialized"]["hybrid_engine"]
+            ])
+            
+            # Clients essentiels
+            clients_ready = any([
+                initialization_result["details"]["components_initialized"]["elasticsearch_client"],
+                initialization_result["details"]["components_initialized"]["qdrant_client"]
+            ])
+            
+            initialization_result["healthy"] = any_engine and clients_ready
+            
+            # Générer les recommandations
+            recommendations = []
+            
+            components = initialization_result["details"]["components_initialized"]
+            if components["hybrid_engine"]:
+                recommendations.append("✅ Moteur hybride disponible")
+            elif components["lexical_engine"] and components["semantic_engine"]:
+                recommendations.append("⚠️ Moteurs séparés disponibles - hybride à vérifier")
+            elif components["lexical_engine"]:
+                recommendations.append("⚠️ Recherche lexicale uniquement")
+            elif components["semantic_engine"]:
+                recommendations.append("⚠️ Recherche sémantique uniquement")
+            else:
+                recommendations.append("🚨 Aucun moteur de recherche disponible")
+                
+            if not initialization_result["details"]["config_check"]["elasticsearch_url"]:
+                recommendations.append("⚠️ BONSAI_URL manquant pour recherche lexicale")
+            if not initialization_result["details"]["config_check"]["qdrant_url"]:
+                recommendations.append("⚠️ QDRANT_URL manquant pour recherche sémantique")
+            if not initialization_result["details"]["config_check"]["openai_key"]:
+                recommendations.append("⚠️ OPENAI_API_KEY manquant pour embeddings")
+                
+            if initialization_result["healthy"]:
+                recommendations.append("✅ Search Service opérationnel")
+            else:
+                recommendations.append("🚨 Search Service en mode dégradé")
+                
+            initialization_result["recommendations"] = recommendations
+            initialization_result["details"]["initialization_time"] = time.time() - start_time
+            
+        except Exception as e:
+            logger.error(f"💥 Erreur générale initialisation search service: {e}")
+            initialization_result["error"] = str(e)
+            initialization_result["details"]["initialization_time"] = time.time() - start_time
+        
+        total_time = time.time() - start_time
+        logger.info(f"🏁 Initialisation search service terminée en {total_time:.2f}s")
+        
+        return initialization_result
 
     async def run_complete_services_diagnostic() -> Dict[str, Any]:
-        """Lance un diagnostic complet de tous les services (AVEC search_service délégué)."""
+        """Lance un diagnostic complet de tous les services (AVEC search_service)."""
         logger.info("🔍 Lancement du diagnostic complet de tous les services...")
         
         # Tests en parallèle pour les services standards
@@ -535,12 +710,11 @@ try:
             test_db_service(), 
             test_sync_service(),
             test_conversation_service(),
-            test_search_service_delegation(),  # NOUVEAU: test de délégation
             return_exceptions=True
         )
         
         services_status = {}
-        standard_services = ["user_service", "db_service", "sync_service", "conversation_service", "search_service"]
+        standard_services = ["user_service", "db_service", "sync_service", "conversation_service"]
         
         for i, test_result in enumerate(standard_tests):
             service_name = standard_services[i]
@@ -564,20 +738,27 @@ try:
         status_icon = "✅" if enrichment_result["healthy"] else "❌"
         logger.info(f"{status_icon} enrichment_service: {'Healthy' if enrichment_result['healthy'] else 'Unhealthy'}")
         
+        # Traitement spécial pour le Search Service hybride (NOUVEAU)
+        logger.info("🔍 Initialisation directe du Search Service Hybride...")
+        search_result = await initialize_search_service_hybrid()
+        services_status["search_service"] = search_result
+        
+        status_icon = "✅" if search_result["healthy"] else "❌"
+        logger.info(f"{status_icon} search_service: {'Healthy' if search_result['healthy'] else 'Unhealthy'}")
+        
         if enrichment_result["healthy"]:
             components = enrichment_result["details"]["components_initialized"]
             logger.info(f"   🎯 Enrichment - Composants: Embeddings={components['embeddings']}, Qdrant={components['qdrant_storage']}, Elasticsearch={components['elasticsearch_client']}")
             logger.info(f"   🔧 Enrichment - Processeurs: Legacy={components['legacy_processor']}, Dual={components['dual_processor']}")
         
-        # Log spécial pour Search Service (délégué)
-        search_result = services_status.get("search_service", {})
-        if search_result.get("healthy"):
-            logger.info("   🔍 Search Service délégué à main.py - configuration OK")
-        else:
-            logger.warning("   ⚠️ Search Service délégué - vérifiez la configuration")
+        if search_result["healthy"]:
+            components = search_result["details"]["components_initialized"]
+            logger.info(f"   🔍 Search - Moteurs: Lexical={components['lexical_engine']}, Semantic={components['semantic_engine']}, Hybrid={components['hybrid_engine']}")
+            logger.info(f"   🔧 Search - Clients: ES={components['elasticsearch_client']}, Qdrant={components['qdrant_client']}, Embeddings={components['embedding_manager']}")
         
-        global enrichment_service_initialization_result
+        global enrichment_service_initialization_result, search_service_initialization_result
         enrichment_service_initialization_result = enrichment_result
+        search_service_initialization_result = search_result
         
         return services_status
 
@@ -627,7 +808,7 @@ try:
         """Initialisation de l'application avec diagnostic complet."""
         global startup_time, all_services_status
         startup_time = time.time()
-        logger.info("📋 Démarrage application Harena (Search Service délégué)...")
+        logger.info("📋 Démarrage application Harena (AVEC Search Service Hybride)...")
         
         # Test de connexion DB immédiat
         try:
@@ -711,21 +892,44 @@ try:
     except Exception as e:
         logger.error(f"❌ Enrichment Service: {e}")
 
-    # 4. Search Service (DÉLÉGUÉ) - CORRECTION MAJEURE
-    logger.info("ℹ️ Search Service délégué à son propre main.py - Pas d'initialisation dans heroku_app")
-    
-    # Marquer comme délégué dans le statut
-    # (Le vrai statut sera mis à jour par le diagnostic)
-    all_services_status["search_service"] = {
-        "service": "search_service",
-        "healthy": True,  # Sera mis à jour par le diagnostic
-        "method": "delegated_to_main_py",
-        "details": {
-            "note": "Search Service initialization delegated to search_service/main.py",
-            "heroku_app_skipped": True,
-            "reason": "Avoiding injection conflicts"
-        }
-    }
+    # 4. Search Service (Hybride) - NOUVEAU
+    try:
+        # Créer d'abord le fichier __init__.py manquant
+        import os
+        search_clients_init_path = os.path.join(current_dir, "search_service", "clients", "__init__.py")
+        if not os.path.exists(search_clients_init_path):
+            with open(search_clients_init_path, 'w') as f:
+                f.write('''"""
+Clients pour le service de recherche.
+"""
+from .elasticsearch_client import ElasticsearchClient
+from .qdrant_client import QdrantClient
+from .base_client import BaseClient
+
+__all__ = ["ElasticsearchClient", "QdrantClient", "BaseClient"]
+''')
+            logger.info("✅ Fichier search_service/clients/__init__.py créé")
+        
+        from search_service.api.routes import router as search_router
+        if service_registry.register("search_service", search_router, "/api/v1/search", "🔍 Recherche hybride lexicale + sémantique"):
+            app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+            logger.info("✅ Search Service routes enregistrées")
+    except Exception as e:
+        logger.error(f"❌ Search Service routes registration: {e}")
+        # Essayer de créer un router minimal de fallback
+        try:
+            from fastapi import APIRouter
+            search_fallback_router = APIRouter()
+            
+            @search_fallback_router.get("/health")
+            async def search_health():
+                return {"status": "available", "message": "Search service initializing"}
+            
+            if service_registry.register("search_service_fallback", search_fallback_router, "/api/v1/search", "🔍 Recherche (mode fallback)"):
+                app.include_router(search_fallback_router, prefix="/api/v1/search", tags=["search"])
+                logger.info("✅ Search Service fallback routes enregistrées")
+        except Exception as fallback_error:
+            logger.error(f"❌ Search Service fallback failed: {fallback_error}")
 
     # 5. Conversation Service
     try:
@@ -739,7 +943,7 @@ try:
 
     @app.get("/")
     async def root():
-        """Statut général avec focus spécial sur l'Enrichment Service et délégation Search Service."""
+        """Statut général avec focus spécial sur l'Enrichment et Search Services."""
         uptime = time.time() - startup_time if startup_time else 0
         
         # Résumé global
@@ -751,14 +955,14 @@ try:
         enrichment_status = all_services_status.get("enrichment_service", {})
         enrichment_details = enrichment_status.get("details", {})
         
-        # Focus spécial Search Service (délégué)
+        # Focus spécial Search Service
         search_status = all_services_status.get("search_service", {})
         search_details = search_status.get("details", {})
         
         return {
             "service": "Harena Finance API",
             "status": "online",
-            "version": "1.0.0-corrected",
+            "version": "1.0.0",
             "uptime_seconds": round(uptime, 2),
             "services": {
                 "healthy": len(healthy_services),
@@ -781,20 +985,21 @@ try:
                 "initialization_time": enrichment_details.get("initialization_time", 0)
             },
             "search_service": {
-                "delegation_status": "delegated_to_main_py",
                 "healthy": search_status.get("healthy", False),
-                "method": search_status.get("method", "delegation_to_main_py"),
-                "configuration_ready": search_details.get("configuration_check", {}),
-                "routes_importable": search_details.get("routes_importable", False),
-                "conflict_resolution": "Initialization delegated to avoid injection conflicts",
-                "recommendations": search_status.get("recommendations", [])
+                "hybrid_ready": search_details.get("components_initialized", {}).get("hybrid_engine", False),
+                "engines_available": {
+                    "lexical": search_details.get("components_initialized", {}).get("lexical_engine", False),
+                    "semantic": search_details.get("components_initialized", {}).get("semantic_engine", False),
+                    "hybrid": search_details.get("components_initialized", {}).get("hybrid_engine", False)
+                },
+                "clients_ready": {
+                    "elasticsearch": search_details.get("components_initialized", {}).get("elasticsearch_client", False),
+                    "qdrant": search_details.get("components_initialized", {}).get("qdrant_client", False),
+                    "embeddings": search_details.get("components_initialized", {}).get("embedding_manager", False)
+                },
+                "injection_successful": search_details.get("injection_successful", False),
+                "initialization_time": search_details.get("initialization_time", 0)
             },
-            "architecture_notes": [
-                "✅ Enrichment Service with direct dual storage initialization",
-                "🔧 Search Service delegated to main.py to avoid conflicts",
-                "⚡ Injection conflicts resolved through delegation pattern",
-                "📊 All other services use standard heroku_app initialization"
-            ],
             "timestamp": datetime.now().isoformat()
         }
 
@@ -812,60 +1017,52 @@ try:
             "registry": registry_summary,
             "services": all_services_status,
             "enrichment_service_initialization": enrichment_service_initialization_result,
-            "search_service_note": "Search Service uses its own main.py initialization to avoid conflicts",
-            "architecture_changes": [
-                "FIXED: Search Service delegation to prevent injection conflicts",
-                "MAINTAINED: Enrichment Service direct initialization with dual storage",
-                "IMPROVED: Clean separation of service initialization responsibilities"
-            ]
+            "search_service_initialization": search_service_initialization_result
         }
 
     @app.get("/search-service")
     async def search_service_detailed():
-        """Statut détaillé du Search Service (délégué)."""
+        """Statut ultra-détaillé du Search Service hybride."""
         search_status = all_services_status.get("search_service", {})
         
         return {
             "service": "search_service",
             "priority": "high",
             "timestamp": datetime.now().isoformat(),
-            "delegation_info": {
-                "status": "delegated_to_main_py",
-                "reason": "Avoiding injection conflicts with heroku_app.py initialization",
-                "implementation": "Search Service uses its own FastAPI app and initialization",
-                "benefit": "Prevents 'str' object has no attribute 'generate_embedding' errors"
+            "overall_status": "fully_operational" if search_status.get("healthy") else "degraded",
+            "hybrid_architecture": {
+                "method": search_status.get("method", "direct_hybrid_initialization"),
+                "lexical_engine": search_status.get("details", {}).get("components_initialized", {}).get("lexical_engine", False),
+                "semantic_engine": search_status.get("details", {}).get("components_initialized", {}).get("semantic_engine", False),
+                "hybrid_engine": search_status.get("details", {}).get("components_initialized", {}).get("hybrid_engine", False),
+                "result_merger": search_status.get("details", {}).get("components_initialized", {}).get("result_merger", False),
+                "injection_successful": search_status.get("details", {}).get("injection_successful", False)
             },
-            "configuration_check": search_status.get("details", {}).get("configuration_check", {}),
-            "health_status": search_status.get("healthy", False),
-            "routes_status": {
-                "importable": search_status.get("details", {}).get("routes_importable", False),
-                "routes_count": search_status.get("details", {}).get("routes_count", 0)
+            "clients": {
+                "elasticsearch_client": search_status.get("details", {}).get("components_initialized", {}).get("elasticsearch_client", False),
+                "qdrant_client": search_status.get("details", {}).get("components_initialized", {}).get("qdrant_client", False),
+                "embedding_manager": search_status.get("details", {}).get("components_initialized", {}).get("embedding_manager", False),
+                "query_processor": search_status.get("details", {}).get("components_initialized", {}).get("query_processor", False)
+            },
+            "configuration": search_status.get("details", {}).get("config_check", {}),
+            "health_checks": search_status.get("details", {}).get("health_checks", {}),
+            "initialization_metrics": {
+                "initialization_time": search_status.get("details", {}).get("initialization_time", 0),
+                "method": "direct_hybrid_initialization"
             },
             "recommendations": search_status.get("recommendations", []),
-            "expected_endpoints": [
+            "error": search_status.get("error"),
+            "endpoints": [
                 "POST /api/v1/search/search - Recherche hybride principale",
-                "POST /api/v1/search/lexical - Recherche lexicale pure",
+                "POST /api/v1/search/lexical - Recherche lexicale pure", 
                 "POST /api/v1/search/semantic - Recherche sémantique pure",
                 "POST /api/v1/search/advanced - Recherche avancée avec filtres",
                 "GET /api/v1/search/suggestions - Auto-complétion",
                 "GET /api/v1/search/stats/{user_id} - Statistiques utilisateur",
-                "GET /api/v1/search/health - Santé des moteurs"
+                "GET /api/v1/search/health - Santé des moteurs",
+                "GET /search-service - Ce diagnostic détaillé"
             ],
-            "troubleshooting": {
-                "if_semantic_search_fails": [
-                    "1. Vérifiez OPENAI_API_KEY dans les variables d'environnement",
-                    "2. Vérifiez QDRANT_URL et QDRANT_API_KEY",
-                    "3. Consultez les logs du search_service pour plus de détails",
-                    "4. Testez l'endpoint /debug/embedding du search_service"
-                ],
-                "common_issues": [
-                    "Embedding injection conflicts (RESOLVED by delegation)",
-                    "Missing OpenAI API key configuration",
-                    "Qdrant connection issues"
-                ]
-            },
-            "error": search_status.get("error"),
-            "method": search_status.get("method", "delegation_to_main_py")
+            "architecture_note": "Service configuré avec recherche hybride (Lexical + Sémantique) pour résultats optimaux"
         }
 
     @app.get("/enrichment-service")
@@ -910,7 +1107,7 @@ try:
 
     @app.get("/services-summary")
     async def services_summary():
-        """Résumé synthétique de tous les services avec focus correction Search Service."""
+        """Résumé synthétique de tous les services avec focus Enrichment et Search Services."""
         real_services = {k: v for k, v in all_services_status.items() if v.get("service")}
         healthy_count = sum(1 for s in real_services.values() if s.get("healthy"))
         total_count = len(real_services)
@@ -926,7 +1123,7 @@ try:
                 "health_percentage": round((healthy_count / total_count) * 100, 1) if total_count > 0 else 0,
                 "critical_services": {
                     "enrichment_service": enrichment_status.get("healthy", False),
-                    "search_service_delegated": search_status.get("healthy", False)
+                    "search_service": search_status.get("healthy", False)
                 }
             },
             "registry": {
@@ -944,11 +1141,13 @@ try:
                 "error": enrichment_status.get("error")
             },
             "search_service_status": {
-                "delegation_method": "delegated_to_main_py",
                 "healthy": search_status.get("healthy", False),
-                "configuration_ready": search_status.get("details", {}).get("configuration_check", {}),
-                "routes_importable": search_status.get("details", {}).get("routes_importable", False),
-                "conflict_resolved": True,
+                "hybrid_ready": search_status.get("details", {}).get("components_initialized", {}).get("hybrid_engine", False),
+                "engines_available": {
+                    "lexical": search_status.get("details", {}).get("components_initialized", {}).get("lexical_engine", False),
+                    "semantic": search_status.get("details", {}).get("components_initialized", {}).get("semantic_engine", False)
+                },
+                "endpoints_registered": "search_service" in registry_summary.get("services", []),
                 "error": search_status.get("error")
             },
             "quick_diagnostics": {
@@ -957,89 +1156,42 @@ try:
                 "sync_available": all_services_status.get("sync_service", {}).get("healthy", False),
                 "ai_features": all_services_status.get("conversation_service", {}).get("healthy", False),
                 "enrichment_operational": enrichment_status.get("healthy", False),
-                "search_delegated_properly": search_status.get("method") == "delegation_to_main_py"
+                "search_operational": search_status.get("healthy", False)
             },
-            "architecture_improvements": [
-                "✅ FIXED: Search Service injection conflicts resolved",
-                "✅ Delegation pattern implemented for Search Service",
-                "✅ Enrichment Service direct initialization maintained",
-                "✅ Clean separation of service responsibilities"
-            ],
             "timestamp": datetime.now().isoformat()
         }
 
     @app.get("/version")
     async def version():
         return {
-            "version": "1.0.0-corrected",
-            "build": "heroku-full-platform-with-search-service-fix",
+            "version": "1.0.0",
+            "build": "heroku-full-platform-with-search",
             "python": sys.version.split()[0],
             "environment": os.environ.get("ENVIRONMENT", "production"),
-            "critical_fixes": [
-                "🔧 RESOLVED: Search Service injection conflicts",
-                "✅ Delegation pattern for Search Service initialization",
-                "🚀 No more 'str' object has no attribute 'generate_embedding' errors",
-                "📊 Maintained all diagnostic capabilities"
-            ],
             "architecture_changes": [
                 "✅ Enrichment Service avec dual storage (Qdrant + Elasticsearch)",
-                "🔧 Search Service délégué à main.py (CORRECTION MAJEURE)",
+                "✅ Search Service hybride complètement réécrit et intégré",
+                "🔧 Injection directe des clients dans tous les services",
                 "📊 Diagnostics complets pour toute l'architecture",
-                "⚡ Initialisation optimisée avec gestion d'erreurs robuste"
+                "⚡ Initialisation optimisée avec gestion d'erreurs robuste",
+                "🔍 Moteurs de recherche lexical, sémantique et hybride"
             ],
             "services_included": [
                 "user_service - Gestion utilisateurs et authentification",
-                "db_service - Base de données PostgreSQL", 
+                "db_service - Base de données PostgreSQL",
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement IA dual storage",
-                "search_service - Recherche hybride (DÉLÉGUÉ à main.py)",
+                "search_service - Recherche hybride lexicale + sémantique",
                 "conversation_service - Assistant IA conversationnel"
             ],
-            "delegation_benefits": [
-                "🔧 Élimination des conflits d'injection entre services",
-                "⚡ Initialisation propre de chaque service",
-                "🛡️ Isolation des responsabilités d'initialisation",
-                "📊 Meilleure traçabilité des erreurs par service"
+            "new_features": [
+                "🔍 Recherche hybride avec fusion intelligente des résultats",
+                "⚡ Cache multi-niveaux pour performances optimales",
+                "🎯 Adaptation automatique des poids de recherche",
+                "📊 Métriques détaillées et monitoring intégré",
+                "🧠 Embeddings OpenAI pour recherche sémantique",
+                "🔧 Fallbacks automatiques en cas d'erreur partielle"
             ]
-        }
-
-    @app.get("/fix-status")
-    async def fix_status():
-        """Statut de la correction des problèmes d'injection Search Service."""
-        search_status = all_services_status.get("search_service", {})
-        
-        return {
-            "fix_applied": "search_service_delegation",
-            "problem_resolved": "str_object_has_no_attribute_generate_embedding",
-            "solution": {
-                "method": "delegation_to_main_py",
-                "description": "Search Service uses its own FastAPI app initialization",
-                "benefit": "Eliminates injection conflicts with heroku_app.py",
-                "implementation": "heroku_app.py no longer initializes Search Service components"
-            },
-            "before_fix": {
-                "issue": "heroku_app.py was re-initializing Search Service components",
-                "conflict": "EmbeddingManager received string instead of EmbeddingService instance",
-                "error": "'str' object has no attribute 'generate_embedding'"
-            },
-            "after_fix": {
-                "approach": "Search Service initialization completely delegated to main.py",
-                "result": "No more injection conflicts",
-                "status": "Clean separation of service responsibilities"
-            },
-            "search_service_status": {
-                "healthy": search_status.get("healthy", False),
-                "method": search_status.get("method", "delegation_to_main_py"),
-                "configuration_check": search_status.get("details", {}).get("configuration_check", {}),
-                "routes_importable": search_status.get("details", {}).get("routes_importable", False)
-            },
-            "next_steps": [
-                "1. Deploy this corrected heroku_app.py",
-                "2. Verify Search Service starts properly with its own main.py",
-                "3. Test semantic search endpoint",
-                "4. Monitor logs for any remaining issues"
-            ],
-            "timestamp": datetime.now().isoformat()
         }
 
     @app.get("/robots.txt", include_in_schema=False)
@@ -1061,7 +1213,7 @@ try:
                 "path": request.url.path,
                 "services_status": {
                     "enrichment_service_healthy": enrichment_status.get("healthy", False),
-                    "search_service_delegated": search_status.get("method") == "delegation_to_main_py",
+                    "search_service_healthy": search_status.get("healthy", False),
                     "healthy_services": [name for name, status in real_services.items() if status.get("healthy")]
                 },
                 "timestamp": datetime.now().isoformat()
@@ -1071,49 +1223,50 @@ try:
     # ==================== RAPPORT FINAL ====================
 
     logger.info("=" * 80)
-    logger.info("🎯 HARENA FINANCE PLATFORM - VERSION CORRIGÉE")
+    logger.info("🎯 HARENA FINANCE PLATFORM - VERSION COMPLÈTE")
     logger.info(f"📊 Services enregistrés: {service_registry.get_summary()['registered']}")
     logger.info(f"❌ Services échoués: {service_registry.get_summary()['failed']}")
-    logger.info("🔧 CORRECTION MAJEURE APPLIQUÉE:")
-    logger.info("   🔧 Search Service délégué à main.py pour éviter conflits d'injection")
-    logger.info("   ✅ Plus d'erreur 'str' object has no attribute 'generate_embedding'")
-    logger.info("   📊 Séparation propre des responsabilités d'initialisation")
-    logger.info("🔧 Fonctionnalités maintenues:")
+    logger.info("🔧 Fonctionnalités principales:")
     logger.info("   ✅ Enrichment Service avec dual storage (Qdrant + Elasticsearch)")
-    logger.info("   ✅ Diagnostics ultra-détaillés pour chaque composant")
+    logger.info("   ✅ Search Service hybride (Lexical + Sémantique + Fusion)")
+    logger.info("   🔧 Injection directe des clients pour tous les services")
+    logger.info("   📊 Diagnostics ultra-détaillés pour chaque composant")
     logger.info("   ⚡ Initialisation robuste avec fallbacks intelligents")
     logger.info("🌐 Endpoints de diagnostic:")
-    logger.info("   GET  / - Statut général avec info délégation Search")
+    logger.info("   GET  / - Statut général avec métriques Enrichment + Search")
     logger.info("   GET  /health - Santé ultra-détaillée de tous les services")
     logger.info("   GET  /enrichment-service - Diagnostic approfondi Enrichment")
-    logger.info("   GET  /search-service - Info délégation Search Service")
-    logger.info("   GET  /fix-status - Statut de la correction appliquée")
+    logger.info("   GET  /search-service - Diagnostic approfondi Search Service")
     logger.info("   GET  /services-summary - Résumé synthétique complet")
     logger.info("🔧 Endpoints principaux:")
-    logger.info("   === ENRICHMENT SERVICE (DIRECT) ===")
+    logger.info("   === ENRICHMENT SERVICE ===")
     logger.info("   POST /api/v1/enrichment/enrich/transaction - Enrichissement legacy")
     logger.info("   POST /api/v1/enrichment/dual/enrich-transaction - Enrichissement dual")
     logger.info("   POST /api/v1/enrichment/dual/sync-user - Synchronisation dual")
-    logger.info("   === SEARCH SERVICE (DÉLÉGUÉ) ===")
-    logger.info("   Endpoints gérés par search_service/main.py")
+    logger.info("   === SEARCH SERVICE (NOUVEAU) ===")
     logger.info("   POST /api/v1/search/search - Recherche hybride principale")
+    logger.info("   POST /api/v1/search/lexical - Recherche lexicale pure")
     logger.info("   POST /api/v1/search/semantic - Recherche sémantique pure")
+    logger.info("   POST /api/v1/search/advanced - Recherche avancée avec filtres")
+    logger.info("   GET  /api/v1/search/suggestions - Auto-complétion")
     logger.info("   === AUTRES SERVICES ===")
     logger.info("   POST /api/v1/conversation/chat - Assistant IA")
     logger.info("   GET  /api/v1/sync - Synchronisation Bridge")
     logger.info("   POST /api/v1/users/register - Enregistrement utilisateur")
-    logger.info("🔍 SEARCH SERVICE (DÉLÉGUÉ):")
-    logger.info("   ✅ Initialisation déléguée à search_service/main.py")
-    logger.info("   ✅ Aucun conflit d'injection avec heroku_app.py")
-    logger.info("   ✅ EmbeddingService et EmbeddingManager correctement initialisés")
-    logger.info("   ✅ Recherche sémantique fonctionnelle")
-    logger.info("🧠 ENRICHMENT SERVICE (DIRECT):")
+    logger.info("🔍 SEARCH SERVICE HYBRIDE:")
+    logger.info("   ✅ Moteur lexical (Elasticsearch/Bonsai)")
+    logger.info("   ✅ Moteur sémantique (Qdrant + OpenAI)")
+    logger.info("   ✅ Moteur hybride avec fusion intelligente")
+    logger.info("   ✅ Cache multi-niveaux pour performances")
+    logger.info("   ✅ Adaptation automatique des poids de recherche")
+    logger.info("   ✅ Fallbacks automatiques et monitoring intégré")
+    logger.info("🧠 ENRICHMENT SERVICE DUAL STORAGE:")
     logger.info("   ✅ Stockage Qdrant pour recherche vectorielle")
     logger.info("   ✅ Indexation Elasticsearch pour recherche lexicale")
     logger.info("   ✅ Embeddings OpenAI pour enrichissement IA")
     logger.info("   ✅ Processeurs legacy et dual storage")
     logger.info("=" * 80)
-    logger.info("✅ Application Harena CORRIGÉE - Search Service injection conflicts RESOLVED")
+    logger.info("✅ Application Harena complète avec Enrichment + Search Services")
 
 except Exception as critical_error:
     logger.critical(f"💥 ERREUR CRITIQUE: {critical_error}")

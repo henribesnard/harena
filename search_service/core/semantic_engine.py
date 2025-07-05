@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 class SemanticSearchConfig:
     """Configuration pour la recherche sémantique - DEPRECATED: Utilisez settings.py"""
     # Seuils de similarité par type de requête
-    similarity_threshold_default: float = 0.5
-    similarity_threshold_strict: float = 0.7
-    similarity_threshold_loose: float = 0.3
+    similarity_threshold_default: float = 0.3
+    similarity_threshold_strict: float = 0.55
+    similarity_threshold_loose: float = 0.15
     
     # Configuration des requêtes
     max_results: int = 50

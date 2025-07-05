@@ -23,6 +23,39 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class SemanticSearchConfig:
+    """Configuration pour la recherche sémantique - DEPRECATED: Utilisez settings.py"""
+    # Seuils de similarité par type de requête
+    similarity_threshold_default: float = 0.5
+    similarity_threshold_strict: float = 0.7
+    similarity_threshold_loose: float = 0.3
+    
+    # Configuration des requêtes
+    max_results: int = 50
+    enable_filtering: bool = True
+    fallback_to_unfiltered: bool = True
+    
+    # Configuration des recommandations
+    recommendation_enabled: bool = True
+    recommendation_threshold: float = 0.6
+    
+    # Performance
+    timeout_seconds: float = 8.0
+    enable_cache: bool = True
+    cache_ttl_seconds: int = 600
+    
+    # Qdrant spécifique
+    collection_name: str = "financial_transactions"
+    vector_size: int = 1536
+    distance_metric: str = "cosine"
+    
+    # Stratégies de recherche
+    enable_hybrid_scoring: bool = True
+    enable_query_expansion: bool = True
+    min_results_for_quality: int = 3
+
+
+@dataclass
 class SemanticSearchResult:
     """Résultat d'une recherche sémantique."""
     results: List[SearchResultItem]
@@ -52,11 +85,19 @@ class SemanticSearchEngine:
         self,
         qdrant_client: QdrantClient,
         embedding_manager: EmbeddingManager,
-        query_processor: Optional[QueryProcessor] = None
+        query_processor: Optional[QueryProcessor] = None,
+        config: Optional[SemanticSearchConfig] = None
     ):
         # Charger la configuration depuis les settings centralisés
         self.settings = get_search_settings()
-        self.config = self.settings.semantic_search
+        
+        # Si une config est fournie, l'utiliser, sinon utiliser les settings centralisés
+        if config is not None:
+            self.config = config
+        else:
+            # Créer une SemanticSearchConfig à partir des settings centralisés
+            self.config = self._create_config_from_settings()
+            
         self.cache_config = self.settings.cache
         self.performance_config = self.settings.performance
         
@@ -80,6 +121,30 @@ class SemanticSearchEngine:
         self.threshold_adjustments = 0
         
         logger.info("Semantic search engine initialized with centralized config")
+    
+    def _create_config_from_settings(self) -> SemanticSearchConfig:
+        """Crée une SemanticSearchConfig à partir des settings centralisés."""
+        semantic_settings = self.settings.semantic_search
+        
+        return SemanticSearchConfig(
+            similarity_threshold_default=semantic_settings.similarity_threshold_default,
+            similarity_threshold_strict=semantic_settings.similarity_threshold_strict,
+            similarity_threshold_loose=semantic_settings.similarity_threshold_loose,
+            max_results=semantic_settings.max_results,
+            enable_filtering=semantic_settings.enable_filtering,
+            fallback_to_unfiltered=semantic_settings.fallback_to_unfiltered,
+            recommendation_enabled=semantic_settings.recommendation_enabled,
+            recommendation_threshold=semantic_settings.recommendation_threshold,
+            timeout_seconds=self.settings.performance.standard_search_timeout,
+            enable_cache=self.settings.cache.search_cache_enabled,
+            cache_ttl_seconds=self.settings.cache.search_cache_ttl,
+            collection_name="financial_transactions",
+            vector_size=1536,
+            distance_metric="cosine",
+            enable_hybrid_scoring=True,
+            enable_query_expansion=True,
+            min_results_for_quality=self.settings.quality.min_results_for_good_quality
+        )
     
     async def search(
         self,
@@ -1128,7 +1193,7 @@ class SemanticSearchEngine:
         
         # Recharger la configuration
         self.settings = get_search_settings()
-        self.config = self.settings.semantic_search
+        self.config = self._create_config_from_settings()
         self.cache_config = self.settings.cache
         self.performance_config = self.settings.performance
         

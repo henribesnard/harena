@@ -1,363 +1,206 @@
 """
 Service d'embeddings pour la recherche sémantique.
 
-Ce module gère la génération d'embeddings via OpenAI API avec cache intelligent,
-batch processing et gestion avancée des erreurs pour optimiser les performances.
-
-CORRECTION: Restructuration pour éviter les imports circulaires.
+Ce module gère la génération d'embeddings vectoriels pour les requêtes
+en utilisant l'API OpenAI avec les mêmes paramètres que enrichment_service.
 """
-import asyncio
-import hashlib
 import logging
-import time
-from typing import Dict, Any, List, Optional, Tuple, Union
-from dataclasses import dataclass, field
-from enum import Enum
-import json
-
+import asyncio
+from typing import List, Dict, Any, Optional
 import openai
-from openai import AsyncOpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-# Import du cache avec gestion des erreurs
-try:
-    from search_service.utils.cache import SearchCache
-except ImportError:
-    # Fallback si le cache n'est pas disponible
-    class SearchCache:
-        def __init__(self, max_size: int = 1000, ttl_seconds: int = 3600):
-            self._cache = {}
-            self.max_size = max_size
-            self.ttl_seconds = ttl_seconds
-        
-        def get(self, key: str) -> Any:
-            return self._cache.get(key)
-        
-        def put(self, key: str, value: Any) -> None:
-            if len(self._cache) < self.max_size:
-                self._cache[key] = value
-        
-        def clear(self) -> None:
-            self._cache.clear()
-        
-        def get_stats(self) -> Dict[str, Any]:
-            return {"size": len(self._cache), "max_size": self.max_size}
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-class EmbeddingModel(Enum):
-    """Modèles d'embeddings disponibles."""
-    TEXT_EMBEDDING_3_SMALL = "text-embedding-3-small"
-    TEXT_EMBEDDING_3_LARGE = "text-embedding-3-large" 
-    TEXT_EMBEDDING_ADA_002 = "text-embedding-ada-002"
-
-
-@dataclass
-class EmbeddingConfig:
-    """Configuration pour le service d'embeddings."""
-    # Modèle et dimensions
-    model: EmbeddingModel = EmbeddingModel.TEXT_EMBEDDING_3_SMALL
-    dimensions: int = 1536
-    
-    # Traitement par lots
-    batch_size: int = 100
-    max_concurrent_batches: int = 3
-    
-    # Cache
-    enable_cache: bool = True
-    cache_ttl_seconds: int = 3600  # 1 heure
-    cache_max_size: int = 10000
-    
-    # Retry et timeouts
-    max_retries: int = 3
-    timeout_seconds: float = 30.0
-    retry_delay_base: float = 1.0
-    
-    # Rate limiting
-    requests_per_minute: int = 3000
-    tokens_per_minute: int = 1000000
-    
-    # Optimisations
-    enable_text_preprocessing: bool = True
-    max_text_length: int = 8192
-    truncation_strategy: str = "end"  # "start", "middle", "end"
-    
-    # Monitoring
-    enable_metrics: bool = True
-    log_expensive_requests: bool = True
-    expensive_request_threshold: int = 50  # tokens
-
-
-@dataclass
-class EmbeddingResult:
-    """Résultat d'une génération d'embedding."""
-    embedding: List[float]
-    text: str
-    model: str
-    dimensions: int
-    tokens_used: int
-    processing_time_ms: float
-    from_cache: bool = False
-    metadata: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class BatchEmbeddingResult:
-    """Résultat d'un traitement par lots."""
-    results: List[EmbeddingResult]
-    total_tokens: int
-    total_processing_time_ms: float
-    cache_hits: int
-    api_calls: int
-    failed_items: List[Tuple[str, str]] = field(default_factory=list)  # (text, error)
-
-
 class EmbeddingService:
-    """
-    Service de génération d'embeddings avec OpenAI.
+    """Service pour générer des embeddings via OpenAI (compatible enrichment_service)."""
     
-    Responsabilités:
-    - Génération d'embeddings via OpenAI API
-    - Cache intelligent avec TTL
-    - Traitement par lots pour efficacité
-    - Gestion des erreurs et retry
-    - Rate limiting et monitoring
-    """
-    
-    def __init__(
-        self,
-        api_key: str,
-        config: Optional[EmbeddingConfig] = None
-    ):
-        self.config = config or EmbeddingConfig()
+    def __init__(self):
+        self.client = None
+        self.model = settings.EMBEDDING_MODEL 
+        self.batch_size = min(getattr(settings, 'BATCH_SIZE', 100), 100) 
         
-        # Client OpenAI
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            timeout=self.config.timeout_seconds
+    async def initialize(self):
+        """Initialise le client OpenAI."""
+        if not settings.OPENAI_API_KEY:
+            logger.error("OPENAI_API_KEY non définie")
+            raise ValueError("OpenAI API key is required")
+            
+        self.client = openai.AsyncOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            timeout=settings.DEEPSEEK_TIMEOUT  # Réutiliser le timeout config
         )
         
-        # Cache pour les embeddings
-        self.cache = SearchCache(
-            max_size=self.config.cache_max_size,
-            ttl_seconds=self.config.cache_ttl_seconds
-        ) if self.config.enable_cache else None
-        
-        # Rate limiting
-        self._request_times = []
-        self._token_usage = []
-        
-        # Métriques
-        self.total_requests = 0
-        self.total_tokens = 0
-        self.cache_hits = 0
-        self.api_errors = 0
-        self.total_processing_time = 0.0
-        self.model_usage = {model.value: 0 for model in EmbeddingModel}
-        
-        # Semaphore pour limiter la concurrence
-        self._batch_semaphore = asyncio.Semaphore(self.config.max_concurrent_batches)
-        
-        logger.info(f"Embedding service initialized with model {self.config.model.value}")
+        logger.info(f"EmbeddingService initialisé avec le modèle {self.model} (compatible enrichment_service)")
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
     async def generate_embedding(
-        self,
-        text: str,
-        use_cache: bool = True,
-        model: Optional[EmbeddingModel] = None,
-        dimensions: Optional[int] = None
-    ) -> Optional[List[float]]:
+        self, 
+        text: str, 
+        use_cache: bool = True,  
+        text_id: Optional[str] = None  
+    ) -> List[float]:
         """
         Génère un embedding pour un texte donné.
         
         Args:
-            text: Texte à encoder
-            use_cache: Utiliser le cache si disponible
-            model: Modèle à utiliser (défaut: config)
-            dimensions: Dimensions de l'embedding (défaut: config)
+            text: Texte à vectoriser
+            use_cache: Paramètre de compatibilité (non utilisé dans cette implémentation)
+            text_id: Identifiant optionnel pour le texte (pour les logs)
             
         Returns:
-            Vecteur d'embedding ou None si erreur
+            List[float]: Vecteur d'embedding
         """
-        if not text or not text.strip():
-            logger.warning("Empty text provided for embedding generation")
-            return None
-        
-        start_time = time.time()
-        self.total_requests += 1
-        
-        # Utiliser les paramètres par défaut si non spécifiés
-        model = model or self.config.model
-        dimensions = dimensions or self.config.dimensions
-        
-        # Préprocesser le texte
-        processed_text = self._preprocess_text(text)
-        
-        # Vérifier le cache
-        cache_key = None
-        if use_cache and self.cache:
-            cache_key = self._generate_cache_key(processed_text, model, dimensions)
-            cached_embedding = self.cache.get(cache_key)
+        if not self.client:
+            raise ValueError("EmbeddingService not initialized")
             
-            if cached_embedding:
-                self.cache_hits += 1
-                logger.debug(f"Cache hit for embedding: {cache_key[:16]}...")
-                return cached_embedding
-        
+        if not text or not text.strip():
+            logger.warning("Texte vide fourni pour l'embedding")
+            return [0.0] * 1536
+            
         try:
-            # Générer l'embedding via API
-            result = await self._generate_single_embedding(
-                processed_text, model, dimensions
+            if text_id:
+                logger.debug(f"Génération embedding pour {text_id}: {text[:100]}...")
+            else:
+                logger.debug(f"Génération embedding pour: {text[:100]}...")
+            
+            # PARAMÈTRES IDENTIQUES À enrichment_service
+            response = await self.client.embeddings.create(
+                model=self.model,
+                input=text.strip(),
+                encoding_format="float"
+                # ✅ PAS de paramètre dimensions pour compatibilité enrichment_service
             )
             
-            if result and result.embedding:
-                # Mettre en cache
-                if use_cache and self.cache and cache_key:
-                    self.cache.put(cache_key, result.embedding)
-                
-                # Mettre à jour les métriques
-                processing_time = (time.time() - start_time) * 1000
-                self.total_processing_time += processing_time
-                self.total_tokens += result.tokens_used
-                self.model_usage[model.value] += 1
-                
-                return result.embedding
+            embedding = response.data[0].embedding
+            logger.debug(f"Embedding généré: dimension {len(embedding)}")
             
-            return None
+            return embedding
             
         except Exception as e:
-            self.api_errors += 1
-            logger.error(f"Failed to generate embedding: {e}")
-            return None
+            logger.error(f"Erreur lors de la génération d'embedding: {e}")
+            raise
     
-    def _preprocess_text(self, text: str) -> str:
-        """Préprocesse le texte avant génération d'embedding."""
-        if not self.config.enable_text_preprocessing:
-            return text
+    async def generate_batch_embeddings(
+        self, 
+        texts: List[str], 
+        batch_id: Optional[str] = None
+    ) -> List[List[float]]:
+        """
+        Génère des embeddings pour un lot de textes.
         
-        # Nettoyer le texte
-        processed = text.strip()
+        Args:
+            texts: Liste des textes à vectoriser
+            batch_id: Identifiant optionnel du lot pour les logs
+            
+        Returns:
+            List[List[float]]: Liste des vecteurs d'embedding
+        """
+        if not self.client:
+            raise ValueError("EmbeddingService not initialized")
+            
+        if not texts:
+            return []
+            
+        # Nettoyer les textes
+        clean_texts = [text.strip() if text else "" for text in texts]
         
-        # Supprimer les caractères de contrôle
-        processed = "".join(char for char in processed if ord(char) >= 32 or char in "\n\t")
+        # Traiter par lots pour respecter les limites d'API
+        all_embeddings = []
+        total_batches = (len(clean_texts) + self.batch_size - 1) // self.batch_size
         
-        # Normaliser les espaces
-        processed = " ".join(processed.split())
+        logger.info(f"Génération d'embeddings pour {len(clean_texts)} textes en {total_batches} lots")
         
-        # Tronquer si nécessaire
-        if len(processed) > self.config.max_text_length:
-            if self.config.truncation_strategy == "start":
-                processed = processed[-self.config.max_text_length:]
-            elif self.config.truncation_strategy == "middle":
-                half = self.config.max_text_length // 2
-                processed = processed[:half] + processed[-half:]
-            else:  # "end"
-                processed = processed[:self.config.max_text_length]
-        
-        return processed
-    
-    def _generate_cache_key(
-        self,
-        text: str,
-        model: EmbeddingModel,
-        dimensions: int
-    ) -> str:
-        """Génère une clé de cache unique."""
-        cache_data = f"{text}|{model.value}|{dimensions}"
-        return hashlib.sha256(cache_data.encode()).hexdigest()
-    
-    async def _generate_single_embedding(
-        self,
-        text: str,
-        model: EmbeddingModel,
-        dimensions: int
-    ) -> Optional[EmbeddingResult]:
-        """Génère un embedding pour un seul texte."""
-        
-        for attempt in range(self.config.max_retries):
+        for i in range(0, len(clean_texts), self.batch_size):
+            batch_texts = clean_texts[i:i + self.batch_size]
+            batch_num = (i // self.batch_size) + 1
+            
             try:
-                start_time = time.time()
+                logger.debug(f"Traitement lot {batch_num}/{total_batches} ({len(batch_texts)} textes)")
                 
-                # Paramètres de la requête
-                params = {
-                    "model": model.value,
-                    "input": text,
-                    "encoding_format": "float"
-                }
+                # Générer les embeddings pour ce lot
+                batch_embeddings = await self._generate_batch_openai(batch_texts)
+                all_embeddings.extend(batch_embeddings)
                 
-                # Ajouter dimensions si supporté par le modèle
-                if model in [EmbeddingModel.TEXT_EMBEDDING_3_SMALL, EmbeddingModel.TEXT_EMBEDDING_3_LARGE]:
-                    params["dimensions"] = dimensions
+                logger.debug(f"Lot {batch_num} traité avec succès")
                 
-                # Appeler l'API OpenAI
-                response = await self.client.embeddings.create(**params)
-                
-                processing_time = (time.time() - start_time) * 1000
-                
-                # Extraire les données
-                if response.data:
-                    embedding_data = response.data[0]
-                    tokens_used = response.usage.total_tokens
+                # Petite pause entre les lots pour éviter le rate limiting
+                if batch_num < total_batches:
+                    await asyncio.sleep(0.1)
                     
-                    return EmbeddingResult(
-                        embedding=embedding_data.embedding,
-                        text=text,
-                        model=model.value,
-                        dimensions=len(embedding_data.embedding),
-                        tokens_used=tokens_used,
-                        processing_time_ms=processing_time,
-                        from_cache=False
-                    )
-                
-                return None
-                
             except Exception as e:
-                if attempt == self.config.max_retries - 1:
-                    logger.error(f"Failed to generate embedding after {self.config.max_retries} attempts: {e}")
-                    raise
-                
-                wait_time = 2 ** attempt
-                logger.warning(f"API error, retrying in {wait_time}s: {e}")
-                await asyncio.sleep(wait_time)
+                logger.error(f"Erreur lors du traitement du lot {batch_num}: {e}")
+                # Générer des embeddings individuellement en cas d'échec du lot
+                batch_embeddings = await self._fallback_individual_embeddings(batch_texts)
+                all_embeddings.extend(batch_embeddings)
         
-        return None
+        logger.info(f"Génération terminée: {len(all_embeddings)} embeddings générés")
+        return all_embeddings
     
-    def get_metrics(self) -> Dict[str, Any]:
-        """Retourne les métriques du service."""
-        avg_processing_time = (
-            self.total_processing_time / self.total_requests
-            if self.total_requests > 0 else 0
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
+    async def _generate_batch_openai(self, texts: List[str]) -> List[List[float]]:
+        """Génère un lot d'embeddings via l'API OpenAI."""
+        # PARAMÈTRES IDENTIQUES À enrichment_service
+        response = await self.client.embeddings.create(
+            model=self.model,
+            input=texts,
+            encoding_format="float"
         )
         
-        cache_hit_rate = (
-            self.cache_hits / self.total_requests
-            if self.total_requests > 0 else 0
-        )
+        # Extraire les embeddings en respectant l'ordre
+        embeddings = []
+        for data_point in response.data:
+            embeddings.append(data_point.embedding)
+            
+        return embeddings
+    
+    async def _fallback_individual_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Génère les embeddings individuellement en cas d'échec du lot."""
+        logger.warning(f"Passage en mode fallback pour {len(texts)} textes")
         
-        error_rate = (
-            self.api_errors / self.total_requests
-            if self.total_requests > 0 else 0
-        )
-        
-        return {
-            "total_requests": self.total_requests,
-            "total_tokens": self.total_tokens,
-            "cache_hits": self.cache_hits,
-            "cache_hit_rate": cache_hit_rate,
-            "api_errors": self.api_errors,
-            "error_rate": error_rate,
-            "average_processing_time_ms": avg_processing_time,
-            "model_usage": self.model_usage,
-            "cache_stats": self.cache.get_stats() if self.cache else None
+        embeddings = []
+        for i, text in enumerate(texts):
+            try:
+                embedding = await self.generate_embedding(text)
+                embeddings.append(embedding)
+            except Exception as e:
+                logger.error(f"Erreur embedding individuel {i}: {e}")
+                # Ajouter un vecteur zéro en cas d'échec
+                embeddings.append([0.0] * 1536)
+                
+        return embeddings
+    
+    def get_embedding_dimension(self) -> int:
+        """Retourne la dimension des embeddings selon le modèle utilisé."""
+        model_dimensions = {
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+            "text-embedding-ada-002": 1536
         }
+        
+        return model_dimensions.get(self.model, 1536)
+    
+    async def close(self):
+        """Nettoie les ressources du service."""
+        if self.client:
+            await self.client.close()
+            logger.info("EmbeddingService fermé")
 
 
 class EmbeddingManager:
     """
-    Gestionnaire d'embeddings de haut niveau avec multiple services.
+    Gestionnaire d'embeddings de haut niveau compatible avec enrichment_service.
     
-    Permet la gestion de plusieurs services d'embeddings avec fallback
-    et optimisations avancées.
+    Fournit une interface unifiée pour la génération d'embeddings avec
+    les mêmes paramètres que enrichment_service.
     """
     
     def __init__(self, primary_service: EmbeddingService):
@@ -369,7 +212,7 @@ class EmbeddingManager:
         self.successful_requests = 0
         self.fallback_usage = 0
         
-        logger.info("Embedding manager initialized")
+        logger.info("Embedding manager initialized (enrichment_service compatible)")
     
     def add_fallback_service(self, service: EmbeddingService) -> None:
         """Ajoute un service de fallback."""
@@ -380,20 +223,25 @@ class EmbeddingManager:
         self,
         text: str,
         use_cache: bool = True,
-        model: Optional[EmbeddingModel] = None,
-        dimensions: Optional[int] = None
+        text_id: Optional[str] = None
     ) -> Optional[List[float]]:
         """
         Génère un embedding avec fallback automatique.
         
-        Essaie le service primaire, puis les services de fallback si échec.
+        Args:
+            text: Texte à encoder
+            use_cache: Utiliser le cache si disponible
+            text_id: Identifiant optionnel pour le texte
+            
+        Returns:
+            Vecteur d'embedding ou None si erreur
         """
         self.total_requests += 1
         
         # Essayer le service primaire
         try:
             embedding = await self.primary_service.generate_embedding(
-                text, use_cache, model, dimensions
+                text, use_cache=use_cache, text_id=text_id
             )
             if embedding:
                 self.successful_requests += 1
@@ -406,7 +254,7 @@ class EmbeddingManager:
             try:
                 logger.info(f"Trying fallback service {i + 1}")
                 embedding = await fallback_service.generate_embedding(
-                    text, use_cache, model, dimensions
+                    text, use_cache=use_cache, text_id=text_id
                 )
                 if embedding:
                     self.successful_requests += 1
@@ -437,44 +285,38 @@ class EmbeddingManager:
             "fallback_usage": self.fallback_usage,
             "fallback_rate": fallback_rate,
             "fallback_services_count": len(self.fallback_services),
-            "primary_service_metrics": self.primary_service.get_metrics()
+            "enrichment_service_compatible": True
         }
 
 
-# Factory functions et exports
-def create_embedding_service(
-    api_key: str,
-    model: str = "text-embedding-3-small",
-    dimensions: int = 1536,
-    enable_cache: bool = True,
-    **kwargs
-) -> EmbeddingService:
-    """Factory function pour créer un service d'embeddings."""
-    # Convertir le nom du modèle en enum
-    model_enum = EmbeddingModel.TEXT_EMBEDDING_3_SMALL
-    for enum_model in EmbeddingModel:
-        if enum_model.value == model:
-            model_enum = enum_model
-            break
+def create_embedding_service() -> EmbeddingService:
+    """
+    Factory function pour créer un service d'embeddings compatible enrichment_service.
     
-    # Créer la configuration
-    config = EmbeddingConfig(
-        model=model_enum,
-        dimensions=dimensions,
-        enable_cache=enable_cache,
-        **kwargs
-    )
-    
-    return EmbeddingService(api_key=api_key, config=config)
+    Utilise les mêmes variables d'environnement et paramètres.
+    """
+    service = EmbeddingService()
+    logger.info(f"Created enrichment_service compatible embedding service with model {service.model}")
+    return service
 
+
+def create_embedding_manager() -> EmbeddingManager:
+    """
+    Factory function pour créer un gestionnaire d'embeddings compatible enrichment_service.
+    """
+    primary_service = create_embedding_service()
+    manager = EmbeddingManager(primary_service)
+    logger.info("Created enrichment_service compatible embedding manager")
+    return manager
+
+
+embedding_service = EmbeddingService()
 
 # Exports principaux
 __all__ = [
     "EmbeddingService",
-    "EmbeddingManager",
-    "EmbeddingConfig",
-    "EmbeddingModel",
-    "EmbeddingResult",
-    "BatchEmbeddingResult",
-    "create_embedding_service"
+    "EmbeddingManager", 
+    "create_embedding_service",
+    "create_embedding_manager",
+    "embedding_service"  # Instance globale
 ]

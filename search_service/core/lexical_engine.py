@@ -245,12 +245,15 @@ class LexicalSearchEngine:
     
     def _optimize_query_for_elasticsearch(self, query_analysis: QueryAnalysis) -> str:
         """Optimise la requête pour Elasticsearch."""
-        # CORRECTION: Utiliser l'attribut expanded_query directement (maintenant disponible)
-        if query_analysis.expanded_query:
+        # Utiliser l'attribut expanded_query directement
+        if hasattr(query_analysis, 'expanded_query') and query_analysis.expanded_query:
             return query_analysis.expanded_query
         
         # Sinon utiliser la requête nettoyée
-        return query_analysis.cleaned_query or query_analysis.original_query
+        if hasattr(query_analysis, 'cleaned_query') and query_analysis.cleaned_query:
+            return query_analysis.cleaned_query
+            
+        return query_analysis.original_query
     
     def _build_elasticsearch_query(
         self,
@@ -267,8 +270,7 @@ class LexicalSearchEngine:
         query_clauses = []
         
         # 1. Correspondance exacte de phrase (boost très élevé)
-        # CORRECTION: Utiliser la propriété exact_phrases
-        exact_phrases = query_analysis.exact_phrases
+        exact_phrases = getattr(query_analysis, 'exact_phrases', [])
         
         for phrase in exact_phrases:
             query_clauses.append({
@@ -301,18 +303,28 @@ class LexicalSearchEngine:
             }
         })
         
-        # 3. Recherche avec préfixes pour correspondances partielles
+        # 3. CORRECTION: Recherche avec préfixes - utiliser les champs text (sans .keyword)
         if self.config.enable_wildcards and len(query) > 2:
             query_clauses.append({
                 "multi_match": {
                     "query": query,
                     "fields": [
-                        f"primary_description.keyword^{self.config.boost_primary_description * 0.8}",
-                        f"merchant_name.keyword^{self.config.boost_merchant_name * 0.8}",
+                        f"primary_description^{self.config.boost_primary_description * 0.8}",
+                        f"merchant_name^{self.config.boost_merchant_name * 0.8}",
                         "searchable_text^2.0"
                     ],
                     "type": "phrase_prefix",
                     "boost": 0.6
+                }
+            })
+            
+            # Ajouter une requête prefix séparée pour les champs keyword
+            query_clauses.append({
+                "bool": {
+                    "should": [
+                        {"prefix": {"merchant_name.keyword": {"value": query, "boost": 0.5}}},
+                        {"prefix": {"primary_description.keyword": {"value": query, "boost": 0.4}}}
+                    ]
                 }
             })
         
@@ -337,8 +349,7 @@ class LexicalSearchEngine:
             })
         
         # 5. Recherche par termes individuels pour améliorer le rappel
-        # CORRECTION: Utiliser la propriété key_terms
-        key_terms = query_analysis.key_terms
+        key_terms = getattr(query_analysis, 'key_terms', [])
         
         for term in key_terms:
             if len(term) > 2:  # Éviter les termes trop courts
@@ -354,6 +365,23 @@ class LexicalSearchEngine:
                         "boost": 0.3
                     }
                 })
+        
+        # 6. Recherche fuzzy pour les variantes orthographiques
+        if self.config.enable_fuzzy and len(query) > 4:
+            query_clauses.append({
+                "multi_match": {
+                    "query": query,
+                    "fields": [
+                        "primary_description^1.8",
+                        "merchant_name^2.2",
+                        "searchable_text^1.5"
+                    ],
+                    "type": "most_fields",
+                    "fuzziness": "AUTO",
+                    "prefix_length": 1,
+                    "boost": 0.7
+                }
+            })
         
         # Construction de la requête principale
         main_query = {
@@ -463,10 +491,26 @@ class LexicalSearchEngine:
                 "terms": {"category_id": filters["category_ids"]}
             })
         
-        # Filtres par marchand
+        # CORRECTION: Filtres par marchand - gestion sécurisée des champs keyword
         if filters.get("merchant_names") and filters["merchant_names"]:
             filter_clauses.append({
                 "terms": {"merchant_name.keyword": filters["merchant_names"]}
+            })
+        
+        # Filtre par correspondance partielle de marchand
+        if filters.get("merchant_contains"):
+            filter_clauses.append({
+                "wildcard": {"merchant_name": f"*{filters['merchant_contains']}*"}
+            })
+        
+        # Filtre par exclusion de marchands
+        if filters.get("exclude_merchants") and filters["exclude_merchants"]:
+            # Utiliser must_not pour exclure
+            if "must_not" not in es_query["query"]["bool"]:
+                es_query["query"]["bool"]["must_not"] = []
+            
+            es_query["query"]["bool"]["must_not"].append({
+                "terms": {"merchant_name.keyword": filters["exclude_merchants"]}
             })
         
         # Filtre par période (derniers N jours)
@@ -683,8 +727,7 @@ class LexicalSearchEngine:
         if not results:
             return 0.5  # Neutre si pas de résultats
         
-        # CORRECTION: Utiliser la propriété key_terms
-        key_terms = query_analysis.key_terms
+        key_terms = getattr(query_analysis, 'key_terms', [])
         
         if not key_terms:
             return 0.5  # Neutre si pas de termes à analyser
@@ -828,26 +871,42 @@ class LexicalSearchEngine:
     async def get_suggestions(self, query: str, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
         """Génère des suggestions basées sur une requête partielle."""
         try:
-            # Construire une requête de suggestion
+            # Construire une requête de suggestion sécurisée
             suggest_query = {
                 "query": {
                     "bool": {
                         "must": [
                             {"term": {"user_id": user_id}},
-                            {"prefix": {"primary_description": query.lower()}}
+                            {
+                                "bool": {
+                                    "should": [
+                                        {"prefix": {"primary_description": query.lower()}},
+                                        {"prefix": {"merchant_name": query.lower()}},
+                                        {"wildcard": {"primary_description": f"*{query.lower()}*"}},
+                                        {"wildcard": {"merchant_name": f"*{query.lower()}*"}}
+                                    ]
+                                }
+                            }
                         ]
                     }
                 },
                 "aggs": {
-                    "suggestions": {
+                    "description_suggestions": {
                         "terms": {
                             "field": "primary_description.keyword",
                             "size": limit,
                             "include": f".*{query.lower()}.*"
                         }
+                    },
+                    "merchant_suggestions": {
+                        "terms": {
+                            "field": "merchant_name.keyword", 
+                            "size": limit,
+                            "include": f".*{query.lower()}.*"
+                        }
                     }
                 },
-                "size": 0
+                "size": 0  # Pas de documents, juste les agrégations
             }
             
             response = await self.elasticsearch_client.search(
@@ -856,20 +915,170 @@ class LexicalSearchEngine:
             )
             
             suggestions = []
-            buckets = response.get("aggregations", {}).get("suggestions", {}).get("buckets", [])
             
-            for bucket in buckets:
+            # Suggestions de descriptions
+            desc_buckets = response.get("aggregations", {}).get("description_suggestions", {}).get("buckets", [])
+            for bucket in desc_buckets:
                 suggestions.append({
                     "text": bucket["key"],
                     "frequency": bucket["doc_count"],
                     "type": "description"
                 })
             
-            return suggestions
+            # Suggestions de marchands
+            merchant_buckets = response.get("aggregations", {}).get("merchant_suggestions", {}).get("buckets", [])
+            for bucket in merchant_buckets:
+                suggestions.append({
+                    "text": bucket["key"],
+                    "frequency": bucket["doc_count"],
+                    "type": "merchant"
+                })
+            
+            # Trier par fréquence décroissante et limiter
+            suggestions.sort(key=lambda x: x["frequency"], reverse=True)
+            return suggestions[:limit]
             
         except Exception as e:
             logger.error(f"Failed to get suggestions: {e}")
             return []
+    
+    async def analyze_query_performance(self, query: str, user_id: int) -> Dict[str, Any]:
+        """Analyse les performances d'une requête spécifique."""
+        try:
+            start_time = time.time()
+            
+            # Exécuter la recherche avec profiling
+            query_analysis = self.query_processor.process_query(query)
+            optimized_query = self._optimize_query_for_elasticsearch(query_analysis)
+            
+            es_query = self._build_elasticsearch_query(
+                optimized_query, query_analysis, user_id, None, True, SortOrder.RELEVANCE
+            )
+            
+            # Ajouter le profiling
+            es_query["profile"] = True
+            
+            search_response = await self.elasticsearch_client.search(
+                index="harena_transactions",
+                body=es_query,
+                size=10
+            )
+            
+            execution_time = (time.time() - start_time) * 1000
+            
+            # Analyser les résultats du profiling
+            profile_data = search_response.get("profile", {})
+            shards = profile_data.get("shards", [])
+            
+            query_breakdown = []
+            for shard in shards:
+                searches = shard.get("searches", [])
+                for search in searches:
+                    query_info = search.get("query", [])
+                    for q in query_info:
+                        query_breakdown.append({
+                            "type": q.get("type"),
+                            "description": q.get("description"),
+                            "time_in_nanos": q.get("time_in_nanos"),
+                            "breakdown": q.get("breakdown", {})
+                        })
+            
+            return {
+                "original_query": query,
+                "optimized_query": optimized_query,
+                "execution_time_ms": execution_time,
+                "elasticsearch_took_ms": search_response.get("took", 0),
+                "total_hits": search_response.get("hits", {}).get("total", {}).get("value", 0),
+                "max_score": search_response.get("hits", {}).get("max_score"),
+                "query_breakdown": query_breakdown,
+                "shard_count": len(shards),
+                "query_analysis": {
+                    "key_terms": getattr(query_analysis, 'key_terms', []),
+                    "exact_phrases": getattr(query_analysis, 'exact_phrases', []),
+                    "expanded_query": getattr(query_analysis, 'expanded_query', None)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to analyze query performance: {e}")
+            return {
+                "error": str(e),
+                "original_query": query
+            }
+    
+    async def get_field_statistics(self, user_id: int) -> Dict[str, Any]:
+        """Récupère les statistiques des champs pour un utilisateur."""
+        try:
+            stats_query = {
+                "query": {
+                    "term": {"user_id": user_id}
+                },
+                "aggs": {
+                    "merchant_stats": {
+                        "terms": {
+                            "field": "merchant_name.keyword",
+                            "size": 20
+                        }
+                    },
+                    "category_stats": {
+                        "terms": {
+                            "field": "category_id",
+                            "size": 20
+                        }
+                    },
+                    "amount_stats": {
+                        "stats": {
+                            "field": "amount"
+                        }
+                    },
+                    "transaction_type_stats": {
+                        "terms": {
+                            "field": "transaction_type",
+                            "size": 10
+                        }
+                    },
+                    "monthly_distribution": {
+                        "date_histogram": {
+                            "field": "transaction_date",
+                            "calendar_interval": "month",
+                            "format": "yyyy-MM"
+                        }
+                    }
+                },
+                "size": 0
+            }
+            
+            response = await self.elasticsearch_client.search(
+                index="harena_transactions",
+                body=stats_query
+            )
+            
+            aggregations = response.get("aggregations", {})
+            
+            return {
+                "total_transactions": response.get("hits", {}).get("total", {}).get("value", 0),
+                "top_merchants": [
+                    {"name": bucket["key"], "count": bucket["doc_count"]}
+                    for bucket in aggregations.get("merchant_stats", {}).get("buckets", [])
+                ],
+                "categories": [
+                    {"id": bucket["key"], "count": bucket["doc_count"]}
+                    for bucket in aggregations.get("category_stats", {}).get("buckets", [])
+                ],
+                "amount_statistics": aggregations.get("amount_stats", {}),
+                "transaction_types": [
+                    {"type": bucket["key"], "count": bucket["doc_count"]}
+                    for bucket in aggregations.get("transaction_type_stats", {}).get("buckets", [])
+                ],
+                "monthly_distribution": [
+                    {"month": bucket["key_as_string"], "count": bucket["doc_count"]}
+                    for bucket in aggregations.get("monthly_distribution", {}).get("buckets", [])
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get field statistics: {e}")
+            return {"error": str(e)}
     
     def update_config(self, new_config: LexicalSearchConfig) -> None:
         """Met à jour la configuration du moteur."""
@@ -899,3 +1108,100 @@ class LexicalSearchEngine:
         self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
         
         logger.info("Lexical engine metrics reset")
+    
+    async def optimize_index(self, user_id: Optional[int] = None) -> Dict[str, Any]:
+        """Optimise l'index Elasticsearch pour de meilleures performances."""
+        try:
+            # Forcer un merge des segments
+            await self.elasticsearch_client.indices.forcemerge(
+                index="harena_transactions",
+                max_num_segments=1
+            )
+            
+            # Rafraîchir l'index
+            await self.elasticsearch_client.indices.refresh(
+                index="harena_transactions"
+            )
+            
+            # Récupérer les statistiques post-optimisation
+            stats = await self.elasticsearch_client.indices.stats(
+                index="harena_transactions"
+            )
+            
+            return {
+                "status": "success",
+                "index_stats": {
+                    "total_docs": stats.get("_all", {}).get("total", {}).get("docs", {}).get("count", 0),
+                    "total_size_bytes": stats.get("_all", {}).get("total", {}).get("store", {}).get("size_in_bytes", 0),
+                    "segments_count": stats.get("_all", {}).get("total", {}).get("segments", {}).get("count", 0)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to optimize index: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    async def validate_mapping(self) -> Dict[str, Any]:
+        """Valide le mapping de l'index Elasticsearch."""
+        try:
+            mapping = await self.elasticsearch_client.indices.get_mapping(
+                index="harena_transactions"
+            )
+            
+            properties = mapping.get("harena_transactions", {}).get("mappings", {}).get("properties", {})
+            
+            # Vérifier les champs critiques
+            required_fields = {
+                "user_id": "integer",
+                "transaction_id": "keyword", 
+                "primary_description": "text",
+                "merchant_name": "text",
+                "searchable_text": "text",
+                "amount": "float",
+                "transaction_date": "date"
+            }
+            
+            validation_results = {}
+            issues = []
+            
+            for field, expected_type in required_fields.items():
+                if field not in properties:
+                    issues.append(f"Missing required field: {field}")
+                    validation_results[field] = {"status": "missing"}
+                else:
+                    field_config = properties[field]
+                    actual_type = field_config.get("type")
+                    
+                    if actual_type == expected_type:
+                        validation_results[field] = {"status": "ok", "type": actual_type}
+                    else:
+                        issues.append(f"Field {field} has type {actual_type}, expected {expected_type}")
+                        validation_results[field] = {
+                            "status": "type_mismatch",
+                            "actual_type": actual_type,
+                            "expected_type": expected_type
+                        }
+                    
+                    # Vérifier la présence des champs .keyword pour les champs text
+                    if expected_type == "text" and field_config.get("fields", {}).get("keyword"):
+                        validation_results[field]["has_keyword_field"] = True
+                    elif expected_type == "text":
+                        issues.append(f"Field {field} missing .keyword subfield")
+                        validation_results[field]["has_keyword_field"] = False
+            
+            return {
+                "status": "valid" if not issues else "invalid",
+                "issues": issues,
+                "field_validation": validation_results,
+                "total_fields": len(properties)
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to validate mapping: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }

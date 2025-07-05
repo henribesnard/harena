@@ -6,6 +6,7 @@ MODIFICATIONS APPORTÉES:
 2. Search Service complètement réécrit et intégré
 3. Tests de diagnostic améliorés pour la nouvelle architecture
 4. Gestion complète des injections pour tous les services
+5. CORRECTION: EmbeddingManager avec vraie instance d'EmbeddingService
 
 SERVICES INCLUS:
 - user_service: Gestion utilisateurs et authentification
@@ -490,6 +491,7 @@ try:
                 "components_initialized": {
                     "elasticsearch_client": False,
                     "qdrant_client": False,
+                    "embedding_service": False,
                     "embedding_manager": False,
                     "query_processor": False,
                     "lexical_engine": False,
@@ -514,6 +516,7 @@ try:
             # 1. Initialiser directement les clients avec les bons imports
             elasticsearch_client = None
             qdrant_client = None
+            embedding_service = None
             embedding_manager = None
             
             # Client Elasticsearch
@@ -545,16 +548,26 @@ try:
             except Exception as e:
                 logger.warning(f"⚠️ Qdrant client initialization failed: {e}")
             
-            # Service d'embeddings
+            # Service d'embeddings CORRIGÉ
             try:
-                from search_service.core.embeddings import EmbeddingManager
+                from search_service.core.embeddings import EmbeddingService, EmbeddingManager, EmbeddingConfig
                 if os.environ.get("OPENAI_API_KEY"):
-                    # EmbeddingManager se contente d'être créé, pas besoin d'initialize()
-                    embedding_manager = EmbeddingManager(primary_service="openai")
+                    # Créer d'abord une vraie instance d'EmbeddingService
+                    embedding_config = EmbeddingConfig()
+                    embedding_service = EmbeddingService(
+                        api_key=os.environ.get("OPENAI_API_KEY"),
+                        config=embedding_config
+                    )
+                    
+                    # Ensuite créer le manager avec l'instance
+                    embedding_manager = EmbeddingManager(primary_service=embedding_service)
+                    
+                    initialization_result["details"]["components_initialized"]["embedding_service"] = True
                     initialization_result["details"]["components_initialized"]["embedding_manager"] = True
-                    logger.info("✅ Embedding Manager initialisé")
+                    logger.info("✅ Embedding Service & Manager initialisés correctement")
             except Exception as e:
-                logger.warning(f"⚠️ Embedding manager initialization failed: {e}")
+                logger.warning(f"⚠️ Embedding services initialization failed: {e}")
+                embedding_manager = None
             
             # Query Processor
             query_processor = None

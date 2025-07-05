@@ -17,41 +17,9 @@ from search_service.core.query_processor import QueryProcessor, QueryAnalysis
 from search_service.models.search_types import SearchType, SearchQuality, SortOrder
 from search_service.models.responses import SearchResultItem
 from search_service.utils.cache import SearchCache
+from search_service.config.settings import get_search_settings
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class SemanticSearchConfig:
-    """Configuration pour la recherche sémantique."""
-    # Seuils de similarité par type de requête
-    similarity_threshold_default: float = 0.5
-    similarity_threshold_strict: float = 0.7
-    similarity_threshold_loose: float = 0.3
-    
-    # Configuration des requêtes
-    max_results: int = 50
-    enable_filtering: bool = True
-    fallback_to_unfiltered: bool = True
-    
-    # Configuration des recommandations
-    recommendation_enabled: bool = True
-    recommendation_threshold: float = 0.6
-    
-    # Performance
-    timeout_seconds: float = 8.0
-    enable_cache: bool = True
-    cache_ttl_seconds: int = 600
-    
-    # Qdrant spécifique
-    collection_name: str = "financial_transactions"
-    vector_size: int = 1536
-    distance_metric: str = "cosine"
-    
-    # Stratégies de recherche
-    enable_hybrid_scoring: bool = True
-    enable_query_expansion: bool = True
-    min_results_for_quality: int = 3
 
 
 @dataclass
@@ -84,19 +52,23 @@ class SemanticSearchEngine:
         self,
         qdrant_client: QdrantClient,
         embedding_manager: EmbeddingManager,
-        query_processor: Optional[QueryProcessor] = None,
-        config: Optional[SemanticSearchConfig] = None
+        query_processor: Optional[QueryProcessor] = None
     ):
+        # Charger la configuration depuis les settings centralisés
+        self.settings = get_search_settings()
+        self.config = self.settings.semantic_search
+        self.cache_config = self.settings.cache
+        self.performance_config = self.settings.performance
+        
         self.qdrant_client = qdrant_client
         self.embedding_manager = embedding_manager
         self.query_processor = query_processor or QueryProcessor()
-        self.config = config or SemanticSearchConfig()
         
         # Cache pour les résultats et embeddings
         self.cache = SearchCache(
-            max_size=1000,
-            ttl_seconds=self.config.cache_ttl_seconds
-        ) if self.config.enable_cache else None
+            max_size=self.cache_config.search_cache_max_size,
+            ttl_seconds=self.cache_config.search_cache_ttl
+        ) if self.cache_config.search_cache_enabled else None
         
         # Métriques de performance
         self.search_count = 0
@@ -107,13 +79,13 @@ class SemanticSearchEngine:
         self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
         self.threshold_adjustments = 0
         
-        logger.info("Semantic search engine initialized")
+        logger.info("Semantic search engine initialized with centralized config")
     
     async def search(
         self,
         query: str,
         user_id: int,
-        limit: int = 20,
+        limit: int = None,
         offset: int = 0,
         similarity_threshold: Optional[float] = None,
         sort_order: SortOrder = SortOrder.RELEVANCE,
@@ -126,7 +98,7 @@ class SemanticSearchEngine:
         Args:
             query: Terme de recherche
             user_id: ID de l'utilisateur
-            limit: Nombre de résultats
+            limit: Nombre de résultats (utilise la config si None)
             offset: Décalage pour pagination
             similarity_threshold: Seuil de similarité (auto si None)
             sort_order: Ordre de tri
@@ -141,6 +113,11 @@ class SemanticSearchEngine:
         """
         start_time = time.time()
         self.search_count += 1
+        
+        # Utiliser les limites de la configuration
+        if limit is None:
+            limit = self.settings.search_service.default_limit
+        limit = min(limit, self.config.max_results)
         
         # Génération de la clé de cache
         cache_key = None
@@ -226,7 +203,8 @@ class SemanticSearchEngine:
             
         except asyncio.TimeoutError:
             self.failed_searches += 1
-            logger.error(f"Semantic search timeout after {self.config.timeout_seconds}s")
+            timeout = self.performance_config.standard_search_timeout
+            logger.error(f"Semantic search timeout after {timeout}s")
             raise Exception("Search timeout")
             
         except Exception as e:
@@ -262,16 +240,17 @@ class SemanticSearchEngine:
     
     def _optimize_query_for_semantic_search(self, query_analysis: QueryAnalysis) -> str:
         """Optimise la requête pour la recherche sémantique."""
-        # Utiliser 'expanded_query' (correct)
+        # Utiliser 'expanded_query' si l'expansion est activée
         if (self.config.enable_query_expansion and 
+            hasattr(query_analysis, 'expanded_query') and
             query_analysis.expanded_query):
             return query_analysis.expanded_query
         
         # Utiliser la requête nettoyée avec expansion contextuelle
-        base_query = query_analysis.cleaned_query or query_analysis.original_query
+        base_query = getattr(query_analysis, 'cleaned_query', None) or query_analysis.original_query
         
-        # Utiliser la propriété has_financial_entities (correct)
-        if query_analysis.has_financial_entities:
+        # Ajouter contexte financier si nécessaire
+        if hasattr(query_analysis, 'has_financial_entities') and query_analysis.has_financial_entities:
             financial_context = " transaction financière"
             if "transaction" not in base_query.lower():
                 base_query += financial_context
@@ -281,14 +260,14 @@ class SemanticSearchEngine:
     def _determine_optimal_threshold(self, query_analysis: QueryAnalysis) -> float:
         """Détermine le seuil de similarité optimal basé sur l'analyse de requête."""
         
-        # Utiliser les propriétés correctes de QueryAnalysis
-        has_exact_phrases = query_analysis.has_exact_phrases
-        has_financial_entities = query_analysis.has_financial_entities
-        key_terms = query_analysis.key_terms
+        # Récupérer les propriétés avec fallbacks sécurisés
+        has_exact_phrases = getattr(query_analysis, 'has_exact_phrases', False)
+        has_financial_entities = getattr(query_analysis, 'has_financial_entities', False)
+        key_terms = getattr(query_analysis, 'key_terms', [])
         
         # Détecter si c'est une question
         is_question = False
-        if query_analysis.original_query:
+        if hasattr(query_analysis, 'original_query') and query_analysis.original_query:
             is_question = any(word in query_analysis.original_query.lower() 
                              for word in ["quoi", "comment", "pourquoi", "où", "quand", "?"])
         
@@ -323,7 +302,8 @@ class SemanticSearchEngine:
                 )
                 
                 # Si pas assez de résultats et fallback activé
-                if (results and len(results) < self.config.min_results_for_quality and 
+                min_results = getattr(self.config, 'min_results_for_quality', 3)
+                if (results and len(results) < min_results and 
                     self.config.fallback_to_unfiltered):
                     
                     logger.info(f"Fallback: only {len(results)} filtered results, trying unfiltered")
@@ -371,8 +351,11 @@ class SemanticSearchEngine:
         # Construire les filtres Qdrant
         qdrant_filters = self._build_qdrant_filters(user_id, filters)
         
+        # Utiliser la configuration pour le nom de collection
+        collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+        
         search_params = {
-            "collection_name": self.config.collection_name,
+            "collection_name": collection_name,
             "query_vector": query_embedding,
             "query_filter": qdrant_filters,
             "limit": limit,
@@ -381,9 +364,12 @@ class SemanticSearchEngine:
             "with_vectors": debug
         }
         
+        # Utiliser le timeout de la configuration
+        timeout = self.performance_config.standard_search_timeout
+        
         return await asyncio.wait_for(
             self.qdrant_client.search(**search_params),
-            timeout=self.config.timeout_seconds
+            timeout=timeout
         )
     
     async def _execute_unfiltered_search(
@@ -397,8 +383,11 @@ class SemanticSearchEngine:
         """Exécute une recherche sans filtres (seulement user_id)."""
         qdrant_filters = {"must": [{"key": "user_id", "match": {"value": user_id}}]}
         
+        # Utiliser la configuration pour le nom de collection
+        collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+        
         search_params = {
-            "collection_name": self.config.collection_name,
+            "collection_name": collection_name,
             "query_vector": query_embedding,
             "query_filter": qdrant_filters,
             "limit": limit,
@@ -407,9 +396,12 @@ class SemanticSearchEngine:
             "with_vectors": debug
         }
         
+        # Utiliser le timeout de la configuration
+        timeout = self.performance_config.standard_search_timeout
+        
         return await asyncio.wait_for(
             self.qdrant_client.search(**search_params),
-            timeout=self.config.timeout_seconds
+            timeout=timeout
         )
     
     def _build_qdrant_filters(self, user_id: int, filters: Dict[str, Any]) -> Dict[str, Any]:
@@ -581,11 +573,16 @@ class SemanticSearchEngine:
         filters: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Construit les informations de requête Qdrant pour debug."""
+        vector_size = getattr(self.config, 'vector_size', 1536)
+        distance_metric = getattr(self.config, 'distance_metric', 'cosine')
+        collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+        
         return {
             "vector_size": len(query_embedding),
+            "expected_vector_size": vector_size,
             "similarity_threshold": similarity_threshold,
-            "distance_metric": self.config.distance_metric,
-            "collection": self.config.collection_name,
+            "distance_metric": distance_metric,
+            "collection": collection_name,
             "filters_applied": filters is not None,
             "filter_count": len(filters) if filters else 0
         }
@@ -619,6 +616,9 @@ class SemanticSearchEngine:
         if not results:
             return SearchQuality.POOR
         
+        # Utiliser les seuils de qualité de la configuration
+        quality_config = self.settings.quality
+        
         # Calculer différents aspects de qualité
         score_quality = self._assess_similarity_scores(results)
         consistency_quality = self._assess_result_consistency(results)
@@ -633,12 +633,12 @@ class SemanticSearchEngine:
             diversity_quality * 0.10
         )
         
-        # Conversion en enum de qualité
-        if overall_quality >= 0.8:
+        # Conversion en enum de qualité basée sur la configuration
+        if overall_quality >= quality_config.excellent_threshold:
             return SearchQuality.EXCELLENT
-        elif overall_quality >= 0.6:
+        elif overall_quality >= quality_config.good_threshold:
             return SearchQuality.GOOD
-        elif overall_quality >= 0.4:
+        elif overall_quality >= quality_config.medium_threshold:
             return SearchQuality.MEDIUM
         else:
             return SearchQuality.POOR
@@ -725,8 +725,8 @@ class SemanticSearchEngine:
         if not results:
             return 0.5
         
-        # Utiliser key_terms (propriété correcte)
-        key_terms = query_analysis.key_terms
+        # Utiliser key_terms avec fallback sécurisé
+        key_terms = getattr(query_analysis, 'key_terms', [])
         
         if not key_terms:
             return 0.5  # Neutre si pas de termes à analyser
@@ -744,7 +744,7 @@ class SemanticSearchEngine:
             # Vérifier la présence des termes clés
             matching_terms = sum(
                 1 for term in key_terms
-                if term.lower() in context
+                if str(term).lower() in context
             )
             
             term_relevance = matching_terms / len(key_terms)
@@ -761,9 +761,11 @@ class SemanticSearchEngine:
     async def count_user_points(self, user_id: int) -> int:
         """Compte le nombre de points pour un utilisateur dans Qdrant."""
         try:
+            collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+            
             # Utiliser une recherche avec un vecteur neutre pour compter
             count_result = await self.qdrant_client.count(
-                collection_name=self.config.collection_name,
+                collection_name=collection_name,
                 count_filter={
                     "must": [{"key": "user_id", "match": {"value": user_id}}]
                 }
@@ -779,7 +781,7 @@ class SemanticSearchEngine:
         query: str,
         user_id: int,
         filters: Dict[str, Any],
-        limit: int = 20,
+        limit: int = None,
         offset: int = 0
     ) -> SemanticSearchResult:
         """Effectue une recherche avancée avec filtres."""
@@ -820,7 +822,17 @@ class SemanticSearchEngine:
             "failure_rate": failure_rate,
             "threshold_adjustments": self.threshold_adjustments,
             "quality_distribution": self.quality_distribution,
-            "cache_stats": self.cache.get_stats() if self.cache else None
+            "cache_stats": self.cache.get_stats() if self.cache else None,
+            "config_summary": {
+                "similarity_thresholds": {
+                    "default": self.config.similarity_threshold_default,
+                    "strict": self.config.similarity_threshold_strict,
+                    "loose": self.config.similarity_threshold_loose
+                },
+                "max_results": self.config.max_results,
+                "cache_enabled": self.cache_config.search_cache_enabled,
+                "fallback_enabled": self.config.fallback_to_unfiltered
+            }
         }
     
     def clear_cache(self) -> None:
@@ -840,11 +852,31 @@ class SemanticSearchEngine:
                 "test query", use_cache=False
             )
             
+            # Récupérer la configuration pour les infos
+            collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+            
             return {
                 "status": "healthy",
                 "qdrant_status": health.get("status", "unknown"),
                 "embedding_service": "healthy" if test_embedding else "unhealthy",
-                "collection_name": self.config.collection_name,
+                "collection_name": collection_name,
+                "configuration": {
+                    "similarity_thresholds": {
+                        "default": self.config.similarity_threshold_default,
+                        "strict": self.config.similarity_threshold_strict,
+                        "loose": self.config.similarity_threshold_loose
+                    },
+                    "timeouts": {
+                        "search": self.performance_config.standard_search_timeout,
+                        "quick": self.performance_config.quick_search_timeout,
+                        "complex": self.performance_config.complex_search_timeout
+                    },
+                    "cache": {
+                        "enabled": self.cache_config.search_cache_enabled,
+                        "ttl": self.cache_config.search_cache_ttl,
+                        "max_size": self.cache_config.search_cache_max_size
+                    }
+                },
                 "metrics": self.get_metrics()
             }
         except Exception as e:
@@ -858,26 +890,30 @@ class SemanticSearchEngine:
     async def get_collection_info(self) -> Dict[str, Any]:
         """Retourne les informations sur la collection Qdrant."""
         try:
-            collection_info = await self.qdrant_client.get_collection_info(
-                self.config.collection_name
-            )
+            collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+            
+            collection_info = await self.qdrant_client.get_collection_info(collection_name)
+            
+            vector_size = getattr(self.config, 'vector_size', 1536)
+            distance_metric = getattr(self.config, 'distance_metric', 'cosine')
             
             return {
-                "collection_name": self.config.collection_name,
+                "collection_name": collection_name,
                 "status": collection_info.get("status"),
                 "vectors_count": collection_info.get("vectors_count", 0),
                 "indexed_vectors_count": collection_info.get("indexed_vectors_count", 0),
                 "points_count": collection_info.get("points_count", 0),
                 "segments_count": collection_info.get("segments_count", 0),
                 "config": {
-                    "vector_size": self.config.vector_size,
-                    "distance_metric": self.config.distance_metric
+                    "vector_size": vector_size,
+                    "distance_metric": distance_metric
                 }
             }
         except Exception as e:
             logger.error(f"Failed to get collection info: {e}")
+            collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
             return {
-                "collection_name": self.config.collection_name,
+                "collection_name": collection_name,
                 "status": "error",
                 "error": str(e)
             }
@@ -886,7 +922,7 @@ class SemanticSearchEngine:
         self,
         transaction_id: int,
         user_id: int,
-        limit: int = 10,
+        limit: int = None,
         filters: Optional[Dict[str, Any]] = None
     ) -> List[SearchResultItem]:
         """
@@ -904,10 +940,16 @@ class SemanticSearchEngine:
         if not self.config.recommendation_enabled:
             return []
         
+        # Utiliser la limite par défaut si non spécifiée
+        if limit is None:
+            limit = 10
+        
         try:
+            collection_name = getattr(self.config, 'collection_name', 'financial_transactions')
+            
             # 1. Récupérer le vecteur de la transaction de référence
             reference_vector = await self.qdrant_client.get_vector(
-                collection_name=self.config.collection_name,
+                collection_name=collection_name,
                 point_id=transaction_id
             )
             
@@ -960,8 +1002,8 @@ class SemanticSearchEngine:
     async def find_outliers(
         self,
         user_id: int,
-        limit: int = 20,
-        similarity_threshold: float = 0.3
+        limit: int = None,
+        similarity_threshold: float = None
     ) -> List[SearchResultItem]:
         """
         Trouve les transactions atypiques (outliers) pour un utilisateur.
@@ -974,10 +1016,19 @@ class SemanticSearchEngine:
         Returns:
             Liste de transactions atypiques
         """
+        # Utiliser les valeurs par défaut de la configuration
+        if limit is None:
+            limit = 20
+        
+        if similarity_threshold is None:
+            similarity_threshold = 0.3
+        
         try:
+            vector_size = getattr(self.config, 'vector_size', 1536)
+            
             # Recherche avec un seuil très bas pour trouver les transactions isolées
             search_results = await self._execute_unfiltered_search(
-                query_embedding=[0.0] * self.config.vector_size,  # Vecteur neutre
+                query_embedding=[0.0] * vector_size,  # Vecteur neutre
                 user_id=user_id,
                 limit=limit * 2,  # Plus de résultats pour filtrer
                 similarity_threshold=0.0,  # Pas de seuil pour avoir tous les résultats
@@ -1023,7 +1074,7 @@ class SemanticSearchEngine:
         self,
         partial_query: str,
         user_id: int,
-        max_suggestions: int = 5
+        max_suggestions: int = None
     ) -> List[str]:
         """
         Génère des suggestions de recherche basées sur une requête partielle.
@@ -1036,8 +1087,13 @@ class SemanticSearchEngine:
         Returns:
             Liste de suggestions de recherche
         """
-        # Suggestions basées sur des patterns financiers courants
-        financial_patterns = [
+        # Utiliser la configuration pour le nombre max de suggestions
+        if max_suggestions is None:
+            max_suggestions = getattr(self.settings.quality, 'max_suggestions', 5)
+        
+        # Suggestions basées sur des patterns financiers courants depuis la config
+        warmup_queries = getattr(self.performance_config, 'warmup_queries', [])
+        financial_patterns = warmup_queries + [
             "restaurant", "supermarché", "essence", "pharmacie", "virement",
             "carte bancaire", "prélèvement", "remboursement", "salaire",
             "facture", "achat en ligne", "transport", "santé", "loisirs"
@@ -1066,24 +1122,30 @@ class SemanticSearchEngine:
         
         return suggestions[:max_suggestions]
     
-    def update_config(self, new_config: SemanticSearchConfig) -> None:
-        """Met à jour la configuration du moteur."""
-        old_config = self.config
-        self.config = new_config
+    def update_config(self) -> None:
+        """Met à jour la configuration du moteur depuis les settings centralisés."""
+        old_cache_config = self.cache_config
+        
+        # Recharger la configuration
+        self.settings = get_search_settings()
+        self.config = self.settings.semantic_search
+        self.cache_config = self.settings.cache
+        self.performance_config = self.settings.performance
         
         # Recréer le cache si les paramètres ont changé
-        if (old_config.cache_ttl_seconds != new_config.cache_ttl_seconds or
-            old_config.enable_cache != new_config.enable_cache):
+        if (old_cache_config.search_cache_ttl != self.cache_config.search_cache_ttl or
+            old_cache_config.search_cache_enabled != self.cache_config.search_cache_enabled or
+            old_cache_config.search_cache_max_size != self.cache_config.search_cache_max_size):
             
-            if new_config.enable_cache:
+            if self.cache_config.search_cache_enabled:
                 self.cache = SearchCache(
-                    max_size=1000,
-                    ttl_seconds=new_config.cache_ttl_seconds
+                    max_size=self.cache_config.search_cache_max_size,
+                    ttl_seconds=self.cache_config.search_cache_ttl
                 )
             else:
                 self.cache = None
         
-        logger.info("Semantic engine configuration updated")
+        logger.info("Semantic engine configuration updated from centralized settings")
     
     def reset_metrics(self) -> None:
         """Remet à zéro les métriques de performance."""
@@ -1096,3 +1158,44 @@ class SemanticSearchEngine:
         self.quality_distribution = {quality.value: 0 for quality in SearchQuality}
         
         logger.info("Semantic engine metrics reset")
+    
+    def get_current_config(self) -> Dict[str, Any]:
+        """Retourne la configuration actuelle complète du moteur."""
+        return {
+            "semantic_search": {
+                "similarity_threshold_default": self.config.similarity_threshold_default,
+                "similarity_threshold_strict": self.config.similarity_threshold_strict,
+                "similarity_threshold_loose": self.config.similarity_threshold_loose,
+                "max_results": self.config.max_results,
+                "enable_filtering": self.config.enable_filtering,
+                "fallback_to_unfiltered": self.config.fallback_to_unfiltered,
+                "recommendation_enabled": self.config.recommendation_enabled,
+                "recommendation_threshold": self.config.recommendation_threshold,
+                "collection_name": getattr(self.config, 'collection_name', 'financial_transactions'),
+                "vector_size": getattr(self.config, 'vector_size', 1536),
+                "distance_metric": getattr(self.config, 'distance_metric', 'cosine'),
+                "enable_query_expansion": getattr(self.config, 'enable_query_expansion', True),
+                "min_results_for_quality": getattr(self.config, 'min_results_for_quality', 3)
+            },
+            "cache": {
+                "search_cache_enabled": self.cache_config.search_cache_enabled,
+                "search_cache_ttl": self.cache_config.search_cache_ttl,
+                "search_cache_max_size": self.cache_config.search_cache_max_size,
+                "embedding_cache_enabled": self.cache_config.embedding_cache_enabled,
+                "embedding_cache_ttl": self.cache_config.embedding_cache_ttl
+            },
+            "performance": {
+                "quick_search_timeout": self.performance_config.quick_search_timeout,
+                "standard_search_timeout": self.performance_config.standard_search_timeout,
+                "complex_search_timeout": self.performance_config.complex_search_timeout,
+                "warmup_enabled": self.performance_config.warmup_enabled,
+                "warmup_queries": self.performance_config.warmup_queries
+            },
+            "quality": {
+                "excellent_threshold": self.settings.quality.excellent_threshold,
+                "good_threshold": self.settings.quality.good_threshold,
+                "medium_threshold": self.settings.quality.medium_threshold,
+                "poor_threshold": self.settings.quality.poor_threshold,
+                "auto_query_optimization": self.settings.quality.auto_query_optimization
+            }
+        }

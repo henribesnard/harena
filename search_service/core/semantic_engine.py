@@ -44,7 +44,7 @@ class SemanticSearchConfig:
     cache_ttl_seconds: int = 600
     
     # Qdrant spécifique
-    collection_name: str = "harena_transactions"
+    collection_name: str = "financial_transactions"
     vector_size: int = 1536
     distance_metric: str = "cosine"
     

@@ -280,7 +280,7 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     
     # Stratégies de fusion
-    DEFAULT_FUSION_STRATEGY: str = os.environ.get("DEFAULT_FUSION_STRATEGY", "weighted_sum")
+    DEFAULT_FUSION_STRATEGY: str = os.environ.get("DEFAULT_FUSION_STRATEGY", "weighted_average")
     SCORE_NORMALIZATION_METHOD: str = os.environ.get("SCORE_NORMALIZATION_METHOD", "min_max")
     
     # Facteurs RRF (Reciprocal Rank Fusion)

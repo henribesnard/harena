@@ -75,11 +75,17 @@ class GlobalSettings(BaseSettings):
     BONSAI_ACCESS_KEY: str = os.environ.get("BONSAI_ACCESS_KEY", "")
     BONSAI_SECRET_KEY: str = os.environ.get("BONSAI_SECRET_KEY", "")
     
+    # Configuration Elasticsearch (pour référence dans le search_service)
+    ELASTICSEARCH_INDEX: str = os.environ.get("ELASTICSEARCH_INDEX", "harena_transactions")
+    
     # ==========================================
     # CONFIGURATION QDRANT POUR LE STOCKAGE VECTORIEL
     # ==========================================
     QDRANT_URL: str = os.environ.get("QDRANT_URL", "")
     QDRANT_API_KEY: str = os.environ.get("QDRANT_API_KEY", "")
+    QDRANT_COLLECTION_NAME: str = os.environ.get("QDRANT_COLLECTION_NAME", "financial_transactions")
+    QDRANT_VECTOR_SIZE: int = int(os.environ.get("QDRANT_VECTOR_SIZE", "1536"))
+    QDRANT_DISTANCE_METRIC: str = os.environ.get("QDRANT_DISTANCE_METRIC", "cosine")
     
     # ==========================================
     # CONFIGURATION DEEPSEEK
@@ -98,6 +104,7 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
     EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+    OPENAI_EMBEDDING_MODEL: str = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     
     # ==========================================
     # CONFIGURATION COHERE POUR LE RERANKING
@@ -171,6 +178,7 @@ class GlobalSettings(BaseSettings):
     SEARCH_CACHE_ENABLED: bool = os.environ.get("SEARCH_CACHE_ENABLED", "true").lower() == "true"
     SEARCH_CACHE_TTL: int = int(os.environ.get("SEARCH_CACHE_TTL", "300"))
     SEARCH_CACHE_MAX_SIZE: int = int(os.environ.get("SEARCH_CACHE_MAX_SIZE", "1000"))
+    SEARCH_CACHE_SIZE: int = int(os.environ.get("SEARCH_CACHE_SIZE", "1000"))
     
     # Configuration de la recherche hybride
     DEFAULT_SEARCH_TYPE: str = os.environ.get("DEFAULT_SEARCH_TYPE", "hybrid")
@@ -184,10 +192,13 @@ class GlobalSettings(BaseSettings):
     EMBEDDING_CACHE_TTL: int = int(os.environ.get("EMBEDDING_CACHE_TTL", "3600"))
     EMBEDDING_CACHE_ENABLED: bool = os.environ.get("EMBEDDING_CACHE_ENABLED", "true").lower() == "true"
     EMBEDDING_CACHE_MAX_SIZE: int = int(os.environ.get("EMBEDDING_CACHE_MAX_SIZE", "10000"))
+    EMBEDDING_CACHE_SIZE: int = int(os.environ.get("EMBEDDING_CACHE_SIZE", "5000"))
+    EMBEDDING_MAX_RETRIES: int = int(os.environ.get("EMBEDDING_MAX_RETRIES", "3"))
     
     # Configuration de pagination
     DEFAULT_SEARCH_LIMIT: int = int(os.environ.get("DEFAULT_SEARCH_LIMIT", "20"))
     MAX_SEARCH_LIMIT: int = int(os.environ.get("MAX_SEARCH_LIMIT", "100"))
+    DEFAULT_LIMIT: int = int(os.environ.get("DEFAULT_LIMIT", "20"))
     
     # Configuration des timeouts de recherche
     SEARCH_TIMEOUT: float = float(os.environ.get("SEARCH_TIMEOUT", "15.0"))
@@ -208,67 +219,111 @@ class GlobalSettings(BaseSettings):
     METRICS_COLLECTION_INTERVAL: int = int(os.environ.get("METRICS_COLLECTION_INTERVAL", "60"))
     PERFORMANCE_ALERTING: bool = os.environ.get("PERFORMANCE_ALERTING", "false").lower() == "true"
     
-    # Configuration de la recherche lexicale - Boost factors
+    # ==========================================
+    # CONFIGURATION RECHERCHE LEXICALE
+    # ==========================================
+    
+    # Boost factors
     BOOST_EXACT_PHRASE: float = float(os.environ.get("BOOST_EXACT_PHRASE", "10.0"))
     BOOST_MERCHANT_NAME: float = float(os.environ.get("BOOST_MERCHANT_NAME", "5.0"))
     BOOST_PRIMARY_DESCRIPTION: float = float(os.environ.get("BOOST_PRIMARY_DESCRIPTION", "3.0"))
     BOOST_SEARCHABLE_TEXT: float = float(os.environ.get("BOOST_SEARCHABLE_TEXT", "4.0"))
     BOOST_CLEAN_DESCRIPTION: float = float(os.environ.get("BOOST_CLEAN_DESCRIPTION", "2.5"))
     
-    # Configuration de la recherche lexicale - Options de requête
+    # Options de requête
     ENABLE_FUZZY: bool = os.environ.get("ENABLE_FUZZY", "true").lower() == "true"
     ENABLE_WILDCARDS: bool = os.environ.get("ENABLE_WILDCARDS", "true").lower() == "true"
     ENABLE_SYNONYMS: bool = os.environ.get("ENABLE_SYNONYMS", "true").lower() == "true"
     MINIMUM_SHOULD_MATCH: str = os.environ.get("MINIMUM_SHOULD_MATCH", "1")
-
-    # Configuration de la recherche lexicale - Options de requête
-    ENABLE_FUZZY: bool = os.environ.get("ENABLE_FUZZY", "true").lower() == "true"
-    ENABLE_WILDCARDS: bool = os.environ.get("ENABLE_WILDCARDS", "true").lower() == "true"
-    ENABLE_SYNONYMS: bool = os.environ.get("ENABLE_SYNONYMS", "true").lower() == "true"
-    MINIMUM_SHOULD_MATCH: str = os.environ.get("MINIMUM_SHOULD_MATCH", "1")
-
-    # 🔥 CONFIGURATION MANQUANTE À AJOUTER
     FUZZINESS_LEVEL: str = os.environ.get("FUZZINESS_LEVEL", "AUTO")
-
-    # 🔥 CONFIGURATION MANQUANTE À AJOUTER AUSSI
-    EMBEDDING_MAX_RETRIES: int = int(os.environ.get("EMBEDDING_MAX_RETRIES", "3"))
-
-    # 🔥 CONFIGURATION MANQUANTE : MODÈLE EMBEDDING OPENAI
-    OPENAI_EMBEDDING_MODEL: str = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-
-    # 🔥 CONFIGURATION MANQUANTE : CACHE DE RECHERCHE
-    SEARCH_CACHE_SIZE: int = int(os.environ.get("SEARCH_CACHE_SIZE", "1000"))
-
-    # 🔥 CONFIGURATION MANQUANTE : SEUIL SÉMANTIQUE (AUTRE NOM)
-    SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT", "0.5"))
-
-    # 🔥 CONFIGURATION MANQUANTE : CACHE EMBEDDINGS
-    EMBEDDING_CACHE_SIZE: int = int(os.environ.get("EMBEDDING_CACHE_SIZE", "5000"))
     
     # Configuration du highlighting
     HIGHLIGHT_ENABLED: bool = os.environ.get("HIGHLIGHT_ENABLED", "true").lower() == "true"
     HIGHLIGHT_FRAGMENT_SIZE: int = int(os.environ.get("HIGHLIGHT_FRAGMENT_SIZE", "150"))
     HIGHLIGHT_MAX_FRAGMENTS: int = int(os.environ.get("HIGHLIGHT_MAX_FRAGMENTS", "3"))
     
-    # Configuration de la recherche lexicale - Filtres
+    # Filtres lexicaux
     LEXICAL_MIN_SCORE: float = float(os.environ.get("LEXICAL_MIN_SCORE", "1.0"))
     LEXICAL_MAX_RESULTS: int = int(os.environ.get("LEXICAL_MAX_RESULTS", "50"))
     
-    # Configuration de la recherche sémantique - Seuils de similarité
+    # ==========================================
+    # CONFIGURATION RECHERCHE SÉMANTIQUE
+    # ==========================================
+    
+    # Seuils de similarité (noms principaux)
     SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SIMILARITY_THRESHOLD_DEFAULT", "0.5"))
     SIMILARITY_THRESHOLD_STRICT: float = float(os.environ.get("SIMILARITY_THRESHOLD_STRICT", "0.7"))
     SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SIMILARITY_THRESHOLD_LOOSE", "0.3"))
     
-    # Configuration de la recherche sémantique - Options
+    # Seuils de similarité (noms alternatifs pour compatibilité)
+    SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT", "0.5"))
+    SEMANTIC_SIMILARITY_THRESHOLD_STRICT: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_STRICT", "0.7"))
+    SEMANTIC_SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_LOOSE", "0.3"))
+    
+    # Options sémantiques
     SEMANTIC_MAX_RESULTS: int = int(os.environ.get("SEMANTIC_MAX_RESULTS", "50"))
     SEMANTIC_ENABLE_FILTERING: bool = os.environ.get("SEMANTIC_ENABLE_FILTERING", "true").lower() == "true"
     SEMANTIC_FALLBACK_UNFILTERED: bool = os.environ.get("SEMANTIC_FALLBACK_UNFILTERED", "true").lower() == "true"
+    SEMANTIC_FALLBACK_TO_UNFILTERED: bool = os.environ.get("SEMANTIC_FALLBACK_TO_UNFILTERED", "true").lower() == "true"
     
     # Configuration des recommandations
     RECOMMENDATION_ENABLED: bool = os.environ.get("RECOMMENDATION_ENABLED", "true").lower() == "true"
     RECOMMENDATION_THRESHOLD: float = float(os.environ.get("RECOMMENDATION_THRESHOLD", "0.6"))
+    SEMANTIC_RECOMMENDATION_ENABLED: bool = os.environ.get("SEMANTIC_RECOMMENDATION_ENABLED", "true").lower() == "true"
+    SEMANTIC_RECOMMENDATION_THRESHOLD: float = float(os.environ.get("SEMANTIC_RECOMMENDATION_THRESHOLD", "0.6"))
     
-    # Configuration du cache d'analyse de requêtes
+    # Options avancées sémantiques
+    SEMANTIC_ENABLE_QUERY_EXPANSION: bool = os.environ.get("SEMANTIC_ENABLE_QUERY_EXPANSION", "false").lower() == "true"
+    
+    # ==========================================
+    # CONFIGURATION RECHERCHE HYBRIDE ET FUSION
+    # ==========================================
+    
+    # Stratégies de fusion
+    DEFAULT_FUSION_STRATEGY: str = os.environ.get("DEFAULT_FUSION_STRATEGY", "weighted_sum")
+    SCORE_NORMALIZATION_METHOD: str = os.environ.get("SCORE_NORMALIZATION_METHOD", "min_max")
+    
+    # Facteurs RRF (Reciprocal Rank Fusion)
+    RRF_K: int = int(os.environ.get("RRF_K", "60"))
+    
+    # Seuils adaptatifs
+    ADAPTIVE_THRESHOLD: float = float(os.environ.get("ADAPTIVE_THRESHOLD", "0.1"))
+    ADAPTIVE_WEIGHTING: bool = os.environ.get("ADAPTIVE_WEIGHTING", "true").lower() == "true"
+    
+    # Facteurs de qualité
+    QUALITY_BOOST_FACTOR: float = float(os.environ.get("QUALITY_BOOST_FACTOR", "1.2"))
+    MIN_SCORE_THRESHOLD: float = float(os.environ.get("MIN_SCORE_THRESHOLD", "0.1"))
+    
+    # Déduplication et diversification
+    ENABLE_DEDUPLICATION: bool = os.environ.get("ENABLE_DEDUPLICATION", "true").lower() == "true"
+    DEDUP_SIMILARITY_THRESHOLD: float = float(os.environ.get("DEDUP_SIMILARITY_THRESHOLD", "0.95"))
+    ENABLE_DIVERSIFICATION: bool = os.environ.get("ENABLE_DIVERSIFICATION", "true").lower() == "true"
+    DIVERSITY_FACTOR: float = float(os.environ.get("DIVERSITY_FACTOR", "0.3"))
+    MAX_SAME_MERCHANT: int = int(os.environ.get("MAX_SAME_MERCHANT", "3"))
+    
+    # Options de fallback
+    ENABLE_FALLBACK: bool = os.environ.get("ENABLE_FALLBACK", "true").lower() == "true"
+    ENABLE_PARALLEL_SEARCH: bool = os.environ.get("ENABLE_PARALLEL_SEARCH", "true").lower() == "true"
+    
+    # ==========================================
+    # CONFIGURATION ÉVALUATION DE QUALITÉ
+    # ==========================================
+    
+    QUALITY_EXCELLENT_THRESHOLD: float = float(os.environ.get("QUALITY_EXCELLENT_THRESHOLD", "0.9"))
+    QUALITY_GOOD_THRESHOLD: float = float(os.environ.get("QUALITY_GOOD_THRESHOLD", "0.7"))
+    QUALITY_MEDIUM_THRESHOLD: float = float(os.environ.get("QUALITY_MEDIUM_THRESHOLD", "0.5"))
+    QUALITY_POOR_THRESHOLD: float = float(os.environ.get("QUALITY_POOR_THRESHOLD", "0.3"))
+    
+    # Facteurs de qualité
+    MIN_RESULTS_FOR_GOOD_QUALITY: int = int(os.environ.get("MIN_RESULTS_FOR_GOOD_QUALITY", "3"))
+    MAX_RESULTS_FOR_QUALITY_EVAL: int = int(os.environ.get("MAX_RESULTS_FOR_QUALITY_EVAL", "10"))
+    DIVERSITY_THRESHOLD: float = float(os.environ.get("DIVERSITY_THRESHOLD", "0.6"))
+    
+    # ==========================================
+    # CONFIGURATION CACHE ET OPTIMISATION
+    # ==========================================
+    
+    # Cache d'analyse de requêtes
     QUERY_ANALYSIS_CACHE_ENABLED: bool = os.environ.get("QUERY_ANALYSIS_CACHE_ENABLED", "true").lower() == "true"
     QUERY_ANALYSIS_CACHE_TTL: int = int(os.environ.get("QUERY_ANALYSIS_CACHE_TTL", "1800"))
     QUERY_ANALYSIS_CACHE_MAX_SIZE: int = int(os.environ.get("QUERY_ANALYSIS_CACHE_MAX_SIZE", "500"))
@@ -280,17 +335,6 @@ class GlobalSettings(BaseSettings):
     # Configuration du warmup
     WARMUP_ENABLED: bool = os.environ.get("WARMUP_ENABLED", "true").lower() == "true"
     WARMUP_QUERIES: str = os.environ.get("WARMUP_QUERIES", "restaurant,virement,carte bancaire,supermarché,essence,pharmacie")
-    
-    # Configuration de l'évaluation de qualité
-    QUALITY_EXCELLENT_THRESHOLD: float = float(os.environ.get("QUALITY_EXCELLENT_THRESHOLD", "0.9"))
-    QUALITY_GOOD_THRESHOLD: float = float(os.environ.get("QUALITY_GOOD_THRESHOLD", "0.7"))
-    QUALITY_MEDIUM_THRESHOLD: float = float(os.environ.get("QUALITY_MEDIUM_THRESHOLD", "0.5"))
-    QUALITY_POOR_THRESHOLD: float = float(os.environ.get("QUALITY_POOR_THRESHOLD", "0.3"))
-    
-    # Facteurs de qualité
-    MIN_RESULTS_FOR_GOOD_QUALITY: int = int(os.environ.get("MIN_RESULTS_FOR_GOOD_QUALITY", "3"))
-    MAX_RESULTS_FOR_QUALITY_EVAL: int = int(os.environ.get("MAX_RESULTS_FOR_QUALITY_EVAL", "10"))
-    DIVERSITY_THRESHOLD: float = float(os.environ.get("DIVERSITY_THRESHOLD", "0.6"))
     
     # Configuration de l'amélioration automatique
     AUTO_QUERY_OPTIMIZATION: bool = os.environ.get("AUTO_QUERY_OPTIMIZATION", "true").lower() == "true"

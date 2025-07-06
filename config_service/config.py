@@ -227,11 +227,23 @@ class GlobalSettings(BaseSettings):
     ENABLE_SYNONYMS: bool = os.environ.get("ENABLE_SYNONYMS", "true").lower() == "true"
     MINIMUM_SHOULD_MATCH: str = os.environ.get("MINIMUM_SHOULD_MATCH", "1")
 
-# 🔥 CONFIGURATION MANQUANTE À AJOUTER
+    # 🔥 CONFIGURATION MANQUANTE À AJOUTER
     FUZZINESS_LEVEL: str = os.environ.get("FUZZINESS_LEVEL", "AUTO")
 
-# 🔥 CONFIGURATION MANQUANTE À AJOUTER AUSSI
+    # 🔥 CONFIGURATION MANQUANTE À AJOUTER AUSSI
     EMBEDDING_MAX_RETRIES: int = int(os.environ.get("EMBEDDING_MAX_RETRIES", "3"))
+
+    # 🔥 CONFIGURATION MANQUANTE : MODÈLE EMBEDDING OPENAI
+    OPENAI_EMBEDDING_MODEL: str = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+    # 🔥 CONFIGURATION MANQUANTE : CACHE DE RECHERCHE
+    SEARCH_CACHE_SIZE: int = int(os.environ.get("SEARCH_CACHE_SIZE", "1000"))
+
+    # 🔥 CONFIGURATION MANQUANTE : SEUIL SÉMANTIQUE (AUTRE NOM)
+    SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT", "0.5"))
+
+    # 🔥 CONFIGURATION MANQUANTE : CACHE EMBEDDINGS
+    EMBEDDING_CACHE_SIZE: int = int(os.environ.get("EMBEDDING_CACHE_SIZE", "5000"))
     
     # Configuration du highlighting
     HIGHLIGHT_ENABLED: bool = os.environ.get("HIGHLIGHT_ENABLED", "true").lower() == "true"

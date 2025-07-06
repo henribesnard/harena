@@ -220,6 +220,29 @@ class GlobalSettings(BaseSettings):
     PERFORMANCE_ALERTING: bool = os.environ.get("PERFORMANCE_ALERTING", "false").lower() == "true"
     
     # ==========================================
+    # CONFIGURATION RECHERCHE HYBRIDE ET OPTIMISATIONS
+    # ==========================================
+    
+    # Fallback et résilience
+    ENABLE_FALLBACK: bool = os.environ.get("ENABLE_FALLBACK", "true").lower() == "true"
+    MIN_ENGINE_SUCCESS: int = int(os.environ.get("MIN_ENGINE_SUCCESS", "1"))
+    
+    # Optimisations de performance
+    ENABLE_PARALLEL_SEARCH: bool = os.environ.get("ENABLE_PARALLEL_SEARCH", "true").lower() == "true"
+    ENABLE_EARLY_TERMINATION: bool = os.environ.get("ENABLE_EARLY_TERMINATION", "false").lower() == "true"
+    EARLY_TERMINATION_THRESHOLD: float = float(os.environ.get("EARLY_TERMINATION_THRESHOLD", "0.95"))
+    
+    # Adaptation automatique des poids
+    ADAPTIVE_WEIGHTING: bool = os.environ.get("ADAPTIVE_WEIGHTING", "true").lower() == "true"
+    
+    # Variables de configuration pour search_service core
+    DEFAULT_LIMIT: int = int(os.environ.get("DEFAULT_LIMIT", "20"))
+    ELASTICSEARCH_INDEX: str = os.environ.get("ELASTICSEARCH_INDEX", "harena_transactions")
+    
+    # Seuils de scores minimums
+    MIN_SCORE_THRESHOLD: float = float(os.environ.get("MIN_SCORE_THRESHOLD", "0.1"))
+    
+    # ==========================================
     # CONFIGURATION RECHERCHE LEXICALE
     # ==========================================
     

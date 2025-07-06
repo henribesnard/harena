@@ -220,6 +220,18 @@ class GlobalSettings(BaseSettings):
     ENABLE_WILDCARDS: bool = os.environ.get("ENABLE_WILDCARDS", "true").lower() == "true"
     ENABLE_SYNONYMS: bool = os.environ.get("ENABLE_SYNONYMS", "true").lower() == "true"
     MINIMUM_SHOULD_MATCH: str = os.environ.get("MINIMUM_SHOULD_MATCH", "1")
+
+    # Configuration de la recherche lexicale - Options de requête
+    ENABLE_FUZZY: bool = os.environ.get("ENABLE_FUZZY", "true").lower() == "true"
+    ENABLE_WILDCARDS: bool = os.environ.get("ENABLE_WILDCARDS", "true").lower() == "true"
+    ENABLE_SYNONYMS: bool = os.environ.get("ENABLE_SYNONYMS", "true").lower() == "true"
+    MINIMUM_SHOULD_MATCH: str = os.environ.get("MINIMUM_SHOULD_MATCH", "1")
+
+# 🔥 CONFIGURATION MANQUANTE À AJOUTER
+    FUZZINESS_LEVEL: str = os.environ.get("FUZZINESS_LEVEL", "AUTO")
+
+# 🔥 CONFIGURATION MANQUANTE À AJOUTER AUSSI
+    EMBEDDING_MAX_RETRIES: int = int(os.environ.get("EMBEDDING_MAX_RETRIES", "3"))
     
     # Configuration du highlighting
     HIGHLIGHT_ENABLED: bool = os.environ.get("HIGHLIGHT_ENABLED", "true").lower() == "true"

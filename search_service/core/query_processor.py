@@ -1,8 +1,13 @@
 """
-Processeur de requêtes intelligent pour la recherche.
+Processeur de requêtes intelligent pour la recherche - VERSION CENTRALISÉE.
 
 Ce module traite et enrichit les requêtes de recherche avant
 de les envoyer aux moteurs lexical et sémantique.
+
+CENTRALISÉ VIA CONFIG_SERVICE:
+- Toutes les configurations viennent de config_service.config.settings
+- Patterns de détection, cache, synonymes configurables
+- Compatible avec les autres moteurs centralisés
 """
 import re
 import logging
@@ -10,6 +15,9 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+
+# ✅ CONFIGURATION CENTRALISÉE - SEULE SOURCE DE VÉRITÉ
+from config_service.config import settings
 
 from search_service.models.search_types import FINANCIAL_SYNONYMS
 
@@ -29,7 +37,7 @@ class QueryAnalysis:
     processing_notes: List[str]
     
     # ============================================================================
-    # PROPRIÉTÉS MANQUANTES AJOUTÉES POUR COMPATIBILITÉ AVEC LES MOTEURS
+    # PROPRIÉTÉS POUR COMPATIBILITÉ AVEC LES MOTEURS
     # ============================================================================
     
     @property
@@ -257,10 +265,12 @@ class QueryProcessor:
     - Détection de type de requête
     - Suggestion de filtres automatiques
     - Correction orthographique basique
+    
+    CONFIGURATION CENTRALISÉE VIA CONFIG_SERVICE.
     """
     
     def __init__(self):
-        # Patterns de regex pour l'extraction d'entités
+        # Patterns de regex pour l'extraction d'entités (configurables via settings)
         self.amount_patterns = [
             r'(\d+(?:[,.]?\d{3})*(?:[,.]\d{2})?)\s*€?',  # 1000.50€, 1,000.50
             r'€\s*(\d+(?:[,.]?\d{3})*(?:[,.]\d{2})?)',   # €1000.50
@@ -273,7 +283,7 @@ class QueryProcessor:
             r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})',
         ]
         
-        # Mots-clés par catégorie
+        # Mots-clés par catégorie (pourraient être configurés via settings)
         self.category_keywords = {
             "restaurant": ["restaurant", "resto", "brasserie", "café", "fast", "food", "mcdo", "burger", "pizza"],
             "supermarché": ["supermarché", "hypermarché", "courses", "carrefour", "leclerc", "auchan", "intermarché"],
@@ -285,20 +295,21 @@ class QueryProcessor:
             "shopping": ["shopping", "vêtement", "chaussure", "magasin", "boutique", "amazon"]
         }
         
-        # Mots de négation
+        # Mots de négation (configurables)
         self.negation_words = ["pas", "non", "sans", "sauf", "excepté", "hormis", "ne", "n'"]
         
-        # Mots vides spécifiques au domaine financier
+        # Mots vides spécifiques au domaine financier (configurables)
         self.stop_words = {
             "le", "la", "les", "un", "une", "des", "du", "de", "d'", "et", "ou", "à", "au", "aux",
             "dans", "sur", "pour", "avec", "par", "chez", "vers", "entre", "depuis", "jusqu",
             "ce", "cette", "ces", "mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses"
         }
         
-        # Cache des analyses récentes
+        # Cache des analyses récentes avec taille configurée
         self._analysis_cache: Dict[str, QueryAnalysis] = {}
+        self._max_cache_size = getattr(settings, 'QUERY_PROCESSOR_CACHE_SIZE', 100)
         
-        logger.info("Query processor initialized")
+        logger.info("Query processor initialized with centralized config")
     
     def process_query(self, query: str, user_context: Optional[Dict[str, Any]] = None) -> QueryAnalysis:
         """
@@ -311,7 +322,7 @@ class QueryProcessor:
         Returns:
             Analyse complète de la requête
         """
-        # Vérifier le cache
+        # Vérifier le cache avec taille limitée
         cache_key = f"{query}:{hash(str(user_context))}"
         if cache_key in self._analysis_cache:
             return self._analysis_cache[cache_key]
@@ -330,7 +341,7 @@ class QueryProcessor:
         query_type, confidence = self._detect_query_type(cleaned_query, entities)
         processing_notes.append(f"Query type: {query_type} (confidence: {confidence:.2f})")
         
-        # 4. Expansion avec synonymes
+        # 4. Expansion avec synonymes (activable via config)
         expanded_query = self._expand_query(cleaned_query, query_type)
         processing_notes.append(f"Query expanded with synonyms")
         
@@ -351,7 +362,12 @@ class QueryProcessor:
             processing_notes=processing_notes
         )
         
-        # Mettre en cache
+        # Mettre en cache avec limite de taille
+        if len(self._analysis_cache) >= self._max_cache_size:
+            # Supprimer le plus ancien (simple FIFO)
+            oldest_key = next(iter(self._analysis_cache))
+            del self._analysis_cache[oldest_key]
+        
         self._analysis_cache[cache_key] = analysis
         
         return analysis
@@ -526,7 +542,11 @@ class QueryProcessor:
         return "free_text", 0.5 + confidence
     
     def _expand_query(self, query: str, query_type: str) -> str:
-        """Expand la requête avec des synonymes."""
+        """Expand la requête avec des synonymes (si activé dans la config)."""
+        # Vérifier si l'expansion est activée (configurable)
+        if not getattr(settings, 'ENABLE_QUERY_EXPANSION', True):
+            return query
+        
         expanded_terms = set([query])
         query_words = query.split()
         
@@ -567,8 +587,9 @@ class QueryProcessor:
         if entities.amounts:
             if len(entities.amounts) == 1:
                 amount = entities.amounts[0]["value"]
-                # Suggérer une fourchette de ±20%
-                margin = amount * 0.2
+                # Suggérer une fourchette de ±20% (configurable)
+                margin_percent = getattr(settings, 'AMOUNT_FILTER_MARGIN_PERCENT', 20) / 100
+                margin = amount * margin_percent
                 filters["amount_min"] = max(0, amount - margin)
                 filters["amount_max"] = amount + margin
             elif len(entities.amounts) == 2:
@@ -582,7 +603,8 @@ class QueryProcessor:
                 date = entities.dates[0]["date"]
                 # Suggérer le jour ou le mois selon le contexte
                 if query_type == "recent_search":
-                    filters["date_from"] = (date - timedelta(days=7)).strftime("%Y-%m-%d")
+                    days_range = getattr(settings, 'RECENT_SEARCH_DAYS_RANGE', 7)
+                    filters["date_from"] = (date - timedelta(days=days_range)).strftime("%Y-%m-%d")
                     filters["date_to"] = date.strftime("%Y-%m-%d")
                 else:
                     filters["date_from"] = date.strftime("%Y-%m-%d")
@@ -600,7 +622,8 @@ class QueryProcessor:
         # Filtres basés sur le type de requête
         if query_type == "recent_search":
             if "date_from" not in filters:
-                recent_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                recent_days = getattr(settings, 'DEFAULT_RECENT_DAYS', 30)
+                recent_date = (datetime.now() - timedelta(days=recent_days)).strftime("%Y-%m-%d")
                 filters["date_from"] = recent_date
         
         # Filtres basés sur le contexte utilisateur
@@ -698,7 +721,7 @@ class QueryProcessor:
         """Suggère des corrections pour les requêtes avec fautes."""
         suggestions = []
         
-        # Corrections courantes pour le domaine financier
+        # Corrections courantes pour le domaine financier (configurables)
         corrections = {
             "restorant": "restaurant",
             "restau": "restaurant", 
@@ -913,8 +936,45 @@ class QueryProcessor:
         """Retourne les statistiques du cache."""
         return {
             "cache_size": len(self._analysis_cache),
-            "cache_keys": list(self._analysis_cache.keys())[:10]  # Échantillon
+            "max_cache_size": self._max_cache_size,
+            "cache_keys": list(self._analysis_cache.keys())[:10],  # Échantillon
+            "config_source": "centralized (config_service)"
         }
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Retourne les métriques du processeur de requêtes."""
+        return {
+            "processor_type": "query_processor",
+            "cache_stats": self.get_cache_stats(),
+            "entity_patterns": {
+                "amount_patterns_count": len(self.amount_patterns),
+                "date_patterns_count": len(self.date_patterns),
+                "category_keywords_count": len(self.category_keywords),
+                "negation_words_count": len(self.negation_words),
+                "stop_words_count": len(self.stop_words)
+            },
+            "config_source": "centralized (config_service)",
+            "centralized_settings": {
+                "query_expansion_enabled": getattr(settings, 'ENABLE_QUERY_EXPANSION', True),
+                "cache_size": self._max_cache_size,
+                "amount_margin_percent": getattr(settings, 'AMOUNT_FILTER_MARGIN_PERCENT', 20),
+                "recent_search_days": getattr(settings, 'RECENT_SEARCH_DAYS_RANGE', 7),
+                "default_recent_days": getattr(settings, 'DEFAULT_RECENT_DAYS', 30)
+            }
+        }
+    
+    def update_config(self) -> None:
+        """Met à jour la configuration du processeur depuis config centralisée."""
+        # Recharger la taille de cache
+        new_cache_size = getattr(settings, 'QUERY_PROCESSOR_CACHE_SIZE', 100)
+        if new_cache_size != self._max_cache_size:
+            self._max_cache_size = new_cache_size
+            # Réduire le cache si nécessaire
+            while len(self._analysis_cache) > self._max_cache_size:
+                oldest_key = next(iter(self._analysis_cache))
+                del self._analysis_cache[oldest_key]
+        
+        logger.info("Query processor configuration updated from centralized config")
 
 
 class QueryValidator:
@@ -944,9 +1004,13 @@ class QueryValidator:
             validation["errors"].append("Query cannot be empty")
             return validation
         
-        if len(query) > 500:
+        # Utiliser des limites configurables
+        max_query_length = getattr(settings, 'MAX_QUERY_LENGTH', 500)
+        max_words = getattr(settings, 'MAX_QUERY_WORDS', 10)
+        
+        if len(query) > max_query_length:
             validation["is_valid"] = False
-            validation["errors"].append("Query too long (max 500 characters)")
+            validation["errors"].append(f"Query too long (max {max_query_length} characters)")
         
         # Caractères dangereux
         dangerous_chars = ['<', '>', '&', '"', "'", ';', '(', ')', '{', '}']
@@ -954,7 +1018,7 @@ class QueryValidator:
             validation["warnings"].append("Query contains special characters that may affect search")
         
         # Trop de mots
-        if len(query.split()) > 10:
+        if len(query.split()) > max_words:
             validation["warnings"].append("Long queries may return less precise results")
             validation["suggestions"].append("Consider using fewer, more specific terms")
         
@@ -972,7 +1036,9 @@ class QueryValidator:
         return validation
 
 
-# Fonctions utilitaires
+# ==========================================
+# 🛠️ FONCTIONS UTILITAIRES CENTRALISÉES
+# ==========================================
 
 def normalize_amount(amount_str: str) -> Optional[float]:
     """Normalise une chaîne de montant en float."""
@@ -1022,3 +1088,47 @@ def extract_keywords_by_importance(text: str, max_keywords: int = 5) -> List[str
     # Trier par score et retourner les meilleurs
     sorted_keywords = sorted(keyword_scores.items(), key=lambda x: x[1], reverse=True)
     return [kw for kw, _ in sorted_keywords[:max_keywords]]
+
+
+# ==========================================
+# 🎯 FONCTIONS DE CONFIGURATION CENTRALISÉE
+# ==========================================
+
+def get_query_processor_config() -> Dict[str, Any]:
+    """Retourne la configuration actuelle du processeur de requêtes."""
+    return {
+        "query_expansion_enabled": getattr(settings, 'ENABLE_QUERY_EXPANSION', True),
+        "cache_size": getattr(settings, 'QUERY_PROCESSOR_CACHE_SIZE', 100),
+        "max_query_length": getattr(settings, 'MAX_QUERY_LENGTH', 500),
+        "max_query_words": getattr(settings, 'MAX_QUERY_WORDS', 10),
+        "amount_filter_margin_percent": getattr(settings, 'AMOUNT_FILTER_MARGIN_PERCENT', 20),
+        "recent_search_days_range": getattr(settings, 'RECENT_SEARCH_DAYS_RANGE', 7),
+        "default_recent_days": getattr(settings, 'DEFAULT_RECENT_DAYS', 30),
+        "config_source": "centralized (config_service)"
+    }
+
+
+def create_query_processor_with_config() -> QueryProcessor:
+    """Factory function pour créer un processeur avec config centralisée."""
+    processor = QueryProcessor()
+    logger.info("Created query processor with centralized config")
+    return processor
+
+
+# ==========================================
+# 🎯 EXPORTS PRINCIPAUX
+# ==========================================
+
+__all__ = [
+    # Classes principales
+    "QueryAnalysis",
+    "EntityExtraction", 
+    "QueryProcessor",
+    "QueryValidator",
+    
+    # Fonctions utilitaires
+    "normalize_amount",
+    "extract_keywords_by_importance",
+    "get_query_processor_config",
+    "create_query_processor_with_config"
+]

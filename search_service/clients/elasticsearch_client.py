@@ -117,13 +117,13 @@ class ElasticsearchClient(BaseClient):
             return False
     
     # ============================================================================
-    # MÉTHODES MANQUANTES AJOUTÉES POUR COMPATIBILITÉ AVEC LES MOTEURS
+    # MÉTHODES GÉNÉRIQUES AVEC VALIDATION DÉFENSIVE AJOUTÉE
     # ============================================================================
     
     async def search(
         self,
         index: str,
-        body: Dict[str, Any],
+        body: Optional[Dict[str, Any]],
         size: int = 20,
         from_: int = 0
     ) -> Dict[str, Any]:
@@ -141,7 +141,20 @@ class ElasticsearchClient(BaseClient):
             
         Returns:
             Résultats de la recherche
+            
+        Raises:
+            ValueError: Si body est None ou invalide
         """
+        # ✅ VALIDATION DÉFENSIVE CRITIQUE AJOUTÉE
+        if body is None:
+            logger.error("Search body is None - this indicates a bug in query construction")
+            logger.error(f"Called with index={index}, size={size}, from_={from_}")
+            raise ValueError("Search body cannot be None. Check query construction in calling code.")
+        
+        if not isinstance(body, dict):
+            logger.error(f"Search body must be a dict, got {type(body)}: {body}")
+            raise ValueError(f"Search body must be a dictionary, got {type(body)}")
+        
         # Ajouter size et from_ au body si pas déjà présents
         if "size" not in body:
             body["size"] = size
@@ -200,6 +213,15 @@ class ElasticsearchClient(BaseClient):
         Returns:
             Résultat du comptage
         """
+        # Validation défensive également ici
+        if body is None:
+            logger.error("Count body is None - this indicates a bug in query construction")
+            raise ValueError("Count body cannot be None")
+        
+        if not isinstance(body, dict):
+            logger.error(f"Count body must be a dict, got {type(body)}")
+            raise ValueError(f"Count body must be a dictionary, got {type(body)}")
+        
         async def _count():
             async with self.session.post(
                 f"{self.base_url}/{index}/_count",

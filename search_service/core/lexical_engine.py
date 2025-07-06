@@ -456,6 +456,8 @@ class LexicalSearchEngine:
         if debug:
             es_query["explain"] = True
         
+        # ✅ FIX CRITIQUE: RETOURNER LA REQUÊTE CONSTRUITE
+        return es_query
     
     def _add_filters_to_query(self, es_query: Dict[str, Any], filters: Dict[str, Any]) -> None:
         """Ajoute les filtres à la requête Elasticsearch."""

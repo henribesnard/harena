@@ -14,14 +14,18 @@ class GlobalSettings(BaseSettings):
     Configuration globale pour tous les services Harena.
     Cette classe centralise toutes les variables d'environnement utilisées par les différents services.
     """
-    # Configuration générale de l'application
+    # ==========================================
+    # CONFIGURATION GÉNÉRALE DE L'APPLICATION
+    # ==========================================
     PROJECT_NAME: str = "Harena Finance Platform"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 8))  # 8 jours par défaut
     ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
     
-    # Configuration base de données
+    # ==========================================
+    # CONFIGURATION BASE DE DONNÉES
+    # ==========================================
     POSTGRES_SERVER: str = os.environ.get("POSTGRES_SERVER", "localhost")
     POSTGRES_USER: str = os.environ.get("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.environ.get("POSTGRES_PASSWORD", "")
@@ -30,17 +34,23 @@ class GlobalSettings(BaseSettings):
     DATABASE_URL: Optional[str] = os.environ.get("DATABASE_URL", None)
     SQLALCHEMY_DATABASE_URI: Optional[str] = None
     
-    # Configuration Bridge API
+    # ==========================================
+    # CONFIGURATION BRIDGE API
+    # ==========================================
     BRIDGE_API_URL: str = os.environ.get("BRIDGE_API_URL", "https://api.bridgeapi.io/v3")
     BRIDGE_API_VERSION: str = os.environ.get("BRIDGE_API_VERSION", "2025-01-15")
     BRIDGE_CLIENT_ID: str = os.environ.get("BRIDGE_CLIENT_ID", "")
     BRIDGE_CLIENT_SECRET: str = os.environ.get("BRIDGE_CLIENT_SECRET", "")
     
-    # Configuration des webhooks
+    # ==========================================
+    # CONFIGURATION DES WEBHOOKS
+    # ==========================================
     BRIDGE_WEBHOOK_SECRET: str = os.environ.get("BRIDGE_WEBHOOK_SECRET", "")
     WEBHOOK_BASE_URL: str = os.environ.get("WEBHOOK_BASE_URL", "https://api.harena.app")
     
-    # Configuration d'alertes avec valeurs par défaut
+    # ==========================================
+    # CONFIGURATION D'ALERTES ET EMAIL
+    # ==========================================
     ALERT_EMAIL_ENABLED: bool = os.environ.get("ALERT_EMAIL_ENABLED", "False").lower() == "true"
     ALERT_EMAIL_FROM: str = os.environ.get("ALERT_EMAIL_FROM", "alerts@harena.app")
     ALERT_EMAIL_TO: str = os.environ.get("ALERT_EMAIL_TO", "admin@harena.app")
@@ -49,23 +59,31 @@ class GlobalSettings(BaseSettings):
     SMTP_USERNAME: str = os.environ.get("SMTP_USERNAME", "apikey")
     SMTP_PASSWORD: str = os.environ.get("SMTP_PASSWORD", "")
     
-    # Configuration logging
+    # ==========================================
+    # CONFIGURATION LOGGING
+    # ==========================================
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
     LOG_FILE: str = os.environ.get("LOG_FILE", "harena.log")
     LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "False").lower() == "true"
     
-    # Configuration SearchBox pour Elasticsearch
+    # ==========================================
+    # CONFIGURATION ELASTICSEARCH / SEARCHBOX / BONSAI
+    # ==========================================
     SEARCHBOX_URL: str = os.environ.get("SEARCHBOX_URL", "")
     SEARCHBOX_API_KEY: str = os.environ.get("SEARCHBOX_API_KEY", "")
     BONSAI_URL: str = os.environ.get("BONSAI_URL", "")
-    BONSAI_ACCESS_KEY : str = os.environ.get("BONSAI_ACCESS_KEY", "")
-    BONSAI_SECRET_KEY : str = os.environ.get("BONSAI_SECRET_KEY", "")
+    BONSAI_ACCESS_KEY: str = os.environ.get("BONSAI_ACCESS_KEY", "")
+    BONSAI_SECRET_KEY: str = os.environ.get("BONSAI_SECRET_KEY", "")
     
-    # Configuration Qdrant pour le stockage vectoriel
+    # ==========================================
+    # CONFIGURATION QDRANT POUR LE STOCKAGE VECTORIEL
+    # ==========================================
     QDRANT_URL: str = os.environ.get("QDRANT_URL", "")
     QDRANT_API_KEY: str = os.environ.get("QDRANT_API_KEY", "")
     
-    # Configuration DeepSeek
+    # ==========================================
+    # CONFIGURATION DEEPSEEK
+    # ==========================================
     DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
     DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     DEEPSEEK_CHAT_MODEL: str = os.environ.get("DEEPSEEK_CHAT_MODEL", "deepseek-chat")
@@ -75,47 +93,185 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_TOP_P: float = float(os.environ.get("DEEPSEEK_TOP_P", "0.95"))
     DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "60"))
     
-    # Configuration OpenAI pour les embeddings
+    # ==========================================
+    # CONFIGURATION OPENAI POUR LES EMBEDDINGS
+    # ==========================================
     OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
     EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
     
-    # Configuration Cohere pour le reranking
+    # ==========================================
+    # CONFIGURATION COHERE POUR LE RERANKING
+    # ==========================================
     COHERE_KEY: str = os.environ.get("COHERE_KEY", "")
     
-    # Configuration de performance et cache
+    # ==========================================
+    # CONFIGURATION DE PERFORMANCE ET CACHE
+    # ==========================================
     BATCH_SIZE: int = int(os.environ.get("BATCH_SIZE", "32"))
     CACHE_TTL: int = int(os.environ.get("CACHE_TTL", "3600"))
     MEMORY_CACHE_TTL: int = int(os.environ.get("MEMORY_CACHE_TTL", "3600"))
     MEMORY_CACHE_MAX_SIZE: int = int(os.environ.get("MEMORY_CACHE_MAX_SIZE", "10000"))
     
-    # Configuration de taux de limite
+    # ==========================================
+    # CONFIGURATION DE TAUX DE LIMITE
+    # ==========================================
     RATE_LIMIT_ENABLED: bool = os.environ.get("RATE_LIMIT_ENABLED", "True").lower() == "true"
     RATE_LIMIT_PERIOD: int = int(os.environ.get("RATE_LIMIT_PERIOD", "60"))
     RATE_LIMIT_REQUESTS: int = int(os.environ.get("RATE_LIMIT_REQUESTS", "60"))
     
-    # Paramètres de recherche par défaut
-    DEFAULT_LEXICAL_WEIGHT: float = float(os.environ.get("DEFAULT_LEXICAL_WEIGHT", "0.5"))
-    DEFAULT_SEMANTIC_WEIGHT: float = float(os.environ.get("DEFAULT_SEMANTIC_WEIGHT", "0.5"))
+    # ==========================================
+    # PARAMÈTRES DE RECHERCHE PAR DÉFAUT
+    # ==========================================
+    DEFAULT_LEXICAL_WEIGHT: float = float(os.environ.get("DEFAULT_LEXICAL_WEIGHT", "0.6"))
+    DEFAULT_SEMANTIC_WEIGHT: float = float(os.environ.get("DEFAULT_SEMANTIC_WEIGHT", "0.4"))
     DEFAULT_TOP_K_INITIAL: int = int(os.environ.get("DEFAULT_TOP_K_INITIAL", "50"))
     DEFAULT_TOP_K_FINAL: int = int(os.environ.get("DEFAULT_TOP_K_FINAL", "10"))
     
-    # Configuration des coûts (pour le comptage de tokens)
+    # ==========================================
+    # CONFIGURATION DES COÛTS (POUR LE COMPTAGE DE TOKENS)
+    # ==========================================
     ENABLE_TOKEN_COUNTING: bool = os.environ.get("ENABLE_TOKEN_COUNTING", "True").lower() == "true"
     COST_PER_1K_INPUT_TOKENS: float = float(os.environ.get("COST_PER_1K_INPUT_TOKENS", "0.0005"))
     COST_PER_1K_OUTPUT_TOKENS: float = float(os.environ.get("COST_PER_1K_OUTPUT_TOKENS", "0.0015"))
     
-    # Configuration de conversation
+    # ==========================================
+    # CONFIGURATION DE CONVERSATION
+    # ==========================================
     MAX_CONVERSATION_HISTORY: int = int(os.environ.get("MAX_CONVERSATION_HISTORY", "20"))
     DEFAULT_SYSTEM_PROMPT: str = os.environ.get("DEFAULT_SYSTEM_PROMPT", 
         "Vous êtes Harena, un assistant financier intelligent qui aide les utilisateurs à comprendre et gérer leurs finances personnelles.")
     
-    # URLs des services
+    # ==========================================
+    # URLS DES SERVICES
+    # ==========================================
     USER_SERVICE_URL: str = os.environ.get("USER_SERVICE_URL", "")
     SYNC_SERVICE_URL: str = os.environ.get("SYNC_SERVICE_URL", "")
     TRANSACTION_VECTOR_SERVICE_URL: str = os.environ.get("TRANSACTION_VECTOR_SERVICE_URL", "")
     
-    # Configuration CORS
+    # ==========================================
+    # CONFIGURATION CORS
+    # ==========================================
     CORS_ORIGINS: str = os.environ.get("CORS_ORIGINS", "https://app.harena.finance")
+    
+    # ==========================================
+    # CONFIGURATION SEARCH SERVICE
+    # ==========================================
+    
+    # Configuration générale du search service
+    SEARCH_SERVICE_NAME: str = os.environ.get("SEARCH_SERVICE_NAME", "search_service")
+    SEARCH_SERVICE_VERSION: str = os.environ.get("SEARCH_SERVICE_VERSION", "1.0.0")
+    SEARCH_SERVICE_DEBUG: bool = os.environ.get("SEARCH_SERVICE_DEBUG", "false").lower() == "true"
+    
+    # Timeouts des services externes
+    ELASTICSEARCH_TIMEOUT: float = float(os.environ.get("ELASTICSEARCH_TIMEOUT", "5.0"))
+    QDRANT_TIMEOUT: float = float(os.environ.get("QDRANT_TIMEOUT", "8.0"))
+    OPENAI_TIMEOUT: float = float(os.environ.get("OPENAI_TIMEOUT", "10.0"))
+    
+    # Configuration du cache de recherche
+    SEARCH_CACHE_ENABLED: bool = os.environ.get("SEARCH_CACHE_ENABLED", "true").lower() == "true"
+    SEARCH_CACHE_TTL: int = int(os.environ.get("SEARCH_CACHE_TTL", "300"))
+    SEARCH_CACHE_MAX_SIZE: int = int(os.environ.get("SEARCH_CACHE_MAX_SIZE", "1000"))
+    
+    # Configuration de la recherche hybride
+    DEFAULT_SEARCH_TYPE: str = os.environ.get("DEFAULT_SEARCH_TYPE", "hybrid")
+    MIN_LEXICAL_SCORE: float = float(os.environ.get("MIN_LEXICAL_SCORE", "1.0"))
+    MIN_SEMANTIC_SCORE: float = float(os.environ.get("MIN_SEMANTIC_SCORE", "0.5"))
+    MAX_RESULTS_PER_ENGINE: int = int(os.environ.get("MAX_RESULTS_PER_ENGINE", "50"))
+    
+    # Configuration des embeddings
+    EMBEDDING_DIMENSIONS: int = int(os.environ.get("EMBEDDING_DIMENSIONS", "1536"))
+    EMBEDDING_BATCH_SIZE: int = int(os.environ.get("EMBEDDING_BATCH_SIZE", "100"))
+    EMBEDDING_CACHE_TTL: int = int(os.environ.get("EMBEDDING_CACHE_TTL", "3600"))
+    EMBEDDING_CACHE_ENABLED: bool = os.environ.get("EMBEDDING_CACHE_ENABLED", "true").lower() == "true"
+    EMBEDDING_CACHE_MAX_SIZE: int = int(os.environ.get("EMBEDDING_CACHE_MAX_SIZE", "10000"))
+    
+    # Configuration de pagination
+    DEFAULT_SEARCH_LIMIT: int = int(os.environ.get("DEFAULT_SEARCH_LIMIT", "20"))
+    MAX_SEARCH_LIMIT: int = int(os.environ.get("MAX_SEARCH_LIMIT", "100"))
+    
+    # Configuration des timeouts de recherche
+    SEARCH_TIMEOUT: float = float(os.environ.get("SEARCH_TIMEOUT", "15.0"))
+    HEALTH_CHECK_TIMEOUT: float = float(os.environ.get("HEALTH_CHECK_TIMEOUT", "5.0"))
+    QUICK_SEARCH_TIMEOUT: float = float(os.environ.get("QUICK_SEARCH_TIMEOUT", "3.0"))
+    STANDARD_SEARCH_TIMEOUT: float = float(os.environ.get("STANDARD_SEARCH_TIMEOUT", "8.0"))
+    COMPLEX_SEARCH_TIMEOUT: float = float(os.environ.get("COMPLEX_SEARCH_TIMEOUT", "15.0"))
+    
+    # Configuration des retry
+    MAX_RETRIES: int = int(os.environ.get("MAX_RETRIES", "3"))
+    RETRY_DELAY: float = float(os.environ.get("RETRY_DELAY", "1.0"))
+    
+    # Configuration du monitoring
+    METRICS_ENABLED: bool = os.environ.get("METRICS_ENABLED", "true").lower() == "true"
+    DETAILED_LOGGING: bool = os.environ.get("DETAILED_LOGGING", "false").lower() == "true"
+    PERFORMANCE_MONITORING: bool = os.environ.get("PERFORMANCE_MONITORING", "true").lower() == "true"
+    ENABLE_DETAILED_METRICS: bool = os.environ.get("ENABLE_DETAILED_METRICS", "false").lower() == "true"
+    METRICS_COLLECTION_INTERVAL: int = int(os.environ.get("METRICS_COLLECTION_INTERVAL", "60"))
+    PERFORMANCE_ALERTING: bool = os.environ.get("PERFORMANCE_ALERTING", "false").lower() == "true"
+    
+    # Configuration de la recherche lexicale - Boost factors
+    BOOST_EXACT_PHRASE: float = float(os.environ.get("BOOST_EXACT_PHRASE", "10.0"))
+    BOOST_MERCHANT_NAME: float = float(os.environ.get("BOOST_MERCHANT_NAME", "5.0"))
+    BOOST_PRIMARY_DESCRIPTION: float = float(os.environ.get("BOOST_PRIMARY_DESCRIPTION", "3.0"))
+    BOOST_SEARCHABLE_TEXT: float = float(os.environ.get("BOOST_SEARCHABLE_TEXT", "4.0"))
+    BOOST_CLEAN_DESCRIPTION: float = float(os.environ.get("BOOST_CLEAN_DESCRIPTION", "2.5"))
+    
+    # Configuration de la recherche lexicale - Options de requête
+    ENABLE_FUZZY: bool = os.environ.get("ENABLE_FUZZY", "true").lower() == "true"
+    ENABLE_WILDCARDS: bool = os.environ.get("ENABLE_WILDCARDS", "true").lower() == "true"
+    ENABLE_SYNONYMS: bool = os.environ.get("ENABLE_SYNONYMS", "true").lower() == "true"
+    MINIMUM_SHOULD_MATCH: str = os.environ.get("MINIMUM_SHOULD_MATCH", "1")
+    
+    # Configuration du highlighting
+    HIGHLIGHT_ENABLED: bool = os.environ.get("HIGHLIGHT_ENABLED", "true").lower() == "true"
+    HIGHLIGHT_FRAGMENT_SIZE: int = int(os.environ.get("HIGHLIGHT_FRAGMENT_SIZE", "150"))
+    HIGHLIGHT_MAX_FRAGMENTS: int = int(os.environ.get("HIGHLIGHT_MAX_FRAGMENTS", "3"))
+    
+    # Configuration de la recherche lexicale - Filtres
+    LEXICAL_MIN_SCORE: float = float(os.environ.get("LEXICAL_MIN_SCORE", "1.0"))
+    LEXICAL_MAX_RESULTS: int = int(os.environ.get("LEXICAL_MAX_RESULTS", "50"))
+    
+    # Configuration de la recherche sémantique - Seuils de similarité
+    SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SIMILARITY_THRESHOLD_DEFAULT", "0.3"))
+    SIMILARITY_THRESHOLD_STRICT: float = float(os.environ.get("SIMILARITY_THRESHOLD_STRICT", "0.55"))
+    SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SIMILARITY_THRESHOLD_LOOSE", "0.15"))
+    
+    # Configuration de la recherche sémantique - Options
+    SEMANTIC_MAX_RESULTS: int = int(os.environ.get("SEMANTIC_MAX_RESULTS", "50"))
+    SEMANTIC_ENABLE_FILTERING: bool = os.environ.get("SEMANTIC_ENABLE_FILTERING", "true").lower() == "true"
+    SEMANTIC_FALLBACK_UNFILTERED: bool = os.environ.get("SEMANTIC_FALLBACK_UNFILTERED", "true").lower() == "true"
+    
+    # Configuration des recommandations
+    RECOMMENDATION_ENABLED: bool = os.environ.get("RECOMMENDATION_ENABLED", "true").lower() == "true"
+    RECOMMENDATION_THRESHOLD: float = float(os.environ.get("RECOMMENDATION_THRESHOLD", "0.6"))
+    
+    # Configuration du cache d'analyse de requêtes
+    QUERY_ANALYSIS_CACHE_ENABLED: bool = os.environ.get("QUERY_ANALYSIS_CACHE_ENABLED", "true").lower() == "true"
+    QUERY_ANALYSIS_CACHE_TTL: int = int(os.environ.get("QUERY_ANALYSIS_CACHE_TTL", "1800"))
+    QUERY_ANALYSIS_CACHE_MAX_SIZE: int = int(os.environ.get("QUERY_ANALYSIS_CACHE_MAX_SIZE", "500"))
+    
+    # Configuration de concurrence
+    MAX_CONCURRENT_SEARCHES: int = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "10"))
+    MAX_CONCURRENT_EMBEDDINGS: int = int(os.environ.get("MAX_CONCURRENT_EMBEDDINGS", "5"))
+    
+    # Configuration du warmup
+    WARMUP_ENABLED: bool = os.environ.get("WARMUP_ENABLED", "true").lower() == "true"
+    WARMUP_QUERIES: str = os.environ.get("WARMUP_QUERIES", "restaurant,virement,carte bancaire,supermarché,essence,pharmacie")
+    
+    # Configuration de l'évaluation de qualité
+    QUALITY_EXCELLENT_THRESHOLD: float = float(os.environ.get("QUALITY_EXCELLENT_THRESHOLD", "0.9"))
+    QUALITY_GOOD_THRESHOLD: float = float(os.environ.get("QUALITY_GOOD_THRESHOLD", "0.7"))
+    QUALITY_MEDIUM_THRESHOLD: float = float(os.environ.get("QUALITY_MEDIUM_THRESHOLD", "0.5"))
+    QUALITY_POOR_THRESHOLD: float = float(os.environ.get("QUALITY_POOR_THRESHOLD", "0.3"))
+    
+    # Facteurs de qualité
+    MIN_RESULTS_FOR_GOOD_QUALITY: int = int(os.environ.get("MIN_RESULTS_FOR_GOOD_QUALITY", "3"))
+    MAX_RESULTS_FOR_QUALITY_EVAL: int = int(os.environ.get("MAX_RESULTS_FOR_QUALITY_EVAL", "10"))
+    DIVERSITY_THRESHOLD: float = float(os.environ.get("DIVERSITY_THRESHOLD", "0.6"))
+    
+    # Configuration de l'amélioration automatique
+    AUTO_QUERY_OPTIMIZATION: bool = os.environ.get("AUTO_QUERY_OPTIMIZATION", "true").lower() == "true"
+    SUGGESTION_ENABLED: bool = os.environ.get("SUGGESTION_ENABLED", "true").lower() == "true"
+    MAX_SUGGESTIONS: int = int(os.environ.get("MAX_SUGGESTIONS", "5"))
     
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod
@@ -144,6 +300,45 @@ class GlobalSettings(BaseSettings):
             
         return f"postgresql://{user}:{password}@{server}:{port}/{db}"
     
+    def get_warmup_queries_list(self) -> List[str]:
+        """Retourne la liste des requêtes de warmup."""
+        if not self.WARMUP_QUERIES:
+            return []
+        return [q.strip() for q in self.WARMUP_QUERIES.split(",") if q.strip()]
+    
+    def get_search_config_summary(self):
+        """Retourne un résumé de la configuration de recherche."""
+        return {
+            "service": {
+                "name": self.SEARCH_SERVICE_NAME,
+                "version": self.SEARCH_SERVICE_VERSION,
+                "debug": self.SEARCH_SERVICE_DEBUG
+            },
+            "timeouts": {
+                "elasticsearch": self.ELASTICSEARCH_TIMEOUT,
+                "qdrant": self.QDRANT_TIMEOUT,
+                "openai": self.OPENAI_TIMEOUT,
+                "search": self.SEARCH_TIMEOUT
+            },
+            "cache": {
+                "search_enabled": self.SEARCH_CACHE_ENABLED,
+                "search_ttl": self.SEARCH_CACHE_TTL,
+                "embedding_enabled": self.EMBEDDING_CACHE_ENABLED,
+                "embedding_ttl": self.EMBEDDING_CACHE_TTL
+            },
+            "hybrid_search": {
+                "default_type": self.DEFAULT_SEARCH_TYPE,
+                "lexical_weight": self.DEFAULT_LEXICAL_WEIGHT,
+                "semantic_weight": self.DEFAULT_SEMANTIC_WEIGHT
+            },
+            "quality_thresholds": {
+                "excellent": self.QUALITY_EXCELLENT_THRESHOLD,
+                "good": self.QUALITY_GOOD_THRESHOLD,
+                "medium": self.QUALITY_MEDIUM_THRESHOLD,
+                "poor": self.QUALITY_POOR_THRESHOLD
+            }
+        }
+    
     class Config:
         case_sensitive = True
         env_file = ".env"
@@ -155,3 +350,4 @@ settings = GlobalSettings()
 
 # Afficher un message de démarrage
 logger.debug(f"Configuration chargée pour l'environnement: {settings.ENVIRONMENT}")
+logger.debug(f"Configuration de recherche: {settings.get_search_config_summary()}")

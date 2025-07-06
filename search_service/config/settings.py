@@ -94,9 +94,9 @@ class SemanticSearchConfig:
     """Configuration spécifique à la recherche sémantique."""
     
     # Seuils de similarité par type de requête
-    similarity_threshold_default: float = 0.5
-    similarity_threshold_strict: float = 0.7
-    similarity_threshold_loose: float = 0.3
+    similarity_threshold_default: float = 0.3
+    similarity_threshold_strict: float = 0.55
+    similarity_threshold_loose: float = 0.15
     
     # Configuration des requêtes
     max_results: int = 50
@@ -272,9 +272,9 @@ class SearchServiceSettings:
         """Charge la configuration de recherche sémantique."""
         return SemanticSearchConfig(
             # Seuils de similarité basés sur les résultats du validateur
-            similarity_threshold_default=float(os.getenv("SIMILARITY_THRESHOLD_DEFAULT", "0.5")),
-            similarity_threshold_strict=float(os.getenv("SIMILARITY_THRESHOLD_STRICT", "0.7")),
-            similarity_threshold_loose=float(os.getenv("SIMILARITY_THRESHOLD_LOOSE", "0.3")),
+            similarity_threshold_default=float(os.getenv("SIMILARITY_THRESHOLD_DEFAULT", "0.3")),
+            similarity_threshold_strict=float(os.getenv("SIMILARITY_THRESHOLD_STRICT", "0.55")),
+            similarity_threshold_loose=float(os.getenv("SIMILARITY_THRESHOLD_LOOSE", "0.15")),
             
             # Configuration des requêtes
             max_results=int(os.getenv("SEMANTIC_MAX_RESULTS", "50")),

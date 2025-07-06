@@ -65,8 +65,8 @@ TransactionTypeFilter = Literal["all", "debit", "credit"]
 # Constantes de configuration
 DEFAULT_SEARCH_LIMIT = 20
 MAX_SEARCH_LIMIT = 100
-DEFAULT_SIMILARITY_THRESHOLD = 0.7
-MIN_SIMILARITY_THRESHOLD = 0.3
+DEFAULT_SIMILARITY_THRESHOLD = 0.55
+MIN_SIMILARITY_THRESHOLD = 0.15
 MAX_SIMILARITY_THRESHOLD = 0.95
 
 # Pondérations par défaut pour la recherche hybride

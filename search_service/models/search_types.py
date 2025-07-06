@@ -97,6 +97,18 @@ def get_default_similarity_threshold() -> float:
     return settings.SIMILARITY_THRESHOLD_DEFAULT
 
 
+def get_min_similarity_threshold() -> float:
+    """Retourne le seuil de similarité minimum."""
+    from config_service.config import settings
+    return settings.SIMILARITY_THRESHOLD_LOOSE
+
+
+def get_max_similarity_threshold() -> float:
+    """Retourne le seuil de similarité maximum."""
+    from config_service.config import settings
+    return settings.SIMILARITY_THRESHOLD_STRICT
+
+
 def get_similarity_threshold_range() -> Dict[str, float]:
     """Retourne tous les seuils de similarité disponibles."""
     from config_service.config import settings
@@ -374,91 +386,6 @@ class _LegacyConstants:
         return get_default_similarity_threshold()
     
     @property
-    def DEFAULT_LEXICAL_WEIGHT(self) -> float:
-        return get_default_weights()["lexical"]
-    
-    @property
-    def DEFAULT_SEMANTIC_WEIGHT(self) -> float:
-        return get_default_weights()["semantic"]
-    
-    @property
-    def EXCELLENT_THRESHOLD(self) -> float:
-        return get_quality_thresholds()["excellent"]
-    
-    @property
-    def GOOD_THRESHOLD(self) -> float:
-        return get_quality_thresholds()["good"]
-    
-    @property
-    def MEDIUM_THRESHOLD(self) -> float:
-        return get_quality_thresholds()["medium"]
-    
-    @property
-    def POOR_THRESHOLD(self) -> float:
-        return get_quality_thresholds()["poor"]
-
-
-# Instance pour compatibilité temporaire
-_constants = _LegacyConstants()
-
-# Exposer les constantes pour l'ancien code (migration progressive)
-DEFAULT_SEARCH_LIMIT = _constants.DEFAULT_SEARCH_LIMIT
-MAX_SEARCH_LIMIT = _constants.MAX_SEARCH_LIMIT
-DEFAULT_SIMILARITY_THRESHOLD = _constants.DEFAULT_SIMILARITY_THRESHOLD
-DEFAULT_LEXICAL_WEIGHT = _constants.DEFAULT_LEXICAL_WEIGHT
-DEFAULT_SEMANTIC_WEIGHT = _constants.DEFAULT_SEMANTIC_WEIGHT
-EXCELLENT_THRESHOLD = _constants.EXCELLENT_THRESHOLD
-GOOD_THRESHOLD = _constants.GOOD_THRESHOLD
-MEDIUM_THRESHOLD = _constants.MEDIUM_THRESHOLD
-POOR_THRESHOLD = _constants.POOR_THRESHOLD
-
-# ==========================================
-# 🔧 CONSTANTES MANQUANTES POUR COMPATIBILITÉ
-# ==========================================
-
-def get_min_similarity_threshold() -> float:
-    """Retourne le seuil de similarité minimum."""
-    from config_service.config import settings
-    return settings.SIMILARITY_THRESHOLD_LOOSE
-
-
-def get_max_similarity_threshold() -> float:
-    """Retourne le seuil de similarité maximum."""
-    from config_service.config import settings
-    return settings.SIMILARITY_THRESHOLD_STRICT
-
-
-# Instance pour compatibilité temporaire (redéclarée avec les nouvelles propriétés)
-_constants = _LegacyConstants()
-
-# Exposer TOUTES les constantes pour l'ancien code (migration progressive)
-DEFAULT_SEARCH_LIMIT = _constants.DEFAULT_SEARCH_LIMIT
-MAX_SEARCH_LIMIT = _constants.MAX_SEARCH_LIMIT
-DEFAULT_SIMILARITY_THRESHOLD = _constants.DEFAULT_SIMILARITY_THRESHOLD
-MIN_SIMILARITY_THRESHOLD = _constants.MIN_SIMILARITY_THRESHOLD  
-MAX_SIMILARITY_THRESHOLD = _constants.MAX_SIMILARITY_THRESHOLD  
-DEFAULT_LEXICAL_WEIGHT = _constants.DEFAULT_LEXICAL_WEIGHT
-DEFAULT_SEMANTIC_WEIGHT = _constants.DEFAULT_SEMANTIC_WEIGHT
-EXCELLENT_THRESHOLD = _constants.EXCELLENT_THRESHOLD
-GOOD_THRESHOLD = _constants.GOOD_THRESHOLD
-MEDIUM_THRESHOLD = _constants.MEDIUM_THRESHOLD
-POOR_THRESHOLD = _constants.POOR_THRESHOLD
-class _LegacyConstants:
-    """Classe pour exposer les anciennes constantes via des propriétés."""
-    
-    @property
-    def DEFAULT_SEARCH_LIMIT(self) -> int:
-        return get_default_search_limit()
-    
-    @property 
-    def MAX_SEARCH_LIMIT(self) -> int:
-        return get_max_search_limit()
-    
-    @property
-    def DEFAULT_SIMILARITY_THRESHOLD(self) -> float:
-        return get_default_similarity_threshold()
-    
-    @property
     def MIN_SIMILARITY_THRESHOLD(self) -> float:
         return get_min_similarity_threshold()
     
@@ -489,3 +416,20 @@ class _LegacyConstants:
     @property
     def POOR_THRESHOLD(self) -> float:
         return get_quality_thresholds()["poor"]
+
+
+# Instance pour compatibilité temporaire - UNIQUE DÉFINITION
+_constants = _LegacyConstants()
+
+# Exposer TOUTES les constantes pour l'ancien code (migration progressive)
+DEFAULT_SEARCH_LIMIT = _constants.DEFAULT_SEARCH_LIMIT
+MAX_SEARCH_LIMIT = _constants.MAX_SEARCH_LIMIT
+DEFAULT_SIMILARITY_THRESHOLD = _constants.DEFAULT_SIMILARITY_THRESHOLD
+MIN_SIMILARITY_THRESHOLD = _constants.MIN_SIMILARITY_THRESHOLD  
+MAX_SIMILARITY_THRESHOLD = _constants.MAX_SIMILARITY_THRESHOLD  
+DEFAULT_LEXICAL_WEIGHT = _constants.DEFAULT_LEXICAL_WEIGHT
+DEFAULT_SEMANTIC_WEIGHT = _constants.DEFAULT_SEMANTIC_WEIGHT
+EXCELLENT_THRESHOLD = _constants.EXCELLENT_THRESHOLD
+GOOD_THRESHOLD = _constants.GOOD_THRESHOLD
+MEDIUM_THRESHOLD = _constants.MEDIUM_THRESHOLD
+POOR_THRESHOLD = _constants.POOR_THRESHOLD

@@ -231,9 +231,9 @@ class GlobalSettings(BaseSettings):
     LEXICAL_MAX_RESULTS: int = int(os.environ.get("LEXICAL_MAX_RESULTS", "50"))
     
     # Configuration de la recherche sémantique - Seuils de similarité
-    SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SIMILARITY_THRESHOLD_DEFAULT", "0.3"))
-    SIMILARITY_THRESHOLD_STRICT: float = float(os.environ.get("SIMILARITY_THRESHOLD_STRICT", "0.55"))
-    SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SIMILARITY_THRESHOLD_LOOSE", "0.15"))
+    SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SIMILARITY_THRESHOLD_DEFAULT", "0.5"))
+    SIMILARITY_THRESHOLD_STRICT: float = float(os.environ.get("SIMILARITY_THRESHOLD_STRICT", "0.7"))
+    SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SIMILARITY_THRESHOLD_LOOSE", "0.3"))
     
     # Configuration de la recherche sémantique - Options
     SEMANTIC_MAX_RESULTS: int = int(os.environ.get("SEMANTIC_MAX_RESULTS", "50"))
@@ -306,13 +306,34 @@ class GlobalSettings(BaseSettings):
             return []
         return [q.strip() for q in self.WARMUP_QUERIES.split(",") if q.strip()]
     
+    def get_similarity_threshold(self, mode: str = "default") -> float:
+        """
+        Retourne le seuil de similarité selon le mode.
+        
+        🎯 FONCTION CRITIQUE pour débugger les problèmes de recherche !
+        
+        Args:
+            mode: "strict", "default", "loose"
+        """
+        thresholds = {
+            "strict": self.SIMILARITY_THRESHOLD_STRICT,
+            "default": self.SIMILARITY_THRESHOLD_DEFAULT,
+            "loose": self.SIMILARITY_THRESHOLD_LOOSE
+        }
+        return thresholds.get(mode, self.SIMILARITY_THRESHOLD_DEFAULT)
+    
     def get_search_config_summary(self):
-        """Retourne un résumé de la configuration de recherche."""
+        """Retourne un résumé de la configuration de recherche pour debug."""
         return {
             "service": {
                 "name": self.SEARCH_SERVICE_NAME,
                 "version": self.SEARCH_SERVICE_VERSION,
                 "debug": self.SEARCH_SERVICE_DEBUG
+            },
+            "similarity_thresholds": {
+                "strict": self.SIMILARITY_THRESHOLD_STRICT,
+                "default": self.SIMILARITY_THRESHOLD_DEFAULT,
+                "loose": self.SIMILARITY_THRESHOLD_LOOSE
             },
             "timeouts": {
                 "elasticsearch": self.ELASTICSEARCH_TIMEOUT,
@@ -331,6 +352,16 @@ class GlobalSettings(BaseSettings):
                 "lexical_weight": self.DEFAULT_LEXICAL_WEIGHT,
                 "semantic_weight": self.DEFAULT_SEMANTIC_WEIGHT
             },
+            "limits": {
+                "default_search": self.DEFAULT_SEARCH_LIMIT,
+                "max_search": self.MAX_SEARCH_LIMIT,
+                "lexical_max": self.LEXICAL_MAX_RESULTS,
+                "semantic_max": self.SEMANTIC_MAX_RESULTS
+            },
+            "min_scores": {
+                "lexical": self.MIN_LEXICAL_SCORE,
+                "semantic": self.MIN_SEMANTIC_SCORE
+            },
             "quality_thresholds": {
                 "excellent": self.QUALITY_EXCELLENT_THRESHOLD,
                 "good": self.QUALITY_GOOD_THRESHOLD,
@@ -338,6 +369,39 @@ class GlobalSettings(BaseSettings):
                 "poor": self.QUALITY_POOR_THRESHOLD
             }
         }
+    
+    def validate_search_config(self) -> dict:
+        """Valide la cohérence de la configuration de recherche."""
+        validation = {"valid": True, "warnings": [], "errors": []}
+        
+        # Validation des poids hybrides
+        total_weight = self.DEFAULT_LEXICAL_WEIGHT + self.DEFAULT_SEMANTIC_WEIGHT
+        if abs(total_weight - 1.0) > 0.01:
+            validation["errors"].append(f"Lexical + semantic weights must equal 1.0, got {total_weight}")
+            validation["valid"] = False
+        
+        # Validation des seuils de similarité
+        if self.SIMILARITY_THRESHOLD_LOOSE > self.SIMILARITY_THRESHOLD_DEFAULT:
+            validation["errors"].append("Loose similarity threshold should be <= default threshold")
+            validation["valid"] = False
+        
+        if self.SIMILARITY_THRESHOLD_DEFAULT > self.SIMILARITY_THRESHOLD_STRICT:
+            validation["errors"].append("Default similarity threshold should be <= strict threshold")
+            validation["valid"] = False
+        
+        # Validation des limites
+        if self.DEFAULT_SEARCH_LIMIT > self.MAX_SEARCH_LIMIT:
+            validation["errors"].append("Default limit cannot be greater than max limit")
+            validation["valid"] = False
+        
+        # Validation des timeouts
+        if self.ELASTICSEARCH_TIMEOUT > self.SEARCH_TIMEOUT:
+            validation["warnings"].append("Elasticsearch timeout is greater than overall search timeout")
+        
+        if self.QDRANT_TIMEOUT > self.SEARCH_TIMEOUT:
+            validation["warnings"].append("Qdrant timeout is greater than overall search timeout")
+        
+        return validation
     
     class Config:
         case_sensitive = True

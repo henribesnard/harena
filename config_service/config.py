@@ -316,6 +316,7 @@ class GlobalSettings(BaseSettings):
     
     # Facteurs de qualité
     MIN_RESULTS_FOR_GOOD_QUALITY: int = int(os.environ.get("MIN_RESULTS_FOR_GOOD_QUALITY", "3"))
+    MIN_RESULTS_FOR_FUSION: int = int(os.environ.get("MIN_RESULTS_FOR_FUSION", "2"))
     MAX_RESULTS_FOR_QUALITY_EVAL: int = int(os.environ.get("MAX_RESULTS_FOR_QUALITY_EVAL", "10"))
     DIVERSITY_THRESHOLD: float = float(os.environ.get("DIVERSITY_THRESHOLD", "0.6"))
     

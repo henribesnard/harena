@@ -1,14 +1,23 @@
 """
-Système de cache LRU pour le service de recherche.
+Système de cache LRU pour le service de recherche - VERSION CENTRALISÉE.
 
 Ce module implémente un cache intelligent avec TTL et LRU
 pour optimiser les performances de recherche.
+
+AMÉLIORATION:
+- Configuration entièrement centralisée via config_service
+- Paramètres de cache contrôlés par .env
+- Plus de valeurs hardcodées
 """
 import time
 import threading
+import asyncio
 from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 from collections import OrderedDict
+
+# ✅ CONFIGURATION CENTRALISÉE
+from config_service.config import settings
 
 
 @dataclass
@@ -25,17 +34,34 @@ class SearchCache:
     """
     Cache LRU thread-safe avec TTL pour les résultats de recherche.
     
-    Fonctionnalités:
-    - LRU (Least Recently Used) eviction
-    - TTL (Time To Live) par entrée
-    - Thread-safe
-    - Métriques détaillées
-    - Nettoyage automatique
+    Configuration entièrement centralisée via config_service.
     """
     
-    def __init__(self, max_size: int = 1000, ttl_seconds: float = 300):
-        self.max_size = max_size
-        self.default_ttl = ttl_seconds
+    def __init__(self, max_size: Optional[int] = None, ttl_seconds: Optional[float] = None, cache_type: str = "search"):
+        """
+        Initialise le cache avec configuration centralisée.
+        
+        Args:
+            max_size: Taille max (utilise config centralisée si None)
+            ttl_seconds: TTL par défaut (utilise config centralisée si None)
+            cache_type: Type de cache pour récupérer la config appropriée
+        """
+        # ✅ Utiliser la configuration centralisée selon le type de cache
+        if cache_type == "search":
+            self.max_size = max_size or settings.SEARCH_CACHE_MAX_SIZE
+            self.default_ttl = ttl_seconds or settings.SEARCH_CACHE_TTL
+        elif cache_type == "embedding":
+            self.max_size = max_size or settings.EMBEDDING_CACHE_MAX_SIZE
+            self.default_ttl = ttl_seconds or settings.EMBEDDING_CACHE_TTL
+        elif cache_type == "query_analysis":
+            self.max_size = max_size or settings.QUERY_ANALYSIS_CACHE_MAX_SIZE
+            self.default_ttl = ttl_seconds or settings.QUERY_ANALYSIS_CACHE_TTL
+        else:
+            # Fallback vers la config de recherche
+            self.max_size = max_size or settings.SEARCH_CACHE_MAX_SIZE
+            self.default_ttl = ttl_seconds or settings.SEARCH_CACHE_TTL
+        
+        self.cache_type = cache_type
         
         # Stockage principal (OrderedDict pour LRU)
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
@@ -48,9 +74,9 @@ class SearchCache:
         self.expired_items = 0
         self.puts = 0
         
-        # Nettoyage automatique
+        # ✅ Nettoyage automatique basé sur la config
         self.last_cleanup = time.time()
-        self.cleanup_interval = 60.0  # 1 minute
+        self.cleanup_interval = 60.0  # 1 minute (peut être configuré plus tard)
     
     def get(self, key: str) -> Optional[Any]:
         """
@@ -189,6 +215,7 @@ class SearchCache:
             hit_rate = self.hits / total_requests if total_requests > 0 else 0.0
             
             return {
+                "cache_type": self.cache_type,
                 "size": len(self._cache),
                 "max_size": self.max_size,
                 "utilization": len(self._cache) / self.max_size,
@@ -199,7 +226,8 @@ class SearchCache:
                 "expired_items": self.expired_items,
                 "puts": self.puts,
                 "default_ttl_seconds": self.default_ttl,
-                "cleanup_interval_seconds": self.cleanup_interval
+                "cleanup_interval_seconds": self.cleanup_interval,
+                "config_source": "centralized"
             }
     
     def get_keys(self) -> List[str]:
@@ -287,36 +315,77 @@ class MultiLevelCache:
     """
     Cache multi-niveaux pour différents types de données.
     
-    Permet d'avoir des caches séparés avec des TTL différents
-    pour différents types de données (requêtes, embeddings, etc.)
+    Configuration automatique via config_service.
     """
     
     def __init__(self):
         self.caches: Dict[str, SearchCache] = {}
+        
+        # ✅ Configuration depuis config_service
         self.default_configs = {
-            "search_results": {"max_size": 1000, "ttl_seconds": 300},
-            "embeddings": {"max_size": 5000, "ttl_seconds": 3600},
-            "query_analysis": {"max_size": 500, "ttl_seconds": 1800},
-            "suggestions": {"max_size": 200, "ttl_seconds": 600}
+            "search_results": {
+                "max_size": settings.SEARCH_CACHE_MAX_SIZE,
+                "ttl_seconds": settings.SEARCH_CACHE_TTL,
+                "enabled": settings.SEARCH_CACHE_ENABLED
+            },
+            "embeddings": {
+                "max_size": settings.EMBEDDING_CACHE_MAX_SIZE,
+                "ttl_seconds": settings.EMBEDDING_CACHE_TTL,
+                "enabled": settings.EMBEDDING_CACHE_ENABLED
+            },
+            "query_analysis": {
+                "max_size": settings.QUERY_ANALYSIS_CACHE_MAX_SIZE,
+                "ttl_seconds": settings.QUERY_ANALYSIS_CACHE_TTL,
+                "enabled": settings.QUERY_ANALYSIS_CACHE_ENABLED
+            },
+            "suggestions": {
+                "max_size": 200,  # Pas encore configuré dans settings
+                "ttl_seconds": 600,
+                "enabled": True
+            }
         }
     
-    def get_cache(self, cache_type: str) -> SearchCache:
-        """Récupère ou crée un cache d'un type donné."""
+    def get_cache(self, cache_type: str) -> Optional[SearchCache]:
+        """
+        Récupère ou crée un cache d'un type donné.
+        
+        Args:
+            cache_type: Type de cache demandé
+            
+        Returns:
+            Cache si activé, None sinon
+        """
+        config = self.default_configs.get(cache_type, {
+            "max_size": 100, 
+            "ttl_seconds": 300,
+            "enabled": True
+        })
+        
+        # Vérifier si le cache est activé
+        if not config.get("enabled", True):
+            return None
+        
         if cache_type not in self.caches:
-            config = self.default_configs.get(cache_type, {"max_size": 100, "ttl_seconds": 300})
-            self.caches[cache_type] = SearchCache(**config)
+            self.caches[cache_type] = SearchCache(
+                max_size=config["max_size"],
+                ttl_seconds=config["ttl_seconds"],
+                cache_type=cache_type
+            )
         
         return self.caches[cache_type]
     
     def get(self, cache_type: str, key: str) -> Optional[Any]:
         """Récupère une valeur d'un cache spécifique."""
         cache = self.get_cache(cache_type)
+        if cache is None:
+            return None
         return cache.get(key)
     
     def put(self, cache_type: str, key: str, value: Any, ttl: Optional[float] = None) -> None:
         """Stocke une valeur dans un cache spécifique."""
         cache = self.get_cache(cache_type)
-        cache.put(key, value, ttl)
+        if cache is not None:
+            cache.put(key, value, ttl)
     
     def delete(self, cache_type: str, key: str) -> bool:
         """Supprime une entrée d'un cache spécifique."""
@@ -336,10 +405,16 @@ class MultiLevelCache:
     
     def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Retourne les statistiques de tous les caches."""
-        return {
-            cache_type: cache.get_stats()
-            for cache_type, cache in self.caches.items()
-        }
+        stats = {}
+        for cache_type, config in self.default_configs.items():
+            if config.get("enabled", True) and cache_type in self.caches:
+                stats[cache_type] = self.caches[cache_type].get_stats()
+            else:
+                stats[cache_type] = {
+                    "enabled": config.get("enabled", True),
+                    "status": "disabled" if not config.get("enabled", True) else "not_created"
+                }
+        return stats
     
     def get_total_size(self) -> int:
         """Retourne la taille totale de tous les caches."""
@@ -351,33 +426,48 @@ class MultiLevelCache:
         for cache_type, cache in self.caches.items():
             cleanup_results[cache_type] = cache.force_cleanup()
         return cleanup_results
+    
+    def get_configuration_summary(self) -> Dict[str, Any]:
+        """Retourne un résumé de la configuration des caches."""
+        return {
+            "cache_configs": self.default_configs,
+            "active_caches": list(self.caches.keys()),
+            "total_active_caches": len(self.caches),
+            "config_source": "centralized (config_service)"
+        }
 
+
+# ==========================================
+# 🎯 INSTANCE GLOBALE AVEC CONFIG CENTRALISÉE
+# ==========================================
 
 # Instance globale pour l'utilisation dans l'application
 global_cache = MultiLevelCache()
 
 
-def get_search_cache() -> SearchCache:
+def get_search_cache() -> Optional[SearchCache]:
     """Raccourci pour le cache de résultats de recherche."""
     return global_cache.get_cache("search_results")
 
 
-def get_embedding_cache() -> SearchCache:
+def get_embedding_cache() -> Optional[SearchCache]:
     """Raccourci pour le cache d'embeddings."""
     return global_cache.get_cache("embeddings")
 
 
-def get_query_analysis_cache() -> SearchCache:
+def get_query_analysis_cache() -> Optional[SearchCache]:
     """Raccourci pour le cache d'analyses de requêtes."""
     return global_cache.get_cache("query_analysis")
 
 
-def get_suggestions_cache() -> SearchCache:
+def get_suggestions_cache() -> Optional[SearchCache]:
     """Raccourci pour le cache de suggestions."""
     return global_cache.get_cache("suggestions")
 
 
-# Fonctions utilitaires
+# ==========================================
+# 🛠️ FONCTIONS UTILITAIRES
+# ==========================================
 
 def generate_cache_key(*args, **kwargs) -> str:
     """
@@ -423,28 +513,38 @@ def cache_with_ttl(cache_type: str, ttl: Optional[float] = None):
     """
     def decorator(func):
         async def async_wrapper(*args, **kwargs):
+            # Vérifier si le cache est activé
+            cache = global_cache.get_cache(cache_type)
+            if cache is None:
+                # Cache désactivé, exécuter directement
+                return await func(*args, **kwargs)
+            
             # Générer la clé de cache
             cache_key = generate_cache_key(func.__name__, *args, **kwargs)
             
             # Essayer de récupérer du cache
-            cached_result = global_cache.get(cache_type, cache_key)
+            cached_result = cache.get(cache_key)
             if cached_result is not None:
                 return cached_result
             
             # Exécuter la fonction et mettre en cache
             result = await func(*args, **kwargs)
-            global_cache.put(cache_type, cache_key, result, ttl)
+            cache.put(cache_key, result, ttl)
             return result
         
         def sync_wrapper(*args, **kwargs):
+            cache = global_cache.get_cache(cache_type)
+            if cache is None:
+                return func(*args, **kwargs)
+            
             cache_key = generate_cache_key(func.__name__, *args, **kwargs)
             
-            cached_result = global_cache.get(cache_type, cache_key)
+            cached_result = cache.get(cache_key)
             if cached_result is not None:
                 return cached_result
             
             result = func(*args, **kwargs)
-            global_cache.put(cache_type, cache_key, result, ttl)
+            cache.put(cache_key, result, ttl)
             return result
         
         # Détecter si la fonction est async
@@ -456,15 +556,37 @@ def cache_with_ttl(cache_type: str, ttl: Optional[float] = None):
     return decorator
 
 
-# Métriques de cache pour monitoring
+# ==========================================
+# 📊 MÉTRIQUES DE CACHE POUR MONITORING
+# ==========================================
 
 def get_cache_metrics() -> Dict[str, Any]:
     """Retourne les métriques consolidées de tous les caches."""
     all_stats = global_cache.get_all_stats()
     
-    total_size = sum(stats["size"] for stats in all_stats.values())
-    total_hits = sum(stats["hits"] for stats in all_stats.values())
-    total_misses = sum(stats["misses"] for stats in all_stats.values())
+    # Filtrer seulement les caches actifs
+    active_stats = {k: v for k, v in all_stats.items() if isinstance(v, dict) and "size" in v}
+    
+    if not active_stats:
+        return {
+            "overall": {
+                "total_size": 0,
+                "total_hits": 0,
+                "total_misses": 0,
+                "overall_hit_rate": 0.0,
+                "active_cache_types": 0
+            },
+            "by_type": all_stats,
+            "configuration": global_cache.get_configuration_summary(),
+            "efficiency": {
+                "memory_efficiency": 0,
+                "hit_rate_variance": 0
+            }
+        }
+    
+    total_size = sum(stats["size"] for stats in active_stats.values())
+    total_hits = sum(stats["hits"] for stats in active_stats.values())
+    total_misses = sum(stats["misses"] for stats in active_stats.values())
     total_requests = total_hits + total_misses
     
     overall_hit_rate = total_hits / total_requests if total_requests > 0 else 0.0
@@ -475,15 +597,40 @@ def get_cache_metrics() -> Dict[str, Any]:
             "total_hits": total_hits,
             "total_misses": total_misses,
             "overall_hit_rate": overall_hit_rate,
-            "cache_types": len(all_stats)
+            "active_cache_types": len(active_stats)
         },
         "by_type": all_stats,
+        "configuration": global_cache.get_configuration_summary(),
         "efficiency": {
-            "memory_efficiency": total_size / sum(stats["max_size"] for stats in all_stats.values()) if all_stats else 0,
-            "hit_rate_variance": max(stats["hit_rate"] for stats in all_stats.values()) - min(stats["hit_rate"] for stats in all_stats.values()) if all_stats else 0
+            "memory_efficiency": total_size / sum(stats["max_size"] for stats in active_stats.values()) if active_stats else 0,
+            "hit_rate_variance": max(stats["hit_rate"] for stats in active_stats.values()) - min(stats["hit_rate"] for stats in active_stats.values()) if active_stats else 0
         }
     }
 
 
-# Import pour le décorateur
-import asyncio
+def is_cache_enabled(cache_type: str) -> bool:
+    """Vérifie si un type de cache est activé."""
+    config = global_cache.default_configs.get(cache_type, {})
+    return config.get("enabled", True)
+
+
+def get_cache_config_summary() -> Dict[str, Any]:
+    """Retourne un résumé de la configuration centralisée des caches."""
+    return {
+        "search_cache": {
+            "enabled": settings.SEARCH_CACHE_ENABLED,
+            "max_size": settings.SEARCH_CACHE_MAX_SIZE,
+            "ttl_seconds": settings.SEARCH_CACHE_TTL
+        },
+        "embedding_cache": {
+            "enabled": settings.EMBEDDING_CACHE_ENABLED,
+            "max_size": settings.EMBEDDING_CACHE_MAX_SIZE,
+            "ttl_seconds": settings.EMBEDDING_CACHE_TTL
+        },
+        "query_analysis_cache": {
+            "enabled": settings.QUERY_ANALYSIS_CACHE_ENABLED,
+            "max_size": settings.QUERY_ANALYSIS_CACHE_MAX_SIZE,
+            "ttl_seconds": settings.QUERY_ANALYSIS_CACHE_TTL
+        },
+        "config_source": "config_service (centralized)"
+    }

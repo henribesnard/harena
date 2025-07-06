@@ -1,15 +1,20 @@
 """
-Stratégies de fusion pour la recherche hybride.
+Stratégies de fusion pour la recherche hybride - VERSION CENTRALISÉE.
 
 Ce module contient toutes les implémentations des stratégies
 de fusion des résultats lexicaux et sémantiques.
-Version réécrite avec configuration simplifiée.
+
+AMÉLIORATION:
+- Configuration entièrement centralisée via config_service
+- Plus de duplication de paramètres
+- Contrôle total via .env
 """
 import math
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
 from enum import Enum
 
+# ✅ CONFIGURATION CENTRALISÉE
+from config_service.config import settings
 from search_service.models.responses import SearchResultItem
 
 
@@ -23,94 +28,6 @@ class FusionStrategy(Enum):
     BORDA_COUNT = "borda_count"
     COMBSUM = "combsum"
     COMBMNZ = "combmnz"
-
-
-@dataclass
-class FusionConfig:
-    """
-    Configuration simplifiée pour la fusion des résultats.
-    
-    Tous les paramètres ont des valeurs par défaut sensées pour éviter
-    les erreurs de configuration complexe.
-    """
-    # Stratégie de fusion par défaut
-    default_strategy: FusionStrategy = FusionStrategy.WEIGHTED_AVERAGE
-    
-    # Poids par défaut (toujours normalisés automatiquement)
-    default_lexical_weight: float = 0.6
-    default_semantic_weight: float = 0.4
-    
-    # Paramètres de normalisation
-    score_normalization_method: str = "min_max"  # "min_max", "z_score", "sigmoid"
-    min_score_threshold: float = 0.01
-    
-    # Paramètres pour RRF (Reciprocal Rank Fusion)
-    rrf_k: int = 60
-    
-    # Paramètres adaptatifs
-    adaptive_threshold: float = 0.1
-    quality_boost_factor: float = 0.2
-    
-    # Fonctionnalités optionnelles (activées par défaut)
-    enable_score_boosting: bool = True
-    enable_adaptive_weighting: bool = True
-    max_results: int = 100
-    
-    # === PARAMÈTRES AJOUTÉS POUR CORRIGER L'ERREUR ===
-    # Déduplication
-    enable_deduplication: bool = True
-    dedup_similarity_threshold: float = 0.95
-    
-    # Diversification 
-    enable_diversification: bool = True
-    diversity_factor: float = 0.1
-    max_same_merchant: int = 3
-    
-    def __post_init__(self):
-        """Normalise automatiquement les poids après initialisation."""
-        total = self.default_lexical_weight + self.default_semantic_weight
-        if total > 0:
-            self.default_lexical_weight /= total
-            self.default_semantic_weight /= total
-        else:
-            self.default_lexical_weight = 0.6
-            self.default_semantic_weight = 0.4
-    
-    @classmethod
-    def create_simple(cls, lexical_weight: float = 0.6, semantic_weight: float = 0.4) -> 'FusionConfig':
-        """Crée une configuration simple avec juste les poids spécifiés."""
-        return cls(
-            default_lexical_weight=lexical_weight,
-            default_semantic_weight=semantic_weight,
-            default_strategy=FusionStrategy.WEIGHTED_AVERAGE
-        )
-    
-    @classmethod
-    def create_balanced(cls) -> 'FusionConfig':
-        """Crée une configuration équilibrée pour usage général."""
-        return cls(
-            default_lexical_weight=0.5,
-            default_semantic_weight=0.5,
-            default_strategy=FusionStrategy.ADAPTIVE_FUSION
-        )
-    
-    @classmethod
-    def create_lexical_focused(cls) -> 'FusionConfig':
-        """Crée une configuration favorisant la recherche lexicale."""
-        return cls(
-            default_lexical_weight=0.8,
-            default_semantic_weight=0.2,
-            default_strategy=FusionStrategy.WEIGHTED_AVERAGE
-        )
-    
-    @classmethod
-    def create_semantic_focused(cls) -> 'FusionConfig':
-        """Crée une configuration favorisant la recherche sémantique."""
-        return cls(
-            default_lexical_weight=0.3,
-            default_semantic_weight=0.7,
-            default_strategy=FusionStrategy.WEIGHTED_AVERAGE
-        )
 
 
 class ScoreNormalizer:
@@ -262,17 +179,11 @@ class FusionStrategyExecutor:
     """
     Exécuteur des stratégies de fusion.
     
-    Version simplifiée avec gestion d'erreurs robuste.
+    Version simplifiée utilisant la configuration centralisée.
     """
     
-    def __init__(self, config: Optional[FusionConfig] = None):
-        """
-        Initialise l'exécuteur avec une configuration.
-        
-        Args:
-            config: Configuration de fusion (optionnelle, créée par défaut)
-        """
-        self.config = config or FusionConfig.create_simple()
+    def __init__(self):
+        """Initialise l'exécuteur avec la configuration centralisée."""
         self.normalizer = ScoreNormalizer()
     
     def execute(
@@ -290,16 +201,16 @@ class FusionStrategyExecutor:
             strategy: Stratégie de fusion à utiliser
             lexical_results: Résultats de la recherche lexicale
             semantic_results: Résultats de la recherche sémantique
-            weights: Poids personnalisés (optionnels)
+            weights: Poids personnalisés (utilise config centralisée si None)
             debug: Mode debug pour informations supplémentaires
             
         Returns:
             Liste des résultats fusionnés et triés
         """
-        # Utiliser les poids fournis ou ceux de la configuration
+        # ✅ Utiliser les poids de la configuration centralisée
         fusion_weights = weights or {
-            "lexical_weight": self.config.default_lexical_weight,
-            "semantic_weight": self.config.default_semantic_weight
+            "lexical_weight": settings.DEFAULT_LEXICAL_WEIGHT,
+            "semantic_weight": settings.DEFAULT_SEMANTIC_WEIGHT
         }
         
         try:
@@ -375,7 +286,8 @@ class FusionStrategyExecutor:
             "has_lexical": lexical_item is not None,
             "has_semantic": semantic_item is not None,
             "lexical_score": lexical_item.score if lexical_item else None,
-            "semantic_score": semantic_item.score if semantic_item else None
+            "semantic_score": semantic_item.score if semantic_item else None,
+            "config_source": "centralized"
         })
         
         return fused_item
@@ -390,8 +302,8 @@ class FusionStrategyExecutor:
         fused_results = []
         all_transaction_ids = set(lexical_by_id.keys()) | set(semantic_by_id.keys())
         
-        lexical_weight = weights.get("lexical_weight", 0.6)
-        semantic_weight = weights.get("semantic_weight", 0.4)
+        lexical_weight = weights.get("lexical_weight", settings.DEFAULT_LEXICAL_WEIGHT)
+        semantic_weight = weights.get("semantic_weight", settings.DEFAULT_SEMANTIC_WEIGHT)
         
         for transaction_id in all_transaction_ids:
             lexical_item = lexical_by_id.get(transaction_id)
@@ -418,9 +330,9 @@ class FusionStrategyExecutor:
             
             fused_results.append(fused_item)
         
-        # Trier par score décroissant
+        # Trier par score décroissant et limiter selon la config
         fused_results.sort(key=lambda x: x.score, reverse=True)
-        return fused_results[:self.config.max_results]
+        return fused_results[:settings.MAX_SEARCH_LIMIT]
     
     def _fuse_rank_fusion(
         self,
@@ -429,8 +341,8 @@ class FusionStrategyExecutor:
         weights: Dict[str, float]
     ) -> List[SearchResultItem]:
         """Fusion basée sur les rangs dans chaque liste."""
-        lexical_weight = weights.get("lexical_weight", 0.6)
-        semantic_weight = weights.get("semantic_weight", 0.4)
+        lexical_weight = weights.get("lexical_weight", settings.DEFAULT_LEXICAL_WEIGHT)
+        semantic_weight = weights.get("semantic_weight", settings.DEFAULT_SEMANTIC_WEIGHT)
         
         # Créer des mappings rang -> transaction_id
         lexical_ranks = {item.transaction_id: i + 1 for i, item in enumerate(lexical_results)}
@@ -469,7 +381,7 @@ class FusionStrategyExecutor:
         
         # Trier par score décroissant
         fused_results.sort(key=lambda x: x.score, reverse=True)
-        return fused_results[:self.config.max_results]
+        return fused_results[:settings.MAX_SEARCH_LIMIT]
     
     def _fuse_reciprocal_rank_fusion(
         self,
@@ -478,7 +390,8 @@ class FusionStrategyExecutor:
         weights: Dict[str, float]
     ) -> List[SearchResultItem]:
         """Fusion RRF (Reciprocal Rank Fusion)."""
-        k = self.config.rrf_k
+        # ✅ Utiliser la configuration centralisée
+        k = settings.RRF_K
         
         # Créer des mappings rang -> transaction_id
         lexical_ranks = {item.transaction_id: i + 1 for i, item in enumerate(lexical_results)}
@@ -513,7 +426,7 @@ class FusionStrategyExecutor:
         
         # Trier par score décroissant
         fused_results.sort(key=lambda x: x.score, reverse=True)
-        return fused_results[:self.config.max_results]
+        return fused_results[:settings.MAX_SEARCH_LIMIT]
     
     def _fuse_score_normalization(
         self,
@@ -526,11 +439,13 @@ class FusionStrategyExecutor:
         lexical_scores = [item.score for item in lexical_by_id.values() if item.score is not None]
         semantic_scores = [item.score for item in semantic_by_id.values() if item.score is not None]
         
-        # Normaliser les scores selon la méthode configurée
-        if self.config.score_normalization_method == "z_score":
+        # ✅ Utiliser la méthode de normalisation de la config centralisée
+        normalization_method = settings.SCORE_NORMALIZATION_METHOD
+        
+        if normalization_method == "z_score":
             lexical_norm = self.normalizer.z_score_normalize(lexical_scores)
             semantic_norm = self.normalizer.z_score_normalize(semantic_scores)
-        elif self.config.score_normalization_method == "sigmoid":
+        elif normalization_method == "sigmoid":
             lexical_norm = self.normalizer.sigmoid_normalize(lexical_scores)
             semantic_norm = self.normalizer.sigmoid_normalize(semantic_scores)
         else:  # min_max par défaut
@@ -544,8 +459,8 @@ class FusionStrategyExecutor:
         all_transaction_ids = set(lexical_by_id.keys()) | set(semantic_by_id.keys())
         fused_results = []
         
-        lexical_weight = weights.get("lexical_weight", 0.6)
-        semantic_weight = weights.get("semantic_weight", 0.4)
+        lexical_weight = weights.get("lexical_weight", settings.DEFAULT_LEXICAL_WEIGHT)
+        semantic_weight = weights.get("semantic_weight", settings.DEFAULT_SEMANTIC_WEIGHT)
         
         for transaction_id in all_transaction_ids:
             lexical_item = lexical_by_id.get(transaction_id)
@@ -567,7 +482,7 @@ class FusionStrategyExecutor:
         
         # Trier par score décroissant
         fused_results.sort(key=lambda x: x.score, reverse=True)
-        return fused_results[:self.config.max_results]
+        return fused_results[:settings.MAX_SEARCH_LIMIT]
     
     def _fuse_adaptive(
         self,
@@ -579,8 +494,12 @@ class FusionStrategyExecutor:
         fused_results = []
         all_transaction_ids = set(lexical_by_id.keys()) | set(semantic_by_id.keys())
         
-        lexical_weight = weights.get("lexical_weight", 0.6)
-        semantic_weight = weights.get("semantic_weight", 0.4)
+        lexical_weight = weights.get("lexical_weight", settings.DEFAULT_LEXICAL_WEIGHT)
+        semantic_weight = weights.get("semantic_weight", settings.DEFAULT_SEMANTIC_WEIGHT)
+        
+        # ✅ Utiliser les seuils de la configuration centralisée
+        adaptive_threshold = settings.ADAPTIVE_THRESHOLD
+        quality_boost_factor = settings.QUALITY_BOOST_FACTOR
         
         for transaction_id in all_transaction_ids:
             lexical_item = lexical_by_id.get(transaction_id)
@@ -595,15 +514,15 @@ class FusionStrategyExecutor:
                 
                 score_diff = abs(norm_lexical - norm_semantic)
                 
-                if score_diff < self.config.adaptive_threshold:
+                if score_diff < adaptive_threshold:
                     # Scores similaires -> moyenne pondérée
                     combined_score = norm_lexical * lexical_weight + norm_semantic * semantic_weight
                 else:
                     # Scores différents -> favoriser le meilleur
                     if norm_lexical > norm_semantic:
-                        combined_score = norm_lexical * (1 + self.config.quality_boost_factor)
+                        combined_score = norm_lexical * (1 + quality_boost_factor)
                     else:
-                        combined_score = norm_semantic * (1 + self.config.quality_boost_factor)
+                        combined_score = norm_semantic * (1 + quality_boost_factor)
             
             elif lexical_item:
                 # Seulement lexical
@@ -624,7 +543,7 @@ class FusionStrategyExecutor:
         
         # Trier par score décroissant
         fused_results.sort(key=lambda x: x.score, reverse=True)
-        return fused_results[:self.config.max_results]
+        return fused_results[:settings.MAX_SEARCH_LIMIT]
     
     def _fuse_combsum(
         self,
@@ -652,7 +571,7 @@ class FusionStrategyExecutor:
         all_results = []
         
         # Ajouter les résultats lexicaux avec pondération
-        lexical_weight = weights.get("lexical_weight", 0.6)
+        lexical_weight = weights.get("lexical_weight", settings.DEFAULT_LEXICAL_WEIGHT)
         for item in lexical_results[:50]:  # Limiter pour éviter les surcharges
             weighted_item = SearchResultItem(
                 transaction_id=item.transaction_id,
@@ -668,7 +587,7 @@ class FusionStrategyExecutor:
             all_results.append(weighted_item)
         
         # Ajouter les résultats sémantiques avec pondération
-        semantic_weight = weights.get("semantic_weight", 0.4)
+        semantic_weight = weights.get("semantic_weight", settings.DEFAULT_SEMANTIC_WEIGHT)
         semantic_ids = {item.transaction_id for item in all_results}
         
         for item in semantic_results[:50]:  # Limiter pour éviter les surcharges
@@ -686,24 +605,112 @@ class FusionStrategyExecutor:
                 )
                 all_results.append(weighted_item)
         
-        # Trier par score et limiter
+        # Trier par score et limiter selon la configuration centralisée
         all_results.sort(key=lambda x: x.score or 0.0, reverse=True)
-        return all_results[:self.config.max_results]
+        return all_results[:settings.MAX_SEARCH_LIMIT]
 
 
-# Fonctions utilitaires pour création facile
-def create_simple_executor(lexical_weight: float = 0.6, semantic_weight: float = 0.4) -> FusionStrategyExecutor:
-    """Crée un exécuteur simple avec des poids spécifiés."""
-    config = FusionConfig.create_simple(lexical_weight, semantic_weight)
-    return FusionStrategyExecutor(config)
+# ==========================================
+# 🔧 FONCTIONS UTILITAIRES SIMPLIFIÉES
+# ==========================================
 
-
-def create_balanced_executor() -> FusionStrategyExecutor:
-    """Crée un exécuteur équilibré pour usage général."""
-    config = FusionConfig.create_balanced()
-    return FusionStrategyExecutor(config)
+def create_simple_executor() -> FusionStrategyExecutor:
+    """Crée un exécuteur simple utilisant la configuration centralisée."""
+    return FusionStrategyExecutor()
 
 
 def create_default_executor() -> FusionStrategyExecutor:
-    """Crée un exécuteur par défaut avec configuration standard."""
+    """Crée un exécuteur par défaut avec configuration centralisée."""
     return FusionStrategyExecutor()
+
+
+# ==========================================
+# 🎯 CLASSE DE CONFIGURATION SIMPLIFIÉE
+# ==========================================
+
+class FusionConfig:
+    """
+    Configuration de fusion utilisant les paramètres centralisés.
+    
+    Cette classe sert de facade pour accéder à la configuration
+    centralisée de manière compatible avec l'ancien code.
+    """
+    
+    @property
+    def default_strategy(self) -> FusionStrategy:
+        """Stratégie par défaut depuis la config centralisée."""
+        strategy_mapping = {
+            "weighted_average": FusionStrategy.WEIGHTED_AVERAGE,
+            "rank_fusion": FusionStrategy.RANK_FUSION,
+            "reciprocal_rank_fusion": FusionStrategy.RECIPROCAL_RANK_FUSION,
+            "score_normalization": FusionStrategy.SCORE_NORMALIZATION,
+            "adaptive_fusion": FusionStrategy.ADAPTIVE_FUSION,
+            "combsum": FusionStrategy.COMBSUM,
+            "combmnz": FusionStrategy.COMBMNZ
+        }
+        return strategy_mapping.get(settings.DEFAULT_SEARCH_TYPE, FusionStrategy.ADAPTIVE_FUSION)
+    
+    @property
+    def default_lexical_weight(self) -> float:
+        """Poids lexical par défaut."""
+        return settings.DEFAULT_LEXICAL_WEIGHT
+    
+    @property
+    def default_semantic_weight(self) -> float:
+        """Poids sémantique par défaut."""
+        return settings.DEFAULT_SEMANTIC_WEIGHT
+    
+    @property
+    def score_normalization_method(self) -> str:
+        """Méthode de normalisation des scores."""
+        return settings.SCORE_NORMALIZATION_METHOD
+    
+    @property
+    def min_score_threshold(self) -> float:
+        """Seuil minimum de score."""
+        return settings.MIN_SCORE_THRESHOLD
+    
+    @property
+    def rrf_k(self) -> int:
+        """Paramètre K pour RRF."""
+        return settings.RRF_K
+    
+    @property
+    def adaptive_threshold(self) -> float:
+        """Seuil pour la fusion adaptative."""
+        return settings.ADAPTIVE_THRESHOLD
+    
+    @property
+    def quality_boost_factor(self) -> float:
+        """Facteur de boost de qualité."""
+        return settings.QUALITY_BOOST_FACTOR
+    
+    @property
+    def enable_deduplication(self) -> bool:
+        """Déduplication activée."""
+        return settings.ENABLE_DEDUPLICATION
+    
+    @property
+    def dedup_similarity_threshold(self) -> float:
+        """Seuil de similarité pour déduplication."""
+        return settings.DEDUP_SIMILARITY_THRESHOLD
+    
+    @property
+    def enable_diversification(self) -> bool:
+        """Diversification activée."""
+        return settings.ENABLE_DIVERSIFICATION
+    
+    @property
+    def diversity_factor(self) -> float:
+        """Facteur de diversité."""
+        return settings.DIVERSITY_FACTOR
+    
+    @property
+    def max_same_merchant(self) -> int:
+        """Maximum de résultats par marchand."""
+        return settings.MAX_SAME_MERCHANT
+    
+    @property
+    def max_results(self) -> int:
+        """Nombre maximum de résultats."""
+        return settings.MAX_SEARCH_LIMIT

@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-# ✅ CONFIGURATION CENTRALISÉE - SEULE SOURCE DE VÉRITÉ
 from config_service.config import settings
 
 from search_service.models.search_types import FINANCIAL_SYNONYMS

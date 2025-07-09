@@ -1,659 +1,664 @@
 """
-Client Elasticsearch/Bonsai pour le service de recherche.
+Client Elasticsearch optimisé pour le Search Service.
 
-Ce module fournit une interface optimisée pour interagir avec
-Elasticsearch/Bonsai pour les recherches lexicales de transactions financières.
+Ce client encapsule toutes les interactions avec Elasticsearch,
+avec une configuration centralisée et des optimisations de performance.
 """
-import logging
-import ssl
-from typing import Dict, Any, List, Optional, Union
-from datetime import datetime
-import aiohttp
 
-from search_service.clients.base_client import BaseClient, RetryConfig, CircuitBreakerConfig, HealthCheckConfig
-from search_service.models.search_types import FINANCIAL_SYNONYMS
+import asyncio
+import logging
+from typing import Any, Dict, List, Optional, Union
+from datetime import datetime, timedelta
+import json
+
+import aiohttp
+from elasticsearch import AsyncElasticsearch, exceptions as es_exceptions
+from elasticsearch.helpers import async_bulk
+
+from ..config.settings import SearchServiceSettings, get_settings
+from ..models.service_contracts import SearchServiceError
+from .base_client import BaseClient
+
 
 logger = logging.getLogger(__name__)
 
 
+class ElasticsearchConnectionError(Exception):
+    """Erreur de connexion Elasticsearch."""
+    pass
+
+
+class ElasticsearchQueryError(Exception):
+    """Erreur de requête Elasticsearch."""
+    pass
+
+
 class ElasticsearchClient(BaseClient):
     """
-    Client pour Elasticsearch/Bonsai optimisé pour les transactions financières.
+    Client Elasticsearch optimisé pour la recherche financière.
     
-    Responsabilités:
-    - Recherches lexicales optimisées
-    - Construction de requêtes complexes
-    - Gestion des filtres et agrégations
-    - Highlighting des résultats
-    - Monitoring des performances
+    Fonctionnalités:
+    - Connexion asynchrone haute performance
+    - Gestion automatique des erreurs et retry
+    - Optimisations pour les requêtes financières
+    - Health checking et monitoring
+    - Configuration centralisée
     """
     
-    def __init__(
-        self,
-        bonsai_url: str,
-        index_name: str = "harena_transactions",
-        timeout: float = 5.0,
-        retry_config: Optional[RetryConfig] = None,
-        circuit_breaker_config: Optional[CircuitBreakerConfig] = None
-    ):
-        # Configuration SSL pour Bonsai
-        health_check_config = HealthCheckConfig(
-            enabled=True,
-            interval_seconds=30.0,
-            timeout_seconds=3.0,
-            endpoint="/"
-        )
+    def __init__(self, settings: Optional[SearchServiceSettings] = None):
+        self.settings = settings or get_settings()
+        self.client: Optional[AsyncElasticsearch] = None
+        self.index_name = self.settings.ELASTICSEARCH_INDEX
         
-        super().__init__(
-            base_url=bonsai_url,
-            service_name="elasticsearch",
-            timeout=timeout,
-            retry_config=retry_config,
-            circuit_breaker_config=circuit_breaker_config,
-            health_check_config=health_check_config
-        )
+        # Métriques de performance
+        self.query_count = 0
+        self.total_query_time = 0.0
+        self.error_count = 0
+        self.last_health_check = None
+        self.is_healthy = False
         
-        self.index_name = index_name
-        self.ssl_context = ssl.create_default_context()
+        # Circuit breaker
+        self.circuit_breaker_failures = 0
+        self.circuit_breaker_last_failure = None
+        self.circuit_breaker_open = False
         
-        # Cache des requêtes fréquentes
-        self._query_cache: Dict[str, Dict] = {}
-        
-        logger.info(f"Elasticsearch client initialized for index: {index_name}")
+        logger.info(f"Elasticsearch client initialized for index: {self.index_name}")
     
-    async def start(self):
-        """Démarre le client avec configuration SSL pour Bonsai."""
-        if self._session is None:
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
-            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
-            
-            self._session = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=connector,
-                headers=self.headers
+    async def connect(self) -> None:
+        """
+        Initialise la connexion Elasticsearch.
+        
+        Raises:
+            ElasticsearchConnectionError: Si la connexion échoue
+        """
+        try:
+            self.client = AsyncElasticsearch(
+                hosts=[self.settings.elasticsearch_url],
+                timeout=self.settings.ELASTICSEARCH_TIMEOUT,
+                max_retries=self.settings.ELASTICSEARCH_MAX_RETRIES,
+                retry_on_timeout=self.settings.ELASTICSEARCH_RETRY_ON_TIMEOUT,
+                # Optimisations de performance
+                sniff_on_start=True,
+                sniff_on_connection_fail=True,
+                sniffer_timeout=60,
+                # Configuration SSL si nécessaire
+                verify_certs=self.settings.is_production,
+                ssl_show_warn=False
             )
-            logger.info(f"{self.service_name} client started with SSL")
-    
-    async def test_connection(self) -> bool:
-        """Teste la connectivité de base à Elasticsearch."""
-        try:
-            async def _test():
-                async with self.session.get(self.base_url) as response:
-                    return response.status == 200
             
-            return await self.execute_with_retry(_test, "connection_test")
+            # Test de connexion
+            await self.health_check()
+            
+            if not self.is_healthy:
+                raise ElasticsearchConnectionError("Elasticsearch n'est pas accessible")
+            
+            logger.info("✅ Connexion Elasticsearch établie")
+            
         except Exception as e:
-            logger.error(f"Elasticsearch connection test failed: {e}")
+            logger.error(f"❌ Erreur connexion Elasticsearch: {str(e)}")
+            raise ElasticsearchConnectionError(f"Impossible de se connecter à Elasticsearch: {str(e)}")
+    
+    async def disconnect(self) -> None:
+        """Ferme la connexion Elasticsearch."""
+        if self.client:
+            await self.client.close()
+            self.client = None
+            logger.info("🔌 Connexion Elasticsearch fermée")
+    
+    async def health_check(self) -> bool:
+        """
+        Vérifie la santé du cluster Elasticsearch.
+        
+        Returns:
+            bool: True si le cluster est sain
+        """
+        try:
+            if not self.client:
+                return False
+            
+            # Vérification cluster
+            health = await self.client.cluster.health()
+            cluster_status = health.get("status", "red")
+            
+            # Vérification index
+            index_exists = await self.client.indices.exists(index=self.index_name)
+            
+            self.is_healthy = cluster_status in ["green", "yellow"] and index_exists
+            self.last_health_check = datetime.utcnow()
+            
+            if self.is_healthy:
+                # Reset circuit breaker si la santé est OK
+                self.circuit_breaker_failures = 0
+                self.circuit_breaker_open = False
+                logger.debug(f"✅ Elasticsearch healthy - Status: {cluster_status}")
+            else:
+                logger.warning(f"⚠️ Elasticsearch unhealthy - Status: {cluster_status}, Index exists: {index_exists}")
+            
+            return self.is_healthy
+            
+        except Exception as e:
+            logger.error(f"❌ Health check failed: {str(e)}")
+            self.is_healthy = False
+            self._handle_circuit_breaker()
             return False
     
-    async def _perform_health_check(self) -> Dict[str, Any]:
-        """Effectue une vérification de santé spécifique à Elasticsearch."""
-        try:
-            # Vérifier le cluster
-            async with self.session.get(self.base_url) as response:
-                if response.status == 200:
-                    cluster_info = await response.json()
-                    
-                    # Vérifier l'existence de l'index
-                    index_exists = await self._check_index_exists()
-                    
-                    return {
-                        "cluster_name": cluster_info.get("cluster_name", "unknown"),
-                        "version": cluster_info.get("version", {}).get("number", "unknown"),
-                        "index_exists": index_exists,
-                        "status": "healthy" if index_exists else "degraded"
-                    }
-                else:
-                    return {"status": "unhealthy", "error": f"HTTP {response.status}"}
-        except Exception as e:
-            return {"status": "unhealthy", "error": str(e)}
+    def _handle_circuit_breaker(self) -> None:
+        """Gère le circuit breaker en cas d'erreurs répétées."""
+        self.circuit_breaker_failures += 1
+        self.circuit_breaker_last_failure = datetime.utcnow()
+        
+        if self.circuit_breaker_failures >= 5:
+            self.circuit_breaker_open = True
+            logger.warning("🚨 Circuit breaker ouvert - Trop d'erreurs Elasticsearch")
     
-    async def _check_index_exists(self) -> bool:
-        """Vérifie si l'index existe."""
-        try:
-            async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
-                return response.status == 200
-        except Exception:
+    def _should_skip_request(self) -> bool:
+        """Détermine si la requête doit être ignorée à cause du circuit breaker."""
+        if not self.circuit_breaker_open:
             return False
-    
-    # ============================================================================
-    # MÉTHODES GÉNÉRIQUES AVEC VALIDATION DÉFENSIVE AJOUTÉE
-    # ============================================================================
+        
+        # Réessayer après 1 minute
+        if (self.circuit_breaker_last_failure and 
+            datetime.utcnow() - self.circuit_breaker_last_failure > timedelta(minutes=1)):
+            self.circuit_breaker_open = False
+            return False
+        
+        return True
     
     async def search(
         self,
-        index: str,
-        body: Optional[Dict[str, Any]],
+        query: Dict[str, Any],
         size: int = 20,
-        from_: int = 0
+        from_: int = 0,
+        timeout: str = "5s",
+        preference: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Effectue une recherche Elasticsearch (méthode générique).
-        
-        Cette méthode est utilisée par le lexical_engine.py et doit être
-        compatible avec l'interface attendue.
+        Exécute une requête de recherche Elasticsearch.
         
         Args:
-            index: Nom de l'index
-            body: Corps de la requête Elasticsearch
-            size: Nombre de résultats
-            from_: Offset pour pagination
+            query: Requête Elasticsearch
+            size: Nombre de résultats à retourner
+            from_: Offset pour la pagination
+            timeout: Timeout de la requête
+            preference: Préférence de routage
             
         Returns:
-            Résultats de la recherche
+            Dict: Résultats Elasticsearch
             
         Raises:
-            ValueError: Si body est None ou invalide
+            ElasticsearchQueryError: Si la requête échoue
         """
-        # ✅ VALIDATION DÉFENSIVE CRITIQUE AJOUTÉE
-        if body is None:
-            logger.error("Search body is None - this indicates a bug in query construction")
-            logger.error(f"Called with index={index}, size={size}, from_={from_}")
-            raise ValueError("Search body cannot be None. Check query construction in calling code.")
+        if self._should_skip_request():
+            raise ElasticsearchQueryError("Circuit breaker ouvert")
         
-        if not isinstance(body, dict):
-            logger.error(f"Search body must be a dict, got {type(body)}: {body}")
-            raise ValueError(f"Search body must be a dictionary, got {type(body)}")
+        if not self.client:
+            raise ElasticsearchQueryError("Client Elasticsearch non connecté")
         
-        # Ajouter size et from_ au body si pas déjà présents
-        if "size" not in body:
-            body["size"] = size
-        if "from" not in body:
-            body["from"] = from_
+        start_time = datetime.utcnow()
         
-        async def _search():
-            async with self.session.post(
-                f"{self.base_url}/{index}/_search",
-                json=body
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Search failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_search, "search")
+        try:
+            # Optimisations pour les requêtes financières
+            search_params = {
+                "index": self.index_name,
+                "body": query,
+                "size": size,
+                "from": from_,
+                "timeout": timeout,
+                "track_total_hits": True,
+                "request_cache": True  # Cache pour les requêtes répétées
+            }
+            
+            # Préférence de routage pour performance
+            if preference:
+                search_params["preference"] = preference
+            
+            # Exécution de la requête
+            response = await self.client.search(**search_params)
+            
+            # Métriques
+            execution_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            self.query_count += 1
+            self.total_query_time += execution_time
+            
+            logger.debug(f"✅ Requête ES exécutée en {execution_time:.2f}ms")
+            
+            return response
+            
+        except es_exceptions.RequestError as e:
+            self.error_count += 1
+            error_msg = f"Erreur de requête Elasticsearch: {str(e)}"
+            logger.error(error_msg)
+            raise ElasticsearchQueryError(error_msg)
+            
+        except es_exceptions.ConnectionError as e:
+            self.error_count += 1
+            self._handle_circuit_breaker()
+            error_msg = f"Erreur de connexion Elasticsearch: {str(e)}"
+            logger.error(error_msg)
+            raise ElasticsearchConnectionError(error_msg)
+            
+        except Exception as e:
+            self.error_count += 1
+            error_msg = f"Erreur inattendue Elasticsearch: {str(e)}"
+            logger.error(error_msg)
+            raise ElasticsearchQueryError(error_msg)
     
-    async def health(self) -> Dict[str, Any]:
+    async def count(self, query: Dict[str, Any]) -> int:
         """
-        Vérifie la santé d'Elasticsearch (méthode générique).
-        
-        Cette méthode est utilisée par les health checks et doit retourner
-        un format standard.
-        
-        Returns:
-            Statut de santé du cluster
-        """
-        async def _health():
-            async with self.session.get(
-                f"{self.base_url}/_cluster/health"
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Health check failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_health, "health")
-    
-    async def count(
-        self,
-        index: str,
-        body: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Compte les documents correspondant à une requête (méthode générique).
-        
-        Cette méthode est utilisée par les moteurs pour compter les documents.
+        Compte le nombre de documents correspondant à une requête.
         
         Args:
-            index: Nom de l'index
-            body: Corps de la requête de comptage
+            query: Requête Elasticsearch
             
         Returns:
-            Résultat du comptage
+            int: Nombre de documents
         """
-        # Validation défensive également ici
-        if body is None:
-            logger.error("Count body is None - this indicates a bug in query construction")
-            raise ValueError("Count body cannot be None")
+        if self._should_skip_request():
+            raise ElasticsearchQueryError("Circuit breaker ouvert")
         
-        if not isinstance(body, dict):
-            logger.error(f"Count body must be a dict, got {type(body)}")
-            raise ValueError(f"Count body must be a dictionary, got {type(body)}")
+        if not self.client:
+            raise ElasticsearchQueryError("Client Elasticsearch non connecté")
         
-        async def _count():
-            async with self.session.post(
-                f"{self.base_url}/{index}/_count",
-                json=body
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Count failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_count, "count")
+        try:
+            response = await self.client.count(
+                index=self.index_name,
+                body=query
+            )
+            
+            return response.get("count", 0)
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur count: {str(e)}")
+            raise ElasticsearchQueryError(f"Erreur lors du count: {str(e)}")
     
-    # ============================================================================
-    # MÉTHODES SPÉCIALISÉES EXISTANTES
-    # ============================================================================
-    
-    async def search_transactions(
-        self,
-        query: str,
-        user_id: int,
-        limit: int = 20,
-        offset: int = 0,
-        filters: Optional[Dict[str, Any]] = None,
-        include_highlights: bool = True,
-        explain: bool = False
-    ) -> Dict[str, Any]:
+    async def get_mapping(self) -> Dict[str, Any]:
         """
-        Recherche de transactions avec requête optimisée.
+        Récupère le mapping de l'index.
+        
+        Returns:
+            Dict: Mapping de l'index
+        """
+        if not self.client:
+            raise ElasticsearchQueryError("Client Elasticsearch non connecté")
+        
+        try:
+            response = await self.client.indices.get_mapping(index=self.index_name)
+            return response.get(self.index_name, {}).get("mappings", {})
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get_mapping: {str(e)}")
+            raise ElasticsearchQueryError(f"Erreur lors de la récupération du mapping: {str(e)}")
+    
+    async def bulk_index(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Indexe plusieurs documents en batch.
         
         Args:
-            query: Terme de recherche
-            user_id: ID de l'utilisateur
-            limit: Nombre de résultats
-            offset: Décalage pour pagination
-            filters: Filtres additionnels
-            include_highlights: Inclure le highlighting
-            explain: Inclure l'explication du scoring
+            documents: Liste de documents à indexer
             
         Returns:
-            Résultats de recherche Elasticsearch
+            Dict: Résultat de l'indexation
         """
-        search_body = self._build_optimized_search_query(
-            query, user_id, limit, offset, filters, include_highlights, explain
+        if not self.client:
+            raise ElasticsearchQueryError("Client Elasticsearch non connecté")
+        
+        try:
+            # Préparation des documents pour bulk
+            actions = []
+            for doc in documents:
+                action = {
+                    "_index": self.index_name,
+                    "_source": doc
+                }
+                
+                # Utiliser transaction_id comme document ID si disponible
+                if "transaction_id" in doc:
+                    action["_id"] = doc["transaction_id"]
+                
+                actions.append(action)
+            
+            # Indexation en batch
+            success_count, errors = await async_bulk(
+                self.client,
+                actions,
+                chunk_size=1000,
+                max_chunk_bytes=10 * 1024 * 1024  # 10MB par chunk
+            )
+            
+            logger.info(f"✅ Indexation bulk: {success_count} documents, {len(errors)} erreurs")
+            
+            return {
+                "success_count": success_count,
+                "errors": errors
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur bulk_index: {str(e)}")
+            raise ElasticsearchQueryError(f"Erreur lors de l'indexation bulk: {str(e)}")
+    
+    async def refresh_index(self) -> None:
+        """Force le rafraîchissement de l'index."""
+        if not self.client:
+            raise ElasticsearchQueryError("Client Elasticsearch non connecté")
+        
+        try:
+            await self.client.indices.refresh(index=self.index_name)
+            logger.debug("✅ Index rafraîchi")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur refresh_index: {str(e)}")
+            raise ElasticsearchQueryError(f"Erreur lors du rafraîchissement: {str(e)}")
+    
+    async def get_index_stats(self) -> Dict[str, Any]:
+        """
+        Récupère les statistiques de l'index.
+        
+        Returns:
+            Dict: Statistiques de l'index
+        """
+        if not self.client:
+            raise ElasticsearchQueryError("Client Elasticsearch non connecté")
+        
+        try:
+            response = await self.client.indices.stats(index=self.index_name)
+            return response.get("indices", {}).get(self.index_name, {})
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get_index_stats: {str(e)}")
+            raise ElasticsearchQueryError(f"Erreur lors de la récupération des stats: {str(e)}")
+    
+    def get_client_metrics(self) -> Dict[str, Any]:
+        """
+        Récupère les métriques du client.
+        
+        Returns:
+            Dict: Métriques de performance
+        """
+        avg_query_time = (
+            self.total_query_time / self.query_count 
+            if self.query_count > 0 else 0.0
         )
         
-        async def _search():
-            async with self.session.post(
-                f"{self.base_url}/{self.index_name}/_search",
-                json=search_body
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Search failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_search, "transaction_search")
-    
-    def _build_optimized_search_query(
-        self,
-        query: str,
-        user_id: int,
-        limit: int,
-        offset: int,
-        filters: Optional[Dict[str, Any]] = None,
-        include_highlights: bool = True,
-        explain: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Construit une requête Elasticsearch optimisée basée sur les résultats du validateur.
-        
-        Le validateur montre que:
-        - Les requêtes fonctionnent mais la pertinence peut être améliorée
-        - Les scores max sont corrects (139.33 pour virement, 96.30 pour carte)
-        - Certaines requêtes ne retournent aucun résultat (essence, pharmacie)
-        """
-        expanded_query = self._expand_financial_query(query)
-        query_words = query.lower().split()
-        
-        # Requête multi-stratégie optimisée
-        search_query = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"user_id": user_id}}
-                    ],
-                    "should": [
-                        # 1. Correspondance exacte de phrase (boost très élevé)
-                        {
-                            "match_phrase": {
-                                "searchable_text": {
-                                    "query": query,
-                                    "boost": 10.0  # Augmenté de 8.0 à 10.0
-                                }
-                            }
-                        },
-                        {
-                            "match_phrase": {
-                                "primary_description": {
-                                    "query": query,
-                                    "boost": 8.0  # Augmenté de 6.0 à 8.0
-                                }
-                            }
-                        },
-                        
-                        # 2. Correspondance dans merchant_name (critique pour les marchands)
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["merchant_name^6.0", "merchant_name.keyword^8.0"],  # Augmenté
-                                "type": "best_fields",
-                                "boost": 5.0  # Augmenté de 4.0 à 5.0
-                            }
-                        },
-                        
-                        # 3. Correspondance multi-champs avec fuzziness améliorée
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": [
-                                    "searchable_text^4.0",      # Augmenté de 3.0 à 4.0
-                                    "primary_description^3.0",  # Augmenté de 2.5 à 3.0
-                                    "clean_description^2.5",    # Augmenté de 2.0 à 2.5
-                                    "provider_description^2.0", # Augmenté de 1.5 à 2.0
-                                    "merchant_name^3.5"         # Ajouté
-                                ],
-                                "type": "best_fields",
-                                "operator": "or",
-                                "fuzziness": "AUTO",
-                                "boost": 4.0  # Augmenté de 3.0 à 4.0
-                            }
-                        },
-                        
-                        # 4. Correspondance avec requête étendue (synonymes)
-                        {
-                            "multi_match": {
-                                "query": expanded_query,
-                                "fields": [
-                                    "searchable_text^2.5",      # Augmenté de 2.0 à 2.5
-                                    "primary_description^2.0",  # Augmenté de 1.5 à 2.0
-                                    "merchant_name^2.5"         # Ajouté
-                                ],
-                                "type": "cross_fields",
-                                "operator": "or",
-                                "boost": 2.5  # Augmenté de 2.0 à 2.5
-                            }
-                        },
-                        
-                        # 5. Correspondance partielle avec wildcards (améliorée)
-                        {
-                            "bool": {
-                                "should": [
-                                    {
-                                        "wildcard": {
-                                            "searchable_text": {
-                                                "value": f"*{word}*",
-                                                "boost": 2.0  # Augmenté de 1.5 à 2.0
-                                            }
-                                        }
-                                    } for word in query_words if len(word) > 2  # Changé de 3 à 2
-                                ] + [
-                                    {
-                                        "wildcard": {
-                                            "merchant_name": {
-                                                "value": f"*{word}*",
-                                                "boost": 2.5  # Nouveau
-                                            }
-                                        }
-                                    } for word in query_words if len(word) > 2
-                                ]
-                            }
-                        },
-                        
-                        # 6. Correspondance simple pour fallback
-                        {
-                            "simple_query_string": {
-                                "query": query,
-                                "fields": [
-                                    "searchable_text^1.5",      # Augmenté de 1.0 à 1.5
-                                    "primary_description^1.2", 
-                                    "merchant_name^1.5"
-                                ],
-                                "default_operator": "or",
-                                "boost": 1.5  # Augmenté de 1.0 à 1.5
-                            }
-                        },
-                        
-                        # 7. NOUVEAU: Correspondance fuzzy pour capturer les variantes
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": [
-                                    "searchable_text^1.5",
-                                    "primary_description^1.2",
-                                    "merchant_name^1.8"
-                                ],
-                                "type": "most_fields",
-                                "fuzziness": "AUTO",
-                                "prefix_length": 1,
-                                "boost": 1.8
-                            }
-                        }
-                    ],
-                    "minimum_should_match": 1
-                }
-            },
-            "size": limit,
-            "from": offset,
-            "sort": [
-                {"_score": {"order": "desc"}},
-                {"transaction_date": {"order": "desc", "unmapped_type": "date"}}
-            ],
-            "_source": [
-                "transaction_id", "primary_description", "merchant_name",
-                "amount", "transaction_date", "searchable_text", 
-                "category_id", "user_id", "account_id", "transaction_type",
-                "currency_code", "operation_type"
-            ]
+        return {
+            "query_count": self.query_count,
+            "total_query_time_ms": self.total_query_time,
+            "average_query_time_ms": avg_query_time,
+            "error_count": self.error_count,
+            "error_rate": self.error_count / max(self.query_count, 1),
+            "is_healthy": self.is_healthy,
+            "last_health_check": self.last_health_check.isoformat() if self.last_health_check else None,
+            "circuit_breaker_open": self.circuit_breaker_open,
+            "circuit_breaker_failures": self.circuit_breaker_failures
         }
+    
+    async def __aenter__(self):
+        """Context manager entry."""
+        await self.connect()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        await self.disconnect()
+
+
+# === HELPER FUNCTIONS ===
+
+def build_financial_query(
+    user_id: int,
+    text_query: Optional[str] = None,
+    filters: Optional[Dict[str, Any]] = None,
+    date_range: Optional[Dict[str, str]] = None,
+    amount_range: Optional[Dict[str, float]] = None,
+    categories: Optional[List[str]] = None,
+    merchants: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Construit une requête Elasticsearch optimisée pour les données financières.
+    
+    Args:
+        user_id: ID de l'utilisateur (obligatoire)
+        text_query: Recherche textuelle
+        filters: Filtres additionnels
+        date_range: Plage de dates (from, to)
+        amount_range: Plage de montants (min, max)
+        categories: Liste des catégories
+        merchants: Liste des marchands
         
-        # Ajouter les filtres si fournis
-        if filters:
-            self._apply_filters(search_query, filters)
-        
-        # Ajouter le highlighting si demandé
-        if include_highlights:
-            search_query["highlight"] = {
-                "fields": {
-                    "searchable_text": {
-                        "fragment_size": 150,
-                        "number_of_fragments": 3,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"]
-                    },
-                    "primary_description": {
-                        "fragment_size": 100,
-                        "number_of_fragments": 2,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"]
-                    },
-                    "merchant_name": {
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"]
-                    }
+    Returns:
+        Dict: Requête Elasticsearch optimisée
+    """
+    # Clause obligatoire : user_id
+    must_clauses = [
+        {"term": {"user_id": user_id}}
+    ]
+    
+    # Recherche textuelle avec boost
+    if text_query:
+        text_query = text_query.strip()
+        if text_query:
+            must_clauses.append({
+                "multi_match": {
+                    "query": text_query,
+                    "fields": [
+                        "searchable_text^2.0",
+                        "primary_description^1.5",
+                        "merchant_name^1.8",
+                        "category_name^1.2"
+                    ],
+                    "type": "best_fields",
+                    "fuzziness": "AUTO",
+                    "operator": "and"
                 }
+            })
+    
+    # Filtres de plage
+    filter_clauses = []
+    
+    # Plage de dates
+    if date_range:
+        if date_range.get("from") or date_range.get("to"):
+            range_filter = {"date": {}}
+            if date_range.get("from"):
+                range_filter["date"]["gte"] = date_range["from"]
+            if date_range.get("to"):
+                range_filter["date"]["lte"] = date_range["to"]
+            filter_clauses.append({"range": range_filter})
+    
+    # Plage de montants
+    if amount_range:
+        if amount_range.get("min") is not None or amount_range.get("max") is not None:
+            range_filter = {"amount_abs": {}}
+            if amount_range.get("min") is not None:
+                range_filter["amount_abs"]["gte"] = amount_range["min"]
+            if amount_range.get("max") is not None:
+                range_filter["amount_abs"]["lte"] = amount_range["max"]
+            filter_clauses.append({"range": range_filter})
+    
+    # Filtres catégories
+    if categories:
+        filter_clauses.append({
+            "terms": {"category_name.keyword": categories}
+        })
+    
+    # Filtres marchands
+    if merchants:
+        filter_clauses.append({
+            "terms": {"merchant_name.keyword": merchants}
+        })
+    
+    # Filtres additionnels
+    if filters:
+        for field, value in filters.items():
+            if isinstance(value, list):
+                filter_clauses.append({"terms": {f"{field}.keyword": value}})
+            else:
+                filter_clauses.append({"term": {f"{field}.keyword": value}})
+    
+    # Construction de la requête finale
+    query = {
+        "query": {
+            "bool": {
+                "must": must_clauses
             }
-        
-        # Ajouter l'explication si demandée
-        if explain:
-            search_query["explain"] = True
-        
-        return search_query
+        },
+        "sort": [
+            {"_score": {"order": "desc"}},
+            {"date": {"order": "desc"}},
+            {"amount_abs": {"order": "desc"}}
+        ]
+    }
     
-    def _expand_financial_query(self, query: str) -> str:
-        """Expand les requêtes avec des synonymes financiers."""
-        query_lower = query.lower()
-        expanded_terms = [query]
-        
-        for term, synonyms in FINANCIAL_SYNONYMS.items():
-            if term in query_lower:
-                expanded_terms.extend(synonyms)
-        
-        return " ".join(set(expanded_terms))
+    # Ajout des filtres si présents
+    if filter_clauses:
+        query["query"]["bool"]["filter"] = filter_clauses
     
-    def _apply_filters(self, search_query: Dict[str, Any], filters: Dict[str, Any]):
-        """Applique les filtres à la requête de recherche."""
-        bool_query = search_query["query"]["bool"]
-        
-        if "must" not in bool_query:
-            bool_query["must"] = []
-        
-        # Filtre de montant
-        if "amount_min" in filters or "amount_max" in filters:
-            amount_filter = {"range": {"amount": {}}}
-            if "amount_min" in filters:
-                amount_filter["range"]["amount"]["gte"] = filters["amount_min"]
-            if "amount_max" in filters:
-                amount_filter["range"]["amount"]["lte"] = filters["amount_max"]
-            bool_query["must"].append(amount_filter)
-        
-        # Filtre de date
-        if "date_from" in filters or "date_to" in filters:
-            date_filter = {"range": {"transaction_date": {}}}
-            if "date_from" in filters:
-                date_filter["range"]["transaction_date"]["gte"] = filters["date_from"]
-            if "date_to" in filters:
-                date_filter["range"]["transaction_date"]["lte"] = filters["date_to"]
-            bool_query["must"].append(date_filter)
-        
-        # Filtre de catégories
-        if "category_ids" in filters and filters["category_ids"]:
-            bool_query["must"].append({"terms": {"category_id": filters["category_ids"]}})
-        
-        # Filtre de comptes
-        if "account_ids" in filters and filters["account_ids"]:
-            bool_query["must"].append({"terms": {"account_id": filters["account_ids"]}})
-        
-        # Filtre de type de transaction
-        if "transaction_type" in filters and filters["transaction_type"] != "all":
-            bool_query["must"].append({"term": {"transaction_type": filters["transaction_type"]}})
+    return query
+
+
+def build_aggregation_query(
+    user_id: int,
+    base_query: Optional[Dict[str, Any]] = None,
+    group_by_month: bool = False,
+    group_by_category: bool = False,
+    group_by_merchant: bool = False,
+    include_stats: bool = True
+) -> Dict[str, Any]:
+    """
+    Construit une requête d'agrégation pour les données financières.
     
-    async def get_suggestions(
-        self,
-        partial_query: str,
-        user_id: int,
-        max_suggestions: int = 10
-    ) -> Dict[str, Any]:
-        """
-        Obtient des suggestions d'auto-complétion.
+    Args:
+        user_id: ID de l'utilisateur
+        base_query: Requête de base pour filtrer
+        group_by_month: Grouper par mois
+        group_by_category: Grouper par catégorie
+        group_by_merchant: Grouper par marchand
+        include_stats: Inclure les statistiques
         
-        Args:
-            partial_query: Début de requête
-            user_id: ID de l'utilisateur
-            max_suggestions: Nombre max de suggestions
-            
-        Returns:
-            Suggestions groupées par type
-        """
-        suggestions_query = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"user_id": user_id}}
-                    ],
-                    "should": [
-                        {
-                            "prefix": {
-                                "merchant_name.keyword": {
-                                    "value": partial_query,
-                                    "boost": 3.0
-                                }
-                            }
-                        },
-                        {
-                            "prefix": {
-                                "primary_description": {
-                                    "value": partial_query,
-                                    "boost": 2.0
-                                }
-                            }
-                        }
-                    ]
-                }
-            },
-            "aggs": {
-                "merchants": {
-                    "terms": {
-                        "field": "merchant_name.keyword",
-                        "size": max_suggestions,
-                        "include": f"{partial_query}.*"
-                    }
-                },
-                "descriptions": {
-                    "terms": {
-                        "field": "primary_description.keyword",
-                        "size": max_suggestions,
-                        "include": f".*{partial_query}.*"
-                    }
-                }
-            },
-            "size": 0
-        }
-        
-        async def _get_suggestions():
-            async with self.session.post(
-                f"{self.base_url}/{self.index_name}/_search",
-                json=suggestions_query
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Suggestions failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_get_suggestions, "suggestions")
-    
-    async def count_transactions(
-        self,
-        user_id: int,
-        filters: Optional[Dict[str, Any]] = None
-    ) -> int:
-        """
-        Compte le nombre de transactions correspondant aux critères.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            filters: Filtres additionnels
-            
-        Returns:
-            Nombre de transactions
-        """
-        count_query = {
+    Returns:
+        Dict: Requête d'agrégation Elasticsearch
+    """
+    # Requête de base ou filtrage par user_id
+    if base_query:
+        query = base_query.copy()
+    else:
+        query = {
             "query": {
                 "bool": {
                     "must": [{"term": {"user_id": user_id}}]
                 }
             }
         }
-        
-        if filters:
-            self._apply_filters(count_query, filters)
-        
-        async def _count():
-            async with self.session.post(
-                f"{self.base_url}/{self.index_name}/_count",
-                json=count_query
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result.get("count", 0)
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Count failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_count, "count_transactions")
     
-    async def get_index_stats(self) -> Dict[str, Any]:
-        """
-        Obtient les statistiques de l'index.
+    # Ne retourner aucun document, juste les agrégations
+    query["size"] = 0
+    
+    # Construction des agrégations
+    aggs = {}
+    
+    # Statistiques globales
+    if include_stats:
+        aggs["total_amount"] = {
+            "sum": {"field": "amount"}
+        }
+        aggs["total_amount_abs"] = {
+            "sum": {"field": "amount_abs"}
+        }
+        aggs["avg_amount"] = {
+            "avg": {"field": "amount_abs"}
+        }
+        aggs["min_amount"] = {
+            "min": {"field": "amount_abs"}
+        }
+        aggs["max_amount"] = {
+            "max": {"field": "amount_abs"}
+        }
+        aggs["amount_stats"] = {
+            "stats": {"field": "amount_abs"}
+        }
+    
+    # Agrégation par mois
+    if group_by_month:
+        aggs["by_month"] = {
+            "terms": {
+                "field": "month_year",
+                "size": 24,  # 2 ans de données max
+                "order": {"_key": "desc"}
+            },
+            "aggs": {
+                "total_amount": {"sum": {"field": "amount"}},
+                "total_amount_abs": {"sum": {"field": "amount_abs"}},
+                "avg_amount": {"avg": {"field": "amount_abs"}}
+            }
+        }
+    
+    # Agrégation par catégorie
+    if group_by_category:
+        aggs["by_category"] = {
+            "terms": {
+                "field": "category_name.keyword",
+                "size": 50,
+                "order": {"total_amount_abs": "desc"}
+            },
+            "aggs": {
+                "total_amount": {"sum": {"field": "amount"}},
+                "total_amount_abs": {"sum": {"field": "amount_abs"}},
+                "avg_amount": {"avg": {"field": "amount_abs"}}
+            }
+        }
+    
+    # Agrégation par marchand
+    if group_by_merchant:
+        aggs["by_merchant"] = {
+            "terms": {
+                "field": "merchant_name.keyword",
+                "size": 30,
+                "order": {"total_amount_abs": "desc"}
+            },
+            "aggs": {
+                "total_amount": {"sum": {"field": "amount"}},
+                "total_amount_abs": {"sum": {"field": "amount_abs"}},
+                "avg_amount": {"avg": {"field": "amount_abs"}}
+            }
+        }
+    
+    # Ajout des agrégations à la requête
+    if aggs:
+        query["aggs"] = aggs
+    
+    return query
+
+
+def optimize_query_for_performance(query: Dict[str, Any], user_id: int) -> Dict[str, Any]:
+    """
+    Optimise une requête Elasticsearch pour les performances.
+    
+    Args:
+        query: Requête à optimiser
+        user_id: ID de l'utilisateur pour le routage
         
-        Returns:
-            Statistiques de l'index
-        """
-        async def _get_stats():
-            async with self.session.get(
-                f"{self.base_url}/{self.index_name}/_stats"
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Stats failed: HTTP {response.status} - {error_text}")
-        
-        return await self.execute_with_retry(_get_stats, "index_stats")
+    Returns:
+        Dict: Requête optimisée
+    """
+    optimized = query.copy()
+    
+    # Préférence de routage basée sur l'user_id
+    # Aide à diriger les requêtes vers les shards appropriés
+    optimized["preference"] = f"_shards:{user_id % 5}"
+    
+    # Cache des résultats pour les requêtes répétées
+    optimized["request_cache"] = True
+    
+    # Limitation du score tracking si pas nécessaire
+    if "sort" in optimized and optimized["sort"]:
+        optimized["track_scores"] = False
+    
+    # Optimisation des sources retournées
+    if "_source" not in optimized:
+        optimized["_source"] = [
+            "transaction_id", "user_id", "account_id",
+            "amount", "amount_abs", "transaction_type", "currency_code",
+            "date", "month_year", "weekday",
+            "primary_description", "merchant_name", "category_name", "operation_type"
+        ]
+    
+    return optimized

@@ -1,373 +1,457 @@
 """
-Classe de base pour tous les clients de services externes.
+Classe de base pour tous les clients du Search Service.
 
-Ce module fournit les patterns communs pour la gestion des connexions,
-retry logic, circuit breaker, et monitoring.
+Fournit une interface commune et des fonctionnalités partagées
+pour tous les clients externes (Elasticsearch, Redis, etc.).
 """
+
 import asyncio
 import logging
-import time
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, Callable, TypeVar, Generic
-from dataclasses import dataclass
-from enum import Enum
-import aiohttp
-from contextlib import asynccontextmanager
+from typing import Any, Dict, Optional
+from datetime import datetime, timedelta
+
+from ..config.settings import SearchServiceSettings, get_settings
+
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
 
-
-class ClientStatus(Enum):
-    """Statuts possibles d'un client."""
-    HEALTHY = "healthy"
-    DEGRADED = "degraded"
-    UNHEALTHY = "unhealthy"
-    UNKNOWN = "unknown"
-
-
-@dataclass
-class RetryConfig:
-    """Configuration pour les tentatives de retry."""
-    max_attempts: int = 3
-    base_delay: float = 1.0
-    max_delay: float = 60.0
-    exponential_base: float = 2.0
-    jitter: bool = True
-
-
-@dataclass
-class CircuitBreakerConfig:
-    """Configuration pour le circuit breaker."""
-    failure_threshold: int = 5
-    success_threshold: int = 3
-    timeout_seconds: float = 60.0
-    enabled: bool = True
-
-
-@dataclass
-class HealthCheckConfig:
-    """Configuration pour les vérifications de santé."""
-    enabled: bool = True
-    interval_seconds: float = 30.0
-    timeout_seconds: float = 5.0
-    endpoint: Optional[str] = None
-
-
-class CircuitBreakerState(Enum):
-    """États du circuit breaker."""
-    CLOSED = "closed"    # Fonctionnement normal
-    OPEN = "open"        # Circuit ouvert (erreurs)
-    HALF_OPEN = "half_open"  # Test de récupération
-
-
-class CircuitBreaker:
-    """Implémentation d'un circuit breaker simple."""
-    
-    def __init__(self, config: CircuitBreakerConfig):
-        self.config = config
-        self.state = CircuitBreakerState.CLOSED
-        self.failure_count = 0
-        self.success_count = 0
-        self.last_failure_time = 0
-        self.enabled = config.enabled
-    
-    def can_execute(self) -> bool:
-        """Détermine si une requête peut être exécutée."""
-        if not self.enabled:
-            return True
-        
-        if self.state == CircuitBreakerState.CLOSED:
-            return True
-        elif self.state == CircuitBreakerState.OPEN:
-            # Vérifier si le timeout est expiré
-            if time.time() - self.last_failure_time > self.config.timeout_seconds:
-                self.state = CircuitBreakerState.HALF_OPEN
-                self.success_count = 0
-                return True
-            return False
-        else:  # HALF_OPEN
-            return True
-    
-    def on_success(self):
-        """Appelé en cas de succès."""
-        if not self.enabled:
-            return
-        
-        if self.state == CircuitBreakerState.HALF_OPEN:
-            self.success_count += 1
-            if self.success_count >= self.config.success_threshold:
-                self.state = CircuitBreakerState.CLOSED
-                self.failure_count = 0
-        elif self.state == CircuitBreakerState.CLOSED:
-            self.failure_count = 0
-    
-    def on_failure(self):
-        """Appelé en cas d'échec."""
-        if not self.enabled:
-            return
-        
-        self.failure_count += 1
-        self.last_failure_time = time.time()
-        
-        if self.state in [CircuitBreakerState.CLOSED, CircuitBreakerState.HALF_OPEN]:
-            if self.failure_count >= self.config.failure_threshold:
-                self.state = CircuitBreakerState.OPEN
-
-
-class BaseClient(ABC, Generic[T]):
+class BaseClient(ABC):
     """
-    Classe de base pour tous les clients de services externes.
+    Classe de base abstraite pour tous les clients externes.
     
     Fournit:
-    - Gestion des connexions HTTP
-    - Retry logic avec backoff exponentiel
-    - Circuit breaker
-    - Health checks automatiques
-    - Métriques et logging standardisés
+    - Interface commune pour connexion/déconnexion
+    - Gestion des erreurs standardisée
+    - Métriques de base
+    - Configuration centralisée
     """
     
-    def __init__(
-        self,
-        base_url: str,
-        service_name: str,
-        timeout: float = 10.0,
-        retry_config: Optional[RetryConfig] = None,
-        circuit_breaker_config: Optional[CircuitBreakerConfig] = None,
-        health_check_config: Optional[HealthCheckConfig] = None,
-        headers: Optional[Dict[str, str]] = None
-    ):
-        self.base_url = base_url.rstrip('/')
-        self.service_name = service_name
-        self.timeout = timeout
-        self.headers = headers or {}
-        
-        # Configuration par défaut
-        self.retry_config = retry_config or RetryConfig()
-        self.circuit_breaker_config = circuit_breaker_config or CircuitBreakerConfig()
-        self.health_check_config = health_check_config or HealthCheckConfig()
-        
-        # État interne
-        self.circuit_breaker = CircuitBreaker(self.circuit_breaker_config)
-        self.status = ClientStatus.UNKNOWN
-        self.last_health_check = 0
-        self.last_error: Optional[str] = None
-        
-        # Métriques
-        self.request_count = 0
+    def __init__(self, settings: Optional[SearchServiceSettings] = None):
+        self.settings = settings or get_settings()
+        self.connected = False
+        self.connection_time = None
+        self.last_error = None
         self.error_count = 0
-        self.total_response_time = 0.0
         
-        # Session HTTP réutilisable
-        self._session: Optional[aiohttp.ClientSession] = None
+        # Métriques de base
+        self.request_count = 0
+        self.total_request_time = 0.0
+        self.last_request_time = None
+    
+    @abstractmethod
+    async def connect(self) -> None:
+        """
+        Établit la connexion avec le service externe.
         
-        logger.info(f"Initializing {service_name} client: {base_url}")
+        Raises:
+            Exception: Si la connexion échoue
+        """
+        pass
+    
+    @abstractmethod
+    async def disconnect(self) -> None:
+        """Ferme la connexion avec le service externe."""
+        pass
+    
+    @abstractmethod
+    async def health_check(self) -> bool:
+        """
+        Vérifie la santé de la connexion.
+        
+        Returns:
+            bool: True si la connexion est saine
+        """
+        pass
+    
+    def _record_request(self, execution_time_ms: float) -> None:
+        """
+        Enregistre les métriques d'une requête.
+        
+        Args:
+            execution_time_ms: Temps d'exécution en millisecondes
+        """
+        self.request_count += 1
+        self.total_request_time += execution_time_ms
+        self.last_request_time = datetime.utcnow()
+    
+    def _record_error(self, error: Exception) -> None:
+        """
+        Enregistre une erreur.
+        
+        Args:
+            error: Exception survenue
+        """
+        self.error_count += 1
+        self.last_error = {
+            "error": str(error),
+            "type": type(error).__name__,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        logger.error(f"❌ Erreur dans {self.__class__.__name__}: {str(error)}")
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Récupère les métriques du client.
+        
+        Returns:
+            Dict: Métriques de performance
+        """
+        avg_request_time = (
+            self.total_request_time / self.request_count 
+            if self.request_count > 0 else 0.0
+        )
+        
+        return {
+            "client_name": self.__class__.__name__,
+            "connected": self.connected,
+            "connection_time": self.connection_time.isoformat() if self.connection_time else None,
+            "request_count": self.request_count,
+            "total_request_time_ms": self.total_request_time,
+            "average_request_time_ms": avg_request_time,
+            "error_count": self.error_count,
+            "error_rate": self.error_count / max(self.request_count, 1),
+            "last_request_time": self.last_request_time.isoformat() if self.last_request_time else None,
+            "last_error": self.last_error
+        }
+    
+    def is_connected(self) -> bool:
+        """
+        Vérifie si le client est connecté.
+        
+        Returns:
+            bool: True si connecté
+        """
+        return self.connected
+    
+    def get_connection_age(self) -> Optional[timedelta]:
+        """
+        Récupère l'âge de la connexion.
+        
+        Returns:
+            Optional[timedelta]: Âge de la connexion ou None
+        """
+        if not self.connection_time:
+            return None
+        return datetime.utcnow() - self.connection_time
+    
+    async def ensure_connected(self) -> None:
+        """
+        S'assure que le client est connecté.
+        
+        Reconnecte automatiquement si nécessaire.
+        """
+        if not self.connected:
+            await self.connect()
     
     async def __aenter__(self):
-        """Gestionnaire de contexte asynchrone - entrée."""
-        await self.start()
+        """Context manager entry."""
+        await self.connect()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Gestionnaire de contexte asynchrone - sortie."""
-        await self.close()
+        """Context manager exit."""
+        await self.disconnect()
+
+
+class RetryableClient(BaseClient):
+    """
+    Client avec capacité de retry automatique.
     
-    async def start(self):
-        """Démarre le client et initialise la session HTTP."""
-        if self._session is None:
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
-            self._session = aiohttp.ClientSession(
-                timeout=timeout,
-                headers=self.headers
-            )
-            logger.info(f"{self.service_name} client started")
+    Étend BaseClient avec des fonctionnalités de retry
+    et de gestion des erreurs temporaires.
+    """
     
-    async def close(self):
-        """Ferme le client et nettoie les ressources."""
-        if self._session:
-            await self._session.close()
-            self._session = None
-            logger.info(f"{self.service_name} client closed")
-    
-    @property
-    def session(self) -> aiohttp.ClientSession:
-        """Accès à la session HTTP."""
-        if self._session is None:
-            raise RuntimeError(f"{self.service_name} client not started. Call start() first.")
-        return self._session
+    def __init__(self, settings: Optional[SearchServiceSettings] = None):
+        super().__init__(settings)
+        self.max_retries = getattr(settings, 'MAX_RETRIES', 3)
+        self.retry_delay = getattr(settings, 'RETRY_DELAY', 1.0)
+        self.backoff_factor = getattr(settings, 'BACKOFF_FACTOR', 2.0)
     
     async def execute_with_retry(
         self,
-        operation: Callable[[], T],
-        operation_name: str = "request"
-    ) -> T:
+        operation,
+        *args,
+        max_retries: Optional[int] = None,
+        **kwargs
+    ) -> Any:
         """
-        Exécute une opération avec retry logic et circuit breaker.
+        Exécute une opération avec retry automatique.
         
         Args:
-            operation: Fonction asynchrone à exécuter
-            operation_name: Nom de l'opération pour les logs
+            operation: Fonction à exécuter
+            *args: Arguments positionnels
+            max_retries: Nombre max de tentatives (optionnel)
+            **kwargs: Arguments nommés
             
         Returns:
-            Résultat de l'opération
+            Any: Résultat de l'opération
             
         Raises:
             Exception: Si toutes les tentatives échouent
         """
-        # Vérifier le circuit breaker
-        if not self.circuit_breaker.can_execute():
-            raise Exception(f"{self.service_name} circuit breaker is OPEN")
-        
+        max_retries = max_retries or self.max_retries
         last_exception = None
         
-        for attempt in range(self.retry_config.max_attempts):
+        for attempt in range(max_retries + 1):
             try:
-                start_time = time.time()
-                
-                # Exécuter l'opération
-                result = await operation()
-                
-                # Enregistrer les métriques de succès
-                response_time = time.time() - start_time
-                self._record_success(response_time)
-                self.circuit_breaker.on_success()
-                
-                logger.debug(f"{self.service_name} {operation_name} succeeded (attempt {attempt + 1})")
-                return result
+                return await operation(*args, **kwargs)
                 
             except Exception as e:
                 last_exception = e
-                self._record_error(str(e))
-                self.circuit_breaker.on_failure()
+                self._record_error(e)
                 
-                logger.warning(
-                    f"{self.service_name} {operation_name} failed (attempt {attempt + 1}/{self.retry_config.max_attempts}): {e}"
-                )
-                
-                # Ne pas retry sur la dernière tentative
-                if attempt == self.retry_config.max_attempts - 1:
-                    break
-                
-                # Calculer le délai de retry
-                delay = self._calculate_retry_delay(attempt)
-                await asyncio.sleep(delay)
+                if attempt < max_retries:
+                    delay = self.retry_delay * (self.backoff_factor ** attempt)
+                    logger.warning(
+                        f"⚠️ Tentative {attempt + 1}/{max_retries + 1} échouée pour {operation.__name__}: {str(e)}. "
+                        f"Retry dans {delay:.2f}s"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"❌ Toutes les tentatives échouées pour {operation.__name__}")
         
-        # Toutes les tentatives ont échoué
-        logger.error(f"{self.service_name} {operation_name} failed after {self.retry_config.max_attempts} attempts")
         raise last_exception
+
+
+class CachedClient(BaseClient):
+    """
+    Client avec cache intégré.
     
-    def _calculate_retry_delay(self, attempt: int) -> float:
-        """Calcule le délai de retry avec backoff exponentiel."""
-        delay = self.retry_config.base_delay * (self.retry_config.exponential_base ** attempt)
-        delay = min(delay, self.retry_config.max_delay)
-        
-        # Ajouter du jitter pour éviter le thundering herd
-        if self.retry_config.jitter:
-            import random
-            delay *= (0.5 + random.random() * 0.5)
-        
-        return delay
+    Étend BaseClient avec des fonctionnalités de cache
+    pour améliorer les performances.
+    """
     
-    def _record_success(self, response_time: float):
-        """Enregistre une requête réussie."""
-        self.request_count += 1
-        self.total_response_time += response_time
-        self.status = ClientStatus.HEALTHY
-        self.last_error = None
+    def __init__(self, settings: Optional[SearchServiceSettings] = None):
+        super().__init__(settings)
+        self.cache = {}
+        self.cache_ttl = getattr(settings, 'CACHE_TTL_SECONDS', 300)
+        self.cache_max_size = getattr(settings, 'CACHE_MAX_SIZE', 1000)
+        self.cache_hits = 0
+        self.cache_misses = 0
     
-    def _record_error(self, error_message: str):
-        """Enregistre une erreur."""
-        self.request_count += 1
-        self.error_count += 1
-        self.last_error = error_message
-        
-        # Déterminer le statut basé sur le taux d'erreur
-        error_rate = self.error_count / self.request_count if self.request_count > 0 else 0
-        if error_rate > 0.5:
-            self.status = ClientStatus.UNHEALTHY
-        elif error_rate > 0.1:
-            self.status = ClientStatus.DEGRADED
-    
-    async def health_check(self) -> Dict[str, Any]:
+    def _get_cache_key(self, *args, **kwargs) -> str:
         """
-        Effectue une vérification de santé du service.
+        Génère une clé de cache.
         
+        Args:
+            *args: Arguments positionnels
+            **kwargs: Arguments nommés
+            
         Returns:
-            Dictionnaire avec les informations de santé
+            str: Clé de cache
         """
-        health_info = {
-            "service_name": self.service_name,
-            "status": self.status.value,
-            "base_url": self.base_url,
-            "circuit_breaker_state": self.circuit_breaker.state.value,
-            "last_error": self.last_error,
-            "metrics": self.get_metrics()
+        import hashlib
+        key_data = f"{args}_{kwargs}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+    
+    def _is_cache_valid(self, cached_item: Dict[str, Any]) -> bool:
+        """
+        Vérifie si un élément du cache est encore valide.
+        
+        Args:
+            cached_item: Élément du cache
+            
+        Returns:
+            bool: True si valide
+        """
+        expiry_time = cached_item.get("expiry_time")
+        if not expiry_time:
+            return False
+        
+        return datetime.utcnow() < expiry_time
+    
+    def _clean_cache(self) -> None:
+        """Nettoie le cache des éléments expirés."""
+        now = datetime.utcnow()
+        expired_keys = [
+            key for key, item in self.cache.items()
+            if item.get("expiry_time") and now >= item["expiry_time"]
+        ]
+        
+        for key in expired_keys:
+            del self.cache[key]
+    
+    def _evict_if_full(self) -> None:
+        """Évince des éléments si le cache est plein."""
+        if len(self.cache) >= self.cache_max_size:
+            # Éviction LRU (Least Recently Used)
+            oldest_key = min(
+                self.cache.keys(),
+                key=lambda k: self.cache[k].get("last_accessed", datetime.min)
+            )
+            del self.cache[oldest_key]
+    
+    def get_from_cache(self, cache_key: str) -> Optional[Any]:
+        """
+        Récupère un élément du cache.
+        
+        Args:
+            cache_key: Clé de cache
+            
+        Returns:
+            Optional[Any]: Valeur mise en cache ou None
+        """
+        self._clean_cache()
+        
+        cached_item = self.cache.get(cache_key)
+        if not cached_item:
+            self.cache_misses += 1
+            return None
+        
+        if not self._is_cache_valid(cached_item):
+            del self.cache[cache_key]
+            self.cache_misses += 1
+            return None
+        
+        # Mise à jour du timestamp d'accès
+        cached_item["last_accessed"] = datetime.utcnow()
+        self.cache_hits += 1
+        
+        return cached_item["value"]
+    
+    def put_in_cache(self, cache_key: str, value: Any) -> None:
+        """
+        Met un élément en cache.
+        
+        Args:
+            cache_key: Clé de cache
+            value: Valeur à mettre en cache
+        """
+        self._evict_if_full()
+        
+        self.cache[cache_key] = {
+            "value": value,
+            "cached_at": datetime.utcnow(),
+            "expiry_time": datetime.utcnow() + timedelta(seconds=self.cache_ttl),
+            "last_accessed": datetime.utcnow()
         }
-        
-        # Vérification spécifique au service si configurée
-        if self.health_check_config.enabled:
-            try:
-                service_health = await self._perform_health_check()
-                health_info.update(service_health)
-                self.last_health_check = time.time()
-            except Exception as e:
-                health_info["health_check_error"] = str(e)
-                logger.warning(f"{self.service_name} health check failed: {e}")
-        
-        return health_info
     
-    @abstractmethod
-    async def _perform_health_check(self) -> Dict[str, Any]:
+    def get_cache_metrics(self) -> Dict[str, Any]:
         """
-        Effectue une vérification de santé spécifique au service.
-        
-        À implémenter par les classes dérivées.
+        Récupère les métriques du cache.
         
         Returns:
-            Dictionnaire avec les informations de santé spécifiques
+            Dict: Métriques du cache
         """
-        pass
-    
-    def get_metrics(self) -> Dict[str, Any]:
-        """
-        Retourne les métriques du client.
-        
-        Returns:
-            Dictionnaire avec les métriques
-        """
-        avg_response_time = (
-            self.total_response_time / (self.request_count - self.error_count)
-            if self.request_count > self.error_count
-            else 0
+        hit_rate = (
+            self.cache_hits / (self.cache_hits + self.cache_misses)
+            if (self.cache_hits + self.cache_misses) > 0 else 0.0
         )
         
-        error_rate = self.error_count / self.request_count if self.request_count > 0 else 0
-        
         return {
-            "request_count": self.request_count,
-            "error_count": self.error_count,
-            "error_rate": error_rate,
-            "average_response_time_ms": avg_response_time * 1000,
-            "status": self.status.value,
-            "circuit_breaker_state": self.circuit_breaker.state.value
+            "cache_size": len(self.cache),
+            "cache_max_size": self.cache_max_size,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "cache_hit_rate": hit_rate,
+            "cache_ttl_seconds": self.cache_ttl
         }
     
-    def reset_metrics(self):
-        """Remet à zéro les métriques."""
-        self.request_count = 0
-        self.error_count = 0
-        self.total_response_time = 0.0
-        logger.info(f"{self.service_name} metrics reset")
+    def clear_cache(self) -> None:
+        """Vide le cache."""
+        self.cache.clear()
+        self.cache_hits = 0
+        self.cache_misses = 0
+        logger.info("🧹 Cache vidé")
+
+
+class HealthMonitoredClient(BaseClient):
+    """
+    Client avec monitoring de santé automatique.
     
-    @abstractmethod
-    async def test_connection(self) -> bool:
-        """
-        Teste la connectivité de base au service.
+    Étend BaseClient avec des vérifications de santé
+    périodiques et des alertes.
+    """
+    
+    def __init__(self, settings: Optional[SearchServiceSettings] = None):
+        super().__init__(settings)
+        self.health_check_interval = getattr(settings, 'HEALTH_CHECK_INTERVAL_SECONDS', 30)
+        self.health_check_task = None
+        self.health_status = True
+        self.health_history = []
+        self.max_health_history = 100
+    
+    async def start_health_monitoring(self) -> None:
+        """Démarre le monitoring de santé automatique."""
+        if self.health_check_task:
+            return
         
-        À implémenter par les classes dérivées.
+        self.health_check_task = asyncio.create_task(self._health_check_loop())
+        logger.info(f"🏥 Monitoring de santé démarré (intervalle: {self.health_check_interval}s)")
+    
+    async def stop_health_monitoring(self) -> None:
+        """Arrête le monitoring de santé."""
+        if self.health_check_task:
+            self.health_check_task.cancel()
+            try:
+                await self.health_check_task
+            except asyncio.CancelledError:
+                pass
+            self.health_check_task = None
+            logger.info("🏥 Monitoring de santé arrêté")
+    
+    async def _health_check_loop(self) -> None:
+        """Boucle de vérification de santé."""
+        while True:
+            try:
+                await asyncio.sleep(self.health_check_interval)
+                
+                health_result = await self.health_check()
+                self._record_health_status(health_result)
+                
+                if not health_result and self.health_status:
+                    logger.warning("⚠️ Dégradation de la santé détectée")
+                elif health_result and not self.health_status:
+                    logger.info("✅ Santé rétablie")
+                
+                self.health_status = health_result
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Erreur dans le monitoring de santé: {str(e)}")
+                self._record_health_status(False)
+    
+    def _record_health_status(self, is_healthy: bool) -> None:
+        """
+        Enregistre le statut de santé.
+        
+        Args:
+            is_healthy: True si sain
+        """
+        self.health_history.append({
+            "timestamp": datetime.utcnow(),
+            "healthy": is_healthy
+        })
+        
+        # Limiter la taille de l'historique
+        if len(self.health_history) > self.max_health_history:
+            self.health_history.pop(0)
+    
+    def get_health_metrics(self) -> Dict[str, Any]:
+        """
+        Récupère les métriques de santé.
         
         Returns:
-            True si la connexion fonctionne
+            Dict: Métriques de santé
         """
-        pass
+        recent_checks = self.health_history[-20:] if self.health_history else []
+        uptime_percentage = (
+            sum(1 for check in recent_checks if check["healthy"]) / len(recent_checks)
+            if recent_checks else 0.0
+        )
+        
+        return {
+            "current_health_status": self.health_status,
+            "health_check_interval": self.health_check_interval,
+            "health_checks_count": len(self.health_history),
+            "recent_uptime_percentage": uptime_percentage,
+            "monitoring_active": self.health_check_task is not None
+        }
+    
+    async def disconnect(self) -> None:
+        """Déconnexion avec arrêt du monitoring."""
+        await self.stop_health_monitoring()
+        await super().disconnect()

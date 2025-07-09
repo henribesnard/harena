@@ -1,82 +1,108 @@
 """
-Système de cache LRU pour le service de recherche - VERSION CENTRALISÉE.
+Cache LRU intelligent pour le Search Service.
 
-Ce module implémente un cache intelligent avec TTL et LRU
-pour optimiser les performances de recherche.
-
-AMÉLIORATION:
-- Configuration entièrement centralisée via config_service
-- Paramètres de cache contrôlés par .env
-- Plus de valeurs hardcodées
+Implémente un cache haute performance avec TTL, métriques
+et éviction LRU pour optimiser les performances des recherches.
 """
-import time
-import threading
-import asyncio
-from typing import Any, Dict, Optional, List
-from dataclasses import dataclass
-from collections import OrderedDict
 
-# ✅ CONFIGURATION CENTRALISÉE
-from config_service.config import settings
+import asyncio
+import logging
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, OrderedDict, List
+from threading import RLock
+from dataclasses import dataclass
+from enum import Enum
+
+from ..config.settings import SearchServiceSettings, get_settings
+
+
+logger = logging.getLogger(__name__)
+
+
+class CacheEntryStatus(str, Enum):
+    """Statuts des entrées de cache."""
+    FRESH = "fresh"           # Entrée fraîche
+    STALE = "stale"          # Entrée expirée
+    WARMING = "warming"       # En cours de réchauffement
+    INVALID = "invalid"       # Entrée invalide
 
 
 @dataclass
 class CacheEntry:
     """Entrée de cache avec métadonnées."""
+    key: str
     value: Any
-    timestamp: float
-    access_count: int = 0
-    last_access: float = 0.0
-    ttl: Optional[float] = None
+    created_at: datetime
+    last_accessed: datetime
+    access_count: int
+    expires_at: datetime
+    size_bytes: int
+    status: CacheEntryStatus = CacheEntryStatus.FRESH
+    
+    def is_expired(self) -> bool:
+        """Vérifie si l'entrée est expirée."""
+        return datetime.utcnow() > self.expires_at
+    
+    def is_fresh(self) -> bool:
+        """Vérifie si l'entrée est fraîche."""
+        return not self.is_expired() and self.status == CacheEntryStatus.FRESH
+    
+    def touch(self) -> None:
+        """Met à jour l'heure du dernier accès et le compteur."""
+        self.last_accessed = datetime.utcnow()
+        self.access_count += 1
+    
+    def get_age_seconds(self) -> float:
+        """Retourne l'âge de l'entrée en secondes."""
+        return (datetime.utcnow() - self.created_at).total_seconds()
+    
+    def get_time_to_expiry_seconds(self) -> float:
+        """Retourne le temps avant expiration en secondes."""
+        return max(0, (self.expires_at - datetime.utcnow()).total_seconds())
 
 
 class SearchCache:
     """
-    Cache LRU thread-safe avec TTL pour les résultats de recherche.
+    Cache LRU intelligent pour les résultats de recherche.
     
-    Configuration entièrement centralisée via config_service.
+    Fonctionnalités:
+    - Cache LRU avec TTL configurable
+    - Métriques détaillées de performance
+    - Éviction intelligente basée sur la fréquence d'accès
+    - Thread-safe pour usage concurrent
+    - Nettoyage automatique des entrées expirées
     """
     
-    def __init__(self, max_size: Optional[int] = None, ttl_seconds: Optional[float] = None, cache_type: str = "search"):
-        """
-        Initialise le cache avec configuration centralisée.
+    def __init__(
+        self,
+        max_size: int = 1000,
+        ttl_seconds: int = 300,
+        cleanup_interval_seconds: int = 60,
+        settings: Optional[SearchServiceSettings] = None
+    ):
+        self.max_size = max_size
+        self.ttl_seconds = ttl_seconds
+        self.cleanup_interval_seconds = cleanup_interval_seconds
+        self.settings = settings or get_settings()
         
-        Args:
-            max_size: Taille max (utilise config centralisée si None)
-            ttl_seconds: TTL par défaut (utilise config centralisée si None)
-            cache_type: Type de cache pour récupérer la config appropriée
-        """
-        # ✅ Utiliser la configuration centralisée selon le type de cache
-        if cache_type == "search":
-            self.max_size = max_size or settings.SEARCH_CACHE_MAX_SIZE
-            self.default_ttl = ttl_seconds or settings.SEARCH_CACHE_TTL
-        elif cache_type == "embedding":
-            self.max_size = max_size or settings.EMBEDDING_CACHE_MAX_SIZE
-            self.default_ttl = ttl_seconds or settings.EMBEDDING_CACHE_TTL
-        elif cache_type == "query_analysis":
-            self.max_size = max_size or settings.QUERY_ANALYSIS_CACHE_MAX_SIZE
-            self.default_ttl = ttl_seconds or settings.QUERY_ANALYSIS_CACHE_TTL
-        else:
-            # Fallback vers la config de recherche
-            self.max_size = max_size or settings.SEARCH_CACHE_MAX_SIZE
-            self.default_ttl = ttl_seconds or settings.SEARCH_CACHE_TTL
-        
-        self.cache_type = cache_type
-        
-        # Stockage principal (OrderedDict pour LRU)
+        # Stockage des entrées avec ordre LRU
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
-        self._lock = threading.RLock()
+        self._lock = RLock()  # Thread-safe
         
         # Métriques
         self.hits = 0
         self.misses = 0
         self.evictions = 0
-        self.expired_items = 0
-        self.puts = 0
+        self.expirations = 0
+        self.total_size_bytes = 0
+        self.max_size_bytes = 100 * 1024 * 1024  # 100MB par défaut
         
-        # ✅ Nettoyage automatique basé sur la config
-        self.last_cleanup = time.time()
-        self.cleanup_interval = 60.0  # 1 minute (peut être configuré plus tard)
+        # Tâche de nettoyage automatique
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._shutdown = False
+        
+        logger.info(f"Cache initialisé: max_size={max_size}, ttl={ttl_seconds}s")
     
     def get(self, key: str) -> Optional[Any]:
         """
@@ -86,68 +112,74 @@ class SearchCache:
             key: Clé de cache
             
         Returns:
-            Valeur si trouvée et valide, None sinon
+            Optional[Any]: Valeur ou None si pas trouvée/expirée
         """
         with self._lock:
-            # Nettoyage périodique
-            self._cleanup_if_needed()
+            entry = self._cache.get(key)
             
-            if key not in self._cache:
+            if entry is None:
                 self.misses += 1
+                logger.debug(f"Cache miss: {key}")
                 return None
             
-            entry = self._cache[key]
-            
-            # Vérifier l'expiration
-            if self._is_expired(entry):
-                del self._cache[key]
-                self.expired_items += 1
+            # Vérification expiration
+            if entry.is_expired():
+                self._remove_entry(key)
                 self.misses += 1
+                self.expirations += 1
+                logger.debug(f"Cache expired: {key}")
                 return None
             
-            # Mettre à jour les statistiques d'accès
-            entry.access_count += 1
-            entry.last_access = time.time()
-            
-            # Déplacer en fin (most recently used)
+            # Mise à jour accès et déplacement en fin (LRU)
+            entry.touch()
             self._cache.move_to_end(key)
             
             self.hits += 1
+            logger.debug(f"Cache hit: {key} (accès #{entry.access_count})")
+            
             return entry.value
     
-    def put(self, key: str, value: Any, ttl: Optional[float] = None) -> None:
+    def put(self, key: str, value: Any) -> None:
         """
-        Stocke une valeur dans le cache.
+        Met une valeur en cache.
         
         Args:
             key: Clé de cache
-            value: Valeur à stocker
-            ttl: TTL spécifique (utilise default_ttl si None)
+            value: Valeur à mettre en cache
         """
         with self._lock:
-            current_time = time.time()
+            # Calcul de la taille approximative
+            size_bytes = self._estimate_size(value)
             
-            # Créer l'entrée
+            # Vérification de la limite de taille
+            if size_bytes > self.max_size_bytes:
+                logger.warning(f"Valeur trop grande pour le cache: {size_bytes} bytes")
+                return
+            
+            # Suppression de l'ancienne entrée si elle existe
+            if key in self._cache:
+                self._remove_entry(key)
+            
+            # Éviction si nécessaire
+            self._evict_if_needed(size_bytes)
+            
+            # Création de la nouvelle entrée
+            now = datetime.utcnow()
             entry = CacheEntry(
+                key=key,
                 value=value,
-                timestamp=current_time,
+                created_at=now,
+                last_accessed=now,
                 access_count=1,
-                last_access=current_time,
-                ttl=ttl or self.default_ttl
+                expires_at=now + timedelta(seconds=self.ttl_seconds),
+                size_bytes=size_bytes
             )
             
-            # Si la clé existe déjà, la remplacer
-            if key in self._cache:
-                self._cache[key] = entry
-                self._cache.move_to_end(key)
-            else:
-                # Éviction si nécessaire
-                while len(self._cache) >= self.max_size:
-                    self._evict_oldest()
-                
-                self._cache[key] = entry
+            # Ajout au cache
+            self._cache[key] = entry
+            self.total_size_bytes += size_bytes
             
-            self.puts += 1
+            logger.debug(f"Cache put: {key} ({size_bytes} bytes, TTL={self.ttl_seconds}s)")
     
     def delete(self, key: str) -> bool:
         """
@@ -157,11 +189,12 @@ class SearchCache:
             key: Clé à supprimer
             
         Returns:
-            True si supprimée, False si n'existait pas
+            bool: True si supprimée, False si pas trouvée
         """
         with self._lock:
             if key in self._cache:
-                del self._cache[key]
+                self._remove_entry(key)
+                logger.debug(f"Cache delete: {key}")
                 return True
             return False
     
@@ -169,468 +202,695 @@ class SearchCache:
         """Vide complètement le cache."""
         with self._lock:
             self._cache.clear()
-            # Garder les métriques totales mais reset les compteurs relatifs
-            self.last_cleanup = time.time()
+            self.total_size_bytes = 0
+            logger.info("Cache vidé complètement")
     
-    def _is_expired(self, entry: CacheEntry) -> bool:
-        """Vérifie si une entrée a expiré."""
-        if entry.ttl is None:
-            return False
+    def exists(self, key: str) -> bool:
+        """
+        Vérifie si une clé existe et est valide.
         
-        return (time.time() - entry.timestamp) > entry.ttl
+        Args:
+            key: Clé à vérifier
+            
+        Returns:
+            bool: True si existe et valide
+        """
+        with self._lock:
+            entry = self._cache.get(key)
+            return entry is not None and entry.is_fresh()
     
-    def _evict_oldest(self) -> None:
-        """Évince l'entrée la plus ancienne (LRU)."""
-        if self._cache:
-            oldest_key = next(iter(self._cache))
-            del self._cache[oldest_key]
-            self.evictions += 1
+    def get_entry_info(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Récupère les informations d'une entrée.
+        
+        Args:
+            key: Clé de l'entrée
+            
+        Returns:
+            Optional[Dict]: Informations de l'entrée ou None
+        """
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            
+            return {
+                "key": entry.key,
+                "created_at": entry.created_at.isoformat(),
+                "last_accessed": entry.last_accessed.isoformat(),
+                "access_count": entry.access_count,
+                "expires_at": entry.expires_at.isoformat(),
+                "size_bytes": entry.size_bytes,
+                "status": entry.status.value,
+                "age_seconds": entry.get_age_seconds(),
+                "time_to_expiry_seconds": entry.get_time_to_expiry_seconds(),
+                "is_expired": entry.is_expired()
+            }
     
-    def _cleanup_if_needed(self) -> None:
-        """Nettoie les entrées expirées si nécessaire."""
-        current_time = time.time()
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Récupère les métriques détaillées du cache.
         
-        if current_time - self.last_cleanup < self.cleanup_interval:
-            return
-        
-        self._cleanup_expired()
-        self.last_cleanup = current_time
-    
-    def _cleanup_expired(self) -> None:
-        """Nettoie toutes les entrées expirées."""
-        expired_keys = []
-        
-        for key, entry in self._cache.items():
-            if self._is_expired(entry):
-                expired_keys.append(key)
-        
-        for key in expired_keys:
-            del self._cache[key]
-            self.expired_items += 1
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques du cache."""
+        Returns:
+            Dict: Métriques du cache
+        """
         with self._lock:
             total_requests = self.hits + self.misses
             hit_rate = self.hits / total_requests if total_requests > 0 else 0.0
             
+            # Calcul des statistiques sur les entrées
+            if self._cache:
+                ages = [entry.get_age_seconds() for entry in self._cache.values()]
+                access_counts = [entry.access_count for entry in self._cache.values()]
+                sizes = [entry.size_bytes for entry in self._cache.values()]
+                
+                avg_age = sum(ages) / len(ages)
+                avg_access_count = sum(access_counts) / len(access_counts)
+                avg_size = sum(sizes) / len(sizes)
+            else:
+                avg_age = avg_access_count = avg_size = 0
+            
             return {
-                "cache_type": self.cache_type,
                 "size": len(self._cache),
                 "max_size": self.max_size,
-                "utilization": len(self._cache) / self.max_size,
+                "total_size_bytes": self.total_size_bytes,
+                "max_size_bytes": self.max_size_bytes,
                 "hits": self.hits,
                 "misses": self.misses,
                 "hit_rate": hit_rate,
                 "evictions": self.evictions,
-                "expired_items": self.expired_items,
-                "puts": self.puts,
-                "default_ttl_seconds": self.default_ttl,
-                "cleanup_interval_seconds": self.cleanup_interval,
-                "config_source": "centralized"
+                "expirations": self.expirations,
+                "ttl_seconds": self.ttl_seconds,
+                "avg_entry_age_seconds": avg_age,
+                "avg_access_count": avg_access_count,
+                "avg_entry_size_bytes": avg_size,
+                "cleanup_interval_seconds": self.cleanup_interval_seconds
             }
     
-    def get_keys(self) -> List[str]:
-        """Retourne toutes les clés du cache (pour debug)."""
-        with self._lock:
-            return list(self._cache.keys())
-    
-    def get_entry_info(self, key: str) -> Optional[Dict[str, Any]]:
-        """Retourne les informations détaillées d'une entrée."""
-        with self._lock:
-            if key not in self._cache:
-                return None
-            
-            entry = self._cache[key]
-            current_time = time.time()
-            
-            return {
-                "key": key,
-                "timestamp": entry.timestamp,
-                "age_seconds": current_time - entry.timestamp,
-                "ttl_seconds": entry.ttl,
-                "remaining_ttl": entry.ttl - (current_time - entry.timestamp) if entry.ttl else None,
-                "access_count": entry.access_count,
-                "last_access": entry.last_access,
-                "is_expired": self._is_expired(entry),
-                "value_type": type(entry.value).__name__
-            }
-    
-    def force_cleanup(self) -> int:
-        """Force le nettoyage des entrées expirées."""
-        with self._lock:
-            initial_size = len(self._cache)
-            self._cleanup_expired()
-            return initial_size - len(self._cache)
-    
-    def resize(self, new_max_size: int) -> None:
-        """Redimensionne le cache."""
-        with self._lock:
-            self.max_size = new_max_size
-            
-            # Éviction si nécessaire
-            while len(self._cache) > self.max_size:
-                self._evict_oldest()
-    
-    def get_most_accessed(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Retourne les entrées les plus accédées."""
-        with self._lock:
-            entries_with_stats = []
-            
-            for key, entry in self._cache.items():
-                entries_with_stats.append({
-                    "key": key,
-                    "access_count": entry.access_count,
-                    "last_access": entry.last_access,
-                    "age_seconds": time.time() - entry.timestamp
-                })
-            
-            # Trier par nombre d'accès
-            entries_with_stats.sort(key=lambda x: x["access_count"], reverse=True)
-            
-            return entries_with_stats[:limit]
-    
-    def get_cache_efficiency(self) -> Dict[str, float]:
-        """Calcule l'efficacité du cache."""
-        with self._lock:
-            total_requests = self.hits + self.misses
-            
-            if total_requests == 0:
-                return {
-                    "hit_rate": 0.0,
-                    "miss_rate": 0.0,
-                    "eviction_rate": 0.0,
-                    "expiration_rate": 0.0
-                }
-            
-            return {
-                "hit_rate": self.hits / total_requests,
-                "miss_rate": self.misses / total_requests,
-                "eviction_rate": self.evictions / self.puts if self.puts > 0 else 0.0,
-                "expiration_rate": self.expired_items / self.puts if self.puts > 0 else 0.0
-            }
-
-
-class MultiLevelCache:
-    """
-    Cache multi-niveaux pour différents types de données.
-    
-    Configuration automatique via config_service.
-    """
-    
-    def __init__(self):
-        self.caches: Dict[str, SearchCache] = {}
-        
-        # ✅ Configuration depuis config_service
-        self.default_configs = {
-            "search_results": {
-                "max_size": settings.SEARCH_CACHE_MAX_SIZE,
-                "ttl_seconds": settings.SEARCH_CACHE_TTL,
-                "enabled": settings.SEARCH_CACHE_ENABLED
-            },
-            "embeddings": {
-                "max_size": settings.EMBEDDING_CACHE_MAX_SIZE,
-                "ttl_seconds": settings.EMBEDDING_CACHE_TTL,
-                "enabled": settings.EMBEDDING_CACHE_ENABLED
-            },
-            "query_analysis": {
-                "max_size": settings.QUERY_ANALYSIS_CACHE_MAX_SIZE,
-                "ttl_seconds": settings.QUERY_ANALYSIS_CACHE_TTL,
-                "enabled": settings.QUERY_ANALYSIS_CACHE_ENABLED
-            },
-            "suggestions": {
-                "max_size": 200,  # Pas encore configuré dans settings
-                "ttl_seconds": 600,
-                "enabled": True
-            }
-        }
-    
-    def get_cache(self, cache_type: str) -> Optional[SearchCache]:
+    def get_top_entries(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Récupère ou crée un cache d'un type donné.
+        Récupère les entrées les plus utilisées.
         
         Args:
-            cache_type: Type de cache demandé
+            limit: Nombre max d'entrées à retourner
             
         Returns:
-            Cache si activé, None sinon
+            List[Dict]: Liste des top entrées
         """
-        config = self.default_configs.get(cache_type, {
-            "max_size": 100, 
-            "ttl_seconds": 300,
-            "enabled": True
-        })
-        
-        # Vérifier si le cache est activé
-        if not config.get("enabled", True):
-            return None
-        
-        if cache_type not in self.caches:
-            self.caches[cache_type] = SearchCache(
-                max_size=config["max_size"],
-                ttl_seconds=config["ttl_seconds"],
-                cache_type=cache_type
+        with self._lock:
+            # Tri par nombre d'accès décroissant
+            sorted_entries = sorted(
+                self._cache.values(),
+                key=lambda e: e.access_count,
+                reverse=True
             )
-        
-        return self.caches[cache_type]
-    
-    def get(self, cache_type: str, key: str) -> Optional[Any]:
-        """Récupère une valeur d'un cache spécifique."""
-        cache = self.get_cache(cache_type)
-        if cache is None:
-            return None
-        return cache.get(key)
-    
-    def put(self, cache_type: str, key: str, value: Any, ttl: Optional[float] = None) -> None:
-        """Stocke une valeur dans un cache spécifique."""
-        cache = self.get_cache(cache_type)
-        if cache is not None:
-            cache.put(key, value, ttl)
-    
-    def delete(self, cache_type: str, key: str) -> bool:
-        """Supprime une entrée d'un cache spécifique."""
-        if cache_type in self.caches:
-            return self.caches[cache_type].delete(key)
-        return False
-    
-    def clear_cache(self, cache_type: str) -> None:
-        """Vide un cache spécifique."""
-        if cache_type in self.caches:
-            self.caches[cache_type].clear()
-    
-    def clear_all(self) -> None:
-        """Vide tous les caches."""
-        for cache in self.caches.values():
-            cache.clear()
-    
-    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
-        """Retourne les statistiques de tous les caches."""
-        stats = {}
-        for cache_type, config in self.default_configs.items():
-            if config.get("enabled", True) and cache_type in self.caches:
-                stats[cache_type] = self.caches[cache_type].get_stats()
-            else:
-                stats[cache_type] = {
-                    "enabled": config.get("enabled", True),
-                    "status": "disabled" if not config.get("enabled", True) else "not_created"
+            
+            return [
+                {
+                    "key": entry.key,
+                    "access_count": entry.access_count,
+                    "age_seconds": entry.get_age_seconds(),
+                    "size_bytes": entry.size_bytes,
+                    "status": entry.status.value
                 }
-        return stats
+                for entry in sorted_entries[:limit]
+            ]
     
-    def get_total_size(self) -> int:
-        """Retourne la taille totale de tous les caches."""
-        return sum(len(cache._cache) for cache in self.caches.values())
+    def cleanup_expired(self) -> int:
+        """
+        Nettoie les entrées expirées.
+        
+        Returns:
+            int: Nombre d'entrées supprimées
+        """
+        with self._lock:
+            expired_keys = [
+                key for key, entry in self._cache.items()
+                if entry.is_expired()
+            ]
+            
+            for key in expired_keys:
+                self._remove_entry(key)
+                self.expirations += 1
+            
+            if expired_keys:
+                logger.debug(f"Nettoyage: {len(expired_keys)} entrées expirées supprimées")
+            
+            return len(expired_keys)
     
-    def force_cleanup_all(self) -> Dict[str, int]:
-        """Force le nettoyage de tous les caches."""
-        cleanup_results = {}
-        for cache_type, cache in self.caches.items():
-            cleanup_results[cache_type] = cache.force_cleanup()
-        return cleanup_results
+    def start_auto_cleanup(self) -> None:
+        """Démarre le nettoyage automatique."""
+        if self._cleanup_task is None:
+            self._cleanup_task = asyncio.create_task(self._auto_cleanup_loop())
+            logger.info(f"Nettoyage automatique démarré (intervalle: {self.cleanup_interval_seconds}s)")
     
-    def get_configuration_summary(self) -> Dict[str, Any]:
-        """Retourne un résumé de la configuration des caches."""
-        return {
-            "cache_configs": self.default_configs,
-            "active_caches": list(self.caches.keys()),
-            "total_active_caches": len(self.caches),
-            "config_source": "centralized (config_service)"
-        }
+    async def stop_auto_cleanup(self) -> None:
+        """Arrête le nettoyage automatique."""
+        self._shutdown = True
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
+            logger.info("Nettoyage automatique arrêté")
+    
+    async def _auto_cleanup_loop(self) -> None:
+        """Boucle de nettoyage automatique."""
+        while not self._shutdown:
+            try:
+                await asyncio.sleep(self.cleanup_interval_seconds)
+                expired_count = self.cleanup_expired()
+                
+                # Log seulement si on a supprimé des entrées
+                if expired_count > 0:
+                    logger.info(f"🧹 Nettoyage automatique: {expired_count} entrées expirées supprimées")
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Erreur nettoyage automatique: {str(e)}")
+    
+    def _remove_entry(self, key: str) -> None:
+        """
+        Supprime une entrée du cache (méthode interne).
+        
+        Args:
+            key: Clé à supprimer
+        """
+        entry = self._cache.pop(key, None)
+        if entry:
+            self.total_size_bytes -= entry.size_bytes
+    
+    def _evict_if_needed(self, new_entry_size: int) -> None:
+        """
+        Évince des entrées si nécessaire pour faire de la place.
+        
+        Args:
+            new_entry_size: Taille de la nouvelle entrée
+        """
+        # Éviction par nombre d'entrées
+        while len(self._cache) >= self.max_size:
+            self._evict_lru_entry()
+        
+        # Éviction par taille mémoire
+        while (self.total_size_bytes + new_entry_size) > self.max_size_bytes:
+            if not self._evict_lru_entry():
+                break  # Plus d'entrées à évincer
+    
+    def _evict_lru_entry(self) -> bool:
+        """
+        Évince l'entrée la moins récemment utilisée.
+        
+        Returns:
+            bool: True si une entrée a été évincée
+        """
+        if not self._cache:
+            return False
+        
+        # La première entrée est la moins récemment utilisée (LRU)
+        lru_key = next(iter(self._cache))
+        self._remove_entry(lru_key)
+        self.evictions += 1
+        
+        logger.debug(f"Éviction LRU: {lru_key}")
+        return True
+    
+    def _estimate_size(self, value: Any) -> int:
+        """
+        Estime la taille en bytes d'une valeur.
+        
+        Args:
+            value: Valeur à mesurer
+            
+        Returns:
+            int: Taille estimée en bytes
+        """
+        try:
+            import sys
+            
+            # Estimation approximative
+            if isinstance(value, str):
+                return len(value.encode('utf-8'))
+            elif isinstance(value, (int, float)):
+                return sys.getsizeof(value)
+            elif isinstance(value, (list, tuple)):
+                return sum(self._estimate_size(item) for item in value)
+            elif isinstance(value, dict):
+                return sum(
+                    self._estimate_size(k) + self._estimate_size(v)
+                    for k, v in value.items()
+                )
+            else:
+                # Fallback avec sys.getsizeof
+                return sys.getsizeof(value)
+                
+        except Exception:
+            # Si estimation impossible, utiliser une taille par défaut
+            return 1024  # 1KB par défaut
+    
+    def reset_metrics(self) -> None:
+        """Remet à zéro les métriques."""
+        with self._lock:
+            self.hits = 0
+            self.misses = 0
+            self.evictions = 0
+            self.expirations = 0
+            logger.info("📊 Métriques du cache réinitialisées")
+    
+    def warmup(self, key_value_pairs: List[tuple]) -> None:
+        """
+        Préchauffe le cache avec des valeurs prédéfinies.
+        
+        Args:
+            key_value_pairs: Liste de tuples (clé, valeur)
+        """
+        logger.info(f"🔥 Préchauffage du cache avec {len(key_value_pairs)} entrées...")
+        
+        for key, value in key_value_pairs:
+            self.put(key, value)
+        
+        logger.info("✅ Préchauffage terminé")
+    
+    def __len__(self) -> int:
+        """Retourne le nombre d'entrées dans le cache."""
+        return len(self._cache)
+    
+    def __contains__(self, key: str) -> bool:
+        """Vérifie si une clé existe dans le cache."""
+        return self.exists(key)
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.clear()
 
 
-# ==========================================
-# 🎯 INSTANCE GLOBALE AVEC CONFIG CENTRALISÉE
-# ==========================================
+# === HELPER FUNCTIONS ===
 
-# Instance globale pour l'utilisation dans l'application
-global_cache = MultiLevelCache()
-
-
-def get_search_cache() -> Optional[SearchCache]:
-    """Raccourci pour le cache de résultats de recherche."""
-    return global_cache.get_cache("search_results")
-
-
-def get_embedding_cache() -> Optional[SearchCache]:
-    """Raccourci pour le cache d'embeddings."""
-    return global_cache.get_cache("embeddings")
-
-
-def get_query_analysis_cache() -> Optional[SearchCache]:
-    """Raccourci pour le cache d'analyses de requêtes."""
-    return global_cache.get_cache("query_analysis")
-
-
-def get_suggestions_cache() -> Optional[SearchCache]:
-    """Raccourci pour le cache de suggestions."""
-    return global_cache.get_cache("suggestions")
-
-
-# ==========================================
-# 🛠️ FONCTIONS UTILITAIRES
-# ==========================================
-
-def generate_cache_key(*args, **kwargs) -> str:
+def create_search_cache(settings: Optional[SearchServiceSettings] = None) -> SearchCache:
     """
-    Génère une clé de cache unique à partir des arguments.
+    Factory pour créer un cache de recherche configuré.
     
     Args:
-        *args: Arguments positionnels
-        **kwargs: Arguments nommés
+        settings: Configuration (optionnel)
         
     Returns:
-        Clé de cache unique
+        SearchCache: Cache configuré
     """
-    import hashlib
-    import json
+    settings = settings or get_settings()
     
-    # Convertir tous les arguments en string
-    key_parts = []
-    
-    for arg in args:
-        if isinstance(arg, (dict, list)):
-            key_parts.append(json.dumps(arg, sort_keys=True))
-        else:
-            key_parts.append(str(arg))
-    
-    for key, value in sorted(kwargs.items()):
-        if isinstance(value, (dict, list)):
-            key_parts.append(f"{key}={json.dumps(value, sort_keys=True)}")
-        else:
-            key_parts.append(f"{key}={value}")
-    
-    # Créer un hash MD5 de la clé complète
-    key_string = "|".join(key_parts)
-    return hashlib.md5(key_string.encode('utf-8')).hexdigest()
+    return SearchCache(
+        max_size=settings.CACHE_MAX_SIZE,
+        ttl_seconds=settings.CACHE_TTL_SECONDS,
+        cleanup_interval_seconds=60,
+        settings=settings
+    )
 
 
-def cache_with_ttl(cache_type: str, ttl: Optional[float] = None):
+async def benchmark_cache(cache: SearchCache, num_operations: int = 1000) -> Dict[str, float]:
     """
-    Décorateur pour mettre en cache le résultat d'une fonction.
+    Benchmark les performances du cache.
     
     Args:
-        cache_type: Type de cache à utiliser
-        ttl: TTL spécifique (optionnel)
+        cache: Cache à tester
+        num_operations: Nombre d'opérations à effectuer
+        
+    Returns:
+        Dict: Résultats du benchmark
     """
-    def decorator(func):
-        async def async_wrapper(*args, **kwargs):
-            # Vérifier si le cache est activé
-            cache = global_cache.get_cache(cache_type)
-            if cache is None:
-                # Cache désactivé, exécuter directement
-                return await func(*args, **kwargs)
-            
-            # Générer la clé de cache
-            cache_key = generate_cache_key(func.__name__, *args, **kwargs)
-            
-            # Essayer de récupérer du cache
-            cached_result = cache.get(cache_key)
-            if cached_result is not None:
-                return cached_result
-            
-            # Exécuter la fonction et mettre en cache
-            result = await func(*args, **kwargs)
-            cache.put(cache_key, result, ttl)
-            return result
+    import time
+    import random
+    import string
+    
+    def random_string(length: int = 10) -> str:
+        return ''.join(random.choices(string.ascii_letters, k=length))
+    
+    # Préparation des données de test
+    test_data = [
+        (f"key_{i}", {"data": random_string(100), "number": i})
+        for i in range(num_operations)
+    ]
+    
+    # Test d'écriture
+    start_time = time.time()
+    for key, value in test_data:
+        cache.put(key, value)
+    write_time = time.time() - start_time
+    
+    # Test de lecture
+    start_time = time.time()
+    for key, _ in test_data:
+        cache.get(key)
+    read_time = time.time() - start_time
+    
+    # Test de lecture avec misses
+    start_time = time.time()
+    for i in range(num_operations // 10):
+        cache.get(f"missing_key_{i}")
+    miss_time = time.time() - start_time
+    
+    # Calcul des métriques
+    metrics = cache.get_metrics()
+    
+    return {
+        "write_ops_per_second": num_operations / write_time,
+        "read_ops_per_second": num_operations / read_time,
+        "miss_ops_per_second": (num_operations // 10) / miss_time,
+        "hit_rate": metrics["hit_rate"],
+        "total_entries": metrics["size"],
+        "total_size_mb": metrics["total_size_bytes"] / (1024 * 1024),
+        "avg_entry_size_bytes": metrics["avg_entry_size_bytes"]
+    }
+
+
+class CacheWarmer:
+    """
+    Utilitaire pour préchauffer le cache avec des données pertinentes.
+    """
+    
+    def __init__(self, cache: SearchCache):
+        self.cache = cache
+    
+    async def warmup_common_queries(self, user_ids: List[int]) -> None:
+        """
+        Préchauffe le cache avec des requêtes communes.
         
-        def sync_wrapper(*args, **kwargs):
-            cache = global_cache.get_cache(cache_type)
-            if cache is None:
-                return func(*args, **kwargs)
-            
-            cache_key = generate_cache_key(func.__name__, *args, **kwargs)
-            
-            cached_result = cache.get(cache_key)
-            if cached_result is not None:
-                return cached_result
-            
-            result = func(*args, **kwargs)
-            cache.put(cache_key, result, ttl)
-            return result
+        Args:
+            user_ids: Liste des user_ids à préchauffer
+        """
+        logger.info(f"🔥 Préchauffage pour {len(user_ids)} utilisateurs...")
         
-        # Détecter si la fonction est async
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper
-        else:
-            return sync_wrapper
+        # Requêtes communes à préchauffer
+        common_patterns = [
+            {"category": "restaurant", "period": "month"},
+            {"category": "transport", "period": "week"},
+            {"merchant": "AMAZON", "period": "month"},
+            {"amount_range": "50-200", "period": "month"}
+        ]
+        
+        for user_id in user_ids:
+            for pattern in common_patterns:
+                # Génération d'une clé de cache simulée
+                cache_key = self._generate_warmup_key(user_id, pattern)
+                
+                # Données simulées pour le préchauffage
+                mock_data = self._generate_mock_search_result(user_id, pattern)
+                
+                # Mise en cache
+                self.cache.put(cache_key, mock_data)
+        
+        logger.info("✅ Préchauffage terminé")
     
-    return decorator
-
-
-# ==========================================
-# 📊 MÉTRIQUES DE CACHE POUR MONITORING
-# ==========================================
-
-def get_cache_metrics() -> Dict[str, Any]:
-    """Retourne les métriques consolidées de tous les caches."""
-    all_stats = global_cache.get_all_stats()
+    def _generate_warmup_key(self, user_id: int, pattern: Dict[str, str]) -> str:
+        """Génère une clé de cache pour le préchauffage."""
+        import hashlib
+        import json
+        
+        key_data = {"user_id": user_id, **pattern}
+        key_string = json.dumps(key_data, sort_keys=True)
+        return f"warmup_{hashlib.md5(key_string.encode()).hexdigest()[:8]}"
     
-    # Filtrer seulement les caches actifs
-    active_stats = {k: v for k, v in all_stats.items() if isinstance(v, dict) and "size" in v}
-    
-    if not active_stats:
+    def _generate_mock_search_result(self, user_id: int, pattern: Dict[str, str]) -> Dict[str, Any]:
+        """Génère un résultat de recherche simulé."""
         return {
-            "overall": {
-                "total_size": 0,
-                "total_hits": 0,
-                "total_misses": 0,
-                "overall_hit_rate": 0.0,
-                "active_cache_types": 0
-            },
-            "by_type": all_stats,
-            "configuration": global_cache.get_configuration_summary(),
-            "efficiency": {
-                "memory_efficiency": 0,
-                "hit_rate_variance": 0
-            }
+            "results": [
+                {
+                    "transaction_id": f"tx_{user_id}_{i}",
+                    "user_id": user_id,
+                    "amount": -50.0 * (i + 1),
+                    "category": pattern.get("category", "general"),
+                    "merchant": pattern.get("merchant", "MERCHANT"),
+                    "date": "2024-01-15"
+                }
+                for i in range(5)
+            ],
+            "total_hits": 5,
+            "execution_time_ms": 45
+        }
+
+
+class CacheAnalyzer:
+    """
+    Analyseur de performance et d'efficacité du cache.
+    """
+    
+    def __init__(self, cache: SearchCache):
+        self.cache = cache
+    
+    def analyze_efficiency(self) -> Dict[str, Any]:
+        """
+        Analyse l'efficacité du cache.
+        
+        Returns:
+            Dict: Analyse détaillée
+        """
+        metrics = self.cache.get_metrics()
+        top_entries = self.cache.get_top_entries(20)
+        
+        # Calcul de l'efficacité
+        hit_rate = metrics["hit_rate"]
+        memory_efficiency = metrics["total_size_bytes"] / metrics["max_size_bytes"]
+        
+        # Classification de l'efficacité
+        if hit_rate > 0.8:
+            efficiency_level = "excellent"
+        elif hit_rate > 0.6:
+            efficiency_level = "good"
+        elif hit_rate > 0.4:
+            efficiency_level = "fair"
+        else:
+            efficiency_level = "poor"
+        
+        # Analyse des patterns d'accès
+        access_distribution = self._analyze_access_patterns(top_entries)
+        
+        return {
+            "efficiency_level": efficiency_level,
+            "hit_rate": hit_rate,
+            "memory_efficiency": memory_efficiency,
+            "total_requests": metrics["hits"] + metrics["misses"],
+            "eviction_rate": metrics["evictions"] / max(metrics["hits"] + metrics["misses"], 1),
+            "expiration_rate": metrics["expirations"] / max(metrics["hits"] + metrics["misses"], 1),
+            "access_distribution": access_distribution,
+            "recommendations": self._generate_recommendations(metrics, access_distribution)
         }
     
-    total_size = sum(stats["size"] for stats in active_stats.values())
-    total_hits = sum(stats["hits"] for stats in active_stats.values())
-    total_misses = sum(stats["misses"] for stats in active_stats.values())
-    total_requests = total_hits + total_misses
-    
-    overall_hit_rate = total_hits / total_requests if total_requests > 0 else 0.0
-    
-    return {
-        "overall": {
-            "total_size": total_size,
-            "total_hits": total_hits,
-            "total_misses": total_misses,
-            "overall_hit_rate": overall_hit_rate,
-            "active_cache_types": len(active_stats)
-        },
-        "by_type": all_stats,
-        "configuration": global_cache.get_configuration_summary(),
-        "efficiency": {
-            "memory_efficiency": total_size / sum(stats["max_size"] for stats in active_stats.values()) if active_stats else 0,
-            "hit_rate_variance": max(stats["hit_rate"] for stats in active_stats.values()) - min(stats["hit_rate"] for stats in active_stats.values()) if active_stats else 0
+    def _analyze_access_patterns(self, top_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyse les patterns d'accès."""
+        if not top_entries:
+            return {"pattern": "no_data"}
+        
+        access_counts = [entry["access_count"] for entry in top_entries]
+        
+        # Calcul de la concentration (coefficient de Gini simplifié)
+        sorted_counts = sorted(access_counts)
+        n = len(sorted_counts)
+        cumsum = sum((i + 1) * count for i, count in enumerate(sorted_counts))
+        gini = (2 * cumsum) / (n * sum(sorted_counts)) - (n + 1) / n
+        
+        # Classification du pattern
+        if gini > 0.7:
+            pattern = "highly_concentrated"  # Quelques clés très utilisées
+        elif gini > 0.4:
+            pattern = "moderately_concentrated"
+        else:
+            pattern = "evenly_distributed"
+        
+        return {
+            "pattern": pattern,
+            "gini_coefficient": gini,
+            "top_access_count": max(access_counts),
+            "avg_access_count": sum(access_counts) / len(access_counts),
+            "access_range": max(access_counts) - min(access_counts)
         }
-    }
+    
+    def _generate_recommendations(
+        self, 
+        metrics: Dict[str, Any], 
+        access_distribution: Dict[str, Any]
+    ) -> List[str]:
+        """Génère des recommandations d'optimisation."""
+        recommendations = []
+        
+        hit_rate = metrics["hit_rate"]
+        memory_efficiency = metrics["total_size_bytes"] / metrics["max_size_bytes"]
+        eviction_rate = metrics["evictions"] / max(metrics["hits"] + metrics["misses"], 1)
+        
+        # Recommandations basées sur le hit rate
+        if hit_rate < 0.5:
+            recommendations.append("Augmenter la taille du cache pour améliorer le hit rate")
+            recommendations.append("Réviser la stratégie de clés de cache")
+        
+        # Recommandations basées sur la mémoire
+        if memory_efficiency > 0.9:
+            recommendations.append("Envisager d'augmenter la taille max du cache")
+        elif memory_efficiency < 0.3:
+            recommendations.append("Diminuer la taille max ou augmenter le TTL")
+        
+        # Recommandations basées sur les évictions
+        if eviction_rate > 0.1:
+            recommendations.append("Trop d'évictions - augmenter la taille du cache")
+        
+        # Recommandations basées sur les patterns d'accès
+        pattern = access_distribution["pattern"]
+        if pattern == "highly_concentrated":
+            recommendations.append("Optimiser le cache pour les clés les plus utilisées")
+        elif pattern == "evenly_distributed":
+            recommendations.append("Cache bien équilibré - maintenir la stratégie actuelle")
+        
+        # TTL recommendations
+        avg_age = metrics["avg_entry_age_seconds"]
+        ttl = metrics["ttl_seconds"]
+        if avg_age < ttl * 0.3:
+            recommendations.append("Réduire le TTL pour libérer la mémoire plus rapidement")
+        elif avg_age > ttl * 0.8:
+            recommendations.append("Augmenter le TTL pour réduire les expirations")
+        
+        return recommendations[:5]  # Limiter à 5 recommandations
+    
+    def generate_report(self) -> str:
+        """
+        Génère un rapport détaillé du cache.
+        
+        Returns:
+            str: Rapport formaté
+        """
+        metrics = self.cache.get_metrics()
+        analysis = self.analyze_efficiency()
+        
+        report = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          RAPPORT DE CACHE - SEARCH SERVICE                   ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ 📊 MÉTRIQUES GÉNÉRALES                                                      ║
+║   • Taille actuelle      : {metrics['size']:,} / {metrics['max_size']:,} entrées        ║
+║   • Utilisation mémoire  : {metrics['total_size_bytes'] / (1024*1024):.1f} / {metrics['max_size_bytes'] / (1024*1024):.1f} MB  ║
+║   • Hit Rate            : {metrics['hit_rate']:.1%}                                  ║
+║   • Requêtes totales    : {metrics['hits'] + metrics['misses']:,}                    ║
+║                                                                              ║
+║ ⚡ PERFORMANCE                                                               ║
+║   • Cache Hits          : {metrics['hits']:,}                                        ║
+║   • Cache Misses        : {metrics['misses']:,}                                      ║
+║   • Évictions           : {metrics['evictions']:,}                                   ║
+║   • Expirations         : {metrics['expirations']:,}                                 ║
+║                                                                              ║
+║ 🔍 ANALYSE D'EFFICACITÉ                                                     ║
+║   • Niveau              : {analysis['efficiency_level'].upper()}                     ║
+║   • Pattern d'accès     : {analysis['access_distribution']['pattern']}               ║
+║   • Coefficient Gini    : {analysis['access_distribution']['gini_coefficient']:.3f}  ║
+║                                                                              ║
+║ 💡 RECOMMANDATIONS                                                          ║
+"""
+        
+        for i, rec in enumerate(analysis['recommendations'], 1):
+            report += f"║   {i}. {rec:<67} ║\n"
+        
+        report += "╚══════════════════════════════════════════════════════════════════════════════╝"
+        
+        return report
 
 
-def is_cache_enabled(cache_type: str) -> bool:
-    """Vérifie si un type de cache est activé."""
-    config = global_cache.default_configs.get(cache_type, {})
-    return config.get("enabled", True)
+# === CACHE STRATEGIES ===
 
-
-def get_cache_config_summary() -> Dict[str, Any]:
-    """Retourne un résumé de la configuration centralisée des caches."""
-    return {
-        "search_cache": {
-            "enabled": settings.SEARCH_CACHE_ENABLED,
-            "max_size": settings.SEARCH_CACHE_MAX_SIZE,
-            "ttl_seconds": settings.SEARCH_CACHE_TTL
-        },
-        "embedding_cache": {
-            "enabled": settings.EMBEDDING_CACHE_ENABLED,
-            "max_size": settings.EMBEDDING_CACHE_MAX_SIZE,
-            "ttl_seconds": settings.EMBEDDING_CACHE_TTL
-        },
-        "query_analysis_cache": {
-            "enabled": settings.QUERY_ANALYSIS_CACHE_ENABLED,
-            "max_size": settings.QUERY_ANALYSIS_CACHE_MAX_SIZE,
-            "ttl_seconds": settings.QUERY_ANALYSIS_CACHE_TTL
-        },
-        "config_source": "config_service (centralized)"
-    }
+class CacheKeyGenerator:
+    """
+    Générateur de clés de cache optimisées pour les recherches financières.
+    """
+    
+    @staticmethod
+    def generate_search_key(
+        user_id: int,
+        query_type: str,
+        filters: Dict[str, Any],
+        limit: int,
+        offset: int
+    ) -> str:
+        """
+        Génère une clé de cache pour une recherche.
+        
+        Args:
+            user_id: ID utilisateur
+            query_type: Type de requête
+            filters: Filtres appliqués
+            limit: Limite de résultats
+            offset: Offset de pagination
+            
+        Returns:
+            str: Clé de cache optimisée
+        """
+        import hashlib
+        import json
+        
+        # Normalisation des filtres pour consistency
+        normalized_filters = CacheKeyGenerator._normalize_filters(filters)
+        
+        key_components = {
+            "user_id": user_id,
+            "query_type": query_type,
+            "filters": normalized_filters,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        # Génération de la clé
+        key_string = json.dumps(key_components, sort_keys=True, separators=(',', ':'))
+        key_hash = hashlib.md5(key_string.encode()).hexdigest()
+        
+        # Préfixe pour identification
+        return f"search_{user_id}_{key_hash[:12]}"
+    
+    @staticmethod
+    def generate_aggregation_key(
+        user_id: int,
+        aggregation_type: str,
+        group_by: List[str],
+        filters: Dict[str, Any] = None
+    ) -> str:
+        """
+        Génère une clé de cache pour une agrégation.
+        
+        Args:
+            user_id: ID utilisateur
+            aggregation_type: Type d'agrégation
+            group_by: Champs de groupement
+            filters: Filtres appliqués
+            
+        Returns:
+            str: Clé de cache pour agrégation
+        """
+        import hashlib
+        import json
+        
+        key_components = {
+            "user_id": user_id,
+            "agg_type": aggregation_type,
+            "group_by": sorted(group_by),
+            "filters": CacheKeyGenerator._normalize_filters(filters or {})
+        }
+        
+        key_string = json.dumps(key_components, sort_keys=True, separators=(',', ':'))
+        key_hash = hashlib.md5(key_string.encode()).hexdigest()
+        
+        return f"agg_{user_id}_{key_hash[:12]}"
+    
+    @staticmethod
+    def _normalize_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalise les filtres pour une clé consistante."""
+        normalized = {}
+        
+        for key, value in filters.items():
+            if isinstance(value, list):
+                # Tri des listes pour consistency
+                normalized[key] = sorted(value) if all(isinstance(x, (str, int, float)) for x in value) else value
+            elif isinstance(value, dict):
+                # Récursion pour les dictionnaires
+                normalized[key] = CacheKeyGenerator._normalize_filters(value)
+            else:
+                normalized[key] = value
+        
+        return normalized

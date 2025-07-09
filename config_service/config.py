@@ -281,7 +281,7 @@ class GlobalSettings(BaseSettings):
     # Seuils de similarité (noms alternatifs pour compatibilité)
     SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_DEFAULT", "0.1"))
     SEMANTIC_SIMILARITY_THRESHOLD_STRICT: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_STRICT", "0.15"))
-    SEMANTIC_SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_LOOSE", "0.15"))
+    SEMANTIC_SIMILARITY_THRESHOLD_LOOSE: float = float(os.environ.get("SEMANTIC_SIMILARITY_THRESHOLD_LOOSE", "0.05"))
     
     # Options sémantiques
     SEMANTIC_MAX_RESULTS: int = int(os.environ.get("SEMANTIC_MAX_RESULTS", "50"))

@@ -1,5 +1,5 @@
 """
-Modèles de données pour le Search Service - VERSION REFACTORISÉE.
+Modèles de données pour le Search Service - VERSION CORRIGÉE.
 
 Ce module expose tous les modèles Pydantic pour le service de recherche lexicale
 avec configuration centralisée et contrats standardisés.
@@ -17,6 +17,12 @@ EXPORTS PRINCIPAUX:
 - Modèles Elasticsearch natifs
 - Filtres et agrégations
 - Validation et métadonnées
+
+CORRECTIONS APPLIQUÉES:
+- Imports corrigés selon les exports réels
+- Gestion des conflits de noms
+- Validation des dépendances
+- Exports conditionnels sécurisés
 """
 
 from typing import List, Dict, Any, Optional, Union
@@ -41,7 +47,6 @@ try:
         SearchFilter,
         SearchParameters,
         FilterGroup,
-        RangeFilter,
         TextSearchFilter,
         
         # Agrégations
@@ -58,7 +63,13 @@ try:
         # Validation et erreurs
         ContractValidationError,
         validate_search_service_query,
-        validate_search_service_response
+        validate_search_service_response,
+        
+        # Enums et types
+        QueryType,
+        FilterOperator,
+        AggregationType,
+        IntentType
     )
     SERVICE_CONTRACTS_AVAILABLE = True
     logger.debug("✅ Service contracts imported successfully")
@@ -121,38 +132,46 @@ except ImportError as e:
     logger.warning(f"⚠️ Response models not available: {e}")
     RESPONSES_AVAILABLE = False
 
-# 3. Modèles Elasticsearch
+# 3. Modèles Elasticsearch (IMPORTS CORRIGÉS)
 try:
     from .elasticsearch_queries import (
         # Requêtes Elasticsearch
         ElasticsearchQuery,
         BoolQuery,
         MatchQuery,
-        TermQuery,
-        RangeQuery,
         MultiMatchQuery,
+        TermQuery,
+        TermsQuery,
+        RangeQuery,
+        ExistsQuery,
+        FunctionScoreQuery,
         
-        # Filtres Elasticsearch
-        ElasticsearchFilter,
+        # Filtres Elasticsearch (noms corrigés)
+        BaseElasticsearchFilter,
         TermFilter,
-        RangeFilter as ESRangeFilter,
+        TermsFilter,
+        RangeFilter as ElasticsearchRangeFilter,  # Évite conflit avec RangeFilter
         ExistsFilter,
         
         # Agrégations Elasticsearch
-        ElasticsearchAggregation,
+        BaseElasticsearchAggregation,
         TermsAggregation,
         DateHistogramAggregation,
         SumAggregation,
         AvgAggregation,
         MaxAggregation,
         MinAggregation,
+        StatsAggregation,
+        CardinalityAggregation,
         
         # Résultats Elasticsearch
         ElasticsearchResult,
         ElasticsearchHit,
         ElasticsearchAggregationResult,
+        ElasticsearchSort,
+        ElasticsearchHighlight,
         
-        # Helpers et builders
+        # Builders et helpers
         QueryBuilder,
         AggregationBuilder,
         FilterBuilder,
@@ -160,7 +179,22 @@ try:
         # Templates et mapping
         QueryTemplate,
         FieldMapping,
-        IndexMapping
+        IndexMapping,
+        
+        # Fonctions utilitaires
+        create_financial_search_query,
+        create_financial_aggregations,
+        optimize_query_for_performance,
+        validate_elasticsearch_query,
+        validate_query_syntax,
+        
+        # Enums
+        QueryType as ElasticsearchQueryType,
+        BoolOperator,
+        MultiMatchType,
+        SortOrder,
+        SortMode,
+        AggregationType as ElasticsearchAggregationType
     )
     ELASTICSEARCH_QUERIES_AVAILABLE = True
     logger.debug("✅ Elasticsearch query models imported successfully")
@@ -174,7 +208,7 @@ try:
         # Filtres de base
         BaseFilter,
         FilterType,
-        FilterOperator,
+        FilterOperator as FilterOp,  # Évite conflit avec FilterOperator
         
         # Filtres spécialisés
         UserFilter,
@@ -185,7 +219,7 @@ try:
         TextFilter,
         
         # Groupes et combinaisons
-        FilterGroup as FiltersGroup,
+        FilterGroup as FilterGroupModel,  # Évite conflit avec FilterGroup
         FilterCombination,
         FilterLogic,
         
@@ -198,7 +232,13 @@ try:
         FILTER_OPERATORS,
         VALID_FILTER_FIELDS,
         FINANCIAL_CATEGORIES,
-        TRANSACTION_TYPES
+        TRANSACTION_TYPES,
+        
+        # Factory functions
+        create_user_filter,
+        create_category_filter,
+        create_amount_filter,
+        create_date_filter
     )
     FILTERS_AVAILABLE = True
     logger.debug("✅ Filter models imported successfully")
@@ -213,35 +253,118 @@ __all__ = []
 # Exports contrats (toujours prioritaires)
 if SERVICE_CONTRACTS_AVAILABLE:
     __all__.extend([
+        # Contrats principaux
         "SearchServiceQuery", "SearchServiceResponse",
         "QueryMetadata", "ResponseMetadata",
-        "SearchFilter", "AggregationRequest", "AggregationResult",
-        "SearchResult", "PerformanceMetrics",
-        "validate_search_service_query", "validate_search_service_response"
+        "ExecutionContext", "AgentContext",
+        
+        # Filtres et paramètres
+        "SearchFilter", "SearchParameters", "FilterGroup",
+        "TextSearchFilter",
+        
+        # Agrégations
+        "AggregationRequest", "AggregationResult",
+        "AggregationBucket", "AggregationMetrics",
+        
+        # Résultats et performance
+        "SearchResult", "PerformanceMetrics", "ContextEnrichment",
+        
+        # Validation
+        "validate_search_service_query", "validate_search_service_response",
+        "ContractValidationError",
+        
+        # Enums et types
+        "QueryType", "FilterOperator", "AggregationType", "IntentType"
     ])
 
 # Exports requêtes/réponses
 if REQUESTS_AVAILABLE:
     __all__.extend([
-        "LexicalSearchRequest", "SearchOptions", "RequestValidator"
+        # Requêtes
+        "LexicalSearchRequest", "QueryValidationRequest",
+        "TemplateListRequest", "HealthCheckRequest", "MetricsRequest",
+        
+        # Options
+        "SearchOptions", "QueryOptions", "ResultOptions", "CacheOptions",
+        
+        # Validation
+        "RequestValidator", "validate_search_request"
     ])
 
 if RESPONSES_AVAILABLE:
     __all__.extend([
-        "LexicalSearchResponse", "ResponseEnrichment", "ErrorResponse"
+        # Réponses
+        "LexicalSearchResponse", "QueryValidationResponse",
+        "TemplateListResponse", "HealthCheckResponse", "MetricsResponse",
+        
+        # Enrichissement
+        "ResponseEnrichment", "ResultEnrichment", "QualityMetrics",
+        
+        # Erreurs
+        "ErrorResponse", "SuccessResponse", "ResponseStatus",
+        
+        # Validation
+        "ResponseValidator", "validate_search_response"
     ])
 
 # Exports Elasticsearch
 if ELASTICSEARCH_QUERIES_AVAILABLE:
     __all__.extend([
-        "ElasticsearchQuery", "BoolQuery", "MatchQuery",
-        "ElasticsearchAggregation", "QueryBuilder"
+        # Requêtes principales
+        "ElasticsearchQuery", "BoolQuery", "MatchQuery", "MultiMatchQuery",
+        "TermQuery", "TermsQuery", "RangeQuery", "ExistsQuery",
+        
+        # Filtres Elasticsearch
+        "BaseElasticsearchFilter", "TermFilter", "TermsFilter",
+        "ElasticsearchRangeFilter", "ExistsFilter",
+        
+        # Agrégations
+        "BaseElasticsearchAggregation", "TermsAggregation",
+        "DateHistogramAggregation", "SumAggregation", "AvgAggregation",
+        "MaxAggregation", "MinAggregation", "StatsAggregation",
+        
+        # Résultats
+        "ElasticsearchResult", "ElasticsearchHit", "ElasticsearchAggregationResult",
+        "ElasticsearchSort", "ElasticsearchHighlight",
+        
+        # Builders
+        "QueryBuilder", "AggregationBuilder", "FilterBuilder",
+        
+        # Templates
+        "QueryTemplate", "FieldMapping", "IndexMapping",
+        
+        # Utilitaires
+        "create_financial_search_query", "create_financial_aggregations",
+        "optimize_query_for_performance", "validate_elasticsearch_query",
+        
+        # Enums
+        "ElasticsearchQueryType", "BoolOperator", "MultiMatchType",
+        "SortOrder", "SortMode", "ElasticsearchAggregationType"
     ])
 
 # Exports filtres
 if FILTERS_AVAILABLE:
     __all__.extend([
-        "BaseFilter", "UserFilter", "CategoryFilter", "FilterValidator"
+        # Filtres de base
+        "BaseFilter", "FilterType", "FilterOp",
+        
+        # Filtres spécialisés
+        "UserFilter", "CategoryFilter", "AmountFilter",
+        "DateFilter", "MerchantFilter", "TextFilter",
+        
+        # Groupes
+        "FilterGroupModel", "FilterCombination", "FilterLogic",
+        
+        # Validation
+        "FilterValidator", "FilterTransformer", "filter_to_elasticsearch",
+        
+        # Constantes
+        "FILTER_OPERATORS", "VALID_FILTER_FIELDS",
+        "FINANCIAL_CATEGORIES", "TRANSACTION_TYPES",
+        
+        # Factory functions
+        "create_user_filter", "create_category_filter",
+        "create_amount_filter", "create_date_filter"
     ])
 
 # ==================== STATUS ET DIAGNOSTICS ====================
@@ -323,6 +446,30 @@ def create_lexical_search_request(**kwargs) -> Optional['LexicalSearchRequest']:
         logger.error(f"Failed to create LexicalSearchRequest: {e}")
         return None
 
+def create_elasticsearch_query(**kwargs) -> Optional['ElasticsearchQuery']:
+    """Factory pour créer une ElasticsearchQuery si disponible."""
+    if not ELASTICSEARCH_QUERIES_AVAILABLE:
+        logger.error("Cannot create ElasticsearchQuery - elasticsearch models not available")
+        return None
+    
+    try:
+        return ElasticsearchQuery(**kwargs)
+    except Exception as e:
+        logger.error(f"Failed to create ElasticsearchQuery: {e}")
+        return None
+
+def create_financial_query_builder() -> Optional['QueryBuilder']:
+    """Factory pour créer un QueryBuilder financier si disponible."""
+    if not ELASTICSEARCH_QUERIES_AVAILABLE:
+        logger.error("Cannot create QueryBuilder - elasticsearch models not available")
+        return None
+    
+    try:
+        return QueryBuilder()
+    except Exception as e:
+        logger.error(f"Failed to create QueryBuilder: {e}")
+        return None
+
 # ==================== LOGGING ET DEBUG ====================
 
 def log_models_status():
@@ -354,6 +501,24 @@ def log_models_status():
         logger.debug("✅ Filter models available")
     else:
         logger.warning("⚠️ Filter models NOT available")
+
+def get_available_exports() -> List[str]:
+    """Retourne la liste des exports disponibles."""
+    return __all__
+
+def debug_imports():
+    """Debug les imports pour identifier les problèmes."""
+    debug_info = {
+        "service_contracts": SERVICE_CONTRACTS_AVAILABLE,
+        "requests": REQUESTS_AVAILABLE,
+        "responses": RESPONSES_AVAILABLE,
+        "elasticsearch_queries": ELASTICSEARCH_QUERIES_AVAILABLE,
+        "filters": FILTERS_AVAILABLE,
+        "total_exports": len(__all__)
+    }
+    
+    logger.info(f"Debug imports: {debug_info}")
+    return debug_info
 
 # Log automatique au démarrage
 if __name__ != "__main__":

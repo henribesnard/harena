@@ -1,661 +1,894 @@
+# search_service/core/query_executor.py
 """
-Exécuteur de requêtes Elasticsearch haute performance.
-
-Ce module gère l'exécution optimisée des requêtes Elasticsearch
-avec parallélisation, retry et gestion d'erreurs avancée.
+⚡ Exécuteur requêtes Elasticsearch haute performance
+Responsabilité : Construction et exécution requêtes
 """
 
-import asyncio
 import logging
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from enum import Enum
-import json
 
-from ..clients.elasticsearch_client import ElasticsearchClient, ElasticsearchQueryError
-from ..config.settings import SearchServiceSettings, get_settings
-from ..utils.metrics import QueryExecutionMetrics
-
+from ..models.service_contracts import SearchServiceQuery, SearchFilter, AggregationRequest
+from ..clients.elasticsearch_client import ElasticsearchClient
+from ..utils.metrics import SearchMetrics
+from ..config.settings import SearchSettings
 
 logger = logging.getLogger(__name__)
 
+class QueryType(Enum):
+    """Types de requêtes supportées"""
+    SIMPLE_SEARCH = "simple_search"
+    FILTERED_SEARCH = "filtered_search"
+    TEXT_SEARCH = "text_search"
+    AGGREGATED_SEARCH = "aggregated_search"
+    COMPLEX_SEARCH = "complex_search"
 
-class QueryExecutionStrategy(str, Enum):
-    """Stratégies d'exécution de requêtes."""
-    SINGLE = "single"                 # Requête unique
-    PARALLEL = "parallel"             # Requêtes parallèles
-    SEQUENTIAL = "sequential"         # Requêtes séquentielles
-    BATCH = "batch"                   # Traitement par batch
+@dataclass
+class QueryExecutionPlan:
+    """Plan d'exécution pour une requête"""
+    query_type: QueryType
+    estimated_time_ms: int
+    complexity_score: float
+    parallel_execution: bool
+    optimization_hints: List[str]
 
-
-class QueryPriority(str, Enum):
-    """Priorités d'exécution."""
-    LOW = "low"
-    NORMAL = "normal"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
-class QueryExecutionResult:
-    """Résultat d'exécution d'une requête."""
-    
-    def __init__(
-        self,
-        query_id: str,
-        response: Dict[str, Any],
-        execution_time_ms: int,
-        elasticsearch_took: int,
-        strategy_used: QueryExecutionStrategy,
-        optimizations_applied: List[str],
-        cache_hit: bool = False,
-        error: Optional[Exception] = None
-    ):
-        self.query_id = query_id
-        self.response = response
-        self.execution_time_ms = execution_time_ms
-        self.elasticsearch_took = elasticsearch_took
-        self.strategy_used = strategy_used
-        self.optimizations_applied = optimizations_applied
-        self.cache_hit = cache_hit
-        self.error = error
-        self.success = error is None
-        self.timestamp = datetime.utcnow()
-
+@dataclass
+class ExecutionResult:
+    """Résultat d'exécution"""
+    success: bool
+    data: Optional[Dict[str, Any]]
+    execution_time_ms: int
+    error: Optional[str]
+    query_stats: Dict[str, Any]
 
 class QueryExecutor:
     """
-    Exécuteur de requêtes Elasticsearch haute performance.
-    
-    Fonctionnalités:
-    - Exécution de requêtes simples et complexes
-    - Parallélisation automatique des requêtes multiples
-    - Gestion des priorités et de la charge
-    - Optimisations de performance dynamiques
-    - Retry automatique avec backoff
-    - Métriques détaillées d'exécution
+    Solution : Exécuteur requêtes Elasticsearch haute performance
+    Responsabilité : Construction et exécution requêtes
     """
     
     def __init__(
         self,
         elasticsearch_client: ElasticsearchClient,
-        settings: Optional[SearchServiceSettings] = None
+        metrics: SearchMetrics,
+        settings: SearchSettings
     ):
-        self.elasticsearch_client = elasticsearch_client
-        self.settings = settings or get_settings()
+        self.es_client = elasticsearch_client
+        self.metrics = metrics
+        self.settings = settings
         
-        # Métriques d'exécution
-        self.metrics = QueryExecutionMetrics()
+        # Thread pool pour exécution parallèle
+        self.executor = ThreadPoolExecutor(max_workers=settings.max_concurrent_queries)
         
-        # Pool de tâches pour parallélisation
-        self.max_concurrent_queries = self.settings.MAX_CONCURRENT_REQUESTS
-        self.semaphore = asyncio.Semaphore(self.max_concurrent_queries)
+        # Cache plans d'exécution
+        self._execution_plans: Dict[str, QueryExecutionPlan] = {}
         
-        # Configuration retry
-        self.max_retries = 3
-        self.base_retry_delay = 1.0
-        self.max_retry_delay = 10.0
-        
-        # Compteurs de performance
-        self.queries_executed = 0
-        self.total_execution_time = 0.0
-        self.parallel_queries_count = 0
-        self.retry_count = 0
-        self.failed_queries_count = 0
-        
-        logger.info("Query executor initialized with optimized configuration")
+        # Mapping types de requêtes
+        self._query_builders = {
+            QueryType.SIMPLE_SEARCH: self._build_simple_search,
+            QueryType.FILTERED_SEARCH: self._build_filtered_search,
+            QueryType.TEXT_SEARCH: self._build_text_search,
+            QueryType.AGGREGATED_SEARCH: self._build_aggregated_search,
+            QueryType.COMPLEX_SEARCH: self._build_complex_search
+        }
     
-    async def execute_single_query(
-        self,
-        query_id: str,
-        elasticsearch_query: Dict[str, Any],
-        size: int = 20,
-        from_: int = 0,
-        timeout_ms: int = 5000,
-        priority: QueryPriority = QueryPriority.NORMAL,
-        user_id: Optional[int] = None
-    ) -> QueryExecutionResult:
+    async def execute_query(self, query: SearchServiceQuery) -> ExecutionResult:
         """
-        Exécute une requête Elasticsearch unique.
-        
-        Args:
-            query_id: Identifiant unique de la requête
-            elasticsearch_query: Requête Elasticsearch
-            size: Nombre de résultats
-            from_: Offset pour pagination
-            timeout_ms: Timeout en millisecondes
-            priority: Priorité d'exécution
-            user_id: ID utilisateur pour optimisations
-            
-        Returns:
-            QueryExecutionResult: Résultat d'exécution
+        Exécution requête avec plan d'exécution optimisé
         """
-        start_time = datetime.utcnow()
-        optimizations = []
+        start_time = datetime.now()
         
         try:
-            async with self.semaphore:  # Limitation de concurrence
-                # Application d'optimisations basées sur la priorité
-                optimized_query = self._apply_query_optimizations(
-                    elasticsearch_query, priority, user_id
-                )
-                optimizations.extend(self._get_applied_optimizations(optimized_query, elasticsearch_query))
-                
-                # Calcul du timeout adaptatif
-                adaptive_timeout = self._calculate_adaptive_timeout(timeout_ms, priority)
-                
-                # Exécution avec retry
-                response = await self._execute_with_retry(
-                    query_id=query_id,
-                    query=optimized_query,
-                    size=size,
-                    from_=from_,
-                    timeout=f"{adaptive_timeout}ms",
-                    preference=self._get_routing_preference(user_id)
-                )
-                
-                # Calcul du temps d'exécution
-                execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-                
-                # Mise à jour des métriques
-                self._update_execution_metrics(execution_time_ms, priority, True)
-                
-                result = QueryExecutionResult(
-                    query_id=query_id,
-                    response=response,
-                    execution_time_ms=execution_time_ms,
-                    elasticsearch_took=response.get("took", 0),
-                    strategy_used=QueryExecutionStrategy.SINGLE,
-                    optimizations_applied=optimizations
-                )
-                
-                logger.debug(f"✅ Requête {query_id} exécutée en {execution_time_ms}ms")
-                return result
-                
+            # 1. Analyse et planification
+            execution_plan = await self._analyze_and_plan(query)
+            
+            # 2. Construction requête Elasticsearch
+            es_query = await self._build_elasticsearch_query(query, execution_plan)
+            
+            # 3. Exécution selon plan
+            if execution_plan.parallel_execution:
+                result = await self._execute_parallel(es_query, query)
+            else:
+                result = await self._execute_sequential(es_query, query)
+            
+            # 4. Métriques
+            execution_time = (datetime.now() - start_time).total_seconds() * 1000
+            self.metrics.record_query_execution(execution_time, query.query_metadata.intent_type)
+            
+            return ExecutionResult(
+                success=True,
+                data=result,
+                execution_time_ms=int(execution_time),
+                error=None,
+                query_stats=self._extract_query_stats(result)
+            )
+            
         except Exception as e:
-            execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            self._update_execution_metrics(execution_time_ms, priority, False)
+            execution_time = (datetime.now() - start_time).total_seconds() * 1000
+            logger.error(f"Erreur exécution requête: {e}", extra={
+                "query_id": query.query_metadata.query_id,
+                "execution_time_ms": execution_time
+            })
             
-            logger.error(f"❌ Erreur exécution requête {query_id}: {str(e)}")
-            
-            return QueryExecutionResult(
-                query_id=query_id,
-                response={},
-                execution_time_ms=execution_time_ms,
-                elasticsearch_took=0,
-                strategy_used=QueryExecutionStrategy.SINGLE,
-                optimizations_applied=optimizations,
-                error=e
+            return ExecutionResult(
+                success=False,
+                data=None,
+                execution_time_ms=int(execution_time),
+                error=str(e),
+                query_stats={}
             )
     
-    async def execute_parallel_queries(
-        self,
-        queries: List[Tuple[str, Dict[str, Any], Dict[str, Any]]],
-        priority: QueryPriority = QueryPriority.NORMAL
-    ) -> List[QueryExecutionResult]:
+    async def execute_multiple_queries(self, queries: List[SearchServiceQuery]) -> List[ExecutionResult]:
         """
-        Exécute plusieurs requêtes en parallèle.
-        
-        Args:
-            queries: Liste de tuples (query_id, elasticsearch_query, params)
-            priority: Priorité globale d'exécution
-            
-        Returns:
-            List[QueryExecutionResult]: Résultats d'exécution
+        Exécution multiple requêtes en parallèle
         """
-        start_time = datetime.utcnow()
+        if not queries:
+            return []
         
-        logger.info(f"🚀 Exécution parallèle de {len(queries)} requêtes")
+        # Création futures pour parallélisation
+        futures = []
+        for query in queries:
+            future = asyncio.create_task(self.execute_query(query))
+            futures.append(future)
         
-        # Création des tâches asynchrones
-        tasks = []
-        for query_id, elasticsearch_query, params in queries:
-            task = asyncio.create_task(
-                self.execute_single_query(
-                    query_id=query_id,
-                    elasticsearch_query=elasticsearch_query,
-                    size=params.get("size", 20),
-                    from_=params.get("from", 0),
-                    timeout_ms=params.get("timeout_ms", 5000),
-                    priority=priority,
-                    user_id=params.get("user_id")
-                )
-            )
-            tasks.append(task)
-        
-        # Exécution en parallèle avec gestion des erreurs
+        # Exécution parallèle avec timeout global
         try:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.wait_for(
+                asyncio.gather(*futures, return_exceptions=True),
+                timeout=self.settings.multi_query_timeout
+            )
             
-            # Traitement des résultats et exceptions
+            # Traitement résultats
             processed_results = []
-            success_count = 0
-            
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    # Création d'un résultat d'erreur
-                    query_id, _, _ = queries[i]
-                    error_result = QueryExecutionResult(
-                        query_id=query_id,
-                        response={},
+                    processed_results.append(ExecutionResult(
+                        success=False,
+                        data=None,
                         execution_time_ms=0,
-                        elasticsearch_took=0,
-                        strategy_used=QueryExecutionStrategy.PARALLEL,
-                        optimizations_applied=[],
-                        error=result
-                    )
-                    processed_results.append(error_result)
+                        error=str(result),
+                        query_stats={}
+                    ))
                 else:
                     processed_results.append(result)
-                    if result.success:
-                        success_count += 1
-            
-            # Mise à jour des statistiques
-            total_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            self.parallel_queries_count += 1
-            
-            logger.info(
-                f"✅ Exécution parallèle terminée: {success_count}/{len(queries)} succès en {total_time}ms"
-            )
             
             return processed_results
             
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'exécution parallèle: {str(e)}")
-            raise ElasticsearchQueryError(f"Échec de l'exécution parallèle: {str(e)}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout exécution multiple requêtes: {self.settings.multi_query_timeout}s")
+            return [ExecutionResult(
+                success=False,
+                data=None,
+                execution_time_ms=0,
+                error="Timeout",
+                query_stats={}
+            ) for _ in queries]
     
-    async def execute_batch_queries(
-        self,
-        queries: List[Tuple[str, Dict[str, Any], Dict[str, Any]]],
-        batch_size: int = 5,
-        priority: QueryPriority = QueryPriority.NORMAL
-    ) -> List[QueryExecutionResult]:
+    async def _analyze_and_plan(self, query: SearchServiceQuery) -> QueryExecutionPlan:
         """
-        Exécute des requêtes par batches pour gérer la charge.
-        
-        Args:
-            queries: Liste de requêtes à exécuter
-            batch_size: Taille des batches
-            priority: Priorité d'exécution
-            
-        Returns:
-            List[QueryExecutionResult]: Résultats agrégés
+        Analyse requête et génération plan d'exécution
         """
-        logger.info(f"📦 Exécution par batches: {len(queries)} requêtes, taille batch: {batch_size}")
+        # Clé cache pour plan
+        plan_key = self._generate_plan_key(query)
         
-        all_results = []
+        # Vérification cache
+        if plan_key in self._execution_plans:
+            return self._execution_plans[plan_key]
         
-        # Division en batches
-        for i in range(0, len(queries), batch_size):
-            batch = queries[i:i + batch_size]
-            batch_number = (i // batch_size) + 1
-            
-            logger.debug(f"🔄 Traitement batch {batch_number}: {len(batch)} requêtes")
-            
-            # Exécution du batch
-            batch_results = await self.execute_parallel_queries(batch, priority)
-            all_results.extend(batch_results)
-            
-            # Pause entre batches si nécessaire
-            if i + batch_size < len(queries):
-                await asyncio.sleep(0.1)  # Pause courte pour éviter la surcharge
+        # Analyse complexité
+        complexity_score = self._calculate_complexity(query)
+        query_type = self._determine_query_type(query)
         
-        logger.info(f"✅ Exécution par batches terminée: {len(all_results)} résultats")
-        return all_results
+        # Estimation temps
+        estimated_time = self._estimate_execution_time(query, complexity_score)
+        
+        # Décision parallélisation
+        parallel_execution = (
+            complexity_score > self.settings.parallel_threshold or
+            query.aggregations.enabled and len(query.aggregations.group_by) > 2
+        )
+        
+        # Optimisations suggérées
+        optimization_hints = self._generate_optimization_hints(query)
+        
+        # Création plan
+        plan = QueryExecutionPlan(
+            query_type=query_type,
+            estimated_time_ms=estimated_time,
+            complexity_score=complexity_score,
+            parallel_execution=parallel_execution,
+            optimization_hints=optimization_hints
+        )
+        
+        # Mise en cache
+        self._execution_plans[plan_key] = plan
+        
+        return plan
     
-    async def execute_aggregation_query(
-        self,
-        query_id: str,
-        base_query: Dict[str, Any],
-        aggregations: Dict[str, Any],
-        timeout_ms: int = 10000,
-        user_id: Optional[int] = None
-    ) -> QueryExecutionResult:
+    def _calculate_complexity(self, query: SearchServiceQuery) -> float:
         """
-        Exécute une requête d'agrégation optimisée.
+        Calcul score complexité requête
+        """
+        complexity = 0.0
         
-        Args:
-            query_id: Identifiant de la requête
-            base_query: Requête de base pour filtrage
-            aggregations: Configuration des agrégations
-            timeout_ms: Timeout spécifique aux agrégations
-            user_id: ID utilisateur
-            
-        Returns:
-            QueryExecutionResult: Résultat avec agrégations
+        # Facteurs base
+        complexity += len(query.filters.required) * 0.5
+        complexity += len(query.filters.optional) * 0.3
+        complexity += len(query.filters.ranges) * 1.0
+        
+        # Recherche textuelle
+        if query.filters.text_search:
+            complexity += 2.0
+            complexity += len(query.filters.text_search.fields) * 0.5
+        
+        # Agrégations
+        if query.aggregations.enabled:
+            complexity += len(query.aggregations.group_by) * 2.0
+            complexity += len(query.aggregations.types) * 0.5
+            complexity += len(query.aggregations.metrics) * 0.3
+        
+        # Taille résultats
+        if query.search_parameters.limit > 100:
+            complexity += 1.0
+        
+        return complexity
+    
+    def _determine_query_type(self, query: SearchServiceQuery) -> QueryType:
         """
-        # Construction de la requête d'agrégation
-        aggregation_query = {
-            **base_query,
-            "size": 0,  # Pas besoin de documents pour les agrégations
-            "aggs": aggregations,
-            "timeout": f"{timeout_ms}ms"
+        Détermination type requête
+        """
+        has_text_search = query.filters.text_search is not None
+        has_filters = (
+            query.filters.required or 
+            query.filters.optional or 
+            query.filters.ranges
+        )
+        has_aggregations = query.aggregations.enabled
+        
+        # Logique de détermination
+        if has_aggregations and has_filters and has_text_search:
+            return QueryType.COMPLEX_SEARCH
+        elif has_aggregations:
+            return QueryType.AGGREGATED_SEARCH
+        elif has_text_search:
+            return QueryType.TEXT_SEARCH
+        elif has_filters:
+            return QueryType.FILTERED_SEARCH
+        else:
+            return QueryType.SIMPLE_SEARCH
+    
+    def _estimate_execution_time(self, query: SearchServiceQuery, complexity: float) -> int:
+        """
+        Estimation temps d'exécution
+        """
+        # Temps base par type
+        base_times = {
+            QueryType.SIMPLE_SEARCH: 10,
+            QueryType.FILTERED_SEARCH: 25,
+            QueryType.TEXT_SEARCH: 50,
+            QueryType.AGGREGATED_SEARCH: 100,
+            QueryType.COMPLEX_SEARCH: 200
         }
         
-        # Optimisations spécifiques aux agrégations
-        optimized_query = self._optimize_aggregation_query(aggregation_query, user_id)
+        query_type = self._determine_query_type(query)
+        base_time = base_times.get(query_type, 50)
         
-        # Exécution avec priorité élevée (agrégations sont souvent critiques)
-        return await self.execute_single_query(
-            query_id=query_id,
-            elasticsearch_query=optimized_query,
-            size=0,
-            timeout_ms=timeout_ms,
-            priority=QueryPriority.HIGH,
-            user_id=user_id
-        )
+        # Facteur complexité
+        complexity_factor = 1.0 + (complexity / 10.0)
+        
+        # Facteur taille
+        size_factor = 1.0 + (query.search_parameters.limit / 1000.0)
+        
+        return int(base_time * complexity_factor * size_factor)
     
-    async def _execute_with_retry(
-        self,
-        query_id: str,
-        query: Dict[str, Any],
-        size: int,
-        from_: int,
-        timeout: str,
-        preference: Optional[str] = None
+    def _generate_optimization_hints(self, query: SearchServiceQuery) -> List[str]:
+        """
+        Génération conseils optimisation
+        """
+        hints = []
+        
+        # Filtres utilisateur obligatoires
+        if not any(f.field == "user_id" for f in query.filters.required):
+            hints.append("add_user_filter")
+        
+        # Limite raisonnable
+        if query.search_parameters.limit > 500:
+            hints.append("reduce_limit")
+        
+        # Cache activation
+        if not query.options.cache_enabled:
+            hints.append("enable_cache")
+        
+        # Champs spécifiques
+        if len(query.search_parameters.fields) > 20:
+            hints.append("reduce_fields")
+        
+        # Agrégations optimisées
+        if query.aggregations.enabled and len(query.aggregations.group_by) > 3:
+            hints.append("optimize_aggregations")
+        
+        return hints
+    
+    async def _build_elasticsearch_query(
+        self, 
+        query: SearchServiceQuery, 
+        plan: QueryExecutionPlan
     ) -> Dict[str, Any]:
         """
-        Exécute une requête avec retry automatique.
-        
-        Args:
-            query_id: ID de la requête
-            query: Requête Elasticsearch
-            size: Taille des résultats
-            from_: Offset
-            timeout: Timeout
-            preference: Préférence de routage
-            
-        Returns:
-            Dict: Réponse Elasticsearch
+        Construction requête Elasticsearch selon plan
         """
-        last_exception = None
+        # Délégation au builder approprié
+        builder = self._query_builders.get(plan.query_type, self._build_simple_search)
+        return await builder(query, plan)
+    
+    async def _build_simple_search(
+        self, 
+        query: SearchServiceQuery, 
+        plan: QueryExecutionPlan
+    ) -> Dict[str, Any]:
+        """
+        Construction requête simple
+        """
+        return {
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {f.field: f.value}} 
+                        for f in query.filters.required
+                    ]
+                }
+            },
+            "size": query.search_parameters.limit,
+            "from": query.search_parameters.offset,
+            "_source": query.search_parameters.fields
+        }
+    
+    async def _build_filtered_search(
+        self, 
+        query: SearchServiceQuery, 
+        plan: QueryExecutionPlan
+    ) -> Dict[str, Any]:
+        """
+        Construction requête avec filtres
+        """
+        bool_query = {
+            "bool": {
+                "filter": [],
+                "should": [],
+                "must_not": []
+            }
+        }
         
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = await self.elasticsearch_client.search(
-                    query=query,
-                    size=size,
-                    from_=from_,
-                    timeout=timeout,
-                    preference=preference
+        # Filtres obligatoires
+        for filter_item in query.filters.required:
+            bool_query["bool"]["filter"].append({
+                "term": {f"{filter_item.field}": filter_item.value}
+            })
+        
+        # Filtres optionnels
+        for filter_item in query.filters.optional:
+            bool_query["bool"]["should"].append({
+                "term": {f"{filter_item.field}": filter_item.value}
+            })
+        
+        # Filtres range
+        for range_filter in query.filters.ranges:
+            range_clause = {}
+            if range_filter.operator == "between":
+                range_clause[range_filter.field] = {
+                    "gte": range_filter.value[0],
+                    "lte": range_filter.value[1]
+                }
+            elif range_filter.operator == "gt":
+                range_clause[range_filter.field] = {"gt": range_filter.value}
+            elif range_filter.operator == "gte":
+                range_clause[range_filter.field] = {"gte": range_filter.value}
+            elif range_filter.operator == "lt":
+                range_clause[range_filter.field] = {"lt": range_filter.value}
+            elif range_filter.operator == "lte":
+                range_clause[range_filter.field] = {"lte": range_filter.value}
+            
+            bool_query["bool"]["filter"].append({"range": range_clause})
+        
+        return {
+            "query": bool_query,
+            "size": query.search_parameters.limit,
+            "from": query.search_parameters.offset,
+            "_source": query.search_parameters.fields,
+            "sort": [{"date": {"order": "desc"}}]
+        }
+    
+    async def _build_text_search(
+        self, 
+        query: SearchServiceQuery, 
+        plan: QueryExecutionPlan
+    ) -> Dict[str, Any]:
+        """
+        Construction requête recherche textuelle
+        """
+        bool_query = {
+            "bool": {
+                "must": [],
+                "filter": []
+            }
+        }
+        
+        # Recherche textuelle principale
+        if query.filters.text_search:
+            text_query = {
+                "multi_match": {
+                    "query": query.filters.text_search.query,
+                    "fields": query.filters.text_search.fields,
+                    "type": "best_fields",
+                    "operator": "or",
+                    "fuzziness": "AUTO",
+                    "boost": 1.0
+                }
+            }
+            bool_query["bool"]["must"].append(text_query)
+        
+        # Filtres obligatoires
+        for filter_item in query.filters.required:
+            bool_query["bool"]["filter"].append({
+                "term": {f"{filter_item.field}": filter_item.value}
+            })
+        
+        # Filtres range
+        for range_filter in query.filters.ranges:
+            if range_filter.operator == "between":
+                bool_query["bool"]["filter"].append({
+                    "range": {
+                        range_filter.field: {
+                            "gte": range_filter.value[0],
+                            "lte": range_filter.value[1]
+                        }
+                    }
+                })
+        
+        es_query = {
+            "query": bool_query,
+            "size": query.search_parameters.limit,
+            "from": query.search_parameters.offset,
+            "_source": query.search_parameters.fields
+        }
+        
+        # Highlights pour recherche textuelle
+        if query.options.include_highlights:
+            es_query["highlight"] = {
+                "fields": {
+                    field: {
+                        "pre_tags": ["<mark>"],
+                        "post_tags": ["</mark>"],
+                        "fragment_size": 150,
+                        "number_of_fragments": 3
+                    } for field in query.filters.text_search.fields
+                }
+            }
+        
+        return es_query
+    
+    async def _build_aggregated_search(
+        self, 
+        query: SearchServiceQuery, 
+        plan: QueryExecutionPlan
+    ) -> Dict[str, Any]:
+        """
+        Construction requête avec agrégations
+        """
+        # Query base
+        bool_query = {
+            "bool": {
+                "filter": [
+                    {"term": {f.field: f.value}} 
+                    for f in query.filters.required
+                ]
+            }
+        }
+        
+        # Ajout filtres range
+        for range_filter in query.filters.ranges:
+            if range_filter.operator == "between":
+                bool_query["bool"]["filter"].append({
+                    "range": {
+                        range_filter.field: {
+                            "gte": range_filter.value[0],
+                            "lte": range_filter.value[1]
+                        }
+                    }
+                })
+        
+        es_query = {
+            "query": bool_query,
+            "size": 0,  # Pas besoin de documents pour agrégations
+            "aggs": await self._build_aggregations_advanced(query.aggregations)
+        }
+        
+        return es_query
+    
+    async def _build_complex_search(
+        self, 
+        query: SearchServiceQuery, 
+        plan: QueryExecutionPlan
+    ) -> Dict[str, Any]:
+        """
+        Construction requête complexe
+        """
+        bool_query = {
+            "bool": {
+                "must": [],
+                "filter": [],
+                "should": []
+            }
+        }
+        
+        # Recherche textuelle
+        if query.filters.text_search:
+            text_query = {
+                "multi_match": {
+                    "query": query.filters.text_search.query,
+                    "fields": query.filters.text_search.fields,
+                    "type": "cross_fields",
+                    "operator": "and",
+                    "fuzziness": "AUTO"
+                }
+            }
+            bool_query["bool"]["must"].append(text_query)
+        
+        # Filtres obligatoires
+        for filter_item in query.filters.required:
+            bool_query["bool"]["filter"].append({
+                "term": {f"{filter_item.field}": filter_item.value}
+            })
+        
+        # Filtres optionnels avec boost
+        for filter_item in query.filters.optional:
+            bool_query["bool"]["should"].append({
+                "term": {
+                    f"{filter_item.field}": {
+                        "value": filter_item.value,
+                        "boost": 0.5
+                    }
+                }
+            })
+        
+        # Filtres range
+        for range_filter in query.filters.ranges:
+            if range_filter.operator == "between":
+                bool_query["bool"]["filter"].append({
+                    "range": {
+                        range_filter.field: {
+                            "gte": range_filter.value[0],
+                            "lte": range_filter.value[1]
+                        }
+                    }
+                })
+        
+        es_query = {
+            "query": bool_query,
+            "size": query.search_parameters.limit,
+            "from": query.search_parameters.offset,
+            "_source": query.search_parameters.fields,
+            "sort": [
+                {"_score": {"order": "desc"}},
+                {"date": {"order": "desc"}}
+            ]
+        }
+        
+        # Agrégations si demandées
+        if query.aggregations.enabled:
+            es_query["aggs"] = await self._build_aggregations_advanced(query.aggregations)
+        
+        # Highlights
+        if query.options.include_highlights and query.filters.text_search:
+            es_query["highlight"] = {
+                "fields": {
+                    field: {
+                        "pre_tags": ["<mark>"],
+                        "post_tags": ["</mark>"],
+                        "fragment_size": 200,
+                        "number_of_fragments": 2
+                    } for field in query.filters.text_search.fields
+                }
+            }
+        
+        return es_query
+    
+    async def _build_aggregations_advanced(self, agg_config: AggregationRequest) -> Dict[str, Any]:
+        """
+        Construction agrégations avancées
+        """
+        aggregations = {}
+        
+        # Métriques globales
+        if "sum" in agg_config.types:
+            for metric in agg_config.metrics:
+                aggregations[f"total_{metric}"] = {
+                    "sum": {"field": metric}
+                }
+        
+        if "avg" in agg_config.types:
+            for metric in agg_config.metrics:
+                aggregations[f"avg_{metric}"] = {
+                    "avg": {"field": metric}
+                }
+        
+        if "count" in agg_config.types:
+            aggregations["transaction_count"] = {
+                "value_count": {"field": "transaction_id"}
+            }
+        
+        if "min" in agg_config.types:
+            for metric in agg_config.metrics:
+                aggregations[f"min_{metric}"] = {
+                    "min": {"field": metric}
+                }
+        
+        if "max" in agg_config.types:
+            for metric in agg_config.metrics:
+                aggregations[f"max_{metric}"] = {
+                    "max": {"field": metric}
+                }
+        
+        # Statistiques avancées
+        if "stats" in agg_config.types:
+            for metric in agg_config.metrics:
+                aggregations[f"stats_{metric}"] = {
+                    "stats": {"field": metric}
+                }
+        
+        # Groupements avec sous-agrégations
+        for group_field in agg_config.group_by:
+            field_name = f"{group_field}.keyword" if group_field in ["category_name", "merchant_name"] else group_field
+            
+            sub_aggs = {}
+            for metric in agg_config.metrics:
+                sub_aggs[f"sum_{metric}"] = {"sum": {"field": metric}}
+                sub_aggs[f"avg_{metric}"] = {"avg": {"field": metric}}
+            
+            sub_aggs["doc_count"] = {"value_count": {"field": "transaction_id"}}
+            
+            aggregations[f"by_{group_field}"] = {
+                "terms": {
+                    "field": field_name,
+                    "size": 100,
+                    "order": {"sum_amount_abs": "desc"}
+                },
+                "aggs": sub_aggs
+            }
+        
+        # Agrégations temporelles spéciales
+        if "date" in agg_config.group_by:
+            aggregations["by_date_histogram"] = {
+                "date_histogram": {
+                    "field": "date",
+                    "calendar_interval": "day",
+                    "format": "yyyy-MM-dd"
+                },
+                "aggs": {
+                    "daily_sum": {"sum": {"field": "amount_abs"}},
+                    "daily_count": {"value_count": {"field": "transaction_id"}}
+                }
+            }
+        
+        if "month_year" in agg_config.group_by:
+            aggregations["by_month"] = {
+                "terms": {
+                    "field": "month_year",
+                    "size": 24,
+                    "order": {"_key": "desc"}
+                },
+                "aggs": {
+                    "monthly_sum": {"sum": {"field": "amount_abs"}},
+                    "monthly_count": {"value_count": {"field": "transaction_id"}},
+                    "monthly_avg": {"avg": {"field": "amount_abs"}}
+                }
+            }
+        
+        return aggregations
+    
+    async def _execute_sequential(self, es_query: Dict[str, Any], query: SearchServiceQuery) -> Dict[str, Any]:
+        """
+        Exécution séquentielle
+        """
+        try:
+            response = await asyncio.wrap_future(
+                self.executor.submit(
+                    self.es_client.search,
+                    index=self.settings.index_name,
+                    body=es_query,
+                    timeout=f"{query.search_parameters.timeout_ms}ms"
+                )
+            )
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Erreur exécution séquentielle: {e}")
+            raise
+    
+    async def _execute_parallel(self, es_query: Dict[str, Any], query: SearchServiceQuery) -> Dict[str, Any]:
+        """
+        Exécution parallèle pour requêtes complexes
+        """
+        try:
+            # Séparation requête en parties parallélisables
+            if query.aggregations.enabled and "aggs" in es_query:
+                # Exécution séparée documents et agrégations
+                doc_query = {k: v for k, v in es_query.items() if k != "aggs"}
+                agg_query = {
+                    "query": es_query["query"],
+                    "aggs": es_query["aggs"],
+                    "size": 0
+                }
+                
+                # Exécution parallèle
+                doc_future = self.executor.submit(
+                    self.es_client.search,
+                    index=self.settings.index_name,
+                    body=doc_query
                 )
                 
-                if attempt > 0:
-                    logger.info(f"✅ Requête {query_id} réussie après {attempt} tentatives")
+                agg_future = self.executor.submit(
+                    self.es_client.search,
+                    index=self.settings.index_name,
+                    body=agg_query
+                )
                 
-                return response
+                # Attente résultats
+                doc_response, agg_response = await asyncio.gather(
+                    asyncio.wrap_future(doc_future),
+                    asyncio.wrap_future(agg_future)
+                )
                 
-            except Exception as e:
-                last_exception = e
-                self.retry_count += 1
+                # Fusion résultats
+                merged_response = doc_response.copy()
+                if "aggregations" in agg_response:
+                    merged_response["aggregations"] = agg_response["aggregations"]
                 
-                if attempt < self.max_retries:
-                    # Calcul du délai avec backoff exponentiel
-                    delay = min(
-                        self.base_retry_delay * (2 ** attempt),
-                        self.max_retry_delay
-                    )
-                    
-                    logger.warning(
-                        f"⚠️ Tentative {attempt + 1}/{self.max_retries + 1} échouée pour {query_id}: {str(e)}. "
-                        f"Retry dans {delay:.2f}s"
-                    )
-                    
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error(f"❌ Toutes les tentatives échouées pour {query_id}")
-        
-        self.failed_queries_count += 1
-        raise last_exception
-    
-    def _apply_query_optimizations(
-        self,
-        query: Dict[str, Any],
-        priority: QueryPriority,
-        user_id: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """
-        Applique des optimisations à une requête selon la priorité.
-        
-        Args:
-            query: Requête originale
-            priority: Priorité d'exécution
-            user_id: ID utilisateur pour optimisations
+                return merged_response
             
-        Returns:
-            Dict: Requête optimisée
-        """
-        optimized = query.copy()
-        
-        # Cache selon la priorité
-        if priority in [QueryPriority.LOW, QueryPriority.NORMAL]:
-            optimized["request_cache"] = True
-        
-        # Optimisation des sources selon la priorité
-        if priority == QueryPriority.LOW and "_source" not in optimized:
-            # Sources limitées pour les requêtes de faible priorité
-            optimized["_source"] = [
-                "transaction_id", "user_id", "amount", "date", "primary_description"
-            ]
-        
-        # Limitation du scoring pour les requêtes de tri
-        if "sort" in optimized and optimized["sort"]:
-            optimized["track_scores"] = False
-        
-        # Préférence de routage basée sur user_id
-        if user_id and "preference" not in optimized:
-            optimized["preference"] = f"_shards:{user_id % 5}"
-        
-        return optimized
+            else:
+                # Exécution normale si pas de parallélisation possible
+                return await self._execute_sequential(es_query, query)
+                
+        except Exception as e:
+            logger.error(f"Erreur exécution parallèle: {e}")
+            # Fallback séquentiel
+            return await self._execute_sequential(es_query, query)
     
-    def _optimize_aggregation_query(
-        self,
-        query: Dict[str, Any],
-        user_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+    def _extract_query_stats(self, es_response: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Optimise une requête d'agrégation.
-        
-        Args:
-            query: Requête d'agrégation
-            user_id: ID utilisateur
-            
-        Returns:
-            Dict: Requête optimisée pour agrégations
+        Extraction statistiques requête
         """
-        optimized = query.copy()
-        
-        # Désactivation du cache pour les agrégations (souvent uniques)
-        optimized["request_cache"] = False
-        
-        # Optimisation des buckets selon la configuration
-        if "aggs" in optimized:
-            for agg_name, agg_config in optimized["aggs"].items():
-                if isinstance(agg_config, dict) and "terms" in agg_config:
-                    # Limitation du nombre de buckets
-                    if "size" not in agg_config["terms"]:
-                        agg_config["terms"]["size"] = min(50, self.settings.MAX_AGGREGATION_BUCKETS)
-        
-        # Timeout spécifique aux agrégations
-        if "timeout" not in optimized:
-            optimized["timeout"] = f"{self.settings.AGGREGATION_TIMEOUT_MS}ms"
-        
-        return optimized
+        return {
+            "took": es_response.get("took", 0),
+            "timed_out": es_response.get("timed_out", False),
+            "total_hits": es_response.get("hits", {}).get("total", {}).get("value", 0),
+            "max_score": es_response.get("hits", {}).get("max_score", 0),
+            "shards": es_response.get("_shards", {}),
+            "has_aggregations": "aggregations" in es_response
+        }
     
-    def _calculate_adaptive_timeout(
-        self,
-        base_timeout_ms: int,
-        priority: QueryPriority
-    ) -> int:
+    def _generate_plan_key(self, query: SearchServiceQuery) -> str:
         """
-        Calcule un timeout adaptatif selon la priorité.
+        Génération clé unique pour plan d'exécution
+        """
+        key_parts = [
+            f"intent_{query.query_metadata.intent_type}",
+            f"filters_{len(query.filters.required)}_{len(query.filters.optional)}_{len(query.filters.ranges)}",
+            f"text_search_{query.filters.text_search is not None}",
+            f"aggs_{query.aggregations.enabled}_{len(query.aggregations.group_by) if query.aggregations.enabled else 0}",
+            f"limit_{query.search_parameters.limit}"
+        ]
         
-        Args:
-            base_timeout_ms: Timeout de base
-            priority: Priorité de la requête
-            
-        Returns:
-            int: Timeout adapté
+        return ":".join(key_parts)
+    
+    async def optimize_query(self, query: SearchServiceQuery) -> Dict[str, Any]:
         """
-        multipliers = {
-            QueryPriority.LOW: 0.8,
-            QueryPriority.NORMAL: 1.0,
-            QueryPriority.HIGH: 1.5,
-            QueryPriority.CRITICAL: 2.0
+        Optimisation requête avec suggestions
+        """
+        plan = await self._analyze_and_plan(query)
+        
+        optimizations = {
+            "current_complexity": plan.complexity_score,
+            "estimated_time_ms": plan.estimated_time_ms,
+            "parallel_execution": plan.parallel_execution,
+            "suggestions": []
         }
         
-        multiplier = multipliers.get(priority, 1.0)
-        adapted_timeout = int(base_timeout_ms * multiplier)
-        
-        # Respect des limites configurées
-        return min(adapted_timeout, self.settings.SEARCH_MAX_TIMEOUT_MS)
-    
-    def _get_routing_preference(self, user_id: Optional[int]) -> Optional[str]:
-        """
-        Calcule la préférence de routage pour optimiser les performances.
-        
-        Args:
-            user_id: ID utilisateur
-            
-        Returns:
-            Optional[str]: Préférence de routage
-        """
-        if user_id:
-            # Routage basé sur l'user_id pour localité des données
-            return f"_shards:{user_id % 5}"
-        return None
-    
-    def _get_applied_optimizations(
-        self,
-        optimized_query: Dict[str, Any],
-        original_query: Dict[str, Any]
-    ) -> List[str]:
-        """
-        Détermine les optimisations appliquées à une requête.
-        
-        Args:
-            optimized_query: Requête optimisée
-            original_query: Requête originale
-            
-        Returns:
-            List[str]: Liste des optimisations appliquées
-        """
-        optimizations = []
-        
-        if optimized_query.get("request_cache") and not original_query.get("request_cache"):
-            optimizations.append("request_caching")
-        
-        if optimized_query.get("track_scores") == False and original_query.get("track_scores") != False:
-            optimizations.append("score_tracking_disabled")
-        
-        if optimized_query.get("preference") and not original_query.get("preference"):
-            optimizations.append("shard_routing")
-        
-        if optimized_query.get("_source") != original_query.get("_source"):
-            optimizations.append("source_filtering")
+        # Suggestions d'optimisation
+        for hint in plan.optimization_hints:
+            if hint == "add_user_filter":
+                optimizations["suggestions"].append({
+                    "type": "security",
+                    "message": "Ajouter filtre user_id obligatoire",
+                    "impact": "high"
+                })
+            elif hint == "reduce_limit":
+                optimizations["suggestions"].append({
+                    "type": "performance",
+                    "message": f"Réduire limite de {query.search_parameters.limit} à 100",
+                    "impact": "medium"
+                })
+            elif hint == "enable_cache":
+                optimizations["suggestions"].append({
+                    "type": "performance",
+                    "message": "Activer cache pour améliorer performances",
+                    "impact": "high"
+                })
         
         return optimizations
     
-    def _update_execution_metrics(
-        self,
-        execution_time_ms: int,
-        priority: QueryPriority,
-        success: bool
-    ) -> None:
+    async def explain_query(self, query: SearchServiceQuery) -> Dict[str, Any]:
         """
-        Met à jour les métriques d'exécution.
-        
-        Args:
-            execution_time_ms: Temps d'exécution
-            priority: Priorité de la requête
-            success: Succès de l'exécution
+        Explication détaillée requête
         """
-        self.queries_executed += 1
-        self.total_execution_time += execution_time_ms
+        plan = await self._analyze_and_plan(query)
+        es_query = await self._build_elasticsearch_query(query, plan)
         
-        if not success:
-            self.failed_queries_count += 1
-        
-        # Mise à jour des métriques détaillées
-        self.metrics.record_execution(
-            execution_time_ms=execution_time_ms,
-            priority=priority.value,
-            success=success
-        )
-    
-    def get_execution_metrics(self) -> Dict[str, Any]:
-        """
-        Récupère les métriques d'exécution.
-        
-        Returns:
-            Dict: Métriques détaillées
-        """
-        avg_execution_time = (
-            self.total_execution_time / self.queries_executed
-            if self.queries_executed > 0 else 0.0
-        )
-        
-        success_rate = (
-            (self.queries_executed - self.failed_queries_count) / self.queries_executed
-            if self.queries_executed > 0 else 0.0
-        )
+        # Explication Elasticsearch
+        try:
+            explain_response = await asyncio.wrap_future(
+                self.executor.submit(
+                    self.es_client.explain_query,
+                    index=self.settings.index_name,
+                    body=es_query
+                )
+            )
+        except:
+            explain_response = {"error": "Could not generate explanation"}
         
         return {
-            "queries_executed": self.queries_executed,
-            "total_execution_time_ms": self.total_execution_time,
-            "average_execution_time_ms": avg_execution_time,
-            "parallel_queries_count": self.parallel_queries_count,
-            "retry_count": self.retry_count,
-            "failed_queries_count": self.failed_queries_count,
-            "success_rate": success_rate,
-            "max_concurrent_queries": self.max_concurrent_queries,
-            "detailed_metrics": self.metrics.get_metrics()
+            "query_metadata": {
+                "intent_type": query.query_metadata.intent_type,
+                "query_type": plan.query_type.value,
+                "complexity_score": plan.complexity_score,
+                "estimated_time_ms": plan.estimated_time_ms
+            },
+            "elasticsearch_query": es_query,
+            "execution_plan": {
+                "parallel_execution": plan.parallel_execution,
+                "optimization_hints": plan.optimization_hints
+            },
+            "explanation": explain_response
         }
     
-    def reset_metrics(self) -> None:
-        """Remet à zéro les métriques d'exécution."""
-        self.queries_executed = 0
-        self.total_execution_time = 0.0
-        self.parallel_queries_count = 0
-        self.retry_count = 0
-        self.failed_queries_count = 0
-        self.metrics.reset()
-        
-        logger.info("🔄 Métriques d'exécution réinitialisées")
-    
-    async def shutdown(self) -> None:
-        """Arrête proprement l'exécuteur de requêtes."""
-        logger.info("🛑 Arrêt de l'exécuteur de requêtes...")
-        
-        # Attendre que toutes les tâches en cours se terminent
-        pending_tasks = [task for task in asyncio.all_tasks() if not task.done()]
-        if pending_tasks:
-            logger.info(f"⏳ Attente de {len(pending_tasks)} tâches en cours...")
-            await asyncio.gather(*pending_tasks, return_exceptions=True)
-        
-        # Logs des métriques finales
-        final_metrics = self.get_execution_metrics()
-        logger.info(f"📊 Métriques finales: {final_metrics}")
-        
-        logger.info("✅ Arrêt terminé")
-
-
-# === HELPER FUNCTIONS ===
-
-def create_query_executor(
-    elasticsearch_client: ElasticsearchClient,
-    settings: Optional[SearchServiceSettings] = None
-) -> QueryExecutor:
-    """
-    Factory pour créer un exécuteur de requêtes.
-    
-    Args:
-        elasticsearch_client: Client Elasticsearch
-        settings: Configuration
-        
-    Returns:
-        QueryExecutor: Exécuteur configuré
-    """
-    return QueryExecutor(
-        elasticsearch_client=elasticsearch_client,
-        settings=settings or get_settings()
-    )
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Vérification santé exécuteur
+        """
+        try:
+            # Test requête simple
+            test_query = {
+                "query": {"match_all": {}},
+                "size": 1
+            }
+            
+            start_time = datetime.now()
+            response = await asyncio.wrap_future(
+                self.executor.submit(
+                    self.es_client.search,
+                    index=self.settings.index_name,
+                    body=test_query
+                )
+            )
+            execution_time = (datetime.now() - start_time).total_seconds() * 1000
+            
+            return {
+                "status": "healthy",
+                "test_query_time_ms": execution_time,
+                "executor_threads": self.executor._threads,
+                "cached_plans": len(self._execution_plans),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }

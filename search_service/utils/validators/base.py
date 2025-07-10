@@ -1,67 +1,72 @@
 """
 Validateur de base et structures communes pour le Search Service.
 
-Ce module fournit la classe BaseValidator avec toutes les fonctionnalités communes
-ainsi que les structures de données partagées par tous les validateurs.
+Ce module fournit les classes de base, enums, exceptions et structures
+de données partagées par tous les validateurs spécialisés.
 """
 
 import re
+import time
 import logging
-from datetime import datetime, date
-from decimal import Decimal, InvalidOperation
-from typing import Dict, List, Any, Optional, Union, Set
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
-from urllib.parse import unquote
-
-# Configuration centralisée
-from config_service.config import settings
+from typing import Dict, List, Any, Optional, Union, Set, Callable
 
 logger = logging.getLogger(__name__)
 
 # ==================== ENUMS ET CONSTANTES ====================
 
 class ValidationLevel(str, Enum):
-    """Niveaux de validation."""
-    BASIC = "basic"         # Validation de base uniquement
-    STANDARD = "standard"   # Validation standard avec sécurité
-    STRICT = "strict"       # Validation stricte avec toutes les vérifications
+    """Niveaux de validation disponibles."""
+    BASIC = "basic"          # Validation minimale
+    STANDARD = "standard"    # Validation normale (défaut)
+    STRICT = "strict"        # Validation stricte
+    PARANOID = "paranoid"    # Validation maximale
 
 class FieldType(str, Enum):
     """Types de champs supportés."""
     STRING = "string"
     INTEGER = "integer"
     FLOAT = "float"
-    DECIMAL = "decimal"
-    DATETIME = "datetime"
     BOOLEAN = "boolean"
-    LIST = "list"
-    OBJECT = "object"
+    DATE = "date"
+    EMAIL = "email"
+    URL = "url"
+    UUID = "uuid"
+    USER_ID = "user_id"
+    AMOUNT = "amount"
 
 # Limites par défaut
 DEFAULT_LIMITS = {
-    "max_query_length": getattr(settings, 'SEARCH_MAX_QUERY_LENGTH', 500),
-    "max_results": getattr(settings, 'SEARCH_MAX_LIMIT', 100),
-    "max_filter_values": getattr(settings, 'SEARCH_MAX_FILTER_VALUES', 50),
+    "max_query_length": 1000,
+    "max_filter_values": 100,
     "max_nested_depth": 10,
     "max_bool_clauses": 50,
-    "max_wildcard_terms": 10
+    "max_wildcard_queries": 10,
+    "min_query_length": 1,
+    "default_timeout_ms": 5000,
+    "max_timeout_ms": 30000,
 }
 
 # Patterns de sécurité dangereux
 DANGEROUS_PATTERNS = [
-    r'<script[^>]*>.*?</script>',  # Scripts
-    r'javascript\s*:',             # Javascript URLs
-    r'on\w+\s*=',                 # Event handlers
-    r'\$\{.*?\}',                 # Template injection
-    r'<%.*?%>',                   # Template tags
-    r'eval\s*\(',                 # Eval functions
-    r'exec\s*\(',                 # Exec functions
-    r'__.*__',                    # Python magic methods
-    r'\.\./',                     # Directory traversal
-    r'null\s*;',                  # SQL injection attempts
-    r'union\s+select',            # SQL injection
-    r'drop\s+table',              # SQL injection
+    r'<script[^>]*>.*?</script>',
+    r'javascript\s*:',
+    r'on\w+\s*=',
+    r'\$\{.*?\}',
+    r'<%.*?%>',
+    r'eval\s*\(',
+    r'exec\s*\(',
+    r'__.*__',
+    r'\.\./',
+    r'null\s*;',
+    r'union\s+select',
+    r'drop\s+table',
+    r'delete\s+from',
+    r'insert\s+into',
+    r'update\s+.*\s+set',
 ]
 
 # Caractères spéciaux Elasticsearch à échapper
@@ -71,6 +76,7 @@ ES_SPECIAL_CHARS = r'+-=&|><!(){}[]^"~*?:\/\\'
 
 class ValidationError(Exception):
     """Exception de base pour les erreurs de validation."""
+    
     def __init__(self, message: str, field: str = "", details: Optional[Dict] = None):
         super().__init__(message)
         self.field = field
@@ -154,7 +160,7 @@ class FieldValidationRule:
     max_value: Optional[Union[int, float]] = None
     allowed_values: Optional[Set[Any]] = None
     pattern: Optional[str] = None
-    custom_validator: Optional[callable] = None
+    custom_validator: Optional[Callable] = None
 
 # ==================== VALIDATEUR BASE ====================
 
@@ -167,287 +173,216 @@ class BaseValidator:
     
     def __init__(self, validation_level: ValidationLevel = ValidationLevel.STANDARD):
         self.validation_level = validation_level
-        self.limits = DEFAULT_LIMITS.copy()
-        self._compiled_patterns = [
-            re.compile(pattern, re.IGNORECASE | re.DOTALL) 
-            for pattern in DANGEROUS_PATTERNS
-        ]
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
-    def sanitize_string(
-        self, 
-        value: str, 
-        max_length: Optional[int] = None,
-        escape_es_chars: bool = True
-    ) -> str:
-        """
-        Sanitise une chaîne de caractères.
+    def _create_result(self, is_valid: bool = True, sanitized_data: Any = None) -> ValidationResult:
+        """Crée un résultat de validation vide."""
+        return ValidationResult(
+            is_valid=is_valid,
+            sanitized_data=sanitized_data
+        )
+    
+    def _validate_required_field(self, value: Any, field_name: str, result: ValidationResult) -> bool:
+        """Valide qu'un champ requis est présent."""
+        if value is None or value == "":
+            result.add_error(f"Field '{field_name}' is required")
+            return False
+        return True
+    
+    def _validate_string_length(self, value: str, field_name: str, min_length: int = None,
+                              max_length: int = None, result: ValidationResult = None) -> bool:
+        """Valide la longueur d'une chaîne."""
+        if result is None:
+            result = self._create_result()
         
-        Args:
-            value: Valeur à sanitiser
-            max_length: Longueur maximum
-            escape_es_chars: Échapper les caractères spéciaux Elasticsearch
-            
-        Returns:
-            Chaîne sanitisée
-            
-        Raises:
-            SecurityValidationError: Si patterns dangereux détectés
-        """
         if not isinstance(value, str):
-            value = str(value)
+            result.add_error(f"Field '{field_name}' must be a string")
+            return False
         
-        # Décoder les caractères URL-encodés
-        try:
-            value = unquote(value)
-        except Exception:
-            pass  # Continuer avec la valeur originale si le décodage échoue
+        length = len(value)
         
-        # Nettoyer et limiter la longueur
-        value = value.strip()
-        if max_length and len(value) > max_length:
-            value = value[:max_length]
-            logger.warning(f"String truncated to {max_length} characters")
+        if min_length is not None and length < min_length:
+            result.add_error(f"Field '{field_name}' must be at least {min_length} characters")
+            return False
         
-        # Détecter les patterns dangereux
-        if self.validation_level in [ValidationLevel.STANDARD, ValidationLevel.STRICT]:
-            for pattern in self._compiled_patterns:
-                if pattern.search(value):
-                    dangerous_content = pattern.search(value).group(0)[:50]
-                    logger.warning(f"Dangerous pattern detected: {dangerous_content}...")
-                    
-                    if self.validation_level == ValidationLevel.STRICT:
-                        raise SecurityValidationError(
-                            f"Input contains dangerous pattern: {pattern.pattern}",
-                            details={"detected_content": dangerous_content}
-                        )
-                    else:
-                        # En mode standard, on supprime le contenu dangereux
-                        value = pattern.sub('', value)
+        if max_length is not None and length > max_length:
+            result.add_error(f"Field '{field_name}' must be at most {max_length} characters")
+            return False
         
-        # Échapper les caractères spéciaux Elasticsearch
-        if escape_es_chars:
-            value = self._escape_elasticsearch_chars(value)
-        
-        return value
+        return True
     
-    def _escape_elasticsearch_chars(self, value: str) -> str:
+    def _validate_numeric_range(self, value: Union[int, float], field_name: str,
+                              min_value: Union[int, float] = None,
+                              max_value: Union[int, float] = None,
+                              result: ValidationResult = None) -> bool:
+        """Valide la plage d'une valeur numérique."""
+        if result is None:
+            result = self._create_result()
+        
+        if not isinstance(value, (int, float)):
+            result.add_error(f"Field '{field_name}' must be numeric")
+            return False
+        
+        if min_value is not None and value < min_value:
+            result.add_error(f"Field '{field_name}' must be at least {min_value}")
+            return False
+        
+        if max_value is not None and value > max_value:
+            result.add_error(f"Field '{field_name}' must be at most {max_value}")
+            return False
+        
+        return True
+    
+    def _validate_pattern(self, value: str, pattern: str, field_name: str,
+                         result: ValidationResult = None) -> bool:
+        """Valide qu'une valeur correspond à un pattern regex."""
+        if result is None:
+            result = self._create_result()
+        
+        try:
+            if not re.match(pattern, value):
+                result.add_error(f"Field '{field_name}' format is invalid")
+                return False
+        except re.error as e:
+            result.add_error(f"Invalid pattern for field '{field_name}': {e}")
+            return False
+        
+        return True
+    
+    def _check_security_patterns(self, value: str, result: ValidationResult) -> bool:
+        """Vérifie les patterns de sécurité dangereux."""
+        if not isinstance(value, str):
+            return True
+        
+        for pattern in DANGEROUS_PATTERNS:
+            try:
+                if re.search(pattern, value, re.IGNORECASE):
+                    result.add_security_flag(f"Dangerous pattern detected: {pattern}")
+                    if self.validation_level in [ValidationLevel.STRICT, ValidationLevel.PARANOID]:
+                        result.add_error("Potentially dangerous content detected")
+                        return False
+            except re.error:
+                continue
+        
+        return True
+    
+    def _escape_elasticsearch_special_chars(self, query: str) -> str:
         """Échappe les caractères spéciaux Elasticsearch."""
+        if not isinstance(query, str):
+            return query
+        
+        escaped = query
         for char in ES_SPECIAL_CHARS:
-            if char in value:
-                value = value.replace(char, f'\\{char}')
-        return value
-    
-    def validate_user_id(self, user_id: Union[int, str]) -> int:
-        """
-        Valide un ID utilisateur.
+            escaped = escaped.replace(char, f"\\{char}")
         
-        Args:
-            user_id: ID à valider
-            
-        Returns:
-            ID utilisateur validé
-            
-        Raises:
-            ParameterValidationError: Si l'ID n'est pas valide
-        """
+        return escaped
+    
+    def _sanitize_string(self, value: str, allow_html: bool = False) -> str:
+        """Nettoie une chaîne de caractères."""
+        if not isinstance(value, str):
+            return value
+        
+        # Suppression des caractères de contrôle
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', value)
+        
+        # Suppression des tags HTML si non autorisés
+        if not allow_html:
+            sanitized = re.sub(r'<[^>]+>', '', sanitized)
+        
+        # Normalisation des espaces
+        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+        
+        return sanitized
+    
+    def _measure_validation_time(self, start_time: float) -> float:
+        """Mesure le temps de validation en millisecondes."""
+        return round((time.time() - start_time) * 1000, 2)
+    
+    @abstractmethod
+    def validate(self, data: Any, **kwargs) -> ValidationResult:
+        """Méthode de validation principale à implémenter."""
+        pass
+
+# ==================== FONCTIONS UTILITAIRES ====================
+
+def validate_user_id(user_id: Any) -> bool:
+    """Valide un ID utilisateur."""
+    if user_id is None:
+        return False
+    
+    if isinstance(user_id, str):
         try:
-            user_id_int = int(user_id)
-            if user_id_int <= 0:
-                raise ParameterValidationError("User ID must be positive")
-            if user_id_int > 2147483647:  # Max int32
-                raise ParameterValidationError("User ID too large")
-            return user_id_int
-        except (ValueError, TypeError):
-            raise ParameterValidationError(f"Invalid user ID format: {user_id}")
+            user_id = int(user_id)
+        except ValueError:
+            return False
     
-    def validate_amount(self, amount: Union[int, float, str, Decimal]) -> Decimal:
-        """
-        Valide un montant financier.
-        
-        Args:
-            amount: Montant à valider
-            
-        Returns:
-            Montant validé en Decimal
-            
-        Raises:
-            ParameterValidationError: Si le montant n'est pas valide
-        """
+    return isinstance(user_id, int) and user_id > 0
+
+def validate_amount(amount: Any) -> bool:
+    """Valide un montant financier."""
+    if amount is None:
+        return False
+    
+    try:
+        amount_float = float(amount)
+        return amount_float >= 0 and amount_float <= 999999999.99
+    except (ValueError, TypeError):
+        return False
+
+def validate_date(date_value: Any) -> bool:
+    """Valide une date."""
+    if date_value is None:
+        return False
+    
+    if isinstance(date_value, datetime):
+        return True
+    
+    if isinstance(date_value, str):
         try:
-            if isinstance(amount, str):
-                # Nettoyer la chaîne (supprimer espaces, symboles monétaires)
-                amount = re.sub(r'[^\d.,\-]', '', amount)
-                amount = amount.replace(',', '.')
-            
-            decimal_amount = Decimal(str(amount))
-            
-            # Vérifications business
-            if decimal_amount < Decimal('-999999999.99'):
-                raise ParameterValidationError("Amount too small")
-            if decimal_amount > Decimal('999999999.99'):
-                raise ParameterValidationError("Amount too large")
-            
-            # Vérifier le nombre de décimales (max 2 pour les devises)
-            if abs(decimal_amount.as_tuple().exponent) > 2:
-                raise ParameterValidationError("Too many decimal places (max 2)")
-            
-            return decimal_amount
-            
-        except (ValueError, InvalidOperation, TypeError):
-            raise ParameterValidationError(f"Invalid amount format: {amount}")
+            datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+            return True
+        except ValueError:
+            return False
     
-    def validate_date(self, date_value: Union[str, datetime, date]) -> datetime:
-        """
-        Valide une date.
-        
-        Args:
-            date_value: Date à valider
-            
-        Returns:
-            Date validée
-            
-        Raises:
-            ParameterValidationError: Si la date n'est pas valide
-        """
-        if isinstance(date_value, datetime):
-            return date_value
-        
-        if isinstance(date_value, date):
-            return datetime.combine(date_value, datetime.min.time())
-        
-        if isinstance(date_value, str):
-            # Essayer différents formats de date
-            date_formats = [
-                '%Y-%m-%d',
-                '%Y-%m-%dT%H:%M:%S',
-                '%Y-%m-%dT%H:%M:%S.%f',
-                '%Y-%m-%dT%H:%M:%SZ',
-                '%Y-%m-%dT%H:%M:%S.%fZ',
-                '%d/%m/%Y',
-                '%m/%d/%Y',
-                '%Y-%m-%d %H:%M:%S'
-            ]
-            
-            for fmt in date_formats:
-                try:
-                    return datetime.strptime(date_value, fmt)
-                except ValueError:
-                    continue
-            
-            raise ParameterValidationError(f"Invalid date format: {date_value}")
-        
-        raise ParameterValidationError(f"Invalid date type: {type(date_value)}")
+    return False
+
+def sanitize_query(query: str) -> str:
+    """Nettoie une requête de recherche."""
+    if not isinstance(query, str):
+        return ""
     
-    def validate_field_by_rule(self, value: Any, rule: FieldValidationRule, field_name: str) -> Any:
-        """
-        Valide un champ selon une règle définie.
-        
-        Args:
-            value: Valeur à valider
-            rule: Règle de validation
-            field_name: Nom du champ
-            
-        Returns:
-            Valeur validée
-            
-        Raises:
-            ParameterValidationError: Si la validation échoue
-        """
-        # Vérifier si requis
-        if rule.required and (value is None or value == ""):
-            raise ParameterValidationError(f"Field '{field_name}' is required")
-        
-        if value is None:
-            return None
-        
-        # Validation selon le type
-        if rule.field_type == FieldType.STRING:
-            if not isinstance(value, str):
-                value = str(value)
-            
-            # Longueur
-            if rule.min_length and len(value) < rule.min_length:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' too short (min {rule.min_length})"
-                )
-            if rule.max_length and len(value) > rule.max_length:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' too long (max {rule.max_length})"
-                )
-            
-            # Pattern
-            if rule.pattern and not re.match(rule.pattern, value):
-                raise ParameterValidationError(
-                    f"Field '{field_name}' doesn't match required pattern"
-                )
-            
-            # Sanitisation
-            value = self.sanitize_string(value, rule.max_length)
-        
-        elif rule.field_type == FieldType.INTEGER:
-            try:
-                value = int(value)
-            except (ValueError, TypeError):
-                raise ParameterValidationError(f"Field '{field_name}' must be an integer")
-            
-            if rule.min_value is not None and value < rule.min_value:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' too small (min {rule.min_value})"
-                )
-            if rule.max_value is not None and value > rule.max_value:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' too large (max {rule.max_value})"
-                )
-        
-        elif rule.field_type == FieldType.FLOAT:
-            try:
-                value = float(value)
-            except (ValueError, TypeError):
-                raise ParameterValidationError(f"Field '{field_name}' must be a number")
-            
-            if rule.min_value is not None and value < rule.min_value:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' too small (min {rule.min_value})"
-                )
-            if rule.max_value is not None and value > rule.max_value:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' too large (max {rule.max_value})"
-                )
-        
-        elif rule.field_type == FieldType.DECIMAL:
-            value = self.validate_amount(value)
-        
-        elif rule.field_type == FieldType.DATETIME:
-            value = self.validate_date(value)
-        
-        elif rule.field_type == FieldType.BOOLEAN:
-            if isinstance(value, str):
-                value = value.lower() in ['true', '1', 'yes', 'on']
-            else:
-                value = bool(value)
-        
-        elif rule.field_type == FieldType.LIST:
-            if not isinstance(value, list):
-                raise ParameterValidationError(f"Field '{field_name}' must be a list")
-            
-            if rule.max_length and len(value) > rule.max_length:
-                raise ParameterValidationError(
-                    f"Field '{field_name}' has too many items (max {rule.max_length})"
-                )
-        
-        # Valeurs autorisées
-        if rule.allowed_values and value not in rule.allowed_values:
-            raise ParameterValidationError(
-                f"Field '{field_name}' has invalid value. Allowed: {rule.allowed_values}"
-            )
-        
-        # Validateur personnalisé
-        if rule.custom_validator:
-            try:
-                value = rule.custom_validator(value)
-            except Exception as e:
-                raise ParameterValidationError(
-                    f"Custom validation failed for '{field_name}': {e}"
-                )
-        
-        return value
+    # Suppression des caractères dangereux
+    sanitized = re.sub(r'[<>"\';\\]', '', query)
+    
+    # Limitation de la longueur
+    sanitized = sanitized[:DEFAULT_LIMITS["max_query_length"]]
+    
+    # Normalisation des espaces
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    
+    return sanitized
+
+def is_safe_query(query: str) -> bool:
+    """Vérifie si une requête est sûre."""
+    if not isinstance(query, str):
+        return False
+    
+    for pattern in DANGEROUS_PATTERNS:
+        try:
+            if re.search(pattern, query, re.IGNORECASE):
+                return False
+        except re.error:
+            continue
+    
+    return True
+
+def escape_elasticsearch_query(query: str) -> str:
+    """Échappe une requête pour Elasticsearch."""
+    if not isinstance(query, str):
+        return query
+    
+    escaped = query
+    for char in ES_SPECIAL_CHARS:
+        escaped = escaped.replace(char, f"\\{char}")
+    
+    return escaped

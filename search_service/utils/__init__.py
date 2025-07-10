@@ -44,186 +44,190 @@ USAGE:
 import logging
 from typing import Dict, Any, List, Optional, Union
 
-# Configuration centralisée
-from config_service.config import settings
-
-# Cache
-from .cache import (
-    LRUCache,
-    CacheKey,
-    CacheStats,
-    CacheError,
-    CacheKeyError,
-    CacheSizeError,
-    create_search_cache
-)
-
-# Métriques
-from .metrics import (
-    SearchMetrics,
-    QueryMetrics,
-    PerformanceMetrics,
-    MetricsCollector,
-    MetricsExporter,
-    create_metrics_collector
-)
-
-# Validation
-from .validators import (
-    QueryValidator,
-    FilterValidator,
-    ResultValidator,
-    ValidationError,
-    QueryValidationError,
-    FilterValidationError,
-    create_query_validator
-)
-
-# Helpers Elasticsearch
-from .elasticsearch_helpers import (
-    ElasticsearchHelpers,
-    QueryBuilder,
-    ResultFormatter,
-    ScoreCalculator,
-    HighlightProcessor,
-    create_query_builder,
-    format_search_results,
-    extract_highlights,
-    calculate_relevance_score
-)
-
-# Logger pour ce module
 logger = logging.getLogger(__name__)
 
-# ==================== CONSTANTES ====================
+# ==================== CONSTANTES ET CONFIGURATION ====================
 
-# Tailles de cache par défaut
-DEFAULT_CACHE_SIZE = getattr(settings, 'SEARCH_CACHE_SIZE', 1000)
-DEFAULT_CACHE_TTL = getattr(settings, 'SEARCH_CACHE_TTL', 300)  # 5 minutes
+# Constantes par défaut
+DEFAULT_CACHE_SIZE = 1000
+DEFAULT_CACHE_TTL = 300  # 5 minutes
+MAX_QUERY_LENGTH = 1000
+MAX_RESULTS_LIMIT = 1000
+MAX_FILTER_VALUES = 100
 
-# Limites de validation
-MAX_QUERY_LENGTH = getattr(settings, 'SEARCH_MAX_QUERY_LENGTH', 500)
-MAX_RESULTS_LIMIT = getattr(settings, 'SEARCH_MAX_LIMIT', 100)
-MAX_FILTER_VALUES = getattr(settings, 'SEARCH_MAX_FILTER_VALUES', 50)
-
-# Champs Elasticsearch optimisés pour les finances
+# Champs de recherche financière
 FINANCIAL_SEARCH_FIELDS = [
-    "searchable_text^4.0",
-    "primary_description^3.0", 
-    "clean_description^2.5",
-    "provider_description^2.0",
-    "merchant_name^3.5"
+    "searchable_text^3",
+    "merchant_name^2.5", 
+    "clean_description^2",
+    "primary_description^1.5",
+    "provider_description^1"
 ]
 
-FINANCIAL_HIGHLIGHT_FIELDS = [
-    "searchable_text",
-    "primary_description", 
-    "merchant_name"
-]
+# Champs pour highlighting
+FINANCIAL_HIGHLIGHT_FIELDS = {
+    "searchable_text": {"fragment_size": 150, "number_of_fragments": 3},
+    "merchant_name": {"fragment_size": 100, "number_of_fragments": 1},
+    "clean_description": {"fragment_size": 200, "number_of_fragments": 2}
+}
+
+# ==================== IMPORTS AVEC FALLBACKS ====================
+
+# Cache - avec fallback si module manquant
+try:
+    from .cache import (
+        LRUCache, CacheKey, CacheStats, CacheError, 
+        CacheKeyError, CacheSizeError, create_search_cache
+    )
+except ImportError:
+    logger.warning("Cache module not available - using basic implementations")
+    
+    class LRUCache:
+        def __init__(self, max_size=1000, ttl_seconds=300):
+            self._cache = {}
+            self.max_size = max_size
+            
+        async def get(self, key):
+            return self._cache.get(key)
+            
+        async def set(self, key, value):
+            self._cache[key] = value
+            if len(self._cache) > self.max_size:
+                # Simple eviction
+                first_key = next(iter(self._cache))
+                del self._cache[first_key]
+    
+    CacheKey = str
+    CacheStats = dict
+    CacheError = Exception
+    CacheKeyError = KeyError
+    CacheSizeError = ValueError
+    
+    def create_search_cache():
+        return LRUCache()
+
+# Métriques - avec fallback si module manquant
+try:
+    from .metrics import (
+        SearchMetrics, QueryMetrics, PerformanceMetrics,
+        MetricsCollector, MetricsExporter, create_metrics_collector
+    )
+except ImportError:
+    logger.warning("Metrics module not available - using basic implementations")
+    
+    class SearchMetrics:
+        def __init__(self):
+            self.search_count = 0
+            
+        def record_search(self, query, duration):
+            self.search_count += 1
+    
+    class QueryMetrics:
+        def __init__(self):
+            self.query_count = 0
+    
+    class PerformanceMetrics:
+        def __init__(self):
+            self.avg_response_time = 0.0
+    
+    class MetricsCollector:
+        def __init__(self):
+            pass
+            
+        def collect(self):
+            return {}
+    
+    class MetricsExporter:
+        def export(self, metrics):
+            pass
+    
+    def create_metrics_collector():
+        return MetricsCollector()
+
+# Validation - toujours disponible
+from .validators import (
+    QueryValidator, FilterValidator, ResultValidator,
+    ValidationError, QueryValidationError, FilterValidationError,
+    create_query_validator, validate_search_request,
+    validate_user_id, validate_amount, validate_date,
+    sanitize_query, is_safe_query, escape_elasticsearch_query
+)
+
+# Helpers Elasticsearch - toujours disponible
+from .elasticsearch_helpers import (
+    ElasticsearchHelpers, QueryBuilder, ResultFormatter,
+    ScoreCalculator, HighlightProcessor, QueryStrategy, SortStrategy,
+    create_query_builder, format_search_results, extract_highlights,
+    calculate_relevance_score, optimize_query_for_performance,
+    build_suggestion_query, validate_query_structure
+)
 
 # ==================== FACTORY FUNCTIONS ====================
 
-def create_search_service_cache(
-    max_size: Optional[int] = None,
-    ttl_seconds: Optional[int] = None
-) -> LRUCache:
+def create_search_service_cache(max_size: int = DEFAULT_CACHE_SIZE, 
+                              ttl_seconds: int = DEFAULT_CACHE_TTL) -> LRUCache:
     """
     Crée un cache optimisé pour le service de recherche.
     
     Args:
-        max_size: Taille maximum du cache
-        ttl_seconds: TTL des entrées en secondes
+        max_size: Taille maximale du cache
+        ttl_seconds: Durée de vie en secondes
         
     Returns:
-        Cache LRU configuré pour les recherches
+        Instance de LRUCache configurée
     """
-    if max_size is None:
-        max_size = DEFAULT_CACHE_SIZE
-    if ttl_seconds is None:
-        ttl_seconds = DEFAULT_CACHE_TTL
-    
-    logger.info(f"Creating search cache: size={max_size}, ttl={ttl_seconds}s")
-    
-    return LRUCache(
-        max_size=max_size,
-        ttl_seconds=ttl_seconds,
-        name="search_service_cache"
-    )
+    return LRUCache(max_size=max_size, ttl_seconds=ttl_seconds)
 
 def create_search_metrics_collector() -> MetricsCollector:
     """
-    Crée un collecteur de métriques pour le service de recherche.
+    Crée un collecteur de métriques pour la recherche.
     
     Returns:
-        Collecteur de métriques configuré
+        Instance de MetricsCollector configurée
     """
-    logger.info("Creating search metrics collector")
-    
-    return MetricsCollector(
-        service_name="search_service",
-        include_query_metrics=True,
-        include_performance_metrics=True,
-        include_cache_metrics=True
-    )
+    return create_metrics_collector()
 
-def create_elasticsearch_query_validator(
-    strict_mode: bool = True
-) -> QueryValidator:
+def create_elasticsearch_query_validator(validation_level: str = "standard") -> QueryValidator:
     """
-    Crée un validateur de requêtes Elasticsearch pour les finances.
+    Crée un validateur de requêtes Elasticsearch.
     
     Args:
-        strict_mode: Mode strict de validation
+        validation_level: Niveau de validation (basic, standard, strict, paranoid)
         
     Returns:
-        Validateur configuré pour les requêtes financières
+        Instance de QueryValidator
     """
-    logger.info(f"Creating Elasticsearch query validator: strict_mode={strict_mode}")
+    from .validators import ValidationLevel
     
-    return QueryValidator(
-        max_query_length=MAX_QUERY_LENGTH,
-        max_results_limit=MAX_RESULTS_LIMIT,
-        max_filter_values=MAX_FILTER_VALUES,
-        allowed_fields=FINANCIAL_SEARCH_FIELDS,
-        strict_mode=strict_mode
-    )
+    level_map = {
+        "basic": ValidationLevel.BASIC,
+        "standard": ValidationLevel.STANDARD,
+        "strict": ValidationLevel.STRICT,
+        "paranoid": ValidationLevel.PARANOID
+    }
+    
+    level = level_map.get(validation_level, ValidationLevel.STANDARD)
+    return create_query_validator(validation_level=level)
 
 def create_financial_query_builder() -> QueryBuilder:
     """
-    Crée un builder de requêtes optimisé pour les transactions financières.
+    Crée un builder de requêtes optimisé pour les données financières.
     
     Returns:
-        Builder configuré pour le domaine financier
+        Instance de QueryBuilder configurée
     """
-    logger.info("Creating financial query builder")
-    
-    return QueryBuilder(
-        default_fields=FINANCIAL_SEARCH_FIELDS,
-        highlight_fields=FINANCIAL_HIGHLIGHT_FIELDS,
-        boost_merchant_name=3.5,
-        boost_exact_phrase=10.0,
-        enable_fuzzy_matching=True,
-        enable_synonym_expansion=True
-    )
+    return create_query_builder()
 
 # ==================== HELPER FUNCTIONS ====================
 
-def generate_cache_key(
-    query: str,
-    user_id: int,
-    filters: Optional[Dict[str, Any]] = None,
-    limit: int = 20,
-    offset: int = 0
-) -> str:
+def generate_cache_key(query: str, user_id: int, filters: Dict[str, Any] = None) -> str:
     """
     Génère une clé de cache pour une recherche.
     
     Args:
-        query: Terme de recherche
+        query: Texte de recherche
         user_id: ID utilisateur
-        filters: Filtres appliqués
-        limit: Limite de résultats
-        offset: Offset de pagination
+        filters: Filtres optionnels
         
     Returns:
         Clé de cache unique
@@ -231,100 +235,51 @@ def generate_cache_key(
     import hashlib
     import json
     
-    # Créer un objet hashable
+    # Création d'un dictionnaire ordonné pour la cohérence
     cache_data = {
-        "query": query.lower().strip(),
+        "query": sanitize_query(query),
         "user_id": user_id,
-        "filters": filters or {},
-        "limit": limit,
-        "offset": offset
+        "filters": filters or {}
     }
     
-    # Sérialiser de manière déterministe
-    cache_str = json.dumps(cache_data, sort_keys=True, separators=(',', ':'))
+    # Sérialisation JSON ordonnée
+    cache_str = json.dumps(cache_data, sort_keys=True)
     
-    # Hasher pour créer une clé courte
-    return f"search:{hashlib.md5(cache_str.encode()).hexdigest()}"
+    # Hash MD5 pour une clé courte
+    return hashlib.md5(cache_str.encode()).hexdigest()
 
 def extract_query_terms(query: str) -> List[str]:
     """
-    Extrait les termes d'une requête de recherche.
+    Extrait les termes de recherche d'une requête.
     
     Args:
-        query: Requête de recherche
+        query: Texte de recherche
         
     Returns:
-        Liste des termes nettoyés
+        Liste des termes extraits
     """
     import re
     
-    # Nettoyer et normaliser
-    query = query.lower().strip()
+    if not isinstance(query, str):
+        return []
     
-    # Supprimer les caractères spéciaux mais garder les espaces
-    query = re.sub(r'[^\w\s\-\.]', ' ', query)
+    # Nettoyage de base
+    cleaned = sanitize_query(query)
     
-    # Diviser en mots et filtrer
-    terms = [term.strip() for term in query.split() if len(term.strip()) > 1]
+    # Extraction des mots (minimum 2 caractères)
+    terms = re.findall(r'\b\w{2,}\b', cleaned.lower())
     
-    # Dédupliquer en préservant l'ordre
-    seen = set()
+    # Suppression des doublons en préservant l'ordre
     unique_terms = []
     for term in terms:
-        if term not in seen:
-            seen.add(term)
+        if term not in unique_terms:
             unique_terms.append(term)
     
     return unique_terms
 
-def validate_user_id(user_id: Union[int, str]) -> int:
-    """
-    Valide et normalise un ID utilisateur.
-    
-    Args:
-        user_id: ID utilisateur à valider
-        
-    Returns:
-        ID utilisateur validé
-        
-    Raises:
-        ValueError: Si l'ID n'est pas valide
-    """
-    try:
-        user_id_int = int(user_id)
-        if user_id_int <= 0:
-            raise ValueError("User ID must be positive")
-        return user_id_int
-    except (ValueError, TypeError):
-        raise ValueError(f"Invalid user ID: {user_id}")
-
-def sanitize_query(query: str) -> str:
-    """
-    Sanitise une requête de recherche.
-    
-    Args:
-        query: Requête à sanitiser
-        
-    Returns:
-        Requête sanitisée
-    """
-    if not query or not isinstance(query, str):
-        return ""
-    
-    # Nettoyer et limiter la longueur
-    query = query.strip()[:MAX_QUERY_LENGTH]
-    
-    # Supprimer les caractères potentiellement dangereux
-    import re
-    query = re.sub(r'[<>"\'\;\{\}]', '', query)
-    
-    return query
-
-def calculate_search_score(
-    elasticsearch_score: float,
-    recency_factor: float = 1.0,
-    user_preference_factor: float = 1.0
-) -> float:
+def calculate_search_score(elasticsearch_score: float, 
+                         recency_factor: float = 1.0,
+                         user_preference_factor: float = 1.0) -> float:
     """
     Calcule un score de recherche composite.
     
@@ -336,17 +291,269 @@ def calculate_search_score(
     Returns:
         Score composite normalisé
     """
-    if elasticsearch_score <= 0:
-        return 0.0
+    return calculate_relevance_score(elasticsearch_score, recency_factor, user_preference_factor)
+
+def validate_search_parameters(query: str = None, user_id: int = None, 
+                             size: int = None, from_: int = None) -> Dict[str, Any]:
+    """
+    Valide les paramètres de recherche.
     
-    # Pondération : 70% ES score, 20% récence, 10% préférence
-    composite_score = (
-        elasticsearch_score * 0.7 +
-        elasticsearch_score * recency_factor * 0.2 +
-        elasticsearch_score * user_preference_factor * 0.1
-    )
+    Args:
+        query: Texte de recherche
+        user_id: ID utilisateur
+        size: Nombre de résultats
+        from_: Offset
+        
+    Returns:
+        Dictionnaire avec validation et paramètres nettoyés
+    """
+    validation = {
+        "is_valid": True,
+        "errors": [],
+        "warnings": [],
+        "cleaned_params": {}
+    }
     
-    return round(composite_score, 2)
+    # Validation query
+    if query is not None:
+        if not is_safe_query(query):
+            validation["errors"].append("Query contains unsafe content")
+            validation["is_valid"] = False
+        else:
+            validation["cleaned_params"]["query"] = sanitize_query(query)
+    
+    # Validation user_id
+    if user_id is not None:
+        if not validate_user_id(user_id):
+            validation["errors"].append("Invalid user_id")
+            validation["is_valid"] = False
+        else:
+            validation["cleaned_params"]["user_id"] = user_id
+    
+    # Validation size
+    if size is not None:
+        if not isinstance(size, int) or size < 0:
+            validation["errors"].append("Size must be a non-negative integer")
+            validation["is_valid"] = False
+        elif size > MAX_RESULTS_LIMIT:
+            validation["warnings"].append(f"Size capped at {MAX_RESULTS_LIMIT}")
+            validation["cleaned_params"]["size"] = MAX_RESULTS_LIMIT
+        else:
+            validation["cleaned_params"]["size"] = size
+    
+    # Validation from_
+    if from_ is not None:
+        if not isinstance(from_, int) or from_ < 0:
+            validation["errors"].append("From must be a non-negative integer")
+            validation["is_valid"] = False
+        elif from_ > 10000:
+            validation["errors"].append("From cannot exceed 10000")
+            validation["is_valid"] = False
+        else:
+            validation["cleaned_params"]["from"] = from_
+    
+    return validation
+
+def optimize_search_query(query: str, user_preferences: Dict[str, Any] = None) -> str:
+    """
+    Optimise une requête de recherche basée sur les préférences utilisateur.
+    
+    Args:
+        query: Requête originale
+        user_preferences: Préférences utilisateur optionnelles
+        
+    Returns:
+        Requête optimisée
+    """
+    if not isinstance(query, str):
+        return ""
+    
+    optimized = sanitize_query(query)
+    
+    # Expansion basée sur les préférences
+    if user_preferences:
+        # Ajout de synonymes fréquents si activé
+        if user_preferences.get("expand_synonyms", False):
+            terms = extract_query_terms(optimized)
+            expanded_terms = []
+            
+            for term in terms:
+                expanded_terms.append(term)
+                # Ajouter des synonymes financiers courants
+                if term in ["cafe", "café"]:
+                    expanded_terms.append("restaurant")
+                elif term in ["essence", "carburant"]:
+                    expanded_terms.append("station")
+            
+            optimized = " ".join(expanded_terms)
+    
+    return optimized
+
+def build_search_context(query: str, user_id: int, **kwargs) -> Dict[str, Any]:
+    """
+    Construit un contexte de recherche complet.
+    
+    Args:
+        query: Texte de recherche
+        user_id: ID utilisateur
+        **kwargs: Paramètres supplémentaires
+        
+    Returns:
+        Contexte de recherche structuré
+    """
+    context = {
+        "query": sanitize_query(query),
+        "user_id": user_id,
+        "timestamp": datetime.now().isoformat(),
+        "parameters": {},
+        "performance": {},
+        "security": {}
+    }
+    
+    # Paramètres de recherche
+    context["parameters"].update({
+        "size": kwargs.get("size", 20),
+        "from": kwargs.get("from", 0),
+        "highlight": kwargs.get("highlight", True),
+        "sort": kwargs.get("sort", "relevance")
+    })
+    
+    # Métriques de performance
+    context["performance"].update({
+        "query_length": len(query),
+        "term_count": len(extract_query_terms(query)),
+        "estimated_complexity": "low" if len(query) < 50 else "medium"
+    })
+    
+    # Informations de sécurité
+    context["security"].update({
+        "is_safe": is_safe_query(query),
+        "sanitized": sanitize_query(query) != query
+    })
+    
+    return context
+
+# ==================== CLASSES UTILITAIRES ====================
+
+class SearchHelper:
+    """
+    Classe helper pour simplifier les opérations de recherche courantes.
+    
+    Encapsule les opérations fréquentes en une interface simple.
+    """
+    
+    def __init__(self, enable_cache: bool = True, enable_metrics: bool = True):
+        self.enable_cache = enable_cache
+        self.enable_metrics = enable_metrics
+        
+        if enable_cache:
+            self.cache = create_search_service_cache()
+        
+        if enable_metrics:
+            self.metrics = create_search_metrics_collector()
+        
+        self.query_builder = create_financial_query_builder()
+        self.validator = create_elasticsearch_query_validator()
+    
+    def build_query(self, query: str, user_id: int, **kwargs) -> Dict[str, Any]:
+        """
+        Construit une requête Elasticsearch optimisée.
+        
+        Args:
+            query: Texte de recherche
+            user_id: ID utilisateur
+            **kwargs: Options supplémentaires
+            
+        Returns:
+            Requête Elasticsearch
+        """
+        # Validation des paramètres
+        validation = validate_search_parameters(query, user_id, 
+                                              kwargs.get("size"), 
+                                              kwargs.get("from"))
+        
+        if not validation["is_valid"]:
+            raise ValueError(f"Invalid parameters: {validation['errors']}")
+        
+        # Construction de la requête
+        return ElasticsearchHelpers.build_financial_query(
+            query=validation["cleaned_params"]["query"],
+            user_id=validation["cleaned_params"]["user_id"],
+            **kwargs
+        )
+    
+    def validate_query(self, es_query: Dict[str, Any]) -> bool:
+        """
+        Valide une requête Elasticsearch.
+        
+        Args:
+            es_query: Requête à valider
+            
+        Returns:
+            True si valide, False sinon
+        """
+        result = self.validator.validate(es_query)
+        return result.is_valid
+    
+    def format_results(self, es_response: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Formate les résultats Elasticsearch.
+        
+        Args:
+            es_response: Réponse brute d'Elasticsearch
+            
+        Returns:
+            Résultats formatés
+        """
+        return format_search_results(es_response)
+    
+    async def get_cached_result(self, cache_key: str) -> Optional[Any]:
+        """
+        Récupère un résultat du cache.
+        
+        Args:
+            cache_key: Clé de cache
+            
+        Returns:
+            Résultat mis en cache ou None
+        """
+        if not self.enable_cache:
+            return None
+        
+        try:
+            return await self.cache.get(cache_key)
+        except Exception as e:
+            logger.warning(f"Cache retrieval failed: {e}")
+            return None
+    
+    async def cache_result(self, cache_key: str, result: Any) -> bool:
+        """
+        Met en cache un résultat.
+        
+        Args:
+            cache_key: Clé de cache
+            result: Résultat à mettre en cache
+            
+        Returns:
+            True si mis en cache avec succès
+        """
+        if not self.enable_cache:
+            return False
+        
+        try:
+            await self.cache.set(cache_key, result)
+            return True
+        except Exception as e:
+            logger.warning(f"Cache storage failed: {e}")
+            return False
+
+# ==================== IMPORTS DATETIME ====================
+
+try:
+    from datetime import datetime
+except ImportError:
+    import datetime as dt
+    datetime = dt.datetime
 
 # ==================== EXPORTS ====================
 
@@ -376,6 +583,13 @@ __all__ = [
     "QueryValidationError",
     "FilterValidationError",
     "create_query_validator",
+    "validate_search_request",
+    "validate_user_id",
+    "validate_amount",
+    "validate_date",
+    "sanitize_query",
+    "is_safe_query",
+    "escape_elasticsearch_query",
     
     # Helpers Elasticsearch
     "ElasticsearchHelpers",
@@ -383,10 +597,15 @@ __all__ = [
     "ResultFormatter",
     "ScoreCalculator", 
     "HighlightProcessor",
+    "QueryStrategy",
+    "SortStrategy",
     "create_query_builder",
     "format_search_results",
     "extract_highlights",
     "calculate_relevance_score",
+    "optimize_query_for_performance",
+    "build_suggestion_query",
+    "validate_query_structure",
     
     # Factory functions
     "create_search_service_cache",
@@ -397,9 +616,13 @@ __all__ = [
     # Helper functions
     "generate_cache_key",
     "extract_query_terms",
-    "validate_user_id", 
-    "sanitize_query",
+    "validate_search_parameters",
+    "optimize_search_query",
+    "build_search_context",
     "calculate_search_score",
+    
+    # Classes utilitaires
+    "SearchHelper",
     
     # Constantes
     "DEFAULT_CACHE_SIZE",

@@ -1,270 +1,313 @@
 """
-Configuration centralisée pour le Search Service.
+Configuration du Search Service.
 
-Toutes les variables de configuration sont définies ici
-et chargées depuis les variables d'environnement via config_service.
+Ce module gère la configuration centralisée avec fallbacks
+pour éviter les erreurs de dépendances manquantes.
 """
 
 import os
-from typing import Optional, List, Dict, Any
-from pydantic import BaseSettings, Field, validator
+import logging
+from typing import Dict, Any, List, Optional
 from enum import Enum
 
+logger = logging.getLogger(__name__)
+
+# ==================== ENUMS ====================
 
 class LogLevel(str, Enum):
-    """Niveaux de log supportés."""
+    """Niveaux de log disponibles."""
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
 
+# ==================== CONFIGURATION DE BASE ====================
 
-class SearchServiceSettings(BaseSettings):
-    """
-    Configuration principale du Search Service.
+class SearchServiceSettings:
+    """Configuration du Search Service avec fallbacks."""
     
-    Toutes les variables sont chargées depuis l'environnement
-    avec des valeurs par défaut sensées pour le développement.
-    """
-    
-    # === SERVICE CONFIGURATION ===
-    SERVICE_NAME: str = Field(default="search_service", description="Nom du service")
-    SERVICE_VERSION: str = Field(default="1.0.0", description="Version du service")
-    DEBUG: bool = Field(default=False, description="Mode debug")
-    LOG_LEVEL: LogLevel = Field(default=LogLevel.INFO, description="Niveau de log")
-    
-    # === API CONFIGURATION ===
-    API_HOST: str = Field(default="0.0.0.0", description="Host API")
-    API_PORT: int = Field(default=8001, description="Port API")
-    API_PREFIX: str = Field(default="/api/v1", description="Préfixe API")
-    API_DOCS_URL: Optional[str] = Field(default="/docs", description="URL documentation API")
-    API_REDOC_URL: Optional[str] = Field(default="/redoc", description="URL ReDoc")
-    
-    # === ELASTICSEARCH CONFIGURATION ===
-    ELASTICSEARCH_HOST: str = Field(default="localhost", description="Host Elasticsearch")
-    ELASTICSEARCH_PORT: int = Field(default=9200, description="Port Elasticsearch")
-    ELASTICSEARCH_SCHEME: str = Field(default="http", description="Schéma Elasticsearch")
-    ELASTICSEARCH_USERNAME: Optional[str] = Field(default=None, description="Nom utilisateur ES")
-    ELASTICSEARCH_PASSWORD: Optional[str] = Field(default=None, description="Mot de passe ES")
-    ELASTICSEARCH_INDEX: str = Field(default="harena_transactions", description="Index principal")
-    ELASTICSEARCH_TIMEOUT: int = Field(default=30, description="Timeout requêtes ES (s)")
-    ELASTICSEARCH_MAX_RETRIES: int = Field(default=3, description="Nombre max de retry")
-    ELASTICSEARCH_RETRY_ON_TIMEOUT: bool = Field(default=True, description="Retry sur timeout")
-    
-    # === SEARCH CONFIGURATION ===
-    SEARCH_DEFAULT_LIMIT: int = Field(default=20, description="Limite par défaut résultats")
-    SEARCH_MAX_LIMIT: int = Field(default=100, description="Limite max résultats")
-    SEARCH_DEFAULT_TIMEOUT_MS: int = Field(default=5000, description="Timeout recherche (ms)")
-    SEARCH_MAX_TIMEOUT_MS: int = Field(default=10000, description="Timeout max recherche (ms)")
-    SEARCH_ENABLE_HIGHLIGHTING: bool = Field(default=True, description="Activer highlighting")
-    SEARCH_HIGHLIGHT_FRAGMENT_SIZE: int = Field(default=150, description="Taille fragments highlight")
-    SEARCH_HIGHLIGHT_MAX_FRAGMENTS: int = Field(default=3, description="Max fragments highlight")
-    
-    # === CACHE CONFIGURATION ===
-    CACHE_ENABLED: bool = Field(default=True, description="Activer cache")
-    CACHE_TYPE: str = Field(default="memory", description="Type de cache (memory/redis)")
-    CACHE_TTL_SECONDS: int = Field(default=300, description="TTL cache (s)")
-    CACHE_MAX_SIZE: int = Field(default=1000, description="Taille max cache")
-    REDIS_URL: Optional[str] = Field(default=None, description="URL Redis pour cache")
-    
-    # === PERFORMANCE CONFIGURATION ===
-    ENABLE_QUERY_OPTIMIZATION: bool = Field(default=True, description="Optimisation requêtes")
-    ENABLE_RESULT_CACHING: bool = Field(default=True, description="Cache résultats")
-    ENABLE_METRICS: bool = Field(default=True, description="Collecte métriques")
-    MAX_CONCURRENT_REQUESTS: int = Field(default=100, description="Max requêtes concurrentes")
-    REQUEST_TIMEOUT_SECONDS: int = Field(default=30, description="Timeout requêtes HTTP")
-    
-    # === SECURITY CONFIGURATION ===
-    ENABLE_RATE_LIMITING: bool = Field(default=True, description="Limitation débit")
-    RATE_LIMIT_PER_MINUTE: int = Field(default=1000, description="Limite requêtes/minute")
-    REQUIRE_USER_ID: bool = Field(default=True, description="user_id obligatoire")
-    ALLOWED_ORIGINS: List[str] = Field(default=["*"], description="Origins CORS autorisées")
-    
-    # === MONITORING CONFIGURATION ===
-    ENABLE_HEALTH_CHECKS: bool = Field(default=True, description="Health checks")
-    HEALTH_CHECK_INTERVAL_SECONDS: int = Field(default=30, description="Intervalle health checks")
-    METRICS_EXPORT_INTERVAL_SECONDS: int = Field(default=60, description="Export métriques")
-    
-    # === TEMPLATE CONFIGURATION ===
-    ENABLE_QUERY_TEMPLATES: bool = Field(default=True, description="Templates requêtes")
-    TEMPLATE_CACHE_SIZE: int = Field(default=100, description="Cache templates")
-    ENABLE_TEMPLATE_VALIDATION: bool = Field(default=True, description="Validation templates")
-    
-    # === AGGREGATION CONFIGURATION ===
-    ENABLE_AGGREGATIONS: bool = Field(default=True, description="Agrégations")
-    MAX_AGGREGATION_BUCKETS: int = Field(default=1000, description="Max buckets agrégation")
-    AGGREGATION_TIMEOUT_MS: int = Field(default=5000, description="Timeout agrégations")
-    
-    @validator('ELASTICSEARCH_HOST')
-    def validate_elasticsearch_host(cls, v):
-        if not v or not v.strip():
-            raise ValueError("ELASTICSEARCH_HOST ne peut pas être vide")
-        return v.strip()
-    
-    @validator('ELASTICSEARCH_PORT')
-    def validate_elasticsearch_port(cls, v):
-        if not (1 <= v <= 65535):
-            raise ValueError("ELASTICSEARCH_PORT doit être entre 1 et 65535")
-        return v
-    
-    @validator('SEARCH_DEFAULT_LIMIT')
-    def validate_search_default_limit(cls, v):
-        if v <= 0:
-            raise ValueError("SEARCH_DEFAULT_LIMIT doit être positif")
-        return v
-    
-    @validator('SEARCH_MAX_LIMIT')
-    def validate_search_max_limit(cls, v, values):
-        default_limit = values.get('SEARCH_DEFAULT_LIMIT', 20)
-        if v < default_limit:
-            raise ValueError("SEARCH_MAX_LIMIT doit être >= SEARCH_DEFAULT_LIMIT")
-        return v
-    
-    @validator('CACHE_TTL_SECONDS')
-    def validate_cache_ttl(cls, v):
-        if v <= 0:
-            raise ValueError("CACHE_TTL_SECONDS doit être positif")
-        return v
-    
-    @property
-    def elasticsearch_url(self) -> str:
-        """URL complète Elasticsearch."""
-        auth_part = ""
-        if self.ELASTICSEARCH_USERNAME and self.ELASTICSEARCH_PASSWORD:
-            auth_part = f"{self.ELASTICSEARCH_USERNAME}:{self.ELASTICSEARCH_PASSWORD}@"
+    def __init__(self):
+        # Configuration générale
+        self.PROJECT_NAME = os.getenv("PROJECT_NAME", "Harena Search Service")
+        self.VERSION = "1.0.0"
+        self.API_V1_STR = os.getenv("API_V1_STR", "/api/v1")
+        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         
-        return (f"{self.ELASTICSEARCH_SCHEME}://{auth_part}"
-                f"{self.ELASTICSEARCH_HOST}:{self.ELASTICSEARCH_PORT}")
-    
-    @property
-    def is_production(self) -> bool:
-        """Indique si on est en production."""
-        return not self.DEBUG and self.LOG_LEVEL != LogLevel.DEBUG
-    
-    @property
-    def cache_config(self) -> Dict[str, Any]:
-        """Configuration cache formatée."""
-        return {
-            "enabled": self.CACHE_ENABLED,
-            "type": self.CACHE_TYPE,
-            "ttl_seconds": self.CACHE_TTL_SECONDS,
-            "max_size": self.CACHE_MAX_SIZE,
-            "redis_url": self.REDIS_URL
-        }
-    
-    @property
-    def elasticsearch_config(self) -> Dict[str, Any]:
-        """Configuration Elasticsearch formatée."""
-        config = {
-            "hosts": [self.elasticsearch_url],
-            "timeout": self.ELASTICSEARCH_TIMEOUT,
-            "max_retries": self.ELASTICSEARCH_MAX_RETRIES,
-            "retry_on_timeout": self.ELASTICSEARCH_RETRY_ON_TIMEOUT
-        }
+        # Configuration CORS
+        self.CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
         
-        if self.ELASTICSEARCH_USERNAME and self.ELASTICSEARCH_PASSWORD:
-            config["http_auth"] = (
-                self.ELASTICSEARCH_USERNAME, 
-                self.ELASTICSEARCH_PASSWORD
-            )
+        # Configuration Elasticsearch
+        self.ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "localhost")
+        self.ELASTICSEARCH_PORT = int(os.getenv("ELASTICSEARCH_PORT", "9200"))
+        self.ELASTICSEARCH_TIMEOUT = int(os.getenv("ELASTICSEARCH_TIMEOUT", "30"))
+        self.ELASTICSEARCH_INDEX = os.getenv("ELASTICSEARCH_INDEX", "transactions")
         
-        return config
+        # Configuration cache
+        self.SEARCH_CACHE_SIZE = int(os.getenv("SEARCH_CACHE_SIZE", "1000"))
+        self.SEARCH_CACHE_TTL = int(os.getenv("SEARCH_CACHE_TTL", "300"))
+        
+        # Configuration recherche
+        self.SEARCH_MAX_LIMIT = int(os.getenv("SEARCH_MAX_LIMIT", "1000"))
+        self.SEARCH_DEFAULT_SIZE = int(os.getenv("SEARCH_DEFAULT_SIZE", "20"))
+        self.MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "1000"))
+        
+        # Configuration sécurité
+        self.RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
+        self.RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
+        self.RATE_LIMIT_PERIOD = int(os.getenv("RATE_LIMIT_PERIOD", "60"))
+        
+        # Configuration logging
+        self.LOG_TO_FILE = os.getenv("LOG_TO_FILE", "false").lower() == "true"
+        self.LOG_FILE = os.getenv("LOG_FILE", "search_service.log")
+        
+        # Mode test
+        self.TESTING = os.getenv("TESTING", "false").lower() == "true"
+
+# ==================== CONFIGURATION AVEC PYDANTIC (OPTIONNEL) ====================
+
+try:
+    # Essayer d'importer pydantic-settings si disponible
+    from pydantic_settings import BaseSettings
+    from pydantic import Field
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        env_prefix = "SEARCH_SERVICE_"
+    class PydanticSearchServiceSettings(BaseSettings):
+        """Configuration avec validation Pydantic si disponible."""
+        
+        # Configuration générale
+        PROJECT_NAME: str = Field(default="Harena Search Service")
+        VERSION: str = Field(default="1.0.0")
+        API_V1_STR: str = Field(default="/api/v1")
+        LOG_LEVEL: LogLevel = Field(default=LogLevel.INFO)
+        
+        # Configuration CORS
+        CORS_ORIGINS: str = Field(default="*")
+        
+        # Configuration Elasticsearch
+        ELASTICSEARCH_HOST: str = Field(default="localhost")
+        ELASTICSEARCH_PORT: int = Field(default=9200)
+        ELASTICSEARCH_TIMEOUT: int = Field(default=30)
+        ELASTICSEARCH_INDEX: str = Field(default="transactions")
+        
+        # Configuration cache
+        SEARCH_CACHE_SIZE: int = Field(default=1000)
+        SEARCH_CACHE_TTL: int = Field(default=300)
+        
+        # Configuration recherche
+        SEARCH_MAX_LIMIT: int = Field(default=1000)
+        SEARCH_DEFAULT_SIZE: int = Field(default=20)
+        MAX_SEARCH_RESULTS: int = Field(default=1000)
+        
+        # Configuration sécurité
+        RATE_LIMIT_ENABLED: bool = Field(default=False)
+        RATE_LIMIT_REQUESTS: int = Field(default=60)
+        RATE_LIMIT_PERIOD: int = Field(default=60)
+        
+        # Configuration logging
+        LOG_TO_FILE: bool = Field(default=False)
+        LOG_FILE: str = Field(default="search_service.log")
+        
+        # Mode test
+        TESTING: bool = Field(default=False)
+        
+        class Config:
+            env_file = ".env"
+            case_sensitive = True
+    
+    # Utiliser la version Pydantic si disponible
+    SearchServiceSettingsClass = PydanticSearchServiceSettings
+    PYDANTIC_AVAILABLE = True
+    logger.info("✅ Configuration avec Pydantic disponible")
+    
+except ImportError as e:
+    logger.warning(f"Pydantic non disponible - utilisation configuration simple: {e}")
+    SearchServiceSettingsClass = SearchServiceSettings
+    PYDANTIC_AVAILABLE = False
 
+# ==================== CONFIGURATION GLOBALE ====================
 
-# Instance globale des settings
-settings = SearchServiceSettings()
-
+# Instance globale de configuration
+_settings_instance = None
 
 def get_settings() -> SearchServiceSettings:
     """
-    Récupère l'instance des settings.
+    Récupère l'instance de configuration globale.
     
-    Utilisé pour l'injection de dépendances FastAPI.
-    """
-    return settings
-
-
-def load_config_from_service(config_service_url: Optional[str] = None) -> SearchServiceSettings:
-    """
-    Charge la configuration depuis le config_service.
-    
-    Args:
-        config_service_url: URL du service de configuration
-        
     Returns:
-        Instance de configuration mise à jour
-        
-    Note:
-        Cette fonction sera appelée au démarrage pour récupérer
-        la configuration centralisée depuis le config_service.
+        Instance de configuration
     """
-    # TODO: Implémenter l'appel au config_service
-    # Pour l'instant, on utilise les variables d'environnement
-    return settings
+    global _settings_instance
+    
+    if _settings_instance is None:
+        try:
+            _settings_instance = SearchServiceSettingsClass()
+            logger.info("✅ Configuration initialisée")
+        except Exception as e:
+            logger.error(f"Erreur initialisation configuration: {e}")
+            # Fallback vers configuration simple
+            _settings_instance = SearchServiceSettings()
+            logger.info("✅ Configuration fallback utilisée")
+    
+    return _settings_instance
 
+# Instance par défaut
+settings = get_settings()
 
-# === CONFIGURATION PAR ENVIRONNEMENT ===
+# ==================== FONCTIONS UTILITAIRES ====================
 
-def get_development_config() -> SearchServiceSettings:
+def load_config_from_service():
+    """
+    Tente de charger la configuration depuis config_service.
+    
+    Returns:
+        Configuration chargée ou None si échec
+    """
+    try:
+        from config_service.config import settings as global_settings
+        
+        # Copier les paramètres pertinents
+        config_dict = {}
+        
+        # Mapping des attributs
+        mapping = {
+            'PROJECT_NAME': 'PROJECT_NAME',
+            'API_V1_STR': 'API_V1_STR', 
+            'LOG_LEVEL': 'LOG_LEVEL',
+            'CORS_ORIGINS': 'CORS_ORIGINS'
+        }
+        
+        for search_attr, global_attr in mapping.items():
+            if hasattr(global_settings, global_attr):
+                config_dict[search_attr] = getattr(global_settings, global_attr)
+        
+        logger.info("✅ Configuration chargée depuis config_service")
+        return config_dict
+        
+    except ImportError as e:
+        logger.warning(f"config_service non disponible: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Erreur chargement config_service: {e}")
+        return None
+
+def get_development_config() -> Dict[str, Any]:
     """Configuration pour l'environnement de développement."""
-    return SearchServiceSettings(
-        DEBUG=True,
-        LOG_LEVEL=LogLevel.DEBUG,
-        ELASTICSEARCH_HOST="localhost",
-        CACHE_ENABLED=True,
-        ENABLE_METRICS=True,
-        REQUIRE_USER_ID=False  # Plus flexible en dev
-    )
+    return {
+        "LOG_LEVEL": "DEBUG",
+        "ELASTICSEARCH_HOST": "localhost",
+        "ELASTICSEARCH_PORT": 9200,
+        "SEARCH_CACHE_SIZE": 100,
+        "SEARCH_CACHE_TTL": 60,
+        "CORS_ORIGINS": "*",
+        "RATE_LIMIT_ENABLED": False
+    }
 
-
-def get_test_config() -> SearchServiceSettings:
+def get_test_config() -> Dict[str, Any]:
     """Configuration pour les tests."""
-    return SearchServiceSettings(
-        DEBUG=True,
-        LOG_LEVEL=LogLevel.DEBUG,
-        ELASTICSEARCH_HOST="localhost",
-        ELASTICSEARCH_INDEX="test_harena_transactions",
-        CACHE_ENABLED=False,  # Pas de cache en test
-        ENABLE_RATE_LIMITING=False,  # Pas de rate limiting en test
-        REQUIRE_USER_ID=False
-    )
+    return {
+        "TESTING": True,
+        "LOG_LEVEL": "WARNING",
+        "ELASTICSEARCH_HOST": "localhost",
+        "ELASTICSEARCH_PORT": 9200,
+        "SEARCH_CACHE_SIZE": 10,
+        "SEARCH_CACHE_TTL": 30,
+        "CORS_ORIGINS": "*",
+        "RATE_LIMIT_ENABLED": False,
+        "MAX_SEARCH_RESULTS": 100
+    }
 
-
-def get_production_config() -> SearchServiceSettings:
+def get_production_config() -> Dict[str, Any]:
     """Configuration pour la production."""
-    return SearchServiceSettings(
-        DEBUG=False,
-        LOG_LEVEL=LogLevel.INFO,
-        CACHE_ENABLED=True,
-        ENABLE_RATE_LIMITING=True,
-        REQUIRE_USER_ID=True,
-        ENABLE_METRICS=True
-    )
+    return {
+        "LOG_LEVEL": "INFO",
+        "LOG_TO_FILE": True,
+        "SEARCH_CACHE_SIZE": 5000,
+        "SEARCH_CACHE_TTL": 600,
+        "RATE_LIMIT_ENABLED": True,
+        "RATE_LIMIT_REQUESTS": 100,
+        "RATE_LIMIT_PERIOD": 60
+    }
 
-
-# === HELPER FUNCTIONS ===
-
-def get_config_by_environment(env: str = None) -> SearchServiceSettings:
+def get_elasticsearch_config() -> Dict[str, Any]:
     """
-    Récupère la configuration selon l'environnement.
+    Configuration Elasticsearch optimisée.
+    
+    Returns:
+        Configuration pour le client Elasticsearch
+    """
+    config = {
+        "hosts": [f"{settings.ELASTICSEARCH_HOST}:{settings.ELASTICSEARCH_PORT}"],
+        "timeout": settings.ELASTICSEARCH_TIMEOUT,
+        "max_retries": 3,
+        "retry_on_timeout": True,
+        "retry_on_status": [502, 503, 504],
+        "request_timeout": settings.ELASTICSEARCH_TIMEOUT
+    }
+    
+    return config
+
+# ==================== VALIDATION ====================
+
+def validate_settings(settings_obj) -> tuple[bool, List[str]]:
+    """
+    Valide la configuration.
     
     Args:
-        env: Environnement (development/test/production)
+        settings_obj: Instance de configuration à valider
         
     Returns:
-        Configuration adaptée à l'environnement
+        Tuple (is_valid, errors)
     """
-    env = env or os.getenv("ENVIRONMENT", "development").lower()
+    errors = []
     
-    if env == "test":
-        return get_test_config()
-    elif env == "production":
-        return get_production_config()
+    # Validation des valeurs obligatoires
+    if not hasattr(settings_obj, 'ELASTICSEARCH_HOST') or not settings_obj.ELASTICSEARCH_HOST:
+        errors.append("ELASTICSEARCH_HOST manquant")
+    
+    if not hasattr(settings_obj, 'ELASTICSEARCH_PORT') or settings_obj.ELASTICSEARCH_PORT <= 0:
+        errors.append("ELASTICSEARCH_PORT invalide")
+    
+    if hasattr(settings_obj, 'SEARCH_CACHE_SIZE') and settings_obj.SEARCH_CACHE_SIZE <= 0:
+        errors.append("SEARCH_CACHE_SIZE doit être positif")
+    
+    if hasattr(settings_obj, 'SEARCH_CACHE_TTL') and settings_obj.SEARCH_CACHE_TTL <= 0:
+        errors.append("SEARCH_CACHE_TTL doit être positif")
+    
+    is_valid = len(errors) == 0
+    
+    if is_valid:
+        logger.info("✅ Configuration validée")
     else:
-        return get_development_config()
+        logger.error(f"❌ Configuration invalide: {errors}")
+    
+    return is_valid, errors
+
+# ==================== EXPORTS ====================
+
+__all__ = [
+    # Classes
+    'SearchServiceSettings',
+    'LogLevel',
+    
+    # Instance globale
+    'settings',
+    
+    # Fonctions
+    'get_settings',
+    'load_config_from_service',
+    'get_development_config',
+    'get_test_config', 
+    'get_production_config',
+    'get_elasticsearch_config',
+    'validate_settings',
+    
+    # Flags
+    'PYDANTIC_AVAILABLE'
+]
+
+# Validation au chargement
+is_valid, validation_errors = validate_settings(settings)
+if not is_valid:
+    logger.warning(f"Configuration avec erreurs: {validation_errors}")
+
+logger.info(f"Configuration Search Service chargée (Pydantic: {PYDANTIC_AVAILABLE})")

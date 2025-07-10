@@ -23,8 +23,7 @@ from typing import List, Dict, Any, Optional, Union, Literal
 from uuid import UUID, uuid4
 from enum import Enum
 
-# CORRECTION PYDANTIC V2: Remplacer root_validator par model_validator
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, validator, root_validator
 from pydantic.types import PositiveInt, NonNegativeInt, NonNegativeFloat
 
 # Configuration centralisée
@@ -60,239 +59,203 @@ class QueryOptions(BaseModel):
 
 class ResultOptions(BaseModel):
     """Options de formatage des résultats."""
-    include_score: bool = Field(default=True, description="Inclure le score de pertinence")
-    include_highlights: bool = Field(default=False, description="Inclure les highlights")
-    include_explanation: bool = Field(default=False, description="Inclure l'explication du score")
-    include_source: bool = Field(default=True, description="Inclure les données source")
-    source_fields: Optional[List[str]] = Field(None, description="Champs source spécifiques")
+    include_raw_score: bool = Field(default=False, description="Inclure le score brut")
+    include_sort_values: bool = Field(default=False, description="Inclure les valeurs de tri")
+    include_version: bool = Field(default=False, description="Inclure la version du document")
+    highlight_fragment_size: PositiveInt = Field(default=150, description="Taille des fragments highlight")
+    highlight_max_fragments: PositiveInt = Field(default=3, le=10, description="Nombre max de fragments")
 
-class SearchOptions(BaseModel):
-    """Options de recherche étendues."""
+class SearchOptions(BaseSearchOptions):
+    """Options de recherche étendues pour les requêtes API."""
     query_options: QueryOptions = Field(default_factory=QueryOptions, description="Options de requête")
     result_options: ResultOptions = Field(default_factory=ResultOptions, description="Options de résultat")
     cache_options: CacheOptions = Field(default_factory=CacheOptions, description="Options de cache")
 
-# ==================== REQUÊTES PRINCIPALES ====================
+# ==================== REQUÊTES DE BASE ====================
 
-class LexicalSearchRequest(BaseModel):
+class BaseSearchRequest(BaseModel):
+    """Classe de base pour toutes les requêtes de recherche."""
+    request_id: UUID = Field(default_factory=uuid4, description="ID unique de la requête")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp de création")
+    user_agent: Optional[str] = Field(None, description="User agent du client")
+    source: str = Field(default="api", description="Source de la requête")
+    
+    class Config:
+        use_enum_values = True
+
+class LexicalSearchRequest(BaseSearchRequest):
     """
     Requête de recherche lexicale principale.
     
-    Cette requête supporte toutes les fonctionnalités de recherche
-    lexicale avec Elasticsearch, incluant filtres, agrégations et options.
+    Cette requête est utilisée pour toutes les recherches lexicales
+    via l'endpoint POST /search/lexical.
     """
-    # Identification et sécurité
-    user_id: PositiveInt = Field(..., description="ID utilisateur (sécurité obligatoire)")
-    query_id: UUID = Field(default_factory=uuid4, description="ID unique de requête")
+    # Paramètres obligatoires
+    user_id: PositiveInt = Field(..., description="ID de l'utilisateur")
+    query_text: Optional[str] = Field(None, min_length=1, max_length=1000, description="Texte de recherche")
     
-    # Paramètres de recherche principaux
-    query_text: Optional[str] = Field(None, description="Texte de recherche libre")
+    # Paramètres de recherche
     query_type: QueryType = Field(default=QueryType.FILTERED_SEARCH, description="Type de requête")
-    
-    # Filtres et agrégations
-    filters: FilterGroup = Field(..., description="Groupe de filtres")
-    aggregations: AggregationRequest = Field(default_factory=AggregationRequest, description="Agrégations")
+    fields: List[str] = Field(
+        default=["user_id", "category_name", "merchant_name", "primary_description", "amount", "date"],
+        min_items=1,
+        description="Champs à récupérer"
+    )
     
     # Pagination et limites
-    limit: PositiveInt = Field(default=20, description="Nombre de résultats")
+    limit: PositiveInt = Field(
+        default=settings.DEFAULT_LIMIT,
+        le=settings.MAX_SEARCH_RESULTS,
+        description="Nombre maximum de résultats"
+    )
     offset: NonNegativeInt = Field(default=0, description="Décalage pour pagination")
     
-    # Performance et timeout
-    timeout_seconds: float = Field(default=15.0, description="Timeout en secondes")
+    # Timeout
+    timeout_seconds: PositiveInt = Field(
+        default=settings.SEARCH_TIMEOUT,
+        le=settings.MAX_SEARCH_TIMEOUT,
+        description="Timeout en secondes"
+    )
     
-    # Options avancées
+    # Filtres
+    filters: FilterGroup = Field(default_factory=FilterGroup, description="Filtres de recherche")
+    
+    # Agrégations
+    aggregations: Optional[AggregationRequest] = Field(None, description="Demandes d'agrégation")
+    
+    # Options
     options: SearchOptions = Field(default_factory=SearchOptions, description="Options de recherche")
     
-    # Métadonnées contextuelles
-    context: Dict[str, Any] = Field(default_factory=dict, description="Contexte de requête")
+    # Scoring et pertinence
+    min_score: Optional[float] = Field(None, ge=0.0, description="Score minimum requis")
+    boost_query: Optional[str] = Field(None, description="Requête de boost personnalisée")
     
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        """Valide l'user_id."""
-        if v <= 0:
-            raise ValueError("user_id doit être positif")
-        return v
-    
-    @field_validator('limit')
-    @classmethod
-    def validate_limit(cls, v):
-        """Valide la limite de résultats."""
-        if v > settings.MAX_SEARCH_RESULTS:
-            raise ValueError(f"Limite trop élevée (max {settings.MAX_SEARCH_RESULTS})")
-        return v
-    
-    @field_validator('timeout_seconds')
-    @classmethod
-    def validate_timeout(cls, v):
-        """Valide le timeout."""
-        if v > settings.MAX_SEARCH_TIMEOUT:
-            raise ValueError(f"Timeout trop élevé (max {settings.MAX_SEARCH_TIMEOUT}s)")
-        return v
-    
-    @field_validator('query_text')
-    @classmethod
-    def validate_query_text(cls, v):
-        """Valide le texte de requête."""
-        if v is not None:
-            v = v.strip()
-            if len(v) == 0:
-                return None
-            if len(v) > 1000:
-                raise ValueError("query_text trop long (max 1000 caractères)")
-        return v
-    
-    @model_validator(mode='after')
-    def validate_request_coherence(self):
-        """Valide la cohérence de la requête."""
-        # Validation sécurité user_id en filtre
-        user_filter_exists = any(
-            f.field == "user_id" for f in self.filters.required
-        )
-        if not user_filter_exists:
-            raise ValueError("Filtre user_id obligatoire dans filters.required")
+    @validator('fields')
+    def validate_fields(cls, v):
+        """Valide les champs demandés."""
+        valid_fields = [
+            "user_id", "account_id", "transaction_id",
+            "amount", "amount_abs", "currency_code",
+            "transaction_type", "operation_type", "date",
+            "primary_description", "merchant_name", "category_name",
+            "month_year", "weekday", "searchable_text"
+        ]
         
-        # Validation cohérence query_type
-        if self.query_type in [QueryType.TEXT_SEARCH, QueryType.TEXT_SEARCH_WITH_FILTER]:
-            if not self.query_text or len(self.query_text.strip()) == 0:
+        for field in v:
+            if field != "*" and field not in valid_fields:
+                raise ValueError(f"Champ invalide: {field}")
+        
+        return v
+    
+    @root_validator
+    def validate_request_consistency(cls, values):
+        """Valide la cohérence globale de la requête."""
+        query_type = values.get('query_type')
+        query_text = values.get('query_text')
+        filters = values.get('filters')
+        
+        # Validation cohérence query_type et query_text
+        if query_type in [QueryType.TEXT_SEARCH, QueryType.TEXT_SEARCH_WITH_FILTER]:
+            if not query_text:
                 raise ValueError("query_text requis pour les recherches textuelles")
         
-        # Validation agrégations
-        if self.query_type == QueryType.AGGREGATION_ONLY:
-            if not self.aggregations.enabled:
-                raise ValueError("Agrégations requises pour AGGREGATION_ONLY")
+        # Validation sécurité: user_id obligatoire en filtre
+        if filters:
+            user_filter_exists = any(
+                f.field == "user_id" and f.operator == FilterOperator.EQ
+                for f in filters.required
+            )
+            if not user_filter_exists:
+                # Ajouter automatiquement le filtre user_id
+                filters.required.append(
+                    SearchFilter(
+                        field="user_id",
+                        operator=FilterOperator.EQ,
+                        value=values.get('user_id')
+                    )
+                )
         
-        # Validation pagination
-        if self.offset + self.limit > settings.MAX_SEARCH_RESULTS:
-            raise ValueError("offset + limit dépasse MAX_SEARCH_RESULTS")
-        
-        return self
+        return values
 
-class QueryValidationRequest(BaseModel):
-    """Requête de validation de requête."""
-    elasticsearch_query: Dict[str, Any] = Field(..., description="Requête Elasticsearch à valider")
-    strict_validation: bool = Field(default=True, description="Validation stricte")
-    
-    @field_validator('elasticsearch_query')
-    @classmethod
-    def validate_es_query(cls, v):
-        """Valide la structure de base de la requête ES."""
-        if not isinstance(v, dict):
-            raise ValueError("elasticsearch_query doit être un dictionnaire")
-        if not v:
-            raise ValueError("elasticsearch_query ne peut pas être vide")
-        return v
+class QueryValidationRequest(BaseSearchRequest):
+    """Requête de validation d'une requête Elasticsearch."""
+    query: Dict[str, Any] = Field(..., description="Requête Elasticsearch à valider")
+    explain: bool = Field(default=False, description="Inclure l'explication")
+    rewrite: bool = Field(default=False, description="Inclure la réécriture de requête")
 
-class TemplateListRequest(BaseModel):
+class TemplateListRequest(BaseSearchRequest):
     """Requête pour lister les templates disponibles."""
     category: Optional[str] = Field(None, description="Catégorie de templates")
-    include_deprecated: bool = Field(default=False, description="Inclure les templates dépréciés")
+    intent_type: Optional[str] = Field(None, description="Type d'intention")
+    include_examples: bool = Field(default=False, description="Inclure des exemples")
 
-class HealthCheckRequest(BaseModel):
+class HealthCheckRequest(BaseSearchRequest):
     """Requête de vérification de santé."""
-    include_detailed: bool = Field(default=False, description="Inclure détails complets")
-    check_elasticsearch: bool = Field(default=True, description="Vérifier Elasticsearch")
-    check_cache: bool = Field(default=True, description="Vérifier le cache")
+    include_elasticsearch: bool = Field(default=True, description="Inclure le statut Elasticsearch")
+    include_cache: bool = Field(default=True, description="Inclure le statut du cache")
+    include_metrics: bool = Field(default=False, description="Inclure les métriques")
+    detailed: bool = Field(default=False, description="Informations détaillées")
 
-class MetricsRequest(BaseModel):
-    """Requête de métriques."""
-    time_range: Optional[str] = Field(None, description="Période (1h, 24h, 7d)")
-    metric_types: List[str] = Field(default_factory=list, description="Types de métriques")
-    include_performance: bool = Field(default=True, description="Inclure métriques performance")
+class MetricsRequest(BaseSearchRequest):
+    """Requête pour récupérer les métriques."""
+    time_range: Optional[str] = Field(None, description="Plage temporelle (1h, 24h, 7d)")
+    metric_types: List[str] = Field(
+        default=["performance", "usage", "errors"],
+        description="Types de métriques"
+    )
+    aggregation_interval: Optional[str] = Field(None, description="Intervalle d'agrégation")
+    include_raw_data: bool = Field(default=False, description="Inclure les données brutes")
 
 # ==================== REQUÊTES SPÉCIALISÉES ====================
 
-class BulkSearchRequest(BaseModel):
+class BulkSearchRequest(BaseSearchRequest):
     """Requête de recherche en lot."""
-    requests: List[LexicalSearchRequest] = Field(..., description="Liste de requêtes")
-    batch_size: PositiveInt = Field(default=10, description="Taille du lot")
-    parallel_execution: bool = Field(default=True, description="Exécution parallèle")
+    searches: List[LexicalSearchRequest] = Field(
+        ..., min_items=1, max_items=10, description="Recherches à exécuter"
+    )
+    parallel: bool = Field(default=True, description="Exécution en parallèle")
+    fail_fast: bool = Field(default=False, description="Arrêter au premier échec")
     
-    @field_validator('requests')
-    @classmethod
-    def validate_requests(cls, v):
-        """Valide la liste de requêtes."""
-        if not v:
-            raise ValueError("Au moins une requête requise")
-        if len(v) > 100:
-            raise ValueError("Maximum 100 requêtes par lot")
-        return v
-    
-    @field_validator('batch_size')
-    @classmethod
-    def validate_batch_size(cls, v):
-        """Valide la taille du lot."""
-        if v > settings.DEFAULT_BATCH_SIZE:
-            raise ValueError(f"batch_size trop élevé (max {settings.DEFAULT_BATCH_SIZE})")
+    @validator('searches')
+    def validate_searches_consistency(cls, v):
+        """Valide la cohérence des recherches en lot."""
+        user_ids = {search.user_id for search in v}
+        if len(user_ids) > 1:
+            raise ValueError("Toutes les recherches doivent avoir le même user_id")
         return v
 
-class AggregationOnlyRequest(BaseModel):
-    """Requête d'agrégation sans résultats de recherche."""
-    user_id: PositiveInt = Field(..., description="ID utilisateur")
-    filters: FilterGroup = Field(..., description="Filtres pour l'agrégation")
+class AggregationOnlyRequest(BaseSearchRequest):
+    """Requête d'agrégation sans résultats détaillés."""
+    user_id: PositiveInt = Field(..., description="ID de l'utilisateur")
+    filters: FilterGroup = Field(default_factory=FilterGroup, description="Filtres")
     aggregations: AggregationRequest = Field(..., description="Agrégations à calculer")
-    timeout_seconds: float = Field(default=30.0, description="Timeout en secondes")
     
-    @field_validator('user_id')
-    @classmethod
-    def validate_user_id(cls, v):
-        """Valide l'user_id."""
-        if v <= 0:
-            raise ValueError("user_id doit être positif")
-        return v
-    
-    @model_validator(mode='after')
-    def validate_aggregation_request(self):
-        """Valide la requête d'agrégation."""
-        # Validation sécurité
-        user_filter_exists = any(
-            f.field == "user_id" for f in self.filters.required
-        )
-        if not user_filter_exists:
-            raise ValueError("Filtre user_id obligatoire")
-        
-        # Validation agrégations
-        if not self.aggregations.enabled:
-            raise ValueError("Agrégations doivent être activées")
-        
-        if not self.aggregations.types:
-            raise ValueError("Au moins un type d'agrégation requis")
-        
-        return self
+    timeout_seconds: PositiveInt = Field(
+        default=settings.SEARCH_TIMEOUT,
+        le=settings.MAX_SEARCH_TIMEOUT,
+        description="Timeout en secondes"
+    )
 
-class AutocompleteRequest(BaseModel):
+class AutocompleteRequest(BaseSearchRequest):
     """Requête d'autocomplétion."""
-    user_id: PositiveInt = Field(..., description="ID utilisateur")
-    query_prefix: str = Field(..., description="Préfixe de recherche")
-    field: str = Field(..., description="Champ pour autocomplétion")
-    limit: PositiveInt = Field(default=10, description="Nombre de suggestions")
+    user_id: PositiveInt = Field(..., description="ID de l'utilisateur")
+    query_text: str = Field(..., min_length=1, max_length=100, description="Texte partiel")
+    field: str = Field(..., description="Champ à compléter")
+    limit: PositiveInt = Field(default=10, le=50, description="Nombre de suggestions")
     
-    @field_validator('query_prefix')
-    @classmethod
-    def validate_query_prefix(cls, v):
-        """Valide le préfixe de requête."""
-        if not v or len(v.strip()) < 2:
-            raise ValueError("query_prefix doit faire au moins 2 caractères")
-        if len(v) > 100:
-            raise ValueError("query_prefix trop long (max 100 caractères)")
-        return v.strip()
-    
-    @field_validator('limit')
-    @classmethod
-    def validate_limit(cls, v):
-        """Valide la limite de suggestions."""
-        if v > 50:
-            raise ValueError("Maximum 50 suggestions")
+    @validator('field')
+    def validate_autocomplete_field(cls, v):
+        """Valide que le champ supporte l'autocomplétion."""
+        valid_fields = ["merchant_name", "category_name", "primary_description"]
+        if v not in valid_fields:
+            raise ValueError(f"Autocomplétion non supportée pour le champ: {v}")
         return v
 
-# ==================== VALIDATION ET ERREURS ====================
+# ==================== VALIDATION ET HELPERS ====================
 
 class RequestValidationError(Exception):
-    """Erreur de validation de requête."""
-    def __init__(self, message: str, field: Optional[str] = None):
-        self.message = message
-        self.field = field
-        super().__init__(message)
+    """Exception pour les erreurs de validation de requête."""
+    pass
 
 class RequestValidator:
     """Validateur pour les requêtes de recherche."""
@@ -313,7 +276,7 @@ class RequestValidator:
         """
         try:
             # Validation de base Pydantic
-            request.model_dump()
+            request.dict()
             
             # Validations métier spécifiques
             if request.user_id <= 0:
@@ -347,7 +310,7 @@ class RequestValidator:
     def validate_aggregation_request(request: AggregationOnlyRequest) -> bool:
         """Valide une requête d'agrégation."""
         try:
-            request.model_dump()
+            request.dict()
             
             if request.user_id <= 0:
                 raise RequestValidationError("user_id doit être positif")
@@ -375,25 +338,32 @@ def create_lexical_search_request(
     Factory pour créer une LexicalSearchRequest avec des valeurs par défaut.
     
     Args:
-        user_id: ID utilisateur
+        user_id: ID de l'utilisateur
         query_text: Texte de recherche optionnel
         query_type: Type de requête
-        **kwargs: Autres paramètres
+        **kwargs: Paramètres additionnels
         
     Returns:
-        Requête de recherche lexicale configurée
+        LexicalSearchRequest configurée
     """
-    # Filtre user_id obligatoire
-    filters = kwargs.get('filters') or FilterGroup(
-        required=[SearchFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)]
+    # Filtres avec user_id obligatoire
+    filters = FilterGroup(
+        required=[
+            SearchFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)
+        ]
     )
     
-    # Ajouter user_id si pas présent
-    user_filter_exists = any(f.field == "user_id" for f in filters.required)
-    if not user_filter_exists:
-        filters.required.append(
-            SearchFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)
-        )
+    # Ajout des filtres personnalisés
+    if 'filters' in kwargs:
+        custom_filters = kwargs.pop('filters')
+        if 'required' in custom_filters:
+            filters.required.extend(custom_filters['required'])
+        if 'optional' in custom_filters:
+            filters.optional.extend(custom_filters['optional'])
+        if 'ranges' in custom_filters:
+            filters.ranges.extend(custom_filters['ranges'])
+        if 'text_search' in custom_filters:
+            filters.text_search = custom_filters['text_search']
     
     return LexicalSearchRequest(
         user_id=user_id,
@@ -409,77 +379,182 @@ def create_aggregation_request(
     group_by: List[str],
     **kwargs
 ) -> AggregationOnlyRequest:
-    """Factory pour créer une requête d'agrégation."""
-    filters = kwargs.get('filters') or FilterGroup(
-        required=[SearchFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)]
+    """
+    Factory pour créer une AggregationOnlyRequest.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        aggregation_types: Types d'agrégation
+        group_by: Champs de groupement
+        **kwargs: Paramètres additionnels
+        
+    Returns:
+        AggregationOnlyRequest configurée
+    """
+    # Filtres avec user_id obligatoire
+    filters = FilterGroup(
+        required=[
+            SearchFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)
+        ]
     )
     
+    # Agrégations
     aggregations = AggregationRequest(
         enabled=True,
         types=aggregation_types,
         group_by=group_by,
-        metrics=kwargs.get('metrics', [])
+        metrics=kwargs.get('metrics', ['amount_abs', 'transaction_id']),
+        size=kwargs.get('size', 10)
     )
     
     return AggregationOnlyRequest(
         user_id=user_id,
         filters=filters,
         aggregations=aggregations,
-        **kwargs
+        timeout_seconds=kwargs.get('timeout_seconds', settings.SEARCH_TIMEOUT)
     )
 
 # ==================== UTILITAIRES ====================
 
-def extract_user_id_from_request(request: Union[LexicalSearchRequest, AggregationOnlyRequest]) -> int:
-    """Extrait l'user_id d'une requête."""
-    return request.user_id
+def validate_search_request(request: LexicalSearchRequest) -> bool:
+    """
+    Fonction utilitaire pour valider une requête de recherche.
+    
+    Args:
+        request: La requête à valider
+        
+    Returns:
+        True si valide
+        
+    Raises:
+        RequestValidationError: Si la validation échoue
+    """
+    return RequestValidator.validate_search_request(request)
 
-def get_request_timeout_ms(request: Union[LexicalSearchRequest, AggregationOnlyRequest]) -> int:
-    """Retourne le timeout en millisecondes."""
+def extract_user_id_from_request(request: BaseSearchRequest) -> Optional[int]:
+    """
+    Extrait l'user_id d'une requête.
+    
+    Args:
+        request: La requête
+        
+    Returns:
+        L'user_id si trouvé, None sinon
+    """
+    if hasattr(request, 'user_id'):
+        return request.user_id
+    
+    # Chercher dans les filtres
+    if hasattr(request, 'filters') and request.filters:
+        for filter_item in request.filters.required:
+            if filter_item.field == "user_id":
+                return filter_item.value
+    
+    return None
+
+def get_request_timeout_ms(request: BaseSearchRequest) -> int:
+    """
+    Récupère le timeout en millisecondes d'une requête.
+    
+    Args:
+        request: La requête
+        
+    Returns:
+        Timeout en millisecondes
+    """
     if hasattr(request, 'timeout_seconds'):
-        return int(request.timeout_seconds * 1000)
-    return settings.DEFAULT_TIMEOUT * 1000
+        return request.timeout_seconds * 1000
+    
+    return settings.SEARCH_TIMEOUT * 1000
 
 def is_text_search_request(request: LexicalSearchRequest) -> bool:
-    """Vérifie si c'est une requête de recherche textuelle."""
-    return request.query_type in [QueryType.TEXT_SEARCH, QueryType.TEXT_SEARCH_WITH_FILTER]
+    """
+    Détermine si une requête est une recherche textuelle.
+    
+    Args:
+        request: La requête
+        
+    Returns:
+        True si c'est une recherche textuelle
+    """
+    return (
+        request.query_type in [QueryType.TEXT_SEARCH, QueryType.TEXT_SEARCH_WITH_FILTER] or
+        (request.query_text is not None and len(request.query_text.strip()) > 0) or
+        (request.filters.text_search is not None)
+    )
 
 def get_search_fields_for_request(request: LexicalSearchRequest) -> List[str]:
-    """Retourne les champs de recherche pour une requête."""
-    if request.options.result_options.source_fields:
-        return request.options.result_options.source_fields
+    """
+    Détermine les champs de recherche appropriés pour une requête.
     
-    # Champs par défaut pour recherche financière
+    Args:
+        request: La requête
+        
+    Returns:
+        Liste des champs de recherche
+    """
+    if request.fields and request.fields != ["*"]:
+        return request.fields
+    
+    # Champs par défaut selon le type de requête
+    if is_text_search_request(request):
+        return [
+            "searchable_text", "primary_description", "merchant_name",
+            "category_name", "amount", "date", "user_id"
+        ]
+    
     return [
-        "user_id", "transaction_id", "account_id",
-        "amount", "amount_abs", "currency_code",
-        "date", "month_year", "weekday",
-        "primary_description", "merchant_name", "category_name",
-        "operation_type", "transaction_type", "searchable_text"
+        "user_id", "transaction_id", "amount", "amount_abs",
+        "date", "category_name", "merchant_name", "primary_description"
     ]
 
 # ==================== CONSTANTES ET MAPPINGS ====================
 
+# Mapping des types de requête vers les champs recommandés
 QUERY_TYPE_FIELD_MAPPING = {
-    QueryType.FILTERED_SEARCH: ["user_id", "category_name", "merchant_name", "amount"],
-    QueryType.TEXT_SEARCH: ["primary_description", "merchant_name", "searchable_text"],
-    QueryType.AGGREGATION_ONLY: ["user_id", "category_name", "month_year"],
-    QueryType.FILTERED_AGGREGATION: ["user_id", "category_name", "merchant_name", "month_year"],
-    QueryType.TEMPORAL_AGGREGATION: ["user_id", "date", "month_year", "weekday"],
-    QueryType.TEXT_SEARCH_WITH_FILTER: ["primary_description", "merchant_name", "searchable_text", "category_name"]
+    QueryType.FILTERED_SEARCH: [
+        "user_id", "transaction_id", "amount", "date",
+        "category_name", "merchant_name", "primary_description"
+    ],
+    QueryType.TEXT_SEARCH: [
+        "searchable_text", "primary_description", "merchant_name",
+        "user_id", "amount", "date", "score"
+    ],
+    QueryType.AGGREGATION_ONLY: [
+        "user_id", "amount", "amount_abs", "category_name",
+        "merchant_name", "month_year", "transaction_id"
+    ],
+    QueryType.FILTERED_AGGREGATION: [
+        "user_id", "amount", "amount_abs", "category_name",
+        "merchant_name", "date", "month_year"
+    ],
+    QueryType.TEMPORAL_AGGREGATION: [
+        "user_id", "date", "month_year", "weekday",
+        "amount", "amount_abs", "transaction_id"
+    ],
+    QueryType.TEXT_SEARCH_WITH_FILTER: [
+        "searchable_text", "primary_description", "merchant_name",
+        "category_name", "user_id", "amount", "date"
+    ]
 }
 
+# Mapping des intentions vers les types de requête recommandés
 INTENT_TO_QUERY_TYPE_MAPPING = {
-    "search_by_category": QueryType.FILTERED_SEARCH,
-    "search_by_merchant": QueryType.FILTERED_SEARCH,
-    "search_by_description": QueryType.TEXT_SEARCH,
-    "aggregate_by_category": QueryType.AGGREGATION_ONLY,
-    "aggregate_by_month": QueryType.TEMPORAL_AGGREGATION
+    "SEARCH_BY_CATEGORY": QueryType.FILTERED_SEARCH,
+    "SEARCH_BY_MERCHANT": QueryType.FILTERED_SEARCH,
+    "SEARCH_BY_AMOUNT": QueryType.FILTERED_SEARCH,
+    "SEARCH_BY_DATE": QueryType.FILTERED_SEARCH,
+    "TEXT_SEARCH": QueryType.TEXT_SEARCH,
+    "COUNT_OPERATIONS": QueryType.AGGREGATION_ONLY,
+    "TEMPORAL_ANALYSIS": QueryType.TEMPORAL_AGGREGATION,
+    "CATEGORY_BREAKDOWN": QueryType.FILTERED_AGGREGATION,
+    "TEXT_SEARCH_WITH_CATEGORY": QueryType.TEXT_SEARCH_WITH_FILTER
 }
 
+# Limites par type de requête
 QUERY_TYPE_LIMITS = {
     QueryType.FILTERED_SEARCH: {
-        "max_results": min(settings.MAX_SEARCH_RESULTS, 200),
+        "max_results": settings.MAX_SEARCH_RESULTS,
         "default_timeout": settings.SEARCH_TIMEOUT,
         "max_filters": 20
     },

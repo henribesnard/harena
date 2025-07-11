@@ -1,8 +1,8 @@
 {
   "test_session": {
-    "start_time": "2025-07-11T09:46:29.873619",
-    "end_time": "2025-07-11T09:46:33.589250",
-    "duration_seconds": 3.715631,
+    "start_time": "2025-07-11T11:07:27.865319",
+    "end_time": "2025-07-11T11:07:31.936709",
+    "duration_seconds": 4.07139,
     "python_version": "3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)]",
     "platform": "win32"
   },
@@ -13,7 +13,7 @@
       "errors": []
     },
     "unit_tests": {
-      "exit_code": 1,
+      "exit_code": 2,
       "success": false,
       "coverage_available": true
     },

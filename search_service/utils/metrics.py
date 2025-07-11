@@ -124,6 +124,235 @@ class PerformanceProfile:
     avg_results_count: float
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
+# ==================== CLASSES MÉTRIQUES SPÉCIALISÉES ====================
+
+class SearchMetrics:
+    """
+    Classe spécialisée pour les métriques de recherche.
+    
+    Interface simplifiée pour les opérations de recherche fréquentes.
+    """
+    
+    def __init__(self, collector: Optional['MetricsCollector'] = None):
+        self._collector = collector or MetricsCollector.get_instance()
+        self._start_time = datetime.utcnow()
+    
+    def record_search_request(self, 
+                            query: str,
+                            user_id: str,
+                            search_type: str = "lexical",
+                            labels: Optional[Dict[str, str]] = None):
+        """Enregistre une requête de recherche."""
+        search_labels = {
+            "search_type": search_type,
+            "user_id": user_id,
+            **(labels or {})
+        }
+        
+        self._collector.increment_counter("search_requests_total", search_labels)
+        self._collector.record_histogram("search_query_length", len(query.split()), search_labels)
+    
+    def record_search_duration(self, 
+                             duration_ms: float,
+                             user_id: str,
+                             search_type: str = "lexical",
+                             labels: Optional[Dict[str, str]] = None):
+        """Enregistre la durée d'une recherche."""
+        search_labels = {
+            "search_type": search_type,
+            "user_id": user_id,
+            **(labels or {})
+        }
+        
+        self._collector.record_histogram("search_duration_ms", duration_ms, search_labels)
+        
+        # Catégorisation des performances
+        if duration_ms > 2000:
+            self._collector.increment_counter("search_very_slow", search_labels)
+        elif duration_ms > 1000:
+            self._collector.increment_counter("search_slow", search_labels)
+        else:
+            self._collector.increment_counter("search_fast", search_labels)
+    
+    def record_search_results(self,
+                            results_count: int,
+                            total_available: int,
+                            user_id: str,
+                            search_type: str = "lexical",
+                            labels: Optional[Dict[str, str]] = None):
+        """Enregistre les résultats d'une recherche."""
+        search_labels = {
+            "search_type": search_type,
+            "user_id": user_id,
+            **(labels or {})
+        }
+        
+        self._collector.record_histogram("search_results_count", results_count, search_labels)
+        self._collector.record_histogram("search_total_available", total_available, search_labels)
+        
+        # Catégorisation de la qualité
+        if results_count == 0:
+            self._collector.increment_counter("search_no_results", search_labels)
+        elif results_count < 5:
+            self._collector.increment_counter("search_few_results", search_labels)
+        else:
+            self._collector.increment_counter("search_good_results", search_labels)
+    
+    def record_cache_operation(self,
+                             cache_type: str,
+                             operation: str,
+                             hit: bool,
+                             latency_ms: float = 0,
+                             labels: Optional[Dict[str, str]] = None):
+        """Enregistre une opération de cache."""
+        cache_labels = {
+            "cache_type": cache_type,
+            "operation": operation,
+            "hit": str(hit),
+            **(labels or {})
+        }
+        
+        if hit:
+            self._collector.increment_counter("cache_hits", cache_labels)
+        else:
+            self._collector.increment_counter("cache_misses", cache_labels)
+        
+        if latency_ms > 0:
+            self._collector.record_histogram("cache_latency_ms", latency_ms, cache_labels)
+    
+    def record_error(self,
+                    error_type: str,
+                    error_message: str,
+                    user_id: str,
+                    search_type: str = "lexical",
+                    labels: Optional[Dict[str, str]] = None):
+        """Enregistre une erreur de recherche."""
+        error_labels = {
+            "error_type": error_type,
+            "search_type": search_type,
+            "user_id": user_id,
+            **(labels or {})
+        }
+        
+        self._collector.increment_counter("search_errors_total", error_labels)
+        logger.error(f"Search error: {error_type} - {error_message}", extra=error_labels)
+    
+    def get_search_stats(self, hours: int = 1) -> Dict[str, Any]:
+        """Récupère les statistiques de recherche."""
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        
+        # Cette méthode nécessiterait l'accès aux métriques internes
+        # Pour simplifier, on retourne des stats de base
+        return {
+            "period_hours": hours,
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": "Use MetricsCollector.get_all_metrics() for detailed stats"
+        }
+
+class QueryMetrics(SearchMetrics):
+    """Alias pour compatibilité - metrics spécifiques aux requêtes."""
+    pass
+
+class PerformanceMetrics:
+    """
+    Métriques de performance spécialisées.
+    """
+    
+    def __init__(self, collector: Optional['MetricsCollector'] = None):
+        self._collector = collector or MetricsCollector.get_instance()
+    
+    def record_elasticsearch_query(self,
+                                  query_type: str,
+                                  index_name: str,
+                                  execution_time_ms: float,
+                                  shard_count: int = 1,
+                                  success: bool = True,
+                                  error_type: Optional[str] = None):
+        """Enregistre une requête Elasticsearch."""
+        labels = {
+            "query_type": query_type,
+            "index": index_name,
+            "success": str(success)
+        }
+        
+        if error_type:
+            labels["error_type"] = error_type
+        
+        self._collector.record_histogram("elasticsearch_query_duration_ms", execution_time_ms, labels)
+        self._collector.record_histogram("elasticsearch_shards", shard_count, labels)
+        
+        if success:
+            self._collector.increment_counter("elasticsearch_queries_success", labels)
+        else:
+            self._collector.increment_counter("elasticsearch_queries_error", labels)
+    
+    def record_api_request(self,
+                          endpoint: str,
+                          method: str,
+                          status_code: int,
+                          duration_ms: float,
+                          user_id: Optional[str] = None):
+        """Enregistre une requête API."""
+        labels = {
+            "endpoint": endpoint,
+            "method": method,
+            "status_code": str(status_code)
+        }
+        
+        if user_id:
+            labels["user_id"] = user_id
+        
+        self._collector.record_histogram("api_request_duration_ms", duration_ms, labels)
+        self._collector.increment_counter("api_requests_total", labels)
+        
+        if status_code >= 400:
+            self._collector.increment_counter("api_requests_error", labels)
+
+class MetricsExporter:
+    """
+    Exporteur de métriques vers différents formats.
+    """
+    
+    def __init__(self, collector: Optional['MetricsCollector'] = None):
+        self._collector = collector or MetricsCollector.get_instance()
+    
+    async def export_prometheus(self) -> str:
+        """Exporte les métriques au format Prometheus."""
+        metrics = await self._collector.get_all_metrics()
+        
+        prometheus_output = []
+        prometheus_output.append("# HELP search_service_metrics Search Service Metrics")
+        prometheus_output.append("# TYPE search_service_metrics gauge")
+        
+        # Export des compteurs
+        for name, value in metrics.get("counters", {}).items():
+            prometheus_output.append(f"search_service_{name} {value}")
+        
+        # Export des jauges
+        for name, value in metrics.get("gauges", {}).items():
+            prometheus_output.append(f"search_service_{name} {value}")
+        
+        return "\n".join(prometheus_output)
+    
+    async def export_json(self) -> str:
+        """Exporte les métriques au format JSON."""
+        metrics = await self._collector.get_all_metrics()
+        return json.dumps(metrics, indent=2, default=str)
+    
+    async def export_csv(self) -> str:
+        """Exporte les métriques au format CSV."""
+        metrics = await self._collector.get_all_metrics()
+        
+        csv_lines = ["metric_name,metric_type,current_value,timestamp"]
+        
+        for name, summary in metrics.get("metrics_summary", {}).items():
+            csv_lines.append(
+                f"{name},{summary.get('type', 'unknown')},"
+                f"{summary.get('current', 0)},{summary.get('last_updated', '')}"
+            )
+        
+        return "\n".join(csv_lines)
+
 # ==================== COLLECTEUR DE MÉTRIQUES ====================
 
 class MetricsCollector:
@@ -844,159 +1073,6 @@ class MetricsCollector:
         except Exception:
             return 0.0
     
-    def get_performance_report(self, hours: int = 24) -> Dict[str, Any]:
-        """Génère un rapport de performance détaillé."""
-        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-        
-        report = {
-            "period": f"last_{hours}h",
-            "timestamp": datetime.utcnow().isoformat(),
-            "search_performance": {},
-            "system_performance": {},
-            "quality_metrics": {},
-            "recommendations": []
-        }
-        
-        # Performance des recherches
-        search_durations = [
-            p.value for p in self._metrics.get("search_duration_ms", [])
-            if p.timestamp >= cutoff_time
-        ]
-        
-        if search_durations:
-            report["search_performance"] = {
-                "total_searches": len(search_durations),
-                "avg_duration_ms": statistics.mean(search_durations),
-                "p95_duration_ms": statistics.quantiles(search_durations, n=20)[18] if len(search_durations) >= 20 else max(search_durations),
-                "fastest_ms": min(search_durations),
-                "slowest_ms": max(search_durations),
-                "searches_per_hour": len(search_durations) / hours
-            }
-        
-        # Performance système
-        cpu_values = [
-            p.value for p in self._metrics.get("system_cpu_percent", [])
-            if p.timestamp >= cutoff_time
-        ]
-        
-        memory_values = [
-            p.value for p in self._metrics.get("system_memory_percent", [])
-            if p.timestamp >= cutoff_time
-        ]
-        
-        if cpu_values and memory_values:
-            report["system_performance"] = {
-                "avg_cpu_percent": statistics.mean(cpu_values),
-                "max_cpu_percent": max(cpu_values),
-                "avg_memory_percent": statistics.mean(memory_values),
-                "max_memory_percent": max(memory_values)
-            }
-        
-        # Métriques de qualité
-        total_searches = self._get_counter_value_in_period("search_requests_total", cutoff_time)
-        no_results = self._get_counter_value_in_period("search_no_results", cutoff_time)
-        cache_hits = self._get_counter_value_in_period("search_cache_hits", cutoff_time)
-        cache_misses = self._get_counter_value_in_period("search_cache_misses", cutoff_time)
-        errors = self._get_counter_value_in_period("search_errors_total", cutoff_time)
-        
-        if total_searches > 0:
-            report["quality_metrics"] = {
-                "no_results_rate": (no_results / total_searches) * 100,
-                "error_rate": (errors / total_searches) * 100,
-                "cache_hit_rate": (cache_hits / (cache_hits + cache_misses)) * 100 if (cache_hits + cache_misses) > 0 else 0
-            }
-            
-            # Génération de recommandations
-            report["recommendations"] = self._generate_recommendations(report)
-        
-        return report
-    
-    def _get_counter_value_in_period(self, counter_name: str, since: datetime) -> int:
-        """Récupère la valeur d'un compteur pour une période donnée."""
-        points = [
-            p for p in self._metrics.get(counter_name, [])
-            if p.timestamp >= since
-        ]
-        
-        if not points:
-            return 0
-        
-        # Retourne la différence entre la dernière et première valeur
-        if len(points) == 1:
-            return int(points[0].value)
-        
-        return int(points[-1].value - points[0].value)
-    
-    def _generate_recommendations(self, report: Dict[str, Any]) -> List[str]:
-        """Génère des recommandations basées sur le rapport de performance."""
-        recommendations = []
-        
-        # Recommandations de performance
-        search_perf = report.get("search_performance", {})
-        if search_perf.get("avg_duration_ms", 0) > 500:
-            recommendations.append("🚀 Optimiser les requêtes de recherche (temps moyen > 500ms)")
-        
-        if search_perf.get("p95_duration_ms", 0) > 2000:
-            recommendations.append("⚡ Investiguer les requêtes les plus lentes (P95 > 2s)")
-        
-        # Recommandations système
-        system_perf = report.get("system_performance", {})
-        if system_perf.get("avg_cpu_percent", 0) > 70:
-            recommendations.append("🔧 Surveiller l'utilisation CPU élevée")
-        
-        if system_perf.get("avg_memory_percent", 0) > 80:
-            recommendations.append("💾 Optimiser l'utilisation mémoire")
-        
-        # Recommandations qualité
-        quality = report.get("quality_metrics", {})
-        if quality.get("cache_hit_rate", 100) < 70:
-            recommendations.append("📦 Améliorer la stratégie de cache (taux < 70%)")
-        
-        if quality.get("no_results_rate", 0) > 20:
-            recommendations.append("🔍 Améliorer la pertinence des recherches (trop de résultats vides)")
-        
-        if quality.get("error_rate", 0) > 5:
-            recommendations.append("🚨 Investiguer les erreurs de recherche (taux > 5%)")
-        
-        return recommendations
-    
-    def generate_alert_summary(self) -> Dict[str, Any]:
-        """Génère un résumé des alertes."""
-        now = datetime.utcnow()
-        
-        return {
-            "timestamp": now.isoformat(),
-            "active_alerts": len([a for a in self._active_alerts if not a.resolved]),
-            "alerts_last_24h": len([
-                a for a in self._alert_history 
-                if (now - a.timestamp).total_seconds() < 86400
-            ]),
-            "alerts_by_level": self._get_alerts_by_level(),
-            "most_frequent_alerts": self._get_most_frequent_alerts(),
-            "recent_alerts": [
-                alert.to_dict() for alert in sorted(
-                    [a for a in self._alert_history if (now - a.timestamp).total_seconds() < 86400],
-                    key=lambda x: x.timestamp,
-                    reverse=True
-                )[:10]
-            ]
-        }
-    
-    def _get_most_frequent_alerts(self) -> List[Dict[str, Any]]:
-        """Identifie les alertes les plus fréquentes."""
-        alert_counts = defaultdict(int)
-        
-        for alert in self._alert_history:
-            alert_counts[alert.metric_name] += 1
-        
-        # Trie par fréquence décroissante
-        sorted_alerts = sorted(alert_counts.items(), key=lambda x: x[1], reverse=True)
-        
-        return [
-            {"metric_name": metric, "count": count}
-            for metric, count in sorted_alerts[:5]
-        ]
-    
     # ==================== UTILITAIRES ====================
     
     def _get_metric_key(self, name: str, labels: Optional[Dict[str, str]]) -> str:
@@ -1288,6 +1364,24 @@ def email_alert_callback(alert: Alert):
     if alert.level in [AlertLevel.ERROR, AlertLevel.CRITICAL]:
         logger.info(f"Email d'alerte envoyé pour: {alert.name}")
 
+# ==================== FONCTIONS FACTORY ====================
+
+def create_metrics_collector(**kwargs) -> MetricsCollector:
+    """Crée ou récupère l'instance du collecteur de métriques."""
+    return MetricsCollector.get_instance(**kwargs)
+
+def create_search_metrics(collector: Optional[MetricsCollector] = None) -> SearchMetrics:
+    """Crée une instance de SearchMetrics."""
+    return SearchMetrics(collector)
+
+def create_performance_metrics(collector: Optional[MetricsCollector] = None) -> PerformanceMetrics:
+    """Crée une instance de PerformanceMetrics."""
+    return PerformanceMetrics(collector)
+
+def create_metrics_exporter(collector: Optional[MetricsCollector] = None) -> MetricsExporter:
+    """Crée une instance de MetricsExporter."""
+    return MetricsExporter(collector)
+
 # ==================== INSTANCE GLOBALE ====================
 
 def get_metrics_collector() -> MetricsCollector:
@@ -1301,3 +1395,40 @@ def get_metrics_collector() -> MetricsCollector:
         collector._default_setup_done = True
     
     return collector
+
+# ==================== EXPORTS PRINCIPAUX ====================
+
+__all__ = [
+    # Classes principales
+    'SearchMetrics',
+    'QueryMetrics', 
+    'PerformanceMetrics',
+    'MetricsCollector',
+    'MetricsExporter',
+    
+    # Types et structures
+    'MetricType',
+    'AlertLevel',
+    'TimeWindow',
+    'MetricPoint',
+    'MetricSummary',
+    'Alert',
+    'PerformanceProfile',
+    
+    # Décorateurs
+    'measure_time',
+    'count_calls',
+    'track_errors',
+    
+    # Fonctions factory
+    'create_metrics_collector',
+    'create_search_metrics',
+    'create_performance_metrics',
+    'create_metrics_exporter',
+    'get_metrics_collector',
+    
+    # Configuration
+    'setup_default_alerts',
+    'log_alert_callback',
+    'email_alert_callback'
+]

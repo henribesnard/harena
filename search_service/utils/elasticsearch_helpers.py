@@ -13,7 +13,7 @@ ARCHITECTURE CONSOLIDÉE:
 
 USAGE SIMPLIFIÉ:
     from search_service.utils.elasticsearch_helpers import (
-        QueryBuilder, ElasticsearchHelpers, format_search_results
+        QueryBuilder, ElasticsearchHelpers, format_search_results, build_query
     )
     
     # Construction rapide
@@ -27,6 +27,9 @@ USAGE SIMPLIFIÉ:
         .with_user_filter(123)
         .with_financial_search("virement café")
         .build())
+    
+    # Construction simple
+    query = build_query("virement café", user_id=123)
 """
 
 import logging
@@ -161,6 +164,156 @@ class AggregationResult:
     buckets: List[Dict[str, Any]] = field(default_factory=list)
     total_count: int = 0
     other_doc_count: int = 0
+
+# ==================== FONCTIONS PRINCIPALES ====================
+
+def build_query(query: str, 
+                user_id: int,
+                filters: Optional[Dict[str, Any]] = None,
+                size: int = 20,
+                from_: int = 0,
+                sort_by: str = "relevance",
+                include_aggregations: bool = False,
+                highlight: bool = True) -> Dict[str, Any]:
+    """
+    Fonction principale pour construire une requête Elasticsearch.
+    
+    Args:
+        query: Texte de recherche
+        user_id: ID utilisateur
+        filters: Filtres optionnels
+        size: Nombre de résultats
+        from_: Offset pour pagination
+        sort_by: Stratégie de tri
+        include_aggregations: Inclure les agrégations
+        highlight: Activer le highlighting
+        
+    Returns:
+        Dictionnaire de requête Elasticsearch
+    """
+    builder = QueryBuilder()
+    
+    # Configuration de base
+    builder.with_user_filter(user_id)
+    builder.with_financial_search(query)
+    
+    # Application des filtres
+    if filters:
+        if 'amount_min' in filters or 'amount_max' in filters:
+            builder.with_amount_filter(filters.get('amount_min'), filters.get('amount_max'))
+        
+        if 'date_start' in filters or 'date_end' in filters:
+            builder.with_date_filter(filters.get('date_start'), filters.get('date_end'))
+        
+        if 'categories' in filters:
+            builder.with_category_filter(filters['categories'])
+        
+        if 'merchants' in filters:
+            builder.with_merchant_filter(filters['merchants'])
+    
+    # Configuration avancée
+    try:
+        sort_strategy = SortStrategy(sort_by)
+    except ValueError:
+        sort_strategy = SortStrategy.RELEVANCE
+    
+    builder.with_sort(sort_strategy)
+    builder.with_pagination(size, from_)
+    
+    if highlight:
+        builder.with_highlighting()
+    
+    if include_aggregations:
+        builder.with_aggregations([
+            AggregationType.MERCHANTS,
+            AggregationType.CATEGORIES,
+            AggregationType.AMOUNTS
+        ])
+    
+    builder.with_recency_boost()
+    
+    return builder.build()
+
+def build_simple_query(query: str, user_id: int, size: int = 20) -> Dict[str, Any]:
+    """
+    Construit une requête simple pour recherche rapide.
+    
+    Args:
+        query: Texte de recherche
+        user_id: ID utilisateur
+        size: Nombre de résultats
+        
+    Returns:
+        Dictionnaire de requête Elasticsearch
+    """
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"term": {"user_id": user_id}},
+                    {"multi_match": {
+                        "query": query,
+                        "fields": FINANCIAL_SEARCH_FIELDS,
+                        "type": "best_fields",
+                        "fuzziness": "AUTO"
+                    }}
+                ]
+            }
+        },
+        "size": size,
+        "highlight": {
+            "pre_tags": ["<mark>"],
+            "post_tags": ["</mark>"],
+            "fields": HIGHLIGHT_FIELDS
+        }
+    }
+
+def build_filter_only_query(user_id: int, filters: Dict[str, Any], size: int = 50) -> Dict[str, Any]:
+    """
+    Construit une requête basée uniquement sur des filtres.
+    
+    Args:
+        user_id: ID utilisateur
+        filters: Dictionnaire de filtres
+        size: Nombre de résultats
+        
+    Returns:
+        Dictionnaire de requête Elasticsearch
+    """
+    filter_clauses = [{"term": {"user_id": user_id}}]
+    
+    for field, value in filters.items():
+        if field == "amount_range":
+            if isinstance(value, dict):
+                range_filter = {"range": {"amount": {}}}
+                if "min" in value:
+                    range_filter["range"]["amount"]["gte"] = value["min"]
+                if "max" in value:
+                    range_filter["range"]["amount"]["lte"] = value["max"]
+                filter_clauses.append(range_filter)
+        elif field == "date_range":
+            if isinstance(value, dict):
+                range_filter = {"range": {"transaction_date": {}}}
+                if "start" in value:
+                    range_filter["range"]["transaction_date"]["gte"] = value["start"]
+                if "end" in value:
+                    range_filter["range"]["transaction_date"]["lte"] = value["end"]
+                filter_clauses.append(range_filter)
+        elif field in ["category_id", "merchant_name", "transaction_type"]:
+            if isinstance(value, list):
+                filter_clauses.append({"terms": {field: value}})
+            else:
+                filter_clauses.append({"term": {field: value}})
+    
+    return {
+        "query": {
+            "bool": {
+                "filter": filter_clauses
+            }
+        },
+        "size": size,
+        "sort": [{"transaction_date": {"order": "desc"}}]
+    }
 
 # ==================== QUERY BUILDER ====================
 
@@ -936,6 +1089,139 @@ def validate_query_structure(query: Dict[str, Any]) -> Tuple[bool, List[str]]:
     
     return len(errors) == 0, errors
 
+def build_match_all_query(user_id: int, size: int = 20) -> Dict[str, Any]:
+    """
+    Construit une requête match_all avec filtre utilisateur.
+    
+    Args:
+        user_id: ID utilisateur
+        size: Nombre de résultats
+        
+    Returns:
+        Requête match_all
+    """
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"match_all": {}}
+                ],
+                "filter": [
+                    {"term": {"user_id": user_id}}
+                ]
+            }
+        },
+        "size": size,
+        "sort": [{"transaction_date": {"order": "desc"}}]
+    }
+
+def build_fuzzy_query(query: str, user_id: int, fuzziness: str = "AUTO") -> Dict[str, Any]:
+    """
+    Construit une requête floue pour recherche approximative.
+    
+    Args:
+        query: Texte de recherche
+        user_id: ID utilisateur
+        fuzziness: Niveau de flou ("AUTO", "0", "1", "2")
+        
+    Returns:
+        Requête floue
+    """
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"fuzzy": {
+                        "searchable_text": {
+                            "value": query,
+                            "fuzziness": fuzziness
+                        }
+                    }}
+                ],
+                "filter": [
+                    {"term": {"user_id": user_id}}
+                ]
+            }
+        },
+        "size": 20
+    }
+
+def build_wildcard_query(pattern: str, user_id: int, field: str = "searchable_text") -> Dict[str, Any]:
+    """
+    Construit une requête wildcard pour recherche par motif.
+    
+    Args:
+        pattern: Motif de recherche avec * et ?
+        user_id: ID utilisateur
+        field: Champ à rechercher
+        
+    Returns:
+        Requête wildcard
+    """
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"wildcard": {
+                        field: {
+                            "value": pattern
+                        }
+                    }}
+                ],
+                "filter": [
+                    {"term": {"user_id": user_id}}
+                ]
+            }
+        },
+        "size": 20
+    }
+
+def build_range_query(user_id: int, 
+                     field: str,
+                     gte: Optional[Union[int, float, str]] = None,
+                     lte: Optional[Union[int, float, str]] = None,
+                     gt: Optional[Union[int, float, str]] = None,
+                     lt: Optional[Union[int, float, str]] = None) -> Dict[str, Any]:
+    """
+    Construit une requête de plage pour filtrage numérique ou de date.
+    
+    Args:
+        user_id: ID utilisateur
+        field: Champ à filtrer
+        gte: Supérieur ou égal à
+        lte: Inférieur ou égal à
+        gt: Supérieur à
+        lt: Inférieur à
+        
+    Returns:
+        Requête de plage
+    """
+    range_conditions = {}
+    
+    if gte is not None:
+        range_conditions["gte"] = gte
+    if lte is not None:
+        range_conditions["lte"] = lte
+    if gt is not None:
+        range_conditions["gt"] = gt
+    if lt is not None:
+        range_conditions["lt"] = lt
+    
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"range": {field: range_conditions}}
+                ],
+                "filter": [
+                    {"term": {"user_id": user_id}}
+                ]
+            }
+        },
+        "size": 50,
+        "sort": [{field: {"order": "desc"}}]
+    }
+
 # ==================== FACTORY FUNCTIONS ====================
 
 def create_query_builder() -> QueryBuilder:
@@ -953,6 +1239,145 @@ def create_score_calculator(**kwargs) -> ScoreCalculator:
 def create_highlight_processor(**kwargs) -> HighlightProcessor:
     """Crée un HighlightProcessor configuré."""
     return HighlightProcessor(**kwargs)
+
+# ==================== OPTIMISATIONS AVANCÉES ====================
+
+def add_function_score(query: Dict[str, Any], 
+                      boost_functions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Ajoute un function_score à une requête existante.
+    
+    Args:
+        query: Requête de base
+        boost_functions: Liste des fonctions de boost
+        
+    Returns:
+        Requête avec function_score
+    """
+    return {
+        "query": {
+            "function_score": {
+                "query": query.get("query", {"match_all": {}}),
+                "functions": boost_functions,
+                "boost_mode": "multiply",
+                "score_mode": "sum"
+            }
+        },
+        **{k: v for k, v in query.items() if k != "query"}
+    }
+
+def add_rescore(query: Dict[str, Any], 
+               rescore_query: Dict[str, Any],
+               window_size: int = 50) -> Dict[str, Any]:
+    """
+    Ajoute un rescore à une requête pour améliorer la pertinence.
+    
+    Args:
+        query: Requête de base
+        rescore_query: Requête de rescoring
+        window_size: Taille de la fenêtre de rescoring
+        
+    Returns:
+        Requête avec rescore
+    """
+    query_with_rescore = query.copy()
+    query_with_rescore["rescore"] = {
+        "window_size": window_size,
+        "query": {
+            "rescore_query": rescore_query,
+            "query_weight": 1.0,
+            "rescore_query_weight": 2.0
+        }
+    }
+    return query_with_rescore
+
+def build_more_like_this_query(user_id: int,
+                              like_documents: List[Dict[str, Any]],
+                              fields: List[str] = None,
+                              min_term_freq: int = 1,
+                              max_query_terms: int = 25) -> Dict[str, Any]:
+    """
+    Construit une requête "More Like This" pour trouver des documents similaires.
+    
+    Args:
+        user_id: ID utilisateur
+        like_documents: Documents de référence
+        fields: Champs à analyser
+        min_term_freq: Fréquence minimum des termes
+        max_query_terms: Nombre maximum de termes de requête
+        
+    Returns:
+        Requête More Like This
+    """
+    fields = fields or FINANCIAL_SEARCH_FIELDS
+    
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"more_like_this": {
+                        "fields": fields,
+                        "like": like_documents,
+                        "min_term_freq": min_term_freq,
+                        "max_query_terms": max_query_terms,
+                        "min_doc_freq": 1
+                    }}
+                ],
+                "filter": [
+                    {"term": {"user_id": user_id}}
+                ]
+            }
+        },
+        "size": 20
+    }
+
+# ==================== GESTION DES ERREURS ====================
+
+class QueryBuilderError(Exception):
+    """Exception levée lors d'erreurs de construction de requête."""
+    pass
+
+class QueryValidationError(Exception):
+    """Exception levée lors d'erreurs de validation de requête."""
+    pass
+
+class ElasticsearchHelperError(Exception):
+    """Exception levée lors d'erreurs des helpers Elasticsearch."""
+    pass
+
+def safe_build_query(query: str, user_id: int, **kwargs) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Construit une requête de manière sécurisée avec gestion d'erreurs.
+    
+    Args:
+        query: Texte de recherche
+        user_id: ID utilisateur
+        **kwargs: Options supplémentaires
+        
+    Returns:
+        Tuple (requête, message_erreur)
+    """
+    try:
+        # Validation des paramètres
+        if not query or not query.strip():
+            return None, "Query text cannot be empty"
+        
+        if not user_id or user_id <= 0:
+            return None, "User ID must be a positive integer"
+        
+        # Construction de la requête
+        built_query = build_query(query, user_id, **kwargs)
+        
+        # Validation de la structure
+        is_valid, errors = validate_query_structure(built_query)
+        if not is_valid:
+            return None, f"Query validation failed: {', '.join(errors)}"
+        
+        return built_query, None
+        
+    except Exception as e:
+        logger.error(f"Error building query: {e}")
+        return None, f"Query building error: {str(e)}"
 
 # ==================== EXPORTS PRINCIPAUX ====================
 
@@ -973,6 +1398,11 @@ __all__ = [
     'BoostType',
     'AggregationType',
     
+    # Fonctions principales
+    'build_query',
+    'build_simple_query',
+    'build_filter_only_query',
+    
     # Fonctions utilitaires
     'format_search_results',
     'extract_highlights',
@@ -980,12 +1410,27 @@ __all__ = [
     'optimize_query_for_performance',
     'build_suggestion_query',
     'validate_query_structure',
+    'build_match_all_query',
+    'build_fuzzy_query',
+    'build_wildcard_query',
+    'build_range_query',
+    'build_more_like_this_query',
+    
+    # Fonctions avancées
+    'add_function_score',
+    'add_rescore',
+    'safe_build_query',
     
     # Factory functions
     'create_query_builder',
     'create_result_formatter',
     'create_score_calculator',
     'create_highlight_processor',
+    
+    # Exceptions
+    'QueryBuilderError',
+    'QueryValidationError',
+    'ElasticsearchHelperError',
     
     # Configuration
     'FINANCIAL_SYNONYMS',

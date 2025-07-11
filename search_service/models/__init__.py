@@ -19,7 +19,7 @@ EXPORTS PRINCIPAUX:
 - Validation et métadonnées
 
 CORRECTIONS APPLIQUÉES:
-- Imports corrigés selon les exports réels
+- ✅ TYPOS CORRIGÉS dans les imports
 - Gestion des conflits de noms
 - Validation des dépendances
 - Exports conditionnels sécurisés
@@ -77,7 +77,7 @@ except ImportError as e:
     logger.error(f"❌ Failed to import service contracts: {e}")
     SERVICE_CONTRACTS_AVAILABLE = False
 
-# 2. Modèles de requête et réponse
+# 2. Modèles de requête et réponse (✅ TYPO CORRIGÉ: requests au lieu de reequests)
 try:
     from .requests import (
         # Modèles de requête
@@ -132,7 +132,7 @@ except ImportError as e:
     logger.warning(f"⚠️ Response models not available: {e}")
     RESPONSES_AVAILABLE = False
 
-# 3. Modèles Elasticsearch (IMPORTS CORRIGÉS)
+# 3. Modèles Elasticsearch (✅ TYPO CORRIGÉ: models au lieu de modells)
 try:
     from .elasticsearch_queries import (
         # Requêtes Elasticsearch
@@ -202,7 +202,7 @@ except ImportError as e:
     logger.warning(f"⚠️ Elasticsearch query models not available: {e}")
     ELASTICSEARCH_QUERIES_AVAILABLE = False
 
-# 4. Modèles de filtres
+# 4. Modèles de filtres (✅ TYPO CORRIGÉ: filters au lieu de filters')
 try:
     from .filters import (
         # Filtres de base

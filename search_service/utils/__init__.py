@@ -1,267 +1,140 @@
 """
-🛠️ Utilitaires Search Service - Boîte à Outils Spécialisée
-=========================================================
+Utilitaires pour le service de recherche - VERSION CENTRALISÉE.
 
-Module utilitaires pour le Search Service avec des outils spécialisés
-pour Elasticsearch, validation, cache et optimisations de performance.
+Ce module expose les utilitaires communs utilisés
+par le service de recherche hybride avec configuration centralisée.
 
-Organisation:
-- Elasticsearch helpers (priorité #1 pour le core)
-- Validators (validation requêtes)
-- Cache LRU (performance)
-- Metrics (monitoring)
+AMÉLIORATION:
+- Configuration entièrement centralisée via config_service
+- Plus de duplication de paramètres
+- Contrôle total via .env
 """
 
-# =============================================================================
-# 🔍 UTILITAIRES ELASTICSEARCH (PRIORITÉ #1)
-# =============================================================================
-
-from .elasticsearch_helpers import (
-    # Construction requêtes
-    build_bool_query, build_text_search_query, build_filter_query, build_aggregation_query,
-    # Filtres spécialisés
-    build_user_filter, build_category_filter, build_merchant_filter, 
-    build_amount_filter, build_date_filter, build_text_filter,
-    # Agrégations financières
-    build_sum_aggregation, build_count_aggregation, build_avg_aggregation,
-    build_date_histogram, build_terms_aggregation, build_stats_aggregation,
-    # Optimisation requêtes
-    optimize_query_performance, add_query_cache, calculate_query_complexity,
-    # Helpers génériques
-    escape_elasticsearch_query, validate_field_name, format_elasticsearch_error,
-    parse_elasticsearch_response, extract_aggregation_results,
-    # Constantes
-    FINANCIAL_FIELDS, SEARCHABLE_FIELDS, FILTERABLE_FIELDS, AGGREGATABLE_FIELDS,
-    MAX_QUERY_SIZE, DEFAULT_TIMEOUT_MS, CACHE_TTL_SECONDS,
+# Stratégies de fusion avec configuration centralisée
+from .fusion_strategies import (
+    FusionStrategy,
+    FusionConfig,
+    ScoreNormalizer,
+    FusionStrategyExecutor,
+    create_simple_executor,
+    create_default_executor
 )
 
-# =============================================================================
-# ✅ VALIDATORS (VALIDATION REQUÊTES)
-# =============================================================================
-
-from .validators import (
-    # Validators principaux
-    ElasticsearchQueryValidator, SearchServiceQueryValidator, FilterValidator,
-    # Validation spécialisée
-    validate_user_isolation, validate_financial_query, validate_search_parameters,
-    validate_filter_security, validate_aggregation_request, validate_query_complexity,
-    # Validation champs
-    validate_field_access, validate_field_types, validate_field_values,
-    validate_date_ranges, validate_amount_ranges, validate_text_search,
-    # Validation performance
-    validate_query_limits, validate_timeout_settings, validate_cache_settings,
-    # Sanitization
-    sanitize_user_input, sanitize_elasticsearch_query, sanitize_field_values,
-    # Helpers validation
-    is_valid_user_id, is_valid_field_name, is_safe_query_value,
-    # Exceptions
-    ValidationError, SecurityValidationError, PerformanceValidationError,
-    # Constantes
-    MAX_QUERY_LENGTH, MAX_RESULTS_LIMIT, ALLOWED_OPERATORS, FORBIDDEN_FIELDS,
+# Utilitaires de fusion (inchangés - pas de config hardcodée)
+from .fusion_utils import (
+    create_fused_item,
+    create_transaction_signature,
+    calculate_signature_similarity,
+    deduplicate_results,
+    diversify_results,
+    apply_quality_boost
 )
 
-# =============================================================================
-# 💾 CACHE LRU (PERFORMANCE)
-# =============================================================================
+# Évaluation de qualité (inchangés - pas de config hardcodée)
+from .quality_assessment import (
+    QualityAssessor,
+    quality_to_score,
+    calculate_quality_metrics
+)
 
+# Optimisation des poids avec configuration centralisée
+from .weight_optimizer import (
+    WeightOptimizer,
+    AdaptiveWeightManager,
+    create_weight_optimizer,
+    create_adaptive_weight_manager,
+    get_default_weights,
+    validate_weights,
+    get_weight_optimization_config
+)
+
+# Cache avec configuration centralisée
 from .cache import (
-    # Cache principal
-    SearchResultsCache, QueryCache, AggregationCache,
-    # Cache managers
-    CacheManager, CacheKey, CacheStats, CacheConfig,
-    # Cache spécialisé
-    UserQueryCache, FinancialDataCache, PerformanceCache,
-    # Cache operations
-    cache_search_results, cache_aggregations, cache_query_templates,
-    invalidate_user_cache, invalidate_query_cache, clear_all_caches,
-    # Cache metrics
-    get_cache_hit_rate, get_cache_memory_usage, get_cache_statistics,
-    # Cache strategies
-    CacheStrategy, LRUCacheStrategy, TTLCacheStrategy, SizeLimitedCacheStrategy,
-    # Helpers
-    generate_cache_key, serialize_cache_value, deserialize_cache_value,
-    # Constantes
-    DEFAULT_CACHE_SIZE, DEFAULT_TTL_SECONDS, MAX_CACHE_MEMORY_MB,
+    SearchCache,
+    MultiLevelCache,
+    global_cache,
+    get_search_cache,
+    get_embedding_cache,
+    get_query_analysis_cache,
+    get_suggestions_cache,
+    generate_cache_key,
+    cache_with_ttl,
+    get_cache_metrics,
+    is_cache_enabled,
+    get_cache_config_summary
 )
-
-# =============================================================================
-# 📈 MÉTRIQUES (MONITORING) 
-# =============================================================================
-
-from .metrics import (
-    # Métriques principales
-    SearchMetrics, PerformanceMetrics, ElasticsearchMetrics,
-    # Collecteurs métriques
-    MetricsCollector, PerformanceCollector, CacheMetricsCollector,
-    # Métriques business
-    QueryComplexityMetrics, UserBehaviorMetrics, FinancialSearchMetrics,
-    # Recording métriques
-    record_search_execution, record_query_performance, record_cache_usage,
-    record_elasticsearch_operation, record_validation_result, record_error_event,
-    # Métriques temps réel
-    get_real_time_metrics, get_performance_dashboard, get_health_metrics,
-    # Agrégation métriques
-    aggregate_hourly_metrics, aggregate_daily_metrics, get_trend_analysis,
-    # Alerting
-    check_performance_alerts, check_error_rate_alerts, check_resource_alerts,
-    # Export métriques
-    export_metrics_prometheus, export_metrics_json, export_metrics_csv,
-    # Constantes
-    METRIC_NAMES, ALERT_THRESHOLDS, DASHBOARD_REFRESH_SECONDS,
-)
-
-# =============================================================================
-# 📋 EXPORTS GROUPÉS PAR FONCTIONNALITÉ
-# =============================================================================
-
-# Utilitaires Elasticsearch (core)
-ELASTICSEARCH_UTILS = [
-    "build_bool_query", "build_text_search_query", "build_filter_query",
-    "optimize_query_performance", "parse_elasticsearch_response", "FINANCIAL_FIELDS"
-]
-
-# Validation et sécurité
-VALIDATION_UTILS = [
-    "ElasticsearchQueryValidator", "SearchServiceQueryValidator", 
-    "validate_user_isolation", "sanitize_user_input", "ValidationError"
-]
-
-# Cache et performance
-CACHE_UTILS = [
-    "SearchResultsCache", "CacheManager", "cache_search_results",
-    "get_cache_hit_rate", "CacheStrategy", "DEFAULT_CACHE_SIZE"
-]
-
-# Monitoring et métriques
-METRICS_UTILS = [
-    "SearchMetrics", "MetricsCollector", "record_search_execution", 
-    "get_real_time_metrics", "check_performance_alerts", "METRIC_NAMES"
-]
-
-# =============================================================================
-# 🔧 UTILITAIRES GÉNÉRIQUES
-# =============================================================================
-
-def get_utility_by_name(util_name: str):
-    """Récupérer utilitaire par nom."""
-    return globals().get(util_name)
-
-def list_available_utilities() -> dict:
-    """Lister tous les utilitaires disponibles par catégorie."""
-    return {
-        "elasticsearch": ELASTICSEARCH_UTILS,
-        "validation": VALIDATION_UTILS,
-        "cache": CACHE_UTILS,
-        "metrics": METRICS_UTILS,
-    }
-
-def validate_utility_imports():
-    """Valider que tous les imports fonctionnent."""
-    try:
-        # Test imports Elasticsearch
-        assert build_bool_query is not None
-        assert FINANCIAL_FIELDS is not None
-        
-        # Test imports validation
-        assert ElasticsearchQueryValidator is not None
-        assert validate_user_isolation is not None
-        
-        # Test imports cache
-        assert SearchResultsCache is not None
-        assert CacheManager is not None
-        
-        # Test imports métriques
-        assert SearchMetrics is not None
-        assert MetricsCollector is not None
-        
-        return True
-    except (ImportError, AssertionError) as e:
-        return False, str(e)
-
-# =============================================================================
-# 📋 EXPORTS FINAUX
-# =============================================================================
 
 __all__ = [
-    # === ELASTICSEARCH HELPERS ===
-    # Construction requêtes
-    "build_bool_query", "build_text_search_query", "build_filter_query", "build_aggregation_query",
-    # Filtres spécialisés
-    "build_user_filter", "build_category_filter", "build_merchant_filter", 
-    "build_amount_filter", "build_date_filter", "build_text_filter",
-    # Agrégations financières
-    "build_sum_aggregation", "build_count_aggregation", "build_avg_aggregation",
-    "build_date_histogram", "build_terms_aggregation", "build_stats_aggregation",
-    # Optimisation
-    "optimize_query_performance", "add_query_cache", "calculate_query_complexity",
-    # Helpers
-    "escape_elasticsearch_query", "validate_field_name", "format_elasticsearch_error",
-    "parse_elasticsearch_response", "extract_aggregation_results",
-    # Constantes
-    "FINANCIAL_FIELDS", "SEARCHABLE_FIELDS", "FILTERABLE_FIELDS", "AGGREGATABLE_FIELDS",
-    "MAX_QUERY_SIZE", "DEFAULT_TIMEOUT_MS", "CACHE_TTL_SECONDS",
+    # Stratégies de fusion
+    "FusionStrategy",
+    "FusionConfig", 
+    "ScoreNormalizer",
+    "FusionStrategyExecutor",
+    "create_simple_executor",
+    "create_default_executor",
     
-    # === VALIDATORS ===
-    # Validators principaux
-    "ElasticsearchQueryValidator", "SearchServiceQueryValidator", "FilterValidator",
-    # Validation spécialisée
-    "validate_user_isolation", "validate_financial_query", "validate_search_parameters",
-    "validate_filter_security", "validate_aggregation_request", "validate_query_complexity",
-    # Validation champs
-    "validate_field_access", "validate_field_types", "validate_field_values",
-    "validate_date_ranges", "validate_amount_ranges", "validate_text_search",
-    # Validation performance
-    "validate_query_limits", "validate_timeout_settings", "validate_cache_settings",
-    # Sanitization
-    "sanitize_user_input", "sanitize_elasticsearch_query", "sanitize_field_values",
-    # Helpers
-    "is_valid_user_id", "is_valid_field_name", "is_safe_query_value",
-    # Exceptions
-    "ValidationError", "SecurityValidationError", "PerformanceValidationError",
-    # Constantes
-    "MAX_QUERY_LENGTH", "MAX_RESULTS_LIMIT", "ALLOWED_OPERATORS", "FORBIDDEN_FIELDS",
+    # Utilitaires de fusion
+    "create_fused_item",
+    "create_transaction_signature",
+    "calculate_signature_similarity",
+    "deduplicate_results",
+    "diversify_results",
+    "apply_quality_boost",
     
-    # === CACHE ===
-    # Cache principal
-    "SearchResultsCache", "QueryCache", "AggregationCache",
-    # Cache managers
-    "CacheManager", "CacheKey", "CacheStats", "CacheConfig",
-    # Cache spécialisé
-    "UserQueryCache", "FinancialDataCache", "PerformanceCache",
-    # Cache operations
-    "cache_search_results", "cache_aggregations", "cache_query_templates",
-    "invalidate_user_cache", "invalidate_query_cache", "clear_all_caches",
-    # Cache metrics
-    "get_cache_hit_rate", "get_cache_memory_usage", "get_cache_statistics",
-    # Cache strategies
-    "CacheStrategy", "LRUCacheStrategy", "TTLCacheStrategy", "SizeLimitedCacheStrategy",
-    # Helpers
-    "generate_cache_key", "serialize_cache_value", "deserialize_cache_value",
-    # Constantes
-    "DEFAULT_CACHE_SIZE", "DEFAULT_TTL_SECONDS", "MAX_CACHE_MEMORY_MB",
+    # Évaluation de qualité
+    "QualityAssessor",
+    "quality_to_score",
+    "calculate_quality_metrics",
     
-    # === MÉTRIQUES ===
-    # Métriques principales
-    "SearchMetrics", "PerformanceMetrics", "ElasticsearchMetrics",
-    # Collecteurs
-    "MetricsCollector", "PerformanceCollector", "CacheMetricsCollector",
-    # Business metrics
-    "QueryComplexityMetrics", "UserBehaviorMetrics", "FinancialSearchMetrics",
-    # Recording
-    "record_search_execution", "record_query_performance", "record_cache_usage",
-    "record_elasticsearch_operation", "record_validation_result", "record_error_event",
-    # Temps réel
-    "get_real_time_metrics", "get_performance_dashboard", "get_health_metrics",
-    # Agrégation
-    "aggregate_hourly_metrics", "aggregate_daily_metrics", "get_trend_analysis",
-    # Alerting
-    "check_performance_alerts", "check_error_rate_alerts", "check_resource_alerts",
-    # Export
-    "export_metrics_prometheus", "export_metrics_json", "export_metrics_csv",
-    # Constantes
-    "METRIC_NAMES", "ALERT_THRESHOLDS", "DASHBOARD_REFRESH_SECONDS",
+    # Optimisation des poids
+    "WeightOptimizer",
+    "AdaptiveWeightManager",
+    "create_weight_optimizer",
+    "create_adaptive_weight_manager",
+    "get_default_weights",
+    "validate_weights",
+    "get_weight_optimization_config",
     
-    # === UTILITAIRES GÉNÉRIQUES ===
-    "get_utility_by_name", "list_available_utilities", "validate_utility_imports",
-    "ELASTICSEARCH_UTILS", "VALIDATION_UTILS", "CACHE_UTILS", "METRICS_UTILS",
+    # Cache
+    "SearchCache",
+    "MultiLevelCache",
+    "global_cache",
+    "get_search_cache",
+    "get_embedding_cache",
+    "get_query_analysis_cache",
+    "get_suggestions_cache",
+    "generate_cache_key",
+    "cache_with_ttl",
+    "get_cache_metrics",
+    "is_cache_enabled",
+    "get_cache_config_summary"
 ]
+
+# ==========================================
+# 🎯 FONCTIONS D'ACCÈS RAPIDE CENTRALISÉES
+# ==========================================
+
+def get_utils_config_summary():
+    """Retourne un résumé de la configuration des utilitaires."""
+    from config_service.config import settings
+    
+    return {
+        "fusion": {
+            "default_lexical_weight": settings.DEFAULT_LEXICAL_WEIGHT,
+            "default_semantic_weight": settings.DEFAULT_SEMANTIC_WEIGHT,
+            "score_normalization_method": settings.SCORE_NORMALIZATION_METHOD,
+            "rrf_k": settings.RRF_K,
+            "adaptive_threshold": settings.ADAPTIVE_THRESHOLD,
+            "quality_boost_factor": settings.QUALITY_BOOST_FACTOR,
+            "enable_deduplication": settings.ENABLE_DEDUPLICATION,
+            "enable_diversification": settings.ENABLE_DIVERSIFICATION
+        },
+        "cache": get_cache_config_summary(),
+        "quality": {
+            "excellent_threshold": settings.QUALITY_EXCELLENT_THRESHOLD,
+            "good_threshold": settings.QUALITY_GOOD_THRESHOLD,
+            "medium_threshold": settings.QUALITY_MEDIUM_THRESHOLD,
+            "poor_threshold": settings.QUALITY_POOR_THRESHOLD
+        },
+        "config_source": "centralized (config_service)"
+    }

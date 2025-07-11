@@ -1,28 +1,16 @@
 """
-Module clients pour le service de recherche.
+Clients pour le service de recherche.
 
-Ce module fournit les clients pour les services externes utilisés
-par le service de recherche, notamment Elasticsearch/Bonsai.
+Ce module expose les clients pour Elasticsearch et Qdrant
+ainsi que la classe de base commune.
 """
 
-from .base_client import (
-    BaseClient,
-    ClientStatus,
-    RetryConfig,
-    CircuitBreakerConfig,
-    HealthCheckConfig,
-    CircuitBreaker,
-    CircuitBreakerState
-)
 from .elasticsearch_client import ElasticsearchClient
+from .qdrant_client import QdrantClient
+from .base_client import BaseClient
 
 __all__ = [
-    "BaseClient",
-    "ClientStatus", 
-    "RetryConfig",
-    "CircuitBreakerConfig",
-    "HealthCheckConfig",
-    "CircuitBreaker",
-    "CircuitBreakerState",
-    "ElasticsearchClient"
+    "ElasticsearchClient",
+    "QdrantClient", 
+    "BaseClient"
 ]

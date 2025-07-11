@@ -1,37 +1,39 @@
 """
-🔍 Search Service - Module Principal
-===================================
+🔍 SEARCH SERVICE HARENA
 
-Point d'entrée du Search Service spécialisé en recherche lexicale pure Elasticsearch.
-Architecture hybride séparant Search Service (lexical) et Conversation Service (IA).
+Service de recherche hybride pour les transactions financières.
+Combine recherche lexicale (Elasticsearch) et sémantique (Qdrant).
 
-Exports principaux:
-- Modèles et contrats
-- Configuration
-- Version et métadonnées
+Architecture:
+- Recherche lexicale: Bonsai Elasticsearch
+- Recherche sémantique: Qdrant avec embeddings OpenAI
+- Fusion des résultats avec pondération intelligente
+- Cache LRU pour performances optimales
+
+Usage:
+    from search_service import create_search_app
+    
+    app = create_search_app()
+
+Responsabilités:
+✅ LECTURE UNIQUEMENT - Recherche dans les données existantes
+❌ PAS D'ÉCRITURE - Enrichment géré par enrichment_service
 """
 
-from .models import (
-    # Contrats principaux
-    SearchServiceQuery, SearchServiceResponse, ContractValidator,
-    # Modèles requêtes/réponses
-    SimpleLexicalSearchRequest, BaseResponse, ResponseFactory,
-    # Filtres
-    FilterBuilder, CompositeFilter,
-    # Elasticsearch
-    ElasticsearchQuery, ElasticsearchQueryBuilder
-)
-
-# Métadonnées module
 __version__ = "1.0.0"
-__author__ = "Search Service Team"
-__description__ = "Search Service spécialisé recherche lexicale Elasticsearch"
+__author__ = "Harena Finance Team"
 
-# Exports principaux
+# Imports principaux pour faciliter l'utilisation
+from search_service.main import create_search_app
+from search_service.core.search_engine import HybridSearchEngine
+from search_service.models.requests import SearchRequest, AdvancedSearchRequest
+from search_service.models.responses import SearchResponse, SearchResultItem
+
 __all__ = [
-    "SearchServiceQuery", "SearchServiceResponse", "ContractValidator",
-    "SimpleLexicalSearchRequest", "BaseResponse", "ResponseFactory",
-    "FilterBuilder", "CompositeFilter",
-    "ElasticsearchQuery", "ElasticsearchQueryBuilder",
-    "__version__"
+    "create_search_app",
+    "HybridSearchEngine", 
+    "SearchRequest",
+    "AdvancedSearchRequest",
+    "SearchResponse",
+    "SearchResultItem"
 ]

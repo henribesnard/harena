@@ -11,6 +11,7 @@ from datetime import datetime
 import aiohttp
 
 from search_service.clients.base_client import BaseClient, RetryConfig, CircuitBreakerConfig, HealthCheckConfig
+from search_service.models.search_types import FINANCIAL_SYNONYMS
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +299,7 @@ class ElasticsearchClient(BaseClient):
         - Les scores max sont corrects (139.33 pour virement, 96.30 pour carte)
         - Certaines requêtes ne retournent aucun résultat (essence, pharmacie)
         """
-        # Plus d'expansion locale - query déjà optimisée par conversation_service
+        expanded_query = self._expand_financial_query(query)
         query_words = query.lower().split()
         
         # Requête multi-stratégie optimisée
@@ -355,18 +356,18 @@ class ElasticsearchClient(BaseClient):
                             }
                         },
                         
-                        # 4. Correspondance cross-fields optimisée
+                        # 4. Correspondance avec requête étendue (synonymes)
                         {
                             "multi_match": {
-                                "query": query,  # Pas d'expansion - query déjà optimisée
+                                "query": expanded_query,
                                 "fields": [
-                                    "searchable_text^2.5",
-                                    "primary_description^2.0",
-                                    "merchant_name^2.5"
+                                    "searchable_text^2.5",      # Augmenté de 2.0 à 2.5
+                                    "primary_description^2.0",  # Augmenté de 1.5 à 2.0
+                                    "merchant_name^2.5"         # Ajouté
                                 ],
                                 "type": "cross_fields",
                                 "operator": "or",
-                                "boost": 2.5
+                                "boost": 2.5  # Augmenté de 2.0 à 2.5
                             }
                         },
                         
@@ -475,7 +476,16 @@ class ElasticsearchClient(BaseClient):
         
         return search_query
     
-    # Plus de méthode _expand_financial_query - fait par conversation_service
+    def _expand_financial_query(self, query: str) -> str:
+        """Expand les requêtes avec des synonymes financiers."""
+        query_lower = query.lower()
+        expanded_terms = [query]
+        
+        for term, synonyms in FINANCIAL_SYNONYMS.items():
+            if term in query_lower:
+                expanded_terms.extend(synonyms)
+        
+        return " ".join(set(expanded_terms))
     
     def _apply_filters(self, search_query: Dict[str, Any], filters: Dict[str, Any]):
         """Applique les filtres à la requête de recherche."""

@@ -18,12 +18,12 @@ CONFIGURATION CENTRALISÉE:
 - Champs et valeurs validées
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional, Union, Literal, Type
 from enum import Enum
 from abc import ABC, abstractmethod
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.types import PositiveInt, NonNegativeInt, NonNegativeFloat
 
 # Configuration centralisée
@@ -64,828 +64,729 @@ class FilterOperator(str, Enum):
 
 class FilterLogic(str, Enum):
     """Logique de combinaison des filtres."""
-    AND = "and"
-    OR = "or"
-    NOT = "not"
+    AND = "AND"
+    OR = "OR"
+    NOT = "NOT"
 
-# Constantes financières
-TRANSACTION_TYPES = ["debit", "credit"]
-CURRENCY_CODES = ["EUR", "USD", "GBP", "CHF", "CAD", "JPY"]
-FINANCIAL_CATEGORIES = [
-    "alimentation", "restaurant", "transport", "carburant", "santé", "pharmacie",
-    "shopping", "loisirs", "sport", "culture", "voyage", "hébergement",
-    "services", "banque", "assurance", "impôts", "charges", "loyer",
-    "énergie", "télécom", "internet", "abonnements", "éducation", "enfants",
-    "animaux", "jardinage", "bricolage", "beauté", "coiffeur", "vêtements",
-    "électronique", "informatique", "mobilier", "décoration", "cadeaux",
-    "dons", "épargne", "investissement", "remboursement", "virement", "autre"
-]
-
-# Champs financiers valides pour filtrage
-VALID_FILTER_FIELDS = {
-    "user_id": {"type": "integer", "required": True},
-    "account_id": {"type": "integer", "required": False},
-    "transaction_id": {"type": "string", "required": False},
-    "amount": {"type": "float", "required": False},
-    "amount_abs": {"type": "float", "required": False},
-    "currency_code": {"type": "string", "required": False, "values": CURRENCY_CODES},
-    "transaction_type": {"type": "string", "required": False, "values": TRANSACTION_TYPES},
-    "operation_type": {"type": "string", "required": False},
-    "date": {"type": "date", "required": False},
-    "month_year": {"type": "string", "required": False},
-    "weekday": {"type": "string", "required": False},
-    "primary_description": {"type": "string", "required": False},
-    "merchant_name": {"type": "string", "required": False},
-    "category_name": {"type": "string", "required": False, "values": FINANCIAL_CATEGORIES}
-}
-
-# Opérateurs valides par type de champ
-FIELD_VALID_OPERATORS = {
-    "integer": [FilterOperator.EQ, FilterOperator.NE, FilterOperator.GT, FilterOperator.GTE, 
-                FilterOperator.LT, FilterOperator.LTE, FilterOperator.IN, FilterOperator.NOT_IN, FilterOperator.BETWEEN],
-    "float": [FilterOperator.EQ, FilterOperator.NE, FilterOperator.GT, FilterOperator.GTE, 
-              FilterOperator.LT, FilterOperator.LTE, FilterOperator.IN, FilterOperator.NOT_IN, FilterOperator.BETWEEN],
-    "string": [FilterOperator.EQ, FilterOperator.NE, FilterOperator.IN, FilterOperator.NOT_IN, 
-               FilterOperator.CONTAINS, FilterOperator.STARTS_WITH, FilterOperator.ENDS_WITH, FilterOperator.REGEX],
-    "date": [FilterOperator.EQ, FilterOperator.NE, FilterOperator.GT, FilterOperator.GTE, 
-             FilterOperator.LT, FilterOperator.LTE, FilterOperator.BETWEEN],
-    "boolean": [FilterOperator.EQ, FilterOperator.NE]
-}
+class DateRange(str, Enum):
+    """Plages de dates prédéfinies."""
+    TODAY = "today"
+    YESTERDAY = "yesterday"
+    LAST_7_DAYS = "last_7_days"
+    LAST_30_DAYS = "last_30_days"
+    LAST_3_MONTHS = "last_3_months"
+    LAST_6_MONTHS = "last_6_months"
+    LAST_YEAR = "last_year"
+    THIS_MONTH = "this_month"
+    LAST_MONTH = "last_month"
+    THIS_YEAR = "this_year"
+    CUSTOM = "custom"
 
 # ==================== MODÈLES DE BASE ====================
 
 class BaseFilter(BaseModel, ABC):
-    """Classe de base pour tous les filtres."""
+    """
+    Classe de base pour tous les filtres.
+    
+    Définit l'interface commune et les validations de base
+    pour tous les types de filtres.
+    """
     filter_type: FilterType = Field(..., description="Type de filtre")
     field: str = Field(..., description="Champ à filtrer")
     operator: FilterOperator = Field(..., description="Opérateur de filtrage")
-    boost: Optional[float] = Field(None, ge=0.0, le=10.0, description="Boost de pertinence")
-    metadata: Dict[str, Any] = Field(default={}, description="Métadonnées additionnelles")
+    boost: float = Field(default=1.0, ge=0.1, le=10.0, description="Facteur de boost")
+    required: bool = Field(default=True, description="Filtre obligatoire ou optionnel")
+    
+    @field_validator('field')
+    @classmethod
+    def validate_field(cls, v):
+        """Valide que le champ est autorisé."""
+        allowed_fields = getattr(settings, 'ALLOWED_FILTER_FIELDS', [])
+        if allowed_fields and v not in allowed_fields:
+            raise ValueError(f"Champ de filtre non autorisé: {v}")
+        return v
+    
+    @field_validator('boost')
+    @classmethod
+    def validate_boost(cls, v):
+        """Valide le facteur de boost."""
+        if v <= 0 or v > 10:
+            raise ValueError("Le boost doit être entre 0.1 et 10")
+        return v
     
     @abstractmethod
-    def validate_value(self) -> bool:
-        """Valide la valeur du filtre selon son type."""
-        pass
-    
-    @abstractmethod
-    def to_elasticsearch(self) -> Dict[str, Any]:
+    def to_elasticsearch_query(self) -> Dict[str, Any]:
         """Convertit le filtre en requête Elasticsearch."""
         pass
     
-    @validator('field')
-    def validate_field(cls, v):
-        """Valide que le champ est autorisé."""
-        if v not in VALID_FILTER_FIELDS:
-            raise ValueError(f"Champ non autorisé: {v}")
-        return v
-    
-    @validator('operator')
-    def validate_operator_for_field(cls, v, values):
-        """Valide que l'opérateur est compatible avec le type de champ."""
-        field = values.get('field')
-        if field and field in VALID_FILTER_FIELDS:
-            field_type = VALID_FILTER_FIELDS[field]["type"]
-            if field_type in FIELD_VALID_OPERATORS:
-                if v not in FIELD_VALID_OPERATORS[field_type]:
-                    raise ValueError(f"Opérateur {v} non supporté pour le champ {field} de type {field_type}")
-        return v
-    
-    class Config:
-        use_enum_values = True
+    @abstractmethod
+    def validate_value(self, value: Any) -> bool:
+        """Valide la valeur du filtre selon son type."""
+        pass
 
-class UserFilter(BaseFilter):
-    """Filtre spécialisé pour l'utilisateur (obligatoire pour sécurité)."""
+class SimpleFilter(BaseFilter):
+    """
+    Filtre simple avec une seule valeur.
+    
+    Supporte les opérateurs d'égalité, comparaison et existence.
+    """
+    value: Union[str, int, float, bool] = Field(..., description="Valeur du filtre")
+    case_sensitive: bool = Field(default=False, description="Sensible à la casse (texte)")
+    
+    def validate_value(self, value: Any) -> bool:
+        """Valide la valeur selon le type de filtre."""
+        if self.filter_type == FilterType.USER:
+            return isinstance(value, int) and value > 0
+        elif self.filter_type == FilterType.AMOUNT:
+            return isinstance(value, (int, float)) and value >= 0
+        elif self.filter_type == FilterType.TEXT:
+            return isinstance(value, str) and len(value.strip()) > 0
+        return True
+    
+    @model_validator(mode='after')
+    def validate_simple_filter(self):
+        """Valide la cohérence du filtre simple."""
+        # Validation de la valeur
+        if not self.validate_value(self.value):
+            raise ValueError(f"Valeur invalide pour le type {self.filter_type}")
+        
+        # Validation de l'opérateur selon le type
+        numeric_types = {FilterType.AMOUNT, FilterType.USER}
+        text_types = {FilterType.TEXT, FilterType.CATEGORY, FilterType.MERCHANT}
+        
+        if self.filter_type in numeric_types:
+            allowed_ops = {FilterOperator.EQ, FilterOperator.NE, FilterOperator.GT, 
+                          FilterOperator.GTE, FilterOperator.LT, FilterOperator.LTE}
+            if self.operator not in allowed_ops:
+                raise ValueError(f"Opérateur {self.operator} non supporté pour {self.filter_type}")
+        
+        if self.filter_type in text_types and self.operator == FilterOperator.BETWEEN:
+            raise ValueError("BETWEEN non supporté pour les filtres texte")
+        
+        return self
+    
+    def to_elasticsearch_query(self) -> Dict[str, Any]:
+        """Convertit en requête Elasticsearch."""
+        if self.operator == FilterOperator.EQ:
+            return {"term": {self.field: {"value": self.value, "boost": self.boost}}}
+        
+        elif self.operator == FilterOperator.NE:
+            return {"bool": {"must_not": {"term": {self.field: self.value}}}}
+        
+        elif self.operator in [FilterOperator.GT, FilterOperator.GTE, FilterOperator.LT, FilterOperator.LTE]:
+            range_op = self.operator.value
+            return {"range": {self.field: {range_op: self.value, "boost": self.boost}}}
+        
+        elif self.operator == FilterOperator.EXISTS:
+            return {"exists": {"field": self.field}}
+        
+        elif self.operator == FilterOperator.NOT_EXISTS:
+            return {"bool": {"must_not": {"exists": {"field": self.field}}}}
+        
+        elif self.operator == FilterOperator.CONTAINS:
+            if self.case_sensitive:
+                return {"wildcard": {self.field: {"value": f"*{self.value}*", "boost": self.boost}}}
+            else:
+                return {"match": {self.field: {"query": self.value, "boost": self.boost}}}
+        
+        elif self.operator == FilterOperator.STARTS_WITH:
+            return {"prefix": {self.field: {"value": self.value, "boost": self.boost}}}
+        
+        elif self.operator == FilterOperator.REGEX:
+            return {"regexp": {self.field: {"value": self.value, "boost": self.boost}}}
+        
+        else:
+            raise ValueError(f"Opérateur non supporté: {self.operator}")
+
+class ListFilter(BaseFilter):
+    """
+    Filtre avec liste de valeurs.
+    
+    Supporte les opérateurs IN et NOT_IN pour filtrer
+    sur plusieurs valeurs.
+    """
+    values: List[Union[str, int, float]] = Field(..., min_length=1, description="Liste de valeurs")
+    
+    @field_validator('values')
+    @classmethod
+    def validate_values_list(cls, v):
+        """Valide la liste de valeurs."""
+        if len(v) > settings.MAX_FILTER_VALUES:
+            raise ValueError(f"Trop de valeurs (max {settings.MAX_FILTER_VALUES})")
+        
+        # Vérifier que toutes les valeurs sont du même type
+        if len(set(type(val) for val in v)) > 1:
+            raise ValueError("Toutes les valeurs doivent être du même type")
+        
+        return v
+    
+    def validate_value(self, value: Any) -> bool:
+        """Valide chaque valeur de la liste."""
+        return all(
+            SimpleFilter(
+                filter_type=self.filter_type,
+                field=self.field,
+                operator=FilterOperator.EQ,
+                value=val
+            ).validate_value(val) for val in self.values
+        )
+    
+    @model_validator(mode='after')
+    def validate_list_filter(self):
+        """Valide le filtre de liste."""
+        if self.operator not in [FilterOperator.IN, FilterOperator.NOT_IN]:
+            raise ValueError("ListFilter supporte uniquement IN et NOT_IN")
+        
+        if not self.validate_value(self.values):
+            raise ValueError("Certaines valeurs de la liste sont invalides")
+        
+        return self
+    
+    def to_elasticsearch_query(self) -> Dict[str, Any]:
+        """Convertit en requête Elasticsearch."""
+        if self.operator == FilterOperator.IN:
+            return {"terms": {self.field: self.values, "boost": self.boost}}
+        
+        elif self.operator == FilterOperator.NOT_IN:
+            return {"bool": {"must_not": {"terms": {self.field: self.values}}}}
+        
+        else:
+            raise ValueError(f"Opérateur non supporté pour ListFilter: {self.operator}")
+
+class RangeFilter(BaseFilter):
+    """
+    Filtre de plage pour valeurs numériques ou dates.
+    
+    Supporte les plages avec bornes inclusives ou exclusives.
+    """
+    min_value: Optional[Union[int, float, datetime, date]] = Field(None, description="Valeur minimale")
+    max_value: Optional[Union[int, float, datetime, date]] = Field(None, description="Valeur maximale")
+    include_min: bool = Field(default=True, description="Inclure la valeur minimale")
+    include_max: bool = Field(default=True, description="Inclure la valeur maximale")
+    
+    def validate_value(self, value: Any) -> bool:
+        """Valide les valeurs de la plage."""
+        if self.filter_type == FilterType.AMOUNT:
+            return all(isinstance(v, (int, float)) and v >= 0 for v in [self.min_value, self.max_value] if v is not None)
+        elif self.filter_type == FilterType.DATE:
+            return all(isinstance(v, (datetime, date)) for v in [self.min_value, self.max_value] if v is not None)
+        return True
+    
+    @model_validator(mode='after')
+    def validate_range_filter(self):
+        """Valide le filtre de plage."""
+        if self.operator != FilterOperator.BETWEEN:
+            raise ValueError("RangeFilter requiert l'opérateur BETWEEN")
+        
+        if self.min_value is None and self.max_value is None:
+            raise ValueError("Au moins une borne doit être définie")
+        
+        if self.min_value is not None and self.max_value is not None:
+            if self.min_value >= self.max_value:
+                raise ValueError("min_value doit être inférieur à max_value")
+        
+        if not self.validate_value(None):
+            raise ValueError("Valeurs de plage invalides")
+        
+        return self
+    
+    def to_elasticsearch_query(self) -> Dict[str, Any]:
+        """Convertit en requête Elasticsearch."""
+        range_query = {"boost": self.boost}
+        
+        if self.min_value is not None:
+            op = "gte" if self.include_min else "gt"
+            range_query[op] = self.min_value
+        
+        if self.max_value is not None:
+            op = "lte" if self.include_max else "lt"
+            range_query[op] = self.max_value
+        
+        return {"range": {self.field: range_query}}
+
+class DateFilter(RangeFilter):
+    """
+    Filtre de date spécialisé avec plages prédéfinies.
+    
+    Support des plages courantes (aujourd'hui, cette semaine, etc.)
+    et des plages personnalisées.
+    """
+    date_range: Optional[DateRange] = Field(None, description="Plage de date prédéfinie")
+    timezone: str = Field(default="UTC", description="Fuseau horaire")
+    
+    @model_validator(mode='after')
+    def validate_date_filter(self):
+        """Valide le filtre de date."""
+        self.filter_type = FilterType.DATE
+        
+        if self.date_range and self.date_range != DateRange.CUSTOM:
+            # Calculer les bornes selon la plage prédéfinie
+            self._set_predefined_range()
+        elif self.date_range == DateRange.CUSTOM:
+            if self.min_value is None and self.max_value is None:
+                raise ValueError("Bornes requises pour une plage personnalisée")
+        
+        return self
+    
+    def _set_predefined_range(self):
+        """Définit les bornes selon la plage prédéfinie."""
+        now = datetime.now()
+        today = now.date()
+        
+        if self.date_range == DateRange.TODAY:
+            self.min_value = datetime.combine(today, datetime.min.time())
+            self.max_value = datetime.combine(today, datetime.max.time())
+        
+        elif self.date_range == DateRange.YESTERDAY:
+            yesterday = today - timedelta(days=1)
+            self.min_value = datetime.combine(yesterday, datetime.min.time())
+            self.max_value = datetime.combine(yesterday, datetime.max.time())
+        
+        elif self.date_range == DateRange.LAST_7_DAYS:
+            self.min_value = datetime.combine(today - timedelta(days=7), datetime.min.time())
+            self.max_value = datetime.combine(today, datetime.max.time())
+        
+        elif self.date_range == DateRange.LAST_30_DAYS:
+            self.min_value = datetime.combine(today - timedelta(days=30), datetime.min.time())
+            self.max_value = datetime.combine(today, datetime.max.time())
+        
+        elif self.date_range == DateRange.THIS_MONTH:
+            self.min_value = datetime.combine(today.replace(day=1), datetime.min.time())
+            self.max_value = datetime.combine(today, datetime.max.time())
+        
+        # Ajouter d'autres plages selon les besoins
+
+# ==================== GROUPES DE FILTRES ====================
+
+class FilterGroup(BaseModel):
+    """
+    Groupe de filtres avec logique de combinaison.
+    
+    Permet de combiner plusieurs filtres avec AND, OR ou NOT.
+    """
+    logic: FilterLogic = Field(default=FilterLogic.AND, description="Logique de combinaison")
+    required: List[Union[SimpleFilter, ListFilter, RangeFilter, DateFilter]] = Field(
+        default_factory=list, description="Filtres obligatoires"
+    )
+    optional: List[Union[SimpleFilter, ListFilter, RangeFilter, DateFilter]] = Field(
+        default_factory=list, description="Filtres optionnels"
+    )
+    exclusions: List[Union[SimpleFilter, ListFilter, RangeFilter, DateFilter]] = Field(
+        default_factory=list, description="Filtres d'exclusion"
+    )
+    
+    @model_validator(mode='after')
+    def validate_filter_group(self):
+        """Valide le groupe de filtres."""
+        total_filters = len(self.required) + len(self.optional) + len(self.exclusions)
+        
+        if total_filters == 0:
+            raise ValueError("Un groupe doit contenir au moins un filtre")
+        
+        max_filters = getattr(settings, 'MAX_FILTERS_PER_GROUP', 50)
+        if total_filters > max_filters:
+            raise ValueError(f"Trop de filtres dans le groupe (max {max_filters})")
+        
+        # Validation sécurité: user_id obligatoire
+        user_filters = [f for f in self.required if f.field == "user_id"]
+        if not user_filters:
+            raise ValueError("Filtre user_id obligatoire pour la sécurité")
+        
+        return self
+    
+    def to_elasticsearch_query(self) -> Dict[str, Any]:
+        """Convertit le groupe en requête Elasticsearch bool."""
+        bool_query = {}
+        
+        if self.required:
+            if self.logic == FilterLogic.AND:
+                bool_query["must"] = [f.to_elasticsearch_query() for f in self.required]
+            else:  # OR
+                bool_query["should"] = [f.to_elasticsearch_query() for f in self.required]
+                bool_query["minimum_should_match"] = 1
+        
+        if self.optional:
+            bool_query["should"] = bool_query.get("should", []) + [
+                f.to_elasticsearch_query() for f in self.optional
+            ]
+        
+        if self.exclusions:
+            bool_query["must_not"] = [f.to_elasticsearch_query() for f in self.exclusions]
+        
+        return {"bool": bool_query}
+
+# ==================== FACTORY FUNCTIONS ====================
+
+def create_user_filter(user_id: int) -> SimpleFilter:
+    """Crée un filtre utilisateur pour la sécurité."""
+    return SimpleFilter(
+        filter_type=FilterType.USER,
+        field="user_id",
+        operator=FilterOperator.EQ,
+        value=user_id,
+        required=True
+    )
+
+class UserFilter(SimpleFilter):
+    """Filtre spécialisé pour les utilisateurs avec validation de sécurité."""
     filter_type: Literal[FilterType.USER] = FilterType.USER
     field: Literal["user_id"] = "user_id"
     operator: Literal[FilterOperator.EQ] = FilterOperator.EQ
     value: PositiveInt = Field(..., description="ID de l'utilisateur")
+    required: Literal[True] = True
     
-    def validate_value(self) -> bool:
-        """Valide l'ID utilisateur."""
-        return self.value > 0
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en terme Elasticsearch."""
-        return {"term": {"user_id": self.value}}
-
-class CategoryFilter(BaseFilter):
-    """Filtre spécialisé pour les catégories financières."""
-    filter_type: Literal[FilterType.CATEGORY] = FilterType.CATEGORY
-    field: Literal["category_name"] = "category_name"
-    operator: FilterOperator = Field(default=FilterOperator.EQ, description="Opérateur")
-    value: Union[str, List[str]] = Field(..., description="Catégorie(s) financière(s)")
-    case_sensitive: bool = Field(default=False, description="Sensible à la casse")
-    
-    @validator('value')
-    def validate_category_value(cls, v, values):
-        """Valide les catégories financières."""
-        categories = [v] if isinstance(v, str) else v
-        for category in categories:
-            if category.lower() not in [c.lower() for c in FINANCIAL_CATEGORIES]:
-                raise ValueError(f"Catégorie non reconnue: {category}")
-        return v
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur de catégorie."""
-        if isinstance(self.value, str):
-            return self.value.lower() in [c.lower() for c in FINANCIAL_CATEGORIES]
-        return all(cat.lower() in [c.lower() for c in FINANCIAL_CATEGORIES] for cat in self.value)
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        field_name = "category_name.keyword" if not self.case_sensitive else "category_name"
-        
-        if self.operator == FilterOperator.EQ:
-            return {"term": {field_name: self.value}}
-        elif self.operator == FilterOperator.IN:
-            return {"terms": {field_name: self.value if isinstance(self.value, list) else [self.value]}}
-        elif self.operator == FilterOperator.NE:
-            return {"bool": {"must_not": {"term": {field_name: self.value}}}}
-        elif self.operator == FilterOperator.NOT_IN:
-            values = self.value if isinstance(self.value, list) else [self.value]
-            return {"bool": {"must_not": {"terms": {field_name: values}}}}
-        else:
-            raise ValueError(f"Opérateur {self.operator} non supporté pour CategoryFilter")
-
-class MerchantFilter(BaseFilter):
-    """Filtre spécialisé pour les marchands."""
-    filter_type: Literal[FilterType.MERCHANT] = FilterType.MERCHANT
-    field: Literal["merchant_name"] = "merchant_name"
-    operator: FilterOperator = Field(default=FilterOperator.EQ, description="Opérateur")
-    value: Union[str, List[str]] = Field(..., description="Nom(s) du/des marchand(s)")
-    case_sensitive: bool = Field(default=False, description="Sensible à la casse")
-    fuzzy_matching: bool = Field(default=False, description="Recherche approximative")
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur du marchand."""
-        if isinstance(self.value, str):
-            return len(self.value.strip()) > 0
-        return all(len(merchant.strip()) > 0 for merchant in self.value)
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        if self.fuzzy_matching and self.operator in [FilterOperator.EQ, FilterOperator.CONTAINS]:
-            return {
-                "fuzzy": {
-                    "merchant_name": {
-                        "value": self.value,
-                        "fuzziness": "AUTO"
-                    }
-                }
-            }
-        
-        field_name = "merchant_name.keyword" if not self.case_sensitive else "merchant_name"
-        
-        if self.operator == FilterOperator.EQ:
-            return {"term": {field_name: self.value}}
-        elif self.operator == FilterOperator.IN:
-            return {"terms": {field_name: self.value if isinstance(self.value, list) else [self.value]}}
-        elif self.operator == FilterOperator.CONTAINS:
-            return {"wildcard": {field_name: f"*{self.value}*"}}
-        elif self.operator == FilterOperator.STARTS_WITH:
-            return {"prefix": {field_name: self.value}}
-        elif self.operator == FilterOperator.NE:
-            return {"bool": {"must_not": {"term": {field_name: self.value}}}}
-        else:
-            raise ValueError(f"Opérateur {self.operator} non supporté pour MerchantFilter")
-
-class AmountFilter(BaseFilter):
-    """Filtre spécialisé pour les montants."""
-    filter_type: Literal[FilterType.AMOUNT] = FilterType.AMOUNT
-    field: Literal["amount", "amount_abs"] = Field(default="amount_abs", description="Champ montant")
-    operator: FilterOperator = Field(..., description="Opérateur de comparaison")
-    value: Union[float, List[float]] = Field(..., description="Montant(s) à filtrer")
-    currency: Optional[str] = Field(None, description="Code devise pour validation")
-    
-    @validator('value')
-    def validate_amount_value(cls, v):
-        """Valide les valeurs de montant."""
-        if isinstance(v, (int, float)):
-            if v < 0:
-                raise ValueError("Le montant ne peut pas être négatif")
-            return float(v)
-        elif isinstance(v, list):
-            if len(v) == 0:
-                raise ValueError("Liste de montants vide")
-            validated = []
-            for amount in v:
-                if amount < 0:
-                    raise ValueError("Les montants ne peuvent pas être négatifs")
-                validated.append(float(amount))
-            return validated
-        else:
-            raise ValueError("Valeur de montant invalide")
-    
-    @validator('currency')
-    def validate_currency(cls, v):
-        """Valide le code devise."""
-        if v and v not in CURRENCY_CODES:
-            raise ValueError(f"Code devise non supporté: {v}")
-        return v
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur du montant."""
-        if isinstance(self.value, (int, float)):
-            return self.value >= 0
-        return all(amount >= 0 for amount in self.value)
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        if self.operator == FilterOperator.EQ:
-            return {"term": {self.field: self.value}}
-        elif self.operator == FilterOperator.NE:
-            return {"bool": {"must_not": {"term": {self.field: self.value}}}}
-        elif self.operator == FilterOperator.GT:
-            return {"range": {self.field: {"gt": self.value}}}
-        elif self.operator == FilterOperator.GTE:
-            return {"range": {self.field: {"gte": self.value}}}
-        elif self.operator == FilterOperator.LT:
-            return {"range": {self.field: {"lt": self.value}}}
-        elif self.operator == FilterOperator.LTE:
-            return {"range": {self.field: {"lte": self.value}}}
-        elif self.operator == FilterOperator.BETWEEN:
-            if not isinstance(self.value, list) or len(self.value) != 2:
-                raise ValueError("BETWEEN nécessite exactement 2 valeurs")
-            return {"range": {self.field: {"gte": self.value[0], "lte": self.value[1]}}}
-        elif self.operator == FilterOperator.IN:
-            values = self.value if isinstance(self.value, list) else [self.value]
-            return {"terms": {self.field: values}}
-        else:
-            raise ValueError(f"Opérateur {self.operator} non supporté pour AmountFilter")
-
-class DateFilter(BaseFilter):
-    """Filtre spécialisé pour les dates."""
-    filter_type: Literal[FilterType.DATE] = FilterType.DATE
-    field: Literal["date", "month_year"] = Field(default="date", description="Champ date")
-    operator: FilterOperator = Field(..., description="Opérateur de comparaison")
-    value: Union[str, List[str], date, List[date]] = Field(..., description="Date(s) à filtrer")
-    format: str = Field(default="yyyy-MM-dd", description="Format de date")
-    timezone: Optional[str] = Field(None, description="Fuseau horaire")
-    
-    @validator('value')
-    def validate_date_value(cls, v, values):
-        """Valide les valeurs de date."""
-        field = values.get('field', 'date')
-        
-        if field == "month_year":
-            # Validation format YYYY-MM
-            import re
-            month_pattern = r'^\d{4}-\d{2}$'
-            if isinstance(v, str):
-                if not re.match(month_pattern, v):
-                    raise ValueError("Format month_year invalide, attendu: YYYY-MM")
-            elif isinstance(v, list):
-                for date_str in v:
-                    if not re.match(month_pattern, date_str):
-                        raise ValueError("Format month_year invalide, attendu: YYYY-MM")
-        else:
-            # Validation format date standard
-            if isinstance(v, str):
-                try:
-                    datetime.strptime(v, "%Y-%m-%d")
-                except ValueError:
-                    raise ValueError("Format de date invalide, attendu: YYYY-MM-DD")
-            elif isinstance(v, list):
-                for date_str in v:
-                    try:
-                        datetime.strptime(date_str, "%Y-%m-%d")
-                    except ValueError:
-                        raise ValueError("Format de date invalide, attendu: YYYY-MM-DD")
-        
-        return v
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur de date."""
-        try:
-            if isinstance(self.value, str):
-                datetime.strptime(self.value, "%Y-%m-%d")
-            elif isinstance(self.value, list):
-                for date_str in self.value:
-                    datetime.strptime(date_str, "%Y-%m-%d")
-            return True
-        except ValueError:
-            return False
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        range_params = {}
-        if self.format:
-            range_params["format"] = self.format
-        if self.timezone:
-            range_params["time_zone"] = self.timezone
-        
-        if self.operator == FilterOperator.EQ:
-            return {"term": {self.field: self.value}}
-        elif self.operator == FilterOperator.NE:
-            return {"bool": {"must_not": {"term": {self.field: self.value}}}}
-        elif self.operator == FilterOperator.GT:
-            range_params["gt"] = self.value
-            return {"range": {self.field: range_params}}
-        elif self.operator == FilterOperator.GTE:
-            range_params["gte"] = self.value
-            return {"range": {self.field: range_params}}
-        elif self.operator == FilterOperator.LT:
-            range_params["lt"] = self.value
-            return {"range": {self.field: range_params}}
-        elif self.operator == FilterOperator.LTE:
-            range_params["lte"] = self.value
-            return {"range": {self.field: range_params}}
-        elif self.operator == FilterOperator.BETWEEN:
-            if not isinstance(self.value, list) or len(self.value) != 2:
-                raise ValueError("BETWEEN nécessite exactement 2 valeurs")
-            range_params["gte"] = self.value[0]
-            range_params["lte"] = self.value[1]
-            return {"range": {self.field: range_params}}
-        elif self.operator == FilterOperator.IN:
-            values = self.value if isinstance(self.value, list) else [self.value]
-            return {"terms": {self.field: values}}
-        else:
-            raise ValueError(f"Opérateur {self.operator} non supporté pour DateFilter")
-
-class TextFilter(BaseFilter):
-    """Filtre spécialisé pour la recherche textuelle."""
-    filter_type: Literal[FilterType.TEXT] = FilterType.TEXT
-    field: str = Field(..., description="Champ textuel")
-    operator: FilterOperator = Field(default=FilterOperator.CONTAINS, description="Opérateur textuel")
-    value: str = Field(..., min_length=1, max_length=1000, description="Texte à rechercher")
-    case_sensitive: bool = Field(default=False, description="Sensible à la casse")
-    fuzzy_matching: bool = Field(default=False, description="Recherche approximative")
-    analyzer: Optional[str] = Field(None, description="Analyseur Elasticsearch")
-    
-    @validator('field')
-    def validate_text_field(cls, v):
-        """Valide que le champ supporte la recherche textuelle."""
-        text_fields = ["primary_description", "merchant_name", "searchable_text", "category_name"]
-        if v not in text_fields:
-            raise ValueError(f"Champ textuel non supporté: {v}")
-        return v
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur textuelle."""
-        return len(self.value.strip()) > 0
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        if self.fuzzy_matching:
-            return {
-                "fuzzy": {
-                    self.field: {
-                        "value": self.value,
-                        "fuzziness": "AUTO"
-                    }
-                }
-            }
-        
-        if self.operator == FilterOperator.EQ:
-            return {"term": {f"{self.field}.keyword": self.value}}
-        elif self.operator == FilterOperator.CONTAINS:
-            return {"wildcard": {f"{self.field}.keyword": f"*{self.value}*"}}
-        elif self.operator == FilterOperator.STARTS_WITH:
-            return {"prefix": {f"{self.field}.keyword": self.value}}
-        elif self.operator == FilterOperator.ENDS_WITH:
-            return {"wildcard": {f"{self.field}.keyword": f"*{self.value}"}}
-        elif self.operator == FilterOperator.REGEX:
-            return {"regexp": {f"{self.field}.keyword": self.value}}
-        elif self.operator == FilterOperator.NE:
-            return {"bool": {"must_not": {"term": {f"{self.field}.keyword": self.value}}}}
-        else:
-            # Recherche textuelle avec match
-            match_params = {"query": self.value}
-            if self.analyzer:
-                match_params["analyzer"] = self.analyzer
-            return {"match": {self.field: match_params}}
-
-class TransactionTypeFilter(BaseFilter):
-    """Filtre spécialisé pour les types de transaction."""
-    filter_type: Literal[FilterType.TRANSACTION_TYPE] = FilterType.TRANSACTION_TYPE
-    field: Literal["transaction_type"] = "transaction_type"
-    operator: FilterOperator = Field(default=FilterOperator.EQ, description="Opérateur")
-    value: Union[str, List[str]] = Field(..., description="Type(s) de transaction")
-    
-    @validator('value')
-    def validate_transaction_type(cls, v):
-        """Valide les types de transaction."""
-        types = [v] if isinstance(v, str) else v
-        for trans_type in types:
-            if trans_type not in TRANSACTION_TYPES:
-                raise ValueError(f"Type de transaction non supporté: {trans_type}")
-        return v
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur du type de transaction."""
-        if isinstance(self.value, str):
-            return self.value in TRANSACTION_TYPES
-        return all(t in TRANSACTION_TYPES for t in self.value)
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        if self.operator == FilterOperator.EQ:
-            return {"term": {"transaction_type": self.value}}
-        elif self.operator == FilterOperator.IN:
-            values = self.value if isinstance(self.value, list) else [self.value]
-            return {"terms": {"transaction_type": values}}
-        elif self.operator == FilterOperator.NE:
-            return {"bool": {"must_not": {"term": {"transaction_type": self.value}}}}
-        else:
-            raise ValueError(f"Opérateur {self.operator} non supporté pour TransactionTypeFilter")
-
-class CustomFilter(BaseFilter):
-    """Filtre personnalisé pour cas spéciaux."""
-    filter_type: Literal[FilterType.CUSTOM] = FilterType.CUSTOM
-    field: str = Field(..., description="Champ personnalisé")
-    operator: FilterOperator = Field(..., description="Opérateur")
-    value: Any = Field(..., description="Valeur personnalisée")
-    elasticsearch_query: Optional[Dict[str, Any]] = Field(None, description="Requête ES personnalisée")
-    
-    def validate_value(self) -> bool:
-        """Valide la valeur personnalisée."""
-        return self.value is not None
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête Elasticsearch."""
-        if self.elasticsearch_query:
-            return self.elasticsearch_query
-        
-        # Conversion générique basée sur l'opérateur
-        if self.operator == FilterOperator.EQ:
-            return {"term": {self.field: self.value}}
-        elif self.operator == FilterOperator.IN:
-            values = self.value if isinstance(self.value, list) else [self.value]
-            return {"terms": {self.field: values}}
-        elif self.operator == FilterOperator.EXISTS:
-            return {"exists": {"field": self.field}}
-        elif self.operator == FilterOperator.NOT_EXISTS:
-            return {"bool": {"must_not": {"exists": {"field": self.field}}}}
-        else:
-            raise ValueError(f"Opérateur {self.operator} non supporté pour CustomFilter")
-
-# ==================== COMBINAISONS DE FILTRES ====================
-
-class FilterCombination(BaseModel):
-    """Combinaison de filtres avec logique AND/OR."""
-    logic: FilterLogic = Field(default=FilterLogic.AND, description="Logique de combinaison")
-    filters: List[BaseFilter] = Field(..., min_items=1, description="Filtres à combiner")
-    boost: Optional[float] = Field(None, ge=0.0, le=10.0, description="Boost global")
-    
-    @validator('filters')
-    def validate_filters_count(cls, v):
-        """Valide le nombre de filtres."""
-        if len(v) > settings.MAX_FILTERS_PER_GROUP:
-            raise ValueError(f"Trop de filtres: max {settings.MAX_FILTERS_PER_GROUP}")
-        return v
-    
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête bool Elasticsearch."""
-        es_filters = [f.to_elasticsearch() for f in self.filters]
-        
-        if self.logic == FilterLogic.AND:
-            bool_query = {"bool": {"filter": es_filters}}
-        elif self.logic == FilterLogic.OR:
-            bool_query = {"bool": {"should": es_filters, "minimum_should_match": 1}}
-        elif self.logic == FilterLogic.NOT:
-            bool_query = {"bool": {"must_not": es_filters}}
-        else:
-            raise ValueError(f"Logique {self.logic} non supportée")
-        
-        if self.boost:
-            bool_query["bool"]["boost"] = self.boost
-        
-        return bool_query
-
-class FilterGroup(BaseModel):
-    """Groupe de filtres avec logique complexe."""
-    required: List[BaseFilter] = Field(default=[], description="Filtres obligatoires (AND)")
-    optional: List[BaseFilter] = Field(default=[], description="Filtres optionnels (OR)")
-    forbidden: List[BaseFilter] = Field(default=[], description="Filtres interdits (NOT)")
-    minimum_should_match: Optional[int] = Field(None, description="Nombre minimum de filtres optionnels")
-    
-    @validator('required', 'optional', 'forbidden')
-    def validate_filter_counts(cls, v):
-        """Valide le nombre de filtres par groupe."""
-        if len(v) > settings.MAX_FILTERS_PER_GROUP:
-            raise ValueError(f"Trop de filtres: max {settings.MAX_FILTERS_PER_GROUP}")
-        return v
-    
-    @root_validator
-    def validate_user_filter_present(cls, values):
-        """Valide qu'un filtre utilisateur est présent."""
-        required = values.get('required', [])
-        has_user_filter = any(
-            isinstance(f, UserFilter) or (hasattr(f, 'field') and f.field == 'user_id')
-            for f in required
+    def __init__(self, user_id: int, **kwargs):
+        """Initialise le filtre utilisateur."""
+        super().__init__(
+            filter_type=FilterType.USER,
+            field="user_id",
+            operator=FilterOperator.EQ,
+            value=user_id,
+            required=True,
+            **kwargs
         )
-        
-        if not has_user_filter:
-            raise ValueError("Filtre user_id obligatoire pour la sécurité")
-        
-        return values
     
-    def to_elasticsearch(self) -> Dict[str, Any]:
-        """Convertit en requête bool Elasticsearch complexe."""
-        bool_query = {}
-        
-        if self.required:
-            bool_query["filter"] = [f.to_elasticsearch() for f in self.required]
-        
-        if self.optional:
-            bool_query["should"] = [f.to_elasticsearch() for f in self.optional]
-            if self.minimum_should_match:
-                bool_query["minimum_should_match"] = self.minimum_should_match
-        
-        if self.forbidden:
-            bool_query["must_not"] = [f.to_elasticsearch() for f in self.forbidden]
-        
-        return {"bool": bool_query}
-
-# ==================== VALIDATION ET TRANSFORMATION ====================
-
-class FilterValidationError(Exception):
-    """Exception pour les erreurs de validation de filtre."""
-    pass
-
-class FilterValidator:
-    """Validateur pour les filtres de recherche."""
+    def validate_value(self, value: Any) -> bool:
+        """Valide l'ID utilisateur."""
+        return isinstance(value, int) and value > 0
     
-    @staticmethod
-    def validate_filter(filter_obj: BaseFilter) -> bool:
-        """
-        Valide un filtre individuellement.
+    @model_validator(mode='after')
+    def validate_user_filter(self):
+        """Valide le filtre utilisateur."""
+        if self.value <= 0:
+            raise ValueError("L'ID utilisateur doit être positif")
         
-        Args:
-            filter_obj: Filtre à valider
-            
-        Returns:
-            True si valide
-            
-        Raises:
-            FilterValidationError: Si la validation échoue
-        """
-        try:
-            # Validation Pydantic
-            filter_obj.dict()
-            
-            # Validation spécifique au filtre
-            if not filter_obj.validate_value():
-                raise FilterValidationError(f"Valeur invalide pour {filter_obj.field}")
-            
-            # Validation sécurité
-            if isinstance(filter_obj, UserFilter):
-                if filter_obj.value <= 0:
-                    raise FilterValidationError("user_id doit être positif")
-            
-            return True
-            
-        except Exception as e:
-            raise FilterValidationError(f"Validation échouée: {str(e)}")
-    
-    @staticmethod
-    def validate_filter_group(filter_group: FilterGroup) -> bool:
-        """
-        Valide un groupe de filtres.
+        if self.field != "user_id":
+            raise ValueError("Le champ doit être 'user_id'")
         
-        Args:
-            filter_group: Groupe de filtres à valider
-            
-        Returns:
-            True si valide
-            
-        Raises:
-            FilterValidationError: Si la validation échoue
-        """
-        try:
-            # Validation Pydantic
-            filter_group.dict()
-            
-            # Validation de chaque filtre
-            all_filters = filter_group.required + filter_group.optional + filter_group.forbidden
-            for filter_obj in all_filters:
-                FilterValidator.validate_filter(filter_obj)
-            
-            return True
-            
-        except Exception as e:
-            raise FilterValidationError(f"Validation groupe échouée: {str(e)}")
-
-class FilterTransformer:
-    """Transformateur pour convertir les filtres en requêtes Elasticsearch."""
-    
-    @staticmethod
-    def transform_filter(filter_obj: BaseFilter) -> Dict[str, Any]:
-        """
-        Transforme un filtre en requête Elasticsearch.
+        if self.operator != FilterOperator.EQ:
+            raise ValueError("L'opérateur doit être EQ pour les filtres utilisateur")
         
-        Args:
-            filter_obj: Filtre à transformer
-            
-        Returns:
-            Dictionnaire de requête Elasticsearch
-        """
-        return filter_obj.to_elasticsearch()
-    
-    @staticmethod
-    def transform_filter_group(filter_group: FilterGroup) -> Dict[str, Any]:
-        """
-        Transforme un groupe de filtres en requête Elasticsearch.
-        
-        Args:
-            filter_group: Groupe de filtres à transformer
-            
-        Returns:
-            Dictionnaire de requête Elasticsearch
-        """
-        return filter_group.to_elasticsearch()
-    
-    @staticmethod
-    def optimize_elasticsearch_query(query: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Optimise une requête Elasticsearch générée à partir des filtres.
-        
-        Args:
-            query: Requête Elasticsearch à optimiser
-            
-        Returns:
-            Requête optimisée
-        """
-        import copy
-        optimized = copy.deepcopy(query)
-        
-        # Optimisation 1: Déplacer les filtres exacts vers filter clause
-        if "bool" in optimized:
-            bool_query = optimized["bool"]
-            
-            # Déplacer les term queries vers filter
-            if "must" in bool_query:
-                must_clauses = bool_query["must"]
-                filter_clauses = bool_query.get("filter", [])
-                new_must = []
-                
-                for clause in must_clauses:
-                    if isinstance(clause, dict) and "term" in clause:
-                        filter_clauses.append(clause)
-                    else:
-                        new_must.append(clause)
-                
-                bool_query["must"] = new_must
-                if filter_clauses:
-                    bool_query["filter"] = filter_clauses
-        
-        return optimized
+        return self
 
-# ==================== FACTORY FUNCTIONS ====================
-
-def create_user_filter(user_id: int) -> UserFilter:
-    """Factory pour créer un filtre utilisateur."""
-    return UserFilter(value=user_id)
-
-def create_category_filter(category: str, operator: FilterOperator = FilterOperator.EQ) -> CategoryFilter:
-    """Factory pour créer un filtre de catégorie."""
-    return CategoryFilter(operator=operator, value=category)
-
-def create_amount_filter(
-    amount: Union[float, List[float]], 
-    operator: FilterOperator = FilterOperator.EQ,
-    field: str = "amount_abs"
-) -> AmountFilter:
-    """Factory pour créer un filtre de montant."""
-    return AmountFilter(field=field, operator=operator, value=amount)
-
-def create_date_filter(
-    date_value: Union[str, List[str]], 
-    operator: FilterOperator = FilterOperator.EQ,
-    field: str = "date"
-) -> DateFilter:
-    """Factory pour créer un filtre de date."""
-    return DateFilter(field=field, operator=operator, value=date_value)
-
-def create_text_filter(
-    text: str, 
-    field: str = "primary_description",
-    operator: FilterOperator = FilterOperator.CONTAINS
-) -> TextFilter:
-    """Factory pour créer un filtre textuel."""
-    return TextFilter(field=field, operator=operator, value=text)
-
-def create_standard_filter_group(user_id: int) -> FilterGroup:
-    """Factory pour créer un groupe de filtres standard avec user_id."""
-    return FilterGroup(
-        required=[create_user_filter(user_id)]
+def create_amount_range_filter(
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    field: str = "amount"
+) -> RangeFilter:
+    """Crée un filtre de plage de montant."""
+    return RangeFilter(
+        filter_type=FilterType.AMOUNT,
+        field=field,
+        operator=FilterOperator.BETWEEN,
+        min_value=min_amount,
+        max_value=max_amount,
+        include_min=True,
+        include_max=True
     )
 
-# ==================== HELPERS ET UTILITAIRES ====================
+def create_date_range_filter(
+    date_range: DateRange,
+    field: str = "transaction_date",
+    custom_min: Optional[datetime] = None,
+    custom_max: Optional[datetime] = None
+) -> DateFilter:
+    """Crée un filtre de plage de date."""
+    return DateFilter(
+        filter_type=FilterType.DATE,
+        field=field,
+        operator=FilterOperator.BETWEEN,
+        date_range=date_range,
+        min_value=custom_min if date_range == DateRange.CUSTOM else None,
+        max_value=custom_max if date_range == DateRange.CUSTOM else None
+    )
 
-def filter_to_elasticsearch(filter_obj: BaseFilter) -> Dict[str, Any]:
-    """Convertit un filtre en requête Elasticsearch."""
-    return FilterTransformer.transform_filter(filter_obj)
+def create_category_filter(categories: List[str]) -> ListFilter:
+    """Crée un filtre de catégories."""
+    return ListFilter(
+        filter_type=FilterType.CATEGORY,
+        field="category",
+        operator=FilterOperator.IN,
+        values=categories
+    )
 
-def filters_to_elasticsearch(filters: List[BaseFilter]) -> List[Dict[str, Any]]:
-    """Convertit une liste de filtres en requêtes Elasticsearch."""
-    return [filter_to_elasticsearch(f) for f in filters]
+def create_merchant_filter(merchant: str, exact_match: bool = True) -> Union[SimpleFilter, SimpleFilter]:
+    """Crée un filtre de commerçant."""
+    if exact_match:
+        return SimpleFilter(
+            filter_type=FilterType.MERCHANT,
+            field="merchant",
+            operator=FilterOperator.EQ,
+            value=merchant
+        )
+    else:
+        return SimpleFilter(
+            filter_type=FilterType.MERCHANT,
+            field="merchant",
+            operator=FilterOperator.CONTAINS,
+            value=merchant,
+            case_sensitive=False
+        )
 
-def get_filter_type_for_field(field: str) -> Optional[Type[BaseFilter]]:
-    """Retourne le type de filtre approprié pour un champ."""
-    field_to_filter = {
-        "user_id": UserFilter,
-        "category_name": CategoryFilter,
-        "merchant_name": MerchantFilter,
-        "amount": AmountFilter,
-        "amount_abs": AmountFilter,
-        "date": DateFilter,
-        "month_year": DateFilter,
-        "primary_description": TextFilter,
-        "searchable_text": TextFilter,
-        "transaction_type": TransactionTypeFilter
-    }
-    return field_to_filter.get(field, CustomFilter)
+def create_text_search_filter(
+    text: str,
+    field: str = "description",
+    operator: FilterOperator = FilterOperator.CONTAINS
+) -> SimpleFilter:
+    """Crée un filtre de recherche textuelle."""
+    return SimpleFilter(
+        filter_type=FilterType.TEXT,
+        field=field,
+        operator=operator,
+        value=text,
+        case_sensitive=False
+    )
 
-def validate_filter_field_value(field: str, value: Any) -> bool:
-    """Valide qu'une valeur est appropriée pour un champ."""
-    if field not in VALID_FILTER_FIELDS:
-        return False
+def create_secure_filter_group(
+    user_id: int,
+    additional_filters: Optional[List[BaseFilter]] = None
+) -> FilterGroup:
+    """
+    Crée un groupe de filtres sécurisé avec user_id obligatoire.
     
-    field_config = VALID_FILTER_FIELDS[field]
-    field_type = field_config["type"]
+    Args:
+        user_id: ID de l'utilisateur
+        additional_filters: Filtres supplémentaires optionnels
     
-    if field_type == "integer":
-        return isinstance(value, int)
-    elif field_type == "float":
-        return isinstance(value, (int, float))
-    elif field_type == "string":
-        return isinstance(value, str)
-    elif field_type == "date":
-        if isinstance(value, str):
-            try:
-                datetime.strptime(value, "%Y-%m-%d")
-                return True
-            except ValueError:
-                return False
-    elif field_type == "boolean":
-        return isinstance(value, bool)
+    Returns:
+        FilterGroup sécurisé
+    """
+    required_filters = [create_user_filter(user_id)]
     
-    return False
+    if additional_filters:
+        # Séparer les filtres selon leur type
+        for filter_obj in additional_filters:
+            if filter_obj.required:
+                required_filters.append(filter_obj)
+    
+    optional_filters = []
+    if additional_filters:
+        optional_filters = [f for f in additional_filters if not f.required]
+    
+    return FilterGroup(
+        logic=FilterLogic.AND,
+        required=required_filters,
+        optional=optional_filters
+    )
 
-# ==================== CONSTANTES ET EXPORTS ====================
+# ==================== UTILITAIRES DE VALIDATION ====================
 
-# Mapping des opérateurs vers leurs symboles
-FILTER_OPERATORS = {
-    FilterOperator.EQ: "=",
-    FilterOperator.NE: "≠",
-    FilterOperator.GT: ">",
-    FilterOperator.GTE: "≥",
-    FilterOperator.LT: "<",
-    FilterOperator.LTE: "≤",
-    FilterOperator.IN: "∈",
-    FilterOperator.NOT_IN: "∉",
-    FilterOperator.BETWEEN: "between",
-    FilterOperator.CONTAINS: "contains",
-    FilterOperator.STARTS_WITH: "starts_with",
-    FilterOperator.ENDS_WITH: "ends_with"
-}
+class FilterValidator:
+    """Validateur spécialisé pour les filtres."""
+    
+    @staticmethod
+    def validate_filter_security(filter_group: FilterGroup) -> bool:
+        """
+        Valide la sécurité d'un groupe de filtres.
+        
+        Args:
+            filter_group: Groupe à valider
+        
+        Returns:
+            True si sécurisé
+        
+        Raises:
+            ValueError: Si validation échoue
+        """
+        # Vérifier la présence du filtre user_id
+        user_filters = [f for f in filter_group.required if f.field == "user_id"]
+        if not user_filters:
+            raise ValueError("Filtre user_id obligatoire pour la sécurité")
+        
+        # Vérifier qu'il n'y a qu'un seul filtre user_id
+        if len(user_filters) > 1:
+            raise ValueError("Un seul filtre user_id autorisé")
+        
+        user_filter = user_filters[0]
+        if user_filter.operator != FilterOperator.EQ:
+            raise ValueError("Filtre user_id doit utiliser l'opérateur EQ")
+        
+        if not isinstance(user_filter.value, int) or user_filter.value <= 0:
+            raise ValueError("user_id doit être un entier positif")
+        
+        return True
+    
+    @staticmethod
+    def validate_filter_performance(filter_group: FilterGroup) -> List[str]:
+        """
+        Valide l'impact performance d'un groupe de filtres.
+        
+        Args:
+            filter_group: Groupe à analyser
+        
+        Returns:
+            Liste des avertissements de performance
+        """
+        warnings = []
+        
+        # Compter les filtres par type
+        total_filters = len(filter_group.required) + len(filter_group.optional) + len(filter_group.exclusions)
+        
+        if total_filters > 20:
+            warnings.append("Beaucoup de filtres peuvent impacter les performances")
+        
+        # Vérifier les filtres texte avec regex
+        for filter_list in [filter_group.required, filter_group.optional]:
+            for f in filter_list:
+                if isinstance(f, SimpleFilter) and f.operator == FilterOperator.REGEX:
+                    warnings.append("Les filtres regex peuvent être lents")
+                
+                if isinstance(f, SimpleFilter) and f.operator == FilterOperator.CONTAINS:
+                    if isinstance(f.value, str) and len(f.value) < 3:
+                        warnings.append("Les recherches texte courtes peuvent être lentes")
+        
+        # Vérifier les plages de dates trop larges
+        for filter_list in [filter_group.required, filter_group.optional]:
+            for f in filter_list:
+                if isinstance(f, DateFilter):
+                    if f.min_value and f.max_value:
+                        delta = f.max_value - f.min_value
+                        if hasattr(delta, 'days') and delta.days > 365:
+                            warnings.append("Plage de dates très large peut impacter les performances")
+        
+        return warnings
+    
+    @staticmethod
+    def optimize_filter_group(filter_group: FilterGroup) -> FilterGroup:
+        """
+        Optimise un groupe de filtres pour de meilleures performances.
+        
+        Args:
+            filter_group: Groupe à optimiser
+        
+        Returns:
+            Groupe optimisé
+        """
+        # Réorganiser les filtres par sélectivité (plus sélectifs en premier)
+        def get_selectivity_score(f: BaseFilter) -> int:
+            """Score de sélectivité (plus bas = plus sélectif)."""
+            if f.field == "user_id":
+                return 1  # Très sélectif
+            elif f.filter_type == FilterType.USER:
+                return 1
+            elif f.filter_type in [FilterType.CATEGORY, FilterType.MERCHANT]:
+                return 2
+            elif f.filter_type == FilterType.AMOUNT:
+                return 3
+            elif f.filter_type == FilterType.DATE:
+                return 4
+            elif f.filter_type == FilterType.TEXT:
+                return 5  # Moins sélectif
+            return 6
+        
+        # Trier les filtres requis par sélectivité
+        optimized_required = sorted(filter_group.required, key=get_selectivity_score)
+        
+        return FilterGroup(
+            logic=filter_group.logic,
+            required=optimized_required,
+            optional=filter_group.optional,
+            exclusions=filter_group.exclusions
+        )
+
+# ==================== CONVERSIONS ET UTILITAIRES ====================
+
+def filter_group_to_elasticsearch(filter_group: FilterGroup) -> Dict[str, Any]:
+    """
+    Convertit un groupe de filtres en requête Elasticsearch complète.
+    
+    Args:
+        filter_group: Groupe de filtres
+    
+    Returns:
+        Requête Elasticsearch optimisée
+    """
+    base_query = filter_group.to_elasticsearch_query()
+    
+    # Ajouter des optimisations
+    if "bool" in base_query:
+        # Optimiser l'ordre des clauses bool
+        bool_clause = base_query["bool"]
+        
+        # Les filtres de terme (plus rapides) en premier dans must
+        if "must" in bool_clause:
+            must_clauses = bool_clause["must"]
+            term_clauses = [c for c in must_clauses if "term" in c]
+            other_clauses = [c for c in must_clauses if "term" not in c]
+            bool_clause["must"] = term_clauses + other_clauses
+    
+    return base_query
+
+def elasticsearch_to_filter_group(es_query: Dict[str, Any]) -> FilterGroup:
+    """
+    Convertit une requête Elasticsearch en groupe de filtres (parsing inverse).
+    
+    Args:
+        es_query: Requête Elasticsearch
+    
+    Returns:
+        FilterGroup équivalent
+    
+    Note:
+        Fonction de commodité pour le debugging et la conversion.
+        Supporte uniquement les requêtes bool simples.
+    """
+    if "bool" not in es_query:
+        raise ValueError("Seules les requêtes bool sont supportées")
+    
+    bool_query = es_query["bool"]
+    required = []
+    optional = []
+    exclusions = []
+    
+    # Parsing basique des clauses term et range
+    for must_clause in bool_query.get("must", []):
+        if "term" in must_clause:
+            field = list(must_clause["term"].keys())[0]
+            term_data = must_clause["term"][field]
+            value = term_data["value"] if isinstance(term_data, dict) else term_data
+            
+            required.append(SimpleFilter(
+                filter_type=FilterType.CUSTOM,
+                field=field,
+                operator=FilterOperator.EQ,
+                value=value
+            ))
+    
+    # Parsing similaire pour should et must_not...
+    # (Implémentation simplifiée)
+    
+    return FilterGroup(
+        logic=FilterLogic.AND,
+        required=required,
+        optional=optional,
+        exclusions=exclusions
+    )
+
+# ==================== EXPORTS ====================
 
 __all__ = [
-    # Filtres spécialisés
-    "BaseFilter",
-    "UserFilter",
-    "CategoryFilter",
-    "MerchantFilter",
-    "AmountFilter",
-    "DateFilter",
-    "TextFilter",
-    "TransactionTypeFilter",
-    "CustomFilter",
-    
-    # Combinaisons
-    "FilterCombination",
-    "FilterGroup",
-    
     # Enums
-    "FilterType",
-    "FilterOperator",
-    "FilterLogic",
+    'FilterType',
+    'FilterOperator', 
+    'FilterLogic',
+    'DateRange',
     
-    # Validation et transformation
-    "FilterValidationError",
-    "FilterValidator",
-    "FilterTransformer",
+    # Classes de base
+    'BaseFilter',
+    'SimpleFilter',
+    'ListFilter',
+    'RangeFilter',
+    'DateFilter',
+    'FilterGroup',
+    'UserFilter',
     
     # Factory functions
-    "create_user_filter",
-    "create_category_filter",
-    "create_amount_filter",
-    "create_date_filter",
-    "create_text_filter",
-    "create_standard_filter_group",
+    'create_user_filter',
+    'create_amount_range_filter',
+    'create_date_range_filter',
+    'create_category_filter',
+    'create_merchant_filter',
+    'create_text_search_filter',
+    'create_secure_filter_group',
     
-    # Helpers
-    "filter_to_elasticsearch",
-    "filters_to_elasticsearch",
-    "get_filter_type_for_field",
-    "validate_filter_field_value",
-    
-    # Constantes
-    "FILTER_OPERATORS",
-    "VALID_FILTER_FIELDS",
-    "FINANCIAL_CATEGORIES",
-    "TRANSACTION_TYPES",
-    "CURRENCY_CODES",
-    "FIELD_VALID_OPERATORS"
+    # Validation et utilitaires
+    'FilterValidator',
+    'filter_group_to_elasticsearch',
+    'elasticsearch_to_filter_group'
 ]

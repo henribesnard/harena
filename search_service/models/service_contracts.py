@@ -24,7 +24,7 @@ from typing import List, Dict, Any, Optional, Union, Literal
 from uuid import UUID, uuid4
 from enum import Enum
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.types import PositiveInt, NonNegativeInt, NonNegativeFloat
 
 # Configuration centralisée
@@ -70,503 +70,333 @@ class AggregationType(str, Enum):
 class IntentType(str, Enum):
     """Types d'intention financière (taxonomie complète)."""
     # Recherche de base
-    SEARCH_BY_CATEGORY = "SEARCH_BY_CATEGORY"
-    SEARCH_BY_MERCHANT = "SEARCH_BY_MERCHANT"
-    SEARCH_BY_AMOUNT = "SEARCH_BY_AMOUNT"
-    SEARCH_BY_DATE = "SEARCH_BY_DATE"
-    TEXT_SEARCH = "TEXT_SEARCH"
+    TRANSACTION_SEARCH = "transaction_search"
+    ACCOUNT_INQUIRY = "account_inquiry"
+    BALANCE_CHECK = "balance_check"
     
-    # Analyses temporelles
-    TEMPORAL_ANALYSIS = "TEMPORAL_ANALYSIS"
-    SPENDING_EVOLUTION = "SPENDING_EVOLUTION"
-    MONTHLY_SUMMARY = "MONTHLY_SUMMARY"
-    WEEKLY_PATTERN = "WEEKLY_PATTERN"
+    # Analyses financières
+    SPENDING_ANALYSIS = "spending_analysis"
+    CATEGORY_BREAKDOWN = "category_breakdown"
+    TREND_ANALYSIS = "trend_analysis"
+    BUDGET_TRACKING = "budget_tracking"
     
-    # Analyses catégorielles
-    CATEGORY_BREAKDOWN = "CATEGORY_BREAKDOWN"
-    MERCHANT_ANALYSIS = "MERCHANT_ANALYSIS"
-    TOP_MERCHANTS = "TOP_MERCHANTS"
-    TOP_CATEGORIES = "TOP_CATEGORIES"
+    # Agrégations temporelles
+    MONTHLY_SUMMARY = "monthly_summary"
+    YEARLY_OVERVIEW = "yearly_overview"
+    DAILY_TRANSACTIONS = "daily_transactions"
     
-    # Opérations et comptages
-    COUNT_OPERATIONS = "COUNT_OPERATIONS"
-    COUNT_OPERATIONS_BY_CATEGORY = "COUNT_OPERATIONS_BY_CATEGORY"
-    COUNT_OPERATIONS_BY_AMOUNT = "COUNT_OPERATIONS_BY_AMOUNT"
-    
-    # Analyses avancées
-    BUDGET_ANALYSIS = "BUDGET_ANALYSIS"
-    SPENDING_COMPARISON = "SPENDING_COMPARISON"
-    ANOMALY_DETECTION = "ANOMALY_DETECTION"
-    
-    # Recherches complexes
-    TEXT_SEARCH_WITH_CATEGORY = "TEXT_SEARCH_WITH_CATEGORY"
-    MULTI_CRITERIA_SEARCH = "MULTI_CRITERIA_SEARCH"
-    
-    # Fallback
-    GENERAL_QUERY = "GENERAL_QUERY"
+    # Recherche avancée
+    COMPLEX_FILTER = "complex_filter"
+    MULTI_CRITERIA = "multi_criteria"
+    CONTEXTUAL_SEARCH = "contextual_search"
+
+class ResponseFormat(str, Enum):
+    """Formats de réponse supportés."""
+    STANDARD = "standard"
+    DETAILED = "detailed"
+    SUMMARY = "summary"
+    AGGREGATION = "aggregation"
+    CONVERSATIONAL = "conversational"
 
 # ==================== MODÈLES DE BASE ====================
 
-class SearchFilter(BaseModel):
-    """Modèle pour un filtre de recherche."""
-    field: str = Field(..., description="Nom du champ à filtrer")
-    operator: FilterOperator = Field(..., description="Opérateur de filtrage")
-    value: Union[str, int, float, List[Union[str, int, float]]] = Field(
-        ..., description="Valeur(s) à filtrer"
-    )
-    boost: Optional[float] = Field(None, ge=0.0, le=10.0, description="Boost pour ce filtre")
-    
-    class Config:
-        use_enum_values = True
-
-class RangeFilter(BaseModel):
-    """Filtre pour les plages de valeurs."""
-    field: str = Field(..., description="Nom du champ")
-    operator: Literal["between"] = Field("between", description="Opérateur de plage")
-    value: List[Union[str, int, float]] = Field(
-        ..., min_items=2, max_items=2, description="Valeurs min et max"
-    )
-
-class TextSearchFilter(BaseModel):
-    """Filtre pour la recherche textuelle."""
-    query: str = Field(..., min_length=1, max_length=1000, description="Texte à rechercher")
-    fields: List[str] = Field(..., min_items=1, description="Champs à rechercher")
-    operator: Literal["match", "match_phrase", "multi_match"] = Field(
-        "match", description="Type de recherche textuelle"
-    )
-    boost: Optional[float] = Field(None, ge=0.0, le=10.0, description="Boost pour cette recherche")
-
-class FilterGroup(BaseModel):
-    """Groupe de filtres avec logique AND/OR."""
-    required: List[SearchFilter] = Field(default=[], description="Filtres obligatoires (AND)")
-    optional: List[SearchFilter] = Field(default=[], description="Filtres optionnels (OR)")
-    ranges: List[RangeFilter] = Field(default=[], description="Filtres de plage")
-    text_search: Optional[TextSearchFilter] = Field(None, description="Recherche textuelle")
-    
-    @validator('required', 'optional', 'ranges')
-    def validate_filter_lists(cls, v):
-        """Valide que les listes de filtres ne sont pas trop longues."""
-        if len(v) > settings.MAX_FILTERS_PER_GROUP:
-            raise ValueError(f"Trop de filtres: max {settings.MAX_FILTERS_PER_GROUP}")
-        return v
-
-# ==================== MÉTADONNÉES ====================
-
-class ExecutionContext(BaseModel):
-    """Contexte d'exécution de la requête."""
-    conversation_id: Optional[str] = Field(None, description="ID de la conversation")
-    turn_number: Optional[int] = Field(None, ge=1, description="Numéro du tour de conversation")
-    agent_chain: List[str] = Field(default=[], description="Chaîne d'agents exécutés")
-    team_name: Optional[str] = Field(None, description="Nom de l'équipe AutoGen")
-    workflow_id: Optional[str] = Field(None, description="ID du workflow")
-
-class AgentContext(BaseModel):
-    """Contexte de l'agent AutoGen."""
-    requesting_agent: str = Field(..., description="Agent ayant émis la requête")
-    requesting_team: Optional[str] = Field(None, description="Équipe de l'agent")
-    next_suggested_agent: Optional[str] = Field(None, description="Agent suivant suggéré")
-    agent_confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Confiance de l'agent")
-
 class QueryMetadata(BaseModel):
-    """Métadonnées complètes de la requête."""
+    """Métadonnées d'une requête de recherche."""
     query_id: UUID = Field(default_factory=uuid4, description="ID unique de la requête")
     user_id: PositiveInt = Field(..., description="ID de l'utilisateur")
-    intent_type: IntentType = Field(..., description="Type d'intention détecté")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confiance de classification")
-    agent_name: str = Field(..., description="Nom de l'agent AutoGen")
-    team_name: Optional[str] = Field(None, description="Nom de l'équipe AutoGen")
-    execution_context: Optional[ExecutionContext] = Field(None, description="Contexte d'exécution")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp de création")
-    original_query: Optional[str] = Field(None, description="Requête originale utilisateur")
+    conversation_id: Optional[UUID] = Field(None, description="ID de la conversation")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp de la requête")
+    intent_type: Optional[IntentType] = Field(None, description="Type d'intention détectée")
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Confiance de l'intention")
     
-    class Config:
-        use_enum_values = True
-
-# ==================== PARAMÈTRES DE RECHERCHE ====================
-
-class SearchParameters(BaseModel):
-    """Paramètres de recherche Elasticsearch."""
-    query_type: QueryType = Field(..., description="Type de requête")
-    fields: List[str] = Field(..., min_items=1, description="Champs à récupérer")
-    limit: PositiveInt = Field(
-        default=settings.DEFAULT_LIMIT, 
-        le=settings.MAX_SEARCH_RESULTS,
-        description="Nombre maximum de résultats"
-    )
-    offset: NonNegativeInt = Field(default=0, description="Décalage pour pagination")
-    timeout_ms: PositiveInt = Field(
-        default=settings.SEARCH_TIMEOUT * 1000,
-        le=settings.MAX_SEARCH_TIMEOUT * 1000,
-        description="Timeout en millisecondes"
-    )
-    min_score: Optional[float] = Field(None, ge=0.0, description="Score minimum requis")
-    
-    class Config:
-        use_enum_values = True
-
-# ==================== AGRÉGATIONS ====================
-
-class AggregationRequest(BaseModel):
-    """Demande d'agrégation."""
-    enabled: bool = Field(default=True, description="Activer les agrégations")
-    types: List[AggregationType] = Field(default=[], description="Types d'agrégation")
-    group_by: List[str] = Field(default=[], description="Champs de groupement")
-    metrics: List[str] = Field(default=[], description="Champs métriques")
-    date_interval: Optional[str] = Field(None, description="Intervalle pour date_histogram")
-    size: PositiveInt = Field(default=10, le=100, description="Nombre de buckets max")
-    
-    class Config:
-        use_enum_values = True
-    
-    @validator('types')
-    def validate_aggregation_types(cls, v):
-        """Valide les types d'agrégation."""
-        if len(v) > 10:
-            raise ValueError("Trop de types d'agrégation: max 10")
+    @field_validator('confidence')
+    @classmethod
+    def validate_confidence(cls, v):
+        """Valide le niveau de confiance."""
+        if v is not None and (v < 0.0 or v > 1.0):
+            raise ValueError("La confiance doit être entre 0.0 et 1.0")
         return v
 
-class AggregationBucket(BaseModel):
-    """Bucket d'agrégation."""
-    key: Union[str, int, float] = Field(..., description="Clé du bucket")
-    doc_count: NonNegativeInt = Field(..., description="Nombre de documents")
-    key_as_string: Optional[str] = Field(None, description="Clé formatée")
-    metrics: Dict[str, Union[int, float]] = Field(default={}, description="Métriques calculées")
-
-class AggregationResult(BaseModel):
-    """Résultat d'agrégation."""
-    name: str = Field(..., description="Nom de l'agrégation")
-    type: AggregationType = Field(..., description="Type d'agrégation")
-    buckets: List[AggregationBucket] = Field(default=[], description="Buckets de résultats")
-    value: Optional[Union[int, float]] = Field(None, description="Valeur pour métriques simples")
-    doc_count: NonNegativeInt = Field(default=0, description="Nombre total de documents")
-    
-    class Config:
-        use_enum_values = True
-
 class AggregationMetrics(BaseModel):
-    """Métriques d'agrégation globales."""
-    total_amount: Optional[float] = Field(None, description="Montant total")
-    transaction_count: NonNegativeInt = Field(default=0, description="Nombre de transactions")
-    average_amount: Optional[float] = Field(None, description="Montant moyen")
-    by_month: List[AggregationBucket] = Field(default=[], description="Répartition mensuelle")
-    by_category: List[AggregationBucket] = Field(default=[], description="Répartition par catégorie")
-    by_merchant: List[AggregationBucket] = Field(default=[], description="Répartition par marchand")
-    statistics: Dict[str, float] = Field(default={}, description="Statistiques avancées")
+    """Métriques d'agrégation standardisées."""
+    total_count: int = Field(default=0, description="Nombre total d'éléments")
+    sum_amount: Optional[float] = Field(None, description="Somme des montants")
+    avg_amount: Optional[float] = Field(None, description="Montant moyen")
+    min_amount: Optional[float] = Field(None, description="Montant minimum")
+    max_amount: Optional[float] = Field(None, description="Montant maximum")
+    unique_merchants: Optional[int] = Field(None, description="Nombre de commerçants uniques")
+    unique_categories: Optional[int] = Field(None, description="Nombre de catégories uniques")
+    date_range: Optional[Dict[str, str]] = Field(None, description="Plage de dates")
+    
+    @field_validator('total_count')
+    @classmethod
+    def validate_count(cls, v):
+        """Valide le comptage total."""
+        if v < 0:
+            raise ValueError("Le comptage total ne peut pas être négatif")
+        return v
 
-# ==================== OPTIONS ET ENRICHISSEMENT ====================
+class SearchFilter(BaseModel):
+    """Filtre de recherche standardisé."""
+    field: str = Field(..., description="Champ à filtrer")
+    operator: FilterOperator = Field(..., description="Opérateur de filtrage")
+    value: Union[str, int, float, List[Any]] = Field(..., description="Valeur du filtre")
+    boost: Optional[float] = Field(default=1.0, description="Boost pour ce filtre")
+    
+    @field_validator('field')
+    @classmethod
+    def validate_field(cls, v):
+        """Valide que le champ est autorisé."""
+        allowed_fields = settings.ALLOWED_SEARCH_FIELDS
+        if v not in allowed_fields:
+            raise ValueError(f"Champ non autorisé: {v}")
+        return v
+    
+    @field_validator('boost')
+    @classmethod
+    def validate_boost(cls, v):
+        """Valide le facteur de boost."""
+        if v <= 0 or v > 10:
+            raise ValueError("Le boost doit être entre 0 et 10")
+        return v
+
+class FilterGroup(BaseModel):
+    """Groupe de filtres avec logique."""
+    logic: Literal["AND", "OR"] = Field(default="AND", description="Logique de combinaison")
+    required: List[SearchFilter] = Field(default_factory=list, description="Filtres obligatoires")
+    optional: List[SearchFilter] = Field(default_factory=list, description="Filtres optionnels")
+    exclusions: List[SearchFilter] = Field(default_factory=list, description="Filtres d'exclusion")
+    
+    @model_validator(mode='after')
+    def validate_filter_group(self):
+        """Valide la cohérence du groupe de filtres."""
+        total_filters = len(self.required) + len(self.optional) + len(self.exclusions)
+        if total_filters == 0:
+            raise ValueError("Un groupe de filtres doit contenir au moins un filtre")
+        
+        if total_filters > settings.MAX_FILTERS_PER_GROUP:
+            raise ValueError(f"Trop de filtres dans le groupe (max {settings.MAX_FILTERS_PER_GROUP})")
+        
+        return self
+
+class AggregationRequest(BaseModel):
+    """Requête d'agrégation standardisée."""
+    enabled: bool = Field(default=False, description="Activer les agrégations")
+    types: List[AggregationType] = Field(default_factory=list, description="Types d'agrégation")
+    fields: List[str] = Field(default_factory=list, description="Champs d'agrégation")
+    bucket_size: Optional[int] = Field(default=10, description="Taille des buckets")
+    
+    @field_validator('bucket_size')
+    @classmethod
+    def validate_bucket_size(cls, v):
+        """Valide la taille des buckets."""
+        if v and (v <= 0 or v > settings.MAX_AGGREGATION_BUCKETS):
+            raise ValueError(f"Taille bucket invalide (max {settings.MAX_AGGREGATION_BUCKETS})")
+        return v
+    
+    @model_validator(mode='after')
+    def validate_aggregation_consistency(self):
+        """Valide la cohérence de l'agrégation."""
+        if self.enabled and not self.types:
+            raise ValueError("Types d'agrégation requis si activées")
+        
+        if self.types and not self.fields:
+            # Certains types d'agrégation ne nécessitent pas de champs spécifiques
+            count_only_types = {AggregationType.COUNT}
+            if not all(t in count_only_types for t in self.types):
+                raise ValueError("Champs requis pour les types d'agrégation sélectionnés")
+        
+        return self
 
 class SearchOptions(BaseModel):
-    """Options de recherche avancées."""
-    include_highlights: bool = Field(default=False, description="Inclure le highlighting")
-    include_explanation: bool = Field(default=False, description="Inclure l'explication du score")
-    cache_enabled: bool = Field(default=True, description="Activer le cache")
-    return_raw_elasticsearch: bool = Field(default=False, description="Retourner la réponse ES brute")
-    enable_fuzzy: bool = Field(default=False, description="Activer la recherche floue")
-    fuzziness: Optional[str] = Field(None, description="Niveau de fuzziness")
-
-class ContextEnrichment(BaseModel):
-    """Enrichissement contextuel des résultats."""
-    search_intent_matched: bool = Field(default=True, description="Intention de recherche trouvée")
-    result_quality_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Score qualité")
-    suggested_followup_questions: List[str] = Field(default=[], description="Questions de suivi")
-    related_categories: List[str] = Field(default=[], description="Catégories liées")
-    confidence_indicators: Dict[str, float] = Field(default={}, description="Indicateurs de confiance")
-
-# ==================== RÉSULTATS ====================
-
-class SearchResult(BaseModel):
-    """Résultat de recherche individuel."""
-    # Champs obligatoires
-    transaction_id: str = Field(..., description="ID unique de la transaction")
-    user_id: PositiveInt = Field(..., description="ID de l'utilisateur")
-    account_id: PositiveInt = Field(..., description="ID du compte")
-    
-    # Montants
-    amount: float = Field(..., description="Montant avec signe")
-    amount_abs: NonNegativeFloat = Field(..., description="Montant en valeur absolue")
-    currency_code: str = Field(..., description="Code devise")
-    
-    # Informations transaction
-    transaction_type: Literal["debit", "credit"] = Field(..., description="Type de transaction")
-    operation_type: str = Field(..., description="Type d'opération")
-    date: str = Field(..., description="Date de la transaction (YYYY-MM-DD)")
-    
-    # Descriptions et catégories
-    primary_description: str = Field(..., description="Description principale")
-    merchant_name: Optional[str] = Field(None, description="Nom du marchand")
-    category_name: str = Field(..., description="Nom de la catégorie")
-    
-    # Champs calculés
-    month_year: str = Field(..., description="Mois-année (YYYY-MM)")
-    weekday: str = Field(..., description="Jour de la semaine")
-    
-    # Métadonnées de recherche
-    score: float = Field(default=1.0, ge=0.0, description="Score de pertinence")
-    highlights: Optional[Dict[str, List[str]]] = Field(None, description="Highlights de recherche")
-    explanation: Optional[Dict[str, Any]] = Field(None, description="Explication du score")
-
-# ==================== PERFORMANCE ET MONITORING ====================
-
-class PerformanceMetrics(BaseModel):
-    """Métriques de performance."""
-    query_complexity: Literal["simple", "medium", "complex"] = Field(
-        "simple", description="Complexité de la requête"
+    """Options de recherche configurables."""
+    timeout_seconds: int = Field(
+        default=settings.DEFAULT_SEARCH_TIMEOUT,
+        description="Timeout de recherche en secondes"
     )
-    optimization_applied: List[str] = Field(default=[], description="Optimisations appliquées")
-    index_used: str = Field(..., description="Index Elasticsearch utilisé")
-    shards_queried: PositiveInt = Field(default=1, description="Nombre de shards interrogés")
-    cache_hit: bool = Field(default=False, description="Résultat en cache")
-    elasticsearch_took: NonNegativeInt = Field(..., description="Temps Elasticsearch (ms)")
-
-class ResponseMetadata(BaseModel):
-    """Métadonnées de la réponse."""
-    query_id: UUID = Field(..., description="ID de la requête")
-    execution_time_ms: NonNegativeInt = Field(..., description="Temps d'exécution total (ms)")
-    total_hits: NonNegativeInt = Field(..., description="Nombre total de résultats")
-    returned_hits: NonNegativeInt = Field(..., description="Nombre de résultats retournés")
-    has_more: bool = Field(default=False, description="Plus de résultats disponibles")
-    cache_hit: bool = Field(default=False, description="Résultat en cache")
-    elasticsearch_took: NonNegativeInt = Field(..., description="Temps Elasticsearch (ms)")
-    agent_context: Optional[AgentContext] = Field(None, description="Contexte agent")
+    max_results: int = Field(
+        default=settings.DEFAULT_SEARCH_LIMIT,
+        description="Nombre maximum de résultats"
+    )
+    include_highlights: bool = Field(default=True, description="Inclure les highlights")
+    include_aggregations: bool = Field(default=False, description="Inclure les agrégations")
+    explain_score: bool = Field(default=False, description="Expliquer le score")
     
-    @validator('returned_hits')
-    def validate_returned_hits(cls, v, values):
-        """Valide que returned_hits <= total_hits."""
-        if 'total_hits' in values and v > values['total_hits']:
-            raise ValueError("returned_hits ne peut pas être supérieur à total_hits")
+    @field_validator('timeout_seconds')
+    @classmethod
+    def validate_timeout(cls, v):
+        """Valide le timeout."""
+        if v <= 0 or v > settings.MAX_SEARCH_TIMEOUT:
+            raise ValueError(f"Timeout invalide (max {settings.MAX_SEARCH_TIMEOUT}s)")
+        return v
+    
+    @field_validator('max_results')
+    @classmethod
+    def validate_max_results(cls, v):
+        """Valide le nombre maximum de résultats."""
+        if v <= 0 or v > settings.MAX_SEARCH_RESULTS:
+            raise ValueError(f"Nombre de résultats invalide (max {settings.MAX_SEARCH_RESULTS})")
         return v
 
 # ==================== CONTRATS PRINCIPAUX ====================
 
 class SearchServiceQuery(BaseModel):
     """
-    Contrat principal de requête du Conversation Service vers le Search Service.
+    Requête standardisée du Conversation Service vers le Search Service.
     
-    Ce modèle définit l'interface standardisée pour toutes les requêtes
-    émises par les agents AutoGen vers le moteur de recherche Elasticsearch.
+    Format stable pour toutes les interactions entre services, garantissant
+    une interface cohérente et évolutive.
     """
-    query_metadata: QueryMetadata = Field(..., description="Métadonnées de la requête")
-    search_parameters: SearchParameters = Field(..., description="Paramètres de recherche")
-    filters: FilterGroup = Field(..., description="Filtres de recherche")
-    aggregations: Optional[AggregationRequest] = Field(None, description="Demandes d'agrégation")
-    options: SearchOptions = Field(default_factory=SearchOptions, description="Options avancées")
+    # Métadonnées de requête
+    query_id: UUID = Field(default_factory=uuid4, description="ID unique de la requête")
+    user_id: PositiveInt = Field(..., description="ID de l'utilisateur")
+    conversation_id: Optional[UUID] = Field(None, description="ID de la conversation")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp de la requête")
     
-    class Config:
-        use_enum_values = True
-        schema_extra = {
-            "example": {
-                "query_metadata": {
-                    "user_id": 34,
-                    "intent_type": "SEARCH_BY_CATEGORY",
-                    "confidence": 0.94,
-                    "agent_name": "query_generator_agent",
-                    "team_name": "financial_analysis_team",
-                    "original_query": "mes restaurants du mois"
-                },
-                "search_parameters": {
-                    "query_type": "filtered_search",
-                    "fields": ["user_id", "category_name", "merchant_name", "amount", "date"],
-                    "limit": 20,
-                    "timeout_ms": 5000
-                },
-                "filters": {
-                    "required": [
-                        {"field": "user_id", "operator": "eq", "value": 34},
-                        {"field": "category_name", "operator": "eq", "value": "restaurant"}
-                    ]
-                },
-                "aggregations": {
-                    "enabled": True,
-                    "types": ["sum", "count"],
-                    "metrics": ["amount_abs", "transaction_id"]
-                }
-            }
-        }
+    # Configuration de recherche
+    query_type: QueryType = Field(..., description="Type de requête")
+    intent_type: Optional[IntentType] = Field(None, description="Type d'intention détectée")
     
-    @root_validator
-    def validate_query_consistency(cls, values):
-        """Valide la cohérence globale de la requête."""
-        metadata = values.get('query_metadata')
-        parameters = values.get('search_parameters')
-        filters = values.get('filters')
+    # Contenu de recherche
+    query_text: Optional[str] = Field(None, description="Texte de recherche")
+    filters: FilterGroup = Field(default_factory=FilterGroup, description="Filtres de recherche")
+    aggregations: AggregationRequest = Field(default_factory=AggregationRequest, description="Agrégations")
+    options: SearchOptions = Field(default_factory=SearchOptions, description="Options de recherche")
+    
+    # Contexte conversationnel
+    context: Dict[str, Any] = Field(default_factory=dict, description="Contexte conversationnel")
+    previous_queries: List[str] = Field(default_factory=list, description="Requêtes précédentes")
+    
+    # Métadonnées techniques
+    response_format: ResponseFormat = Field(default=ResponseFormat.STANDARD, description="Format de réponse")
+    
+    @field_validator('query_text')
+    @classmethod
+    def validate_query_text(cls, v):
+        """Valide le texte de requête."""
+        if v is not None:
+            if len(v.strip()) == 0:
+                raise ValueError("Le texte de requête ne peut pas être vide")
+            if len(v) > settings.MAX_QUERY_LENGTH:
+                raise ValueError(f"Texte trop long (max {settings.MAX_QUERY_LENGTH} caractères)")
+        return v
+    
+    @field_validator('previous_queries')
+    @classmethod
+    def validate_previous_queries(cls, v):
+        """Valide les requêtes précédentes."""
+        if len(v) > settings.MAX_PREVIOUS_QUERIES:
+            raise ValueError(f"Trop de requêtes précédentes (max {settings.MAX_PREVIOUS_QUERIES})")
+        return v
+    
+    @model_validator(mode='after')
+    def validate_query_consistency(self):
+        """Valide la cohérence de la requête."""
+        # Validation selon le type de requête
+        if self.query_type in [QueryType.TEXT_SEARCH, QueryType.TEXT_SEARCH_WITH_FILTER]:
+            if not self.query_text:
+                raise ValueError("query_text requis pour les recherches textuelles")
         
-        if not metadata or not parameters or not filters:
-            return values
+        if self.query_type == QueryType.AGGREGATION_ONLY:
+            if not self.aggregations.enabled:
+                raise ValueError("Agrégations requises pour AGGREGATION_ONLY")
         
-        # Validation sécurité: user_id obligatoire
+        # Validation sécurité: user_id obligatoire en filtre
         user_filter_exists = any(
-            f.field == "user_id" and f.operator == FilterOperator.EQ
-            for f in filters.required
+            f.field == "user_id" for f in self.filters.required
         )
         if not user_filter_exists:
-            raise ValueError("Filtre user_id obligatoire pour la sécurité")
+            # Ajouter automatiquement le filtre user_id
+            from .service_contracts import SearchFilter, FilterOperator
+            user_filter = SearchFilter(
+                field="user_id",
+                operator=FilterOperator.EQ,
+                value=self.user_id
+            )
+            self.filters.required.append(user_filter)
         
-        # Validation cohérence user_id
-        user_filter = next(
-            (f for f in filters.required if f.field == "user_id"), None
-        )
-        if user_filter and user_filter.value != metadata.user_id:
-            raise ValueError("user_id incohérent entre metadata et filtres")
-        
-        # Validation types d'agrégation selon le query_type
-        aggregations = values.get('aggregations')
-        if aggregations and aggregations.enabled:
-            if parameters.query_type == QueryType.TEXT_SEARCH and not aggregations.types:
-                raise ValueError("Types d'agrégation requis pour les recherches textuelles")
-        
-        return values
+        return self
+
+class SearchResult(BaseModel):
+    """Résultat de recherche standardisé."""
+    id: str = Field(..., description="ID unique du résultat")
+    score: float = Field(..., description="Score de pertinence")
+    source: Dict[str, Any] = Field(..., description="Document source")
+    highlights: Optional[Dict[str, List[str]]] = Field(None, description="Highlights")
+    explanation: Optional[Dict[str, Any]] = Field(None, description="Explication du score")
+
+class AggregationResult(BaseModel):
+    """Résultat d'agrégation standardisé."""
+    name: str = Field(..., description="Nom de l'agrégation")
+    type: AggregationType = Field(..., description="Type d'agrégation")
+    value: Union[int, float, Dict[str, Any]] = Field(..., description="Valeur d'agrégation")
+    buckets: Optional[List[Dict[str, Any]]] = Field(None, description="Buckets pour agrégations")
 
 class SearchServiceResponse(BaseModel):
     """
-    Contrat principal de réponse du Search Service vers le Conversation Service.
+    Réponse standardisée du Search Service vers le Conversation Service.
     
-    Ce modèle définit l'interface standardisée pour toutes les réponses
-    retournées par le moteur de recherche vers les agents AutoGen.
+    Format stable pour toutes les réponses, avec métadonnées complètes
+    pour l'observabilité et le debugging.
     """
-    response_metadata: ResponseMetadata = Field(..., description="Métadonnées de la réponse")
-    results: List[SearchResult] = Field(default=[], description="Résultats de recherche")
-    aggregations: Optional[AggregationMetrics] = Field(None, description="Résultats d'agrégation")
-    performance: PerformanceMetrics = Field(..., description="Métriques de performance")
-    context_enrichment: Optional[ContextEnrichment] = Field(None, description="Enrichissement contextuel")
-    debug: Optional[Dict[str, Any]] = Field(None, description="Informations de debug")
+    # Métadonnées de réponse
+    query_id: UUID = Field(..., description="ID de la requête correspondante")
+    response_id: UUID = Field(default_factory=uuid4, description="ID unique de la réponse")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp de la réponse")
     
-    class Config:
-        use_enum_values = True
-        schema_extra = {
-            "example": {
-                "response_metadata": {
-                    "query_id": "uuid-v4",
-                    "execution_time_ms": 45,
-                    "total_hits": 156,
-                    "returned_hits": 20,
-                    "has_more": True,
-                    "elasticsearch_took": 23
-                },
-                "results": [
-                    {
-                        "transaction_id": "user_34_tx_12345",
-                        "user_id": 34,
-                        "amount": -45.67,
-                        "amount_abs": 45.67,
-                        "transaction_type": "debit",
-                        "category_name": "Restaurant",
-                        "merchant_name": "Le Bistrot",
-                        "date": "2024-01-15",
-                        "score": 1.0
-                    }
-                ],
-                "performance": {
-                    "query_complexity": "simple",
-                    "index_used": "harena_transactions",
-                    "elasticsearch_took": 23
-                }
-            }
-        }
+    # Résultats
+    success: bool = Field(..., description="Succès de la requête")
+    results: List[SearchResult] = Field(default_factory=list, description="Résultats de recherche")
+    aggregations: List[AggregationResult] = Field(default_factory=list, description="Résultats d'agrégation")
     
-    @validator('results')
-    def validate_results_count(cls, v, values):
-        """Valide que le nombre de résultats est cohérent."""
-        metadata = values.get('response_metadata')
-        if metadata and len(v) != metadata.returned_hits:
-            raise ValueError("Incohérence entre returned_hits et nombre de résultats")
-        return v
-
-# ==================== VALIDATION ET HELPERS ====================
-
-class ContractValidationError(Exception):
-    """Exception pour les erreurs de validation de contrat."""
-    pass
-
-def validate_search_service_query(query: SearchServiceQuery) -> bool:
-    """
-    Valide un contrat SearchServiceQuery.
+    # Métadonnées de performance
+    total_hits: int = Field(default=0, description="Nombre total de résultats")
+    execution_time_ms: float = Field(..., description="Temps d'exécution en ms")
+    elasticsearch_time_ms: Optional[float] = Field(None, description="Temps Elasticsearch")
     
-    Args:
-        query: Le contrat à valider
-        
-    Returns:
-        True si valide
-        
-    Raises:
-        ContractValidationError: Si la validation échoue
-    """
-    try:
-        # Validation de base Pydantic
-        query.dict()
-        
-        # Validations métier spécifiques
-        if query.query_metadata.user_id <= 0:
-            raise ContractValidationError("user_id doit être positif")
-        
-        if query.query_metadata.confidence < 0.5:
-            raise ContractValidationError("Confiance trop faible (< 0.5)")
-        
-        # Validation sécurité user_id
-        user_filter_exists = any(
-            f.field == "user_id" for f in query.filters.required
-        )
-        if not user_filter_exists:
-            raise ContractValidationError("Filtre user_id obligatoire")
-        
-        # Validation limites performance
-        if query.search_parameters.limit > settings.MAX_SEARCH_RESULTS:
-            raise ContractValidationError(f"Limite trop élevée (max {settings.MAX_SEARCH_RESULTS})")
-        
-        if query.search_parameters.timeout_ms > settings.MAX_SEARCH_TIMEOUT * 1000:
-            raise ContractValidationError(f"Timeout trop élevé (max {settings.MAX_SEARCH_TIMEOUT}s)")
-        
-        return True
-        
-    except Exception as e:
-        raise ContractValidationError(f"Validation échouée: {str(e)}")
-
-def validate_search_service_response(response: SearchServiceResponse) -> bool:
-    """
-    Valide un contrat SearchServiceResponse.
+    # Informations de pagination
+    offset: int = Field(default=0, description="Offset des résultats")
+    limit: int = Field(..., description="Limite des résultats")
+    has_more: bool = Field(default=False, description="Plus de résultats disponibles")
     
-    Args:
-        response: Le contrat à valider
+    # Contexte et suggestions
+    suggestions: List[str] = Field(default_factory=list, description="Suggestions de requêtes")
+    related_queries: List[str] = Field(default_factory=list, description="Requêtes liées")
+    
+    # Gestion d'erreurs
+    errors: List[str] = Field(default_factory=list, description="Erreurs rencontrées")
+    warnings: List[str] = Field(default_factory=list, description="Avertissements")
+    
+    # Métadonnées de debugging
+    debug_info: Optional[Dict[str, Any]] = Field(None, description="Informations de debug")
+    
+    @model_validator(mode='after')
+    def validate_response_consistency(self):
+        """Valide la cohérence de la réponse."""
+        if self.success:
+            if self.errors:
+                raise ValueError("Pas d'erreurs attendues si succès")
+        else:
+            if not self.errors:
+                raise ValueError("Erreurs requises si échec")
         
-    Returns:
-        True si valide
+        if self.total_hits < len(self.results):
+            raise ValueError("total_hits ne peut pas être inférieur au nombre de résultats")
         
-    Raises:
-        ContractValidationError: Si la validation échoue
-    """
-    try:
-        # Validation de base Pydantic
-        response.dict()
+        if self.offset < 0:
+            raise ValueError("offset ne peut pas être négatif")
         
-        # Validations métier spécifiques
-        if response.response_metadata.execution_time_ms < 0:
-            raise ContractValidationError("execution_time_ms ne peut pas être négatif")
+        if self.limit <= 0:
+            raise ValueError("limit doit être positif")
         
-        if response.response_metadata.returned_hits > response.response_metadata.total_hits:
-            raise ContractValidationError("returned_hits > total_hits impossible")
-        
-        if len(response.results) != response.response_metadata.returned_hits:
-            raise ContractValidationError("Incohérence nombre de résultats")
-        
-        # Validation cohérence données
-        for result in response.results:
-            if result.amount_abs < 0:
-                raise ContractValidationError("amount_abs ne peut pas être négatif")
-            
-            if abs(result.amount) != result.amount_abs:
-                raise ContractValidationError("Incohérence amount/amount_abs")
-        
-        return True
-        
-    except Exception as e:
-        raise ContractValidationError(f"Validation échouée: {str(e)}")
+        return self
 
 # ==================== FACTORY FUNCTIONS ====================
 
-def create_search_service_query(
+def create_search_query(
     user_id: int,
-    intent_type: IntentType,
-    agent_name: str,
-    filters: Dict[str, Any],
+    query_type: QueryType,
+    query_text: Optional[str] = None,
     **kwargs
 ) -> SearchServiceQuery:
     """
@@ -574,184 +404,151 @@ def create_search_service_query(
     
     Args:
         user_id: ID de l'utilisateur
-        intent_type: Type d'intention
-        agent_name: Nom de l'agent
-        filters: Filtres à appliquer
-        **kwargs: Paramètres additionnels
-        
+        query_type: Type de requête
+        query_text: Texte de recherche optionnel
+        **kwargs: Autres paramètres
+    
     Returns:
         SearchServiceQuery configurée
     """
-    # Métadonnées par défaut
-    query_metadata = QueryMetadata(
-        user_id=user_id,
-        intent_type=intent_type,
-        confidence=kwargs.get('confidence', 0.8),
-        agent_name=agent_name,
-        team_name=kwargs.get('team_name'),
-        original_query=kwargs.get('original_query')
+    # Filtres par défaut avec user_id
+    default_filters = FilterGroup(
+        required=[SearchFilter(
+            field="user_id",
+            operator=FilterOperator.EQ,
+            value=user_id
+        )]
     )
-    
-    # Paramètres par défaut
-    search_parameters = SearchParameters(
-        query_type=kwargs.get('query_type', QueryType.FILTERED_SEARCH),
-        fields=kwargs.get('fields', ['*']),
-        limit=kwargs.get('limit', settings.DEFAULT_LIMIT),
-        timeout_ms=kwargs.get('timeout_ms', settings.SEARCH_TIMEOUT * 1000)
-    )
-    
-    # Filtres avec user_id obligatoire
-    filter_group = FilterGroup(
-        required=[
-            SearchFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)
-        ]
-    )
-    
-    # Ajout des filtres personnalisés
-    if 'required_filters' in filters:
-        filter_group.required.extend(filters['required_filters'])
-    if 'optional_filters' in filters:
-        filter_group.optional.extend(filters['optional_filters'])
-    if 'range_filters' in filters:
-        filter_group.ranges.extend(filters['range_filters'])
-    if 'text_search' in filters:
-        filter_group.text_search = filters['text_search']
     
     return SearchServiceQuery(
-        query_metadata=query_metadata,
-        search_parameters=search_parameters,
-        filters=filter_group,
-        aggregations=kwargs.get('aggregations'),
-        options=kwargs.get('options', SearchOptions())
+        user_id=user_id,
+        query_type=query_type,
+        query_text=query_text,
+        filters=kwargs.get('filters', default_filters),
+        aggregations=kwargs.get('aggregations', AggregationRequest()),
+        options=kwargs.get('options', SearchOptions()),
+        **{k: v for k, v in kwargs.items() if k not in ['filters', 'aggregations', 'options']}
     )
 
-def create_search_service_response(
+def create_success_response(
     query_id: UUID,
-    results: List[Dict[str, Any]],
-    total_hits: int,
-    execution_time_ms: int,
-    elasticsearch_took: int,
+    results: List[SearchResult],
+    execution_time_ms: float,
     **kwargs
 ) -> SearchServiceResponse:
     """
-    Factory pour créer une SearchServiceResponse.
+    Factory pour créer une réponse de succès.
     
     Args:
         query_id: ID de la requête
         results: Résultats de recherche
-        total_hits: Nombre total de résultats
-        execution_time_ms: Temps d'exécution total
-        elasticsearch_took: Temps Elasticsearch
-        **kwargs: Paramètres additionnels
-        
+        execution_time_ms: Temps d'exécution
+        **kwargs: Autres paramètres
+    
     Returns:
-        SearchServiceResponse configurée
+        SearchServiceResponse de succès
     """
-    # Conversion des résultats
-    search_results = [SearchResult(**result) for result in results]
-    
-    # Métadonnées de réponse
-    response_metadata = ResponseMetadata(
-        query_id=query_id,
-        execution_time_ms=execution_time_ms,
-        total_hits=total_hits,
-        returned_hits=len(search_results),
-        has_more=total_hits > len(search_results),
-        elasticsearch_took=elasticsearch_took,
-        agent_context=kwargs.get('agent_context')
-    )
-    
-    # Métriques de performance
-    performance = PerformanceMetrics(
-        query_complexity=kwargs.get('query_complexity', 'simple'),
-        optimization_applied=kwargs.get('optimization_applied', []),
-        index_used=kwargs.get('index_used', settings.ELASTICSEARCH_INDEX),
-        elasticsearch_took=elasticsearch_took
-    )
-    
     return SearchServiceResponse(
-        response_metadata=response_metadata,
-        results=search_results,
-        aggregations=kwargs.get('aggregations'),
-        performance=performance,
-        context_enrichment=kwargs.get('context_enrichment'),
-        debug=kwargs.get('debug')
+        query_id=query_id,
+        success=True,
+        results=results,
+        execution_time_ms=execution_time_ms,
+        total_hits=kwargs.get('total_hits', len(results)),
+        limit=kwargs.get('limit', len(results)),
+        **{k: v for k, v in kwargs.items() if k not in ['total_hits', 'limit']}
     )
 
-# ==================== CONSTANTES ET EXPORTS ====================
+def create_error_response(
+    query_id: UUID,
+    errors: List[str],
+    execution_time_ms: float,
+    **kwargs
+) -> SearchServiceResponse:
+    """
+    Factory pour créer une réponse d'erreur.
+    
+    Args:
+        query_id: ID de la requête
+        errors: Liste des erreurs
+        execution_time_ms: Temps d'exécution
+        **kwargs: Autres paramètres
+    
+    Returns:
+        SearchServiceResponse d'erreur
+    """
+    return SearchServiceResponse(
+        query_id=query_id,
+        success=False,
+        errors=errors,
+        execution_time_ms=execution_time_ms,
+        limit=0,
+        **kwargs
+    )
 
-# Champs de recherche financiers valides
-FINANCIAL_SEARCH_FIELDS = [
-    "user_id", "account_id", "transaction_id",
-    "amount", "amount_abs", "currency_code",
-    "transaction_type", "operation_type", "date",
-    "primary_description", "merchant_name", "category_name",
-    "month_year", "weekday", "searchable_text"
-]
+# ==================== UTILITAIRES DE VALIDATION ====================
 
-# Champs d'agrégation valides
-AGGREGATION_FIELDS = [
-    "category_name", "merchant_name", "transaction_type",
-    "month_year", "weekday", "amount", "amount_abs"
-]
+def validate_query_format(query: SearchServiceQuery) -> List[str]:
+    """
+    Valide le format d'une requête sans lever d'exception.
+    
+    Args:
+        query: Requête à valider
+    
+    Returns:
+        Liste des erreurs de validation (vide si OK)
+    """
+    errors = []
+    
+    try:
+        # Validation Pydantic
+        query.model_validate(query.model_dump())
+    except Exception as e:
+        errors.append(f"Erreur de validation Pydantic: {str(e)}")
+    
+    # Validations métier supplémentaires
+    if query.query_type in [QueryType.TEXT_SEARCH, QueryType.TEXT_SEARCH_WITH_FILTER]:
+        if not query.query_text or len(query.query_text.strip()) == 0:
+            errors.append("query_text requis pour les recherches textuelles")
+    
+    if query.query_type == QueryType.AGGREGATION_ONLY:
+        if not query.aggregations.enabled:
+            errors.append("Agrégations requises pour AGGREGATION_ONLY")
+    
+    # Validation sécurité
+    user_filter_exists = any(
+        f.field == "user_id" for f in query.filters.required
+    )
+    if not user_filter_exists:
+        errors.append("Filtre user_id obligatoire pour la sécurité")
+    
+    return errors
 
-# Intentions nécessitant des agrégations
-AGGREGATION_REQUIRED_INTENTS = [
-    IntentType.COUNT_OPERATIONS,
-    IntentType.TEMPORAL_ANALYSIS,
-    IntentType.CATEGORY_BREAKDOWN,
-    IntentType.SPENDING_EVOLUTION
-]
-
-__all__ = [
-    # Contrats principaux
-    "SearchServiceQuery",
-    "SearchServiceResponse",
+def validate_response_format(response: SearchServiceResponse) -> List[str]:
+    """
+    Valide le format d'une réponse sans lever d'exception.
     
-    # Métadonnées
-    "QueryMetadata",
-    "ResponseMetadata",
-    "ExecutionContext",
-    "AgentContext",
+    Args:
+        response: Réponse à valider
     
-    # Filtres et paramètres
-    "SearchFilter",
-    "RangeFilter",
-    "TextSearchFilter",
-    "FilterGroup",
-    "SearchParameters",
+    Returns:
+        Liste des erreurs de validation (vide si OK)
+    """
+    errors = []
     
-    # Agrégations
-    "AggregationRequest",
-    "AggregationResult",
-    "AggregationBucket",
-    "AggregationMetrics",
+    try:
+        # Validation Pydantic
+        response.model_validate(response.model_dump())
+    except Exception as e:
+        errors.append(f"Erreur de validation Pydantic: {str(e)}")
     
-    # Résultats et enrichissement
-    "SearchResult",
-    "PerformanceMetrics",
-    "ContextEnrichment",
+    # Validations métier
+    if response.success and response.errors:
+        errors.append("Pas d'erreurs attendues pour une réponse de succès")
     
-    # Options
-    "SearchOptions",
+    if not response.success and not response.errors:
+        errors.append("Erreurs requises pour une réponse d'échec")
     
-    # Enums
-    "QueryType",
-    "FilterOperator",
-    "AggregationType",
-    "IntentType",
+    if response.total_hits < len(response.results):
+        errors.append("total_hits incohérent avec le nombre de résultats")
     
-    # Validation
-    "ContractValidationError",
-    "validate_search_service_query",
-    "validate_search_service_response",
-    
-    # Factory functions
-    "create_search_service_query",
-    "create_search_service_response",
-    
-    # Constantes
-    "FINANCIAL_SEARCH_FIELDS",
-    "AGGREGATION_FIELDS",
-    "AGGREGATION_REQUIRED_INTENTS"
-]
+    return errors

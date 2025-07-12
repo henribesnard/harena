@@ -1,16 +1,27 @@
 """
-Modèles de réponses internes du Search Service
+Modèles de réponses internes et API du Search Service
+====================================================
+
 Structures optimisées pour le traitement interne avant conversion vers contrats
+et modèles de réponses API spécialisés pour les endpoints REST.
+
+Contient :
+- Modèles internes (InternalSearchResponse, RawTransaction...)
+- Modèles API REST (ValidationResponse, HealthResponse...)
+- Transformateurs (ResponseTransformer)
+- Builders (ResponseBuilder)
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from dataclasses import dataclass, field
 
 from .service_contracts import SearchServiceResponse, AggregationType
 
+
+# === ENUMS INTERNES ===
 
 class ExecutionStatus(str, Enum):
     """Statuts d'exécution des requêtes"""
@@ -39,6 +50,22 @@ class QualityIndicator(str, Enum):
     AVERAGE = "average"       # Score > 0.5, résultats moyens
     POOR = "poor"             # Score > 0.3, résultats faibles
     VERY_POOR = "very_poor"   # Score ≤ 0.3, résultats peu pertinents
+
+
+class ComponentStatus(str, Enum):
+    """Statuts des composants pour health check"""
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+    UNKNOWN = "unknown"
+
+
+class ValidationSeverity(str, Enum):
+    """Niveaux de sévérité pour validation"""
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
 
 
 # === STRUCTURES DE DONNÉES INTERNES ===
@@ -142,7 +169,7 @@ class InternalAggregationResult:
 @dataclass
 class ExecutionMetrics:
     """Métriques d'exécution internes"""
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     elasticsearch_took: int = 0
     total_execution_time: int = 0
@@ -153,7 +180,7 @@ class ExecutionMetrics:
     
     def mark_completed(self):
         """Marque l'exécution comme terminée"""
-        self.end_time = datetime.utcnow()
+        self.end_time = datetime.now(timezone.utc)
         self.total_execution_time = int((self.end_time - self.start_time).total_seconds() * 1000)
     
     def add_optimization(self, optimization: OptimizationType):
@@ -174,6 +201,8 @@ class ExecutionMetrics:
             ))
         }
 
+
+# === MODÈLES INTERNES ===
 
 class InternalSearchResponse(BaseModel):
     """Réponse de recherche interne complète"""
@@ -208,6 +237,10 @@ class InternalSearchResponse(BaseModel):
     # Contexte pour enrichissement
     suggested_followups: List[str] = Field(default_factory=list, description="Questions suggérées")
     related_categories: List[str] = Field(default_factory=list, description="Catégories liées")
+    
+    class Config:
+        use_enum_values = True
+        arbitrary_types_allowed = True
     
     def mark_completed(self):
         """Marque la réponse comme terminée"""
@@ -316,6 +349,113 @@ class InternalSearchResponse(BaseModel):
         }
 
 
+# === MODÈLES API REST ===
+
+class ValidationError(BaseModel):
+    """Erreur de validation avec détails"""
+    field: str = Field(..., description="Champ concerné")
+    error_type: str = Field(..., description="Type d'erreur")
+    message: str = Field(..., description="Message d'erreur")
+    severity: ValidationSeverity = Field(default=ValidationSeverity.ERROR, description="Sévérité")
+    suggested_fix: Optional[str] = Field(default=None, description="Correction suggérée")
+
+
+class SecurityCheckResult(BaseModel):
+    """Résultat de vérification sécurité"""
+    passed: bool = Field(..., description="Vérification réussie")
+    user_id_check: bool = Field(..., description="Vérification user_id")
+    data_isolation_check: bool = Field(..., description="Vérification isolation données")
+    permissions_check: bool = Field(..., description="Vérification permissions")
+    warnings: List[str] = Field(default_factory=list, description="Avertissements sécurité")
+
+
+class PerformanceAnalysis(BaseModel):
+    """Analyse de performance d'une requête"""
+    complexity: str = Field(..., description="Complexité estimée")
+    estimated_time_ms: int = Field(..., description="Temps estimé en ms")
+    warnings: List[str] = Field(default_factory=list, description="Avertissements performance")
+    optimization_suggestions: List[str] = Field(default_factory=list, description="Suggestions d'optimisation")
+    cache_eligible: bool = Field(default=True, description="Éligible au cache")
+    field_count: int = Field(default=0, description="Nombre de champs recherchés")
+    filter_count: int = Field(default=0, description="Nombre de filtres")
+
+
+class ValidationResponse(BaseModel):
+    """Réponse de validation d'une requête"""
+    valid: bool = Field(..., description="Requête valide")
+    errors: List[ValidationError] = Field(default_factory=list, description="Erreurs de validation")
+    warnings: List[ValidationError] = Field(default_factory=list, description="Avertissements")
+    security_check: SecurityCheckResult = Field(..., description="Résultat vérification sécurité")
+    performance_analysis: PerformanceAnalysis = Field(..., description="Analyse de performance")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Métadonnées validation")
+
+
+class TemplateInfo(BaseModel):
+    """Informations sur un template de requête"""
+    name: str = Field(..., description="Nom du template")
+    category: str = Field(..., description="Catégorie")
+    intent_type: str = Field(..., description="Type d'intention")
+    description: str = Field(..., description="Description")
+    complexity: str = Field(..., description="Complexité")
+    usage_count: int = Field(default=0, description="Nombre d'utilisations")
+    avg_execution_time_ms: float = Field(default=0.0, description="Temps d'exécution moyen")
+    cache_hit_rate: float = Field(default=0.0, description="Taux de cache hit")
+    last_used: Optional[datetime] = Field(default=None, description="Dernière utilisation")
+
+
+class TemplateListResponse(BaseModel):
+    """Réponse listant les templates disponibles"""
+    templates: Dict[str, TemplateInfo] = Field(..., description="Templates disponibles")
+    total_count: int = Field(..., description="Nombre total de templates")
+    categories: List[str] = Field(..., description="Catégories disponibles")
+    intent_types: List[str] = Field(..., description="Types d'intention disponibles")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Métadonnées de réponse")
+
+
+class ComponentHealthInfo(BaseModel):
+    """Informations de santé d'un composant"""
+    name: str = Field(..., description="Nom du composant")
+    status: ComponentStatus = Field(..., description="Statut du composant")
+    last_check: datetime = Field(..., description="Dernière vérification")
+    response_time_ms: Optional[float] = Field(default=None, description="Temps de réponse en ms")
+    error_message: Optional[str] = Field(default=None, description="Message d'erreur si unhealthy")
+    dependencies: List[str] = Field(default_factory=list, description="Dépendances")
+    metrics: Dict[str, Any] = Field(default_factory=dict, description="Métriques spécifiques")
+
+
+class SystemHealth(BaseModel):
+    """Santé globale du système"""
+    overall_status: ComponentStatus = Field(..., description="Statut global")
+    uptime_seconds: float = Field(..., description="Uptime en secondes")
+    memory_usage_mb: float = Field(..., description="Usage mémoire en MB")
+    cpu_usage_percent: float = Field(..., description="Usage CPU en %")
+    active_connections: int = Field(default=0, description="Connexions actives")
+    total_requests: int = Field(default=0, description="Total requêtes")
+    error_rate_percent: float = Field(default=0.0, description="Taux d'erreur %")
+
+
+class HealthResponse(BaseModel):
+    """Réponse détaillée de santé du service"""
+    system: SystemHealth = Field(..., description="Santé système globale")
+    components: List[ComponentHealthInfo] = Field(..., description="Santé des composants")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp")
+    service_version: str = Field(default="1.0.0", description="Version du service")
+    environment: str = Field(default="production", description="Environnement")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Métadonnées")
+
+
+class MetricsResponse(BaseModel):
+    """Réponse d'export des métriques"""
+    format: str = Field(..., description="Format des métriques")
+    content: str = Field(..., description="Contenu des métriques")
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Date génération")
+    metrics_count: int = Field(..., description="Nombre de métriques")
+    time_range_hours: int = Field(default=1, description="Période couverte en heures")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Métadonnées")
+
+
+# === TRANSFORMATEUR DE RÉPONSES ===
+
 class ResponseTransformer:
     """Transformateur de réponses internes vers contrats externes"""
     
@@ -342,7 +482,7 @@ class ResponseTransformer:
                 "requesting_agent": "search_service",
                 "next_suggested_agent": "response_generator_agent" if internal_response.raw_results else "query_optimizer_agent"
             },
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now(timezone.utc)
         }
         
         # Convertir les résultats
@@ -540,26 +680,327 @@ class ResponseBuilder:
         return self.response
 
 
+# === HELPERS POUR LES MODÈLES API ===
+
+class ValidationResponseBuilder:
+    """Builder pour les réponses de validation"""
+    
+    def __init__(self):
+        self.errors = []
+        self.warnings = []
+        self.security_result = SecurityCheckResult(
+            passed=True,
+            user_id_check=True,
+            data_isolation_check=True,
+            permissions_check=True
+        )
+        self.performance_analysis = PerformanceAnalysis(
+            complexity="simple",
+            estimated_time_ms=50
+        )
+    
+    def add_error(self, field: str, error_type: str, message: str, 
+                  severity: ValidationSeverity = ValidationSeverity.ERROR,
+                  suggested_fix: str = None) -> 'ValidationResponseBuilder':
+        """Ajoute une erreur de validation"""
+        self.errors.append(ValidationError(
+            field=field,
+            error_type=error_type,
+            message=message,
+            severity=severity,
+            suggested_fix=suggested_fix
+        ))
+        return self
+    
+    def add_warning(self, field: str, message: str, 
+                   suggested_fix: str = None) -> 'ValidationResponseBuilder':
+        """Ajoute un avertissement"""
+        self.warnings.append(ValidationError(
+            field=field,
+            error_type="warning",
+            message=message,
+            severity=ValidationSeverity.WARNING,
+            suggested_fix=suggested_fix
+        ))
+        return self
+    
+    def set_security_check(self, passed: bool, **kwargs) -> 'ValidationResponseBuilder':
+        """Configure la vérification sécurité"""
+        self.security_result = SecurityCheckResult(passed=passed, **kwargs)
+        return self
+    
+    def set_performance_analysis(self, complexity: str, estimated_time_ms: int,
+                               **kwargs) -> 'ValidationResponseBuilder':
+        """Configure l'analyse de performance"""
+        self.performance_analysis = PerformanceAnalysis(
+            complexity=complexity,
+            estimated_time_ms=estimated_time_ms,
+            **kwargs
+        )
+        return self
+    
+    def build(self, metadata: Dict[str, Any] = None) -> ValidationResponse:
+        """Construit la réponse de validation"""
+        return ValidationResponse(
+            valid=len(self.errors) == 0,
+            errors=self.errors,
+            warnings=self.warnings,
+            security_check=self.security_result,
+            performance_analysis=self.performance_analysis,
+            metadata=metadata or {}
+        )
+
+
+class HealthResponseBuilder:
+    """Builder pour les réponses de santé"""
+    
+    def __init__(self):
+        self.components = []
+        self.system_health = SystemHealth(
+            overall_status=ComponentStatus.HEALTHY,
+            uptime_seconds=0.0,
+            memory_usage_mb=0.0,
+            cpu_usage_percent=0.0
+        )
+    
+    def add_component(self, name: str, status: ComponentStatus,
+                     response_time_ms: float = None, error_message: str = None,
+                     dependencies: List[str] = None, 
+                     metrics: Dict[str, Any] = None) -> 'HealthResponseBuilder':
+        """Ajoute un composant"""
+        self.components.append(ComponentHealthInfo(
+            name=name,
+            status=status,
+            last_check=datetime.now(timezone.utc),
+            response_time_ms=response_time_ms,
+            error_message=error_message,
+            dependencies=dependencies or [],
+            metrics=metrics or {}
+        ))
+        return self
+    
+    def set_system_health(self, **kwargs) -> 'HealthResponseBuilder':
+        """Configure la santé système"""
+        for key, value in kwargs.items():
+            if hasattr(self.system_health, key):
+                setattr(self.system_health, key, value)
+        return self
+    
+    def calculate_overall_status(self) -> 'HealthResponseBuilder':
+        """Calcule le statut global basé sur les composants"""
+        if not self.components:
+            self.system_health.overall_status = ComponentStatus.UNKNOWN
+            return self
+        
+        statuses = [comp.status for comp in self.components]
+        
+        if ComponentStatus.UNHEALTHY in statuses:
+            self.system_health.overall_status = ComponentStatus.UNHEALTHY
+        elif ComponentStatus.DEGRADED in statuses:
+            self.system_health.overall_status = ComponentStatus.DEGRADED
+        elif all(status == ComponentStatus.HEALTHY for status in statuses):
+            self.system_health.overall_status = ComponentStatus.HEALTHY
+        else:
+            self.system_health.overall_status = ComponentStatus.UNKNOWN
+        
+        return self
+    
+    def build(self, service_version: str = "1.0.0", environment: str = "production",
+             metadata: Dict[str, Any] = None) -> HealthResponse:
+        """Construit la réponse de santé"""
+        self.calculate_overall_status()
+        
+        return HealthResponse(
+            system=self.system_health,
+            components=self.components,
+            service_version=service_version,
+            environment=environment,
+            metadata=metadata or {}
+        )
+
+
+class TemplateResponseBuilder:
+    """Builder pour les réponses de templates"""
+    
+    def __init__(self):
+        self.templates = {}
+        self.categories = set()
+        self.intent_types = set()
+    
+    def add_template(self, name: str, category: str, intent_type: str,
+                    description: str, complexity: str = "medium",
+                    usage_count: int = 0, avg_execution_time_ms: float = 0.0,
+                    cache_hit_rate: float = 0.0, 
+                    last_used: datetime = None) -> 'TemplateResponseBuilder':
+        """Ajoute un template"""
+        self.templates[name] = TemplateInfo(
+            name=name,
+            category=category,
+            intent_type=intent_type,
+            description=description,
+            complexity=complexity,
+            usage_count=usage_count,
+            avg_execution_time_ms=avg_execution_time_ms,
+            cache_hit_rate=cache_hit_rate,
+            last_used=last_used
+        )
+        
+        self.categories.add(category)
+        self.intent_types.add(intent_type)
+        return self
+    
+    def build(self, metadata: Dict[str, Any] = None) -> TemplateListResponse:
+        """Construit la réponse des templates"""
+        return TemplateListResponse(
+            templates=self.templates,
+            total_count=len(self.templates),
+            categories=sorted(list(self.categories)),
+            intent_types=sorted(list(self.intent_types)),
+            metadata=metadata or {}
+        )
+
+
+# === UTILITAIRES DE CONVERSION ===
+
+class ResponseConverter:
+    """Convertisseur entre différents formats de réponse"""
+    
+    @staticmethod
+    def dict_to_template_info(template_dict: Dict[str, Any], name: str) -> TemplateInfo:
+        """Convertit un dictionnaire en TemplateInfo"""
+        return TemplateInfo(
+            name=name,
+            category=template_dict.get("category", "unknown"),
+            intent_type=template_dict.get("intent_type", "unknown"),
+            description=template_dict.get("description", ""),
+            complexity=template_dict.get("complexity", "medium"),
+            usage_count=template_dict.get("usage_count", 0),
+            avg_execution_time_ms=template_dict.get("avg_execution_time_ms", 0.0),
+            cache_hit_rate=template_dict.get("cache_hit_rate", 0.0),
+            last_used=template_dict.get("last_used")
+        )
+    
+    @staticmethod
+    def metrics_dict_to_response(metrics_dict: Dict[str, Any], 
+                               format_type: str = "json") -> MetricsResponse:
+        """Convertit des métriques en MetricsResponse"""
+        import json
+        
+        if format_type == "json":
+            content = json.dumps(metrics_dict, indent=2, default=str)
+        else:
+            content = str(metrics_dict)
+        
+        return MetricsResponse(
+            format=format_type,
+            content=content,
+            metrics_count=len(metrics_dict.get("metrics", {})),
+            metadata={
+                "export_timestamp": datetime.now(timezone.utc).isoformat(),
+                "content_length": len(content)
+            }
+        )
+
+
+# === VALIDATEURS SPÉCIALISÉS ===
+
+class ResponseValidator:
+    """Validateur pour les modèles de réponse"""
+    
+    @staticmethod
+    def validate_internal_response(response: InternalSearchResponse) -> bool:
+        """Valide une réponse interne"""
+        try:
+            # Vérification cohérence des hits
+            if response.total_hits < len(response.raw_results):
+                raise ValueError("total_hits ne peut pas être inférieur au nombre de résultats")
+            
+            # Vérification scores
+            if response.max_score is not None and response.raw_results:
+                max_result_score = max(r.score for r in response.raw_results)
+                if response.max_score < max_result_score:
+                    raise ValueError("max_score incohérent avec les scores des résultats")
+            
+            # Vérification quality_score
+            if not 0 <= response.quality_score <= 1:
+                raise ValueError("quality_score doit être entre 0 et 1")
+            
+            return True
+        except Exception as e:
+            raise ValueError(f"Validation réponse interne échouée: {e}")
+    
+    @staticmethod
+    def validate_api_response(response: Union[ValidationResponse, HealthResponse, 
+                                           TemplateListResponse]) -> bool:
+        """Valide une réponse API"""
+        try:
+            if isinstance(response, ValidationResponse):
+                # La validation ne peut pas être valid s'il y a des erreurs
+                if response.valid and response.errors:
+                    raise ValueError("Réponse ne peut pas être valid avec des erreurs")
+                
+                # Les erreurs critiques doivent rendre la validation invalid
+                critical_errors = [e for e in response.errors 
+                                 if e.severity == ValidationSeverity.CRITICAL]
+                if critical_errors and response.valid:
+                    raise ValueError("Erreurs critiques doivent rendre la validation invalid")
+            
+            elif isinstance(response, HealthResponse):
+                # Vérification cohérence statut global vs composants
+                unhealthy_components = [c for c in response.components 
+                                      if c.status == ComponentStatus.UNHEALTHY]
+                if unhealthy_components and response.system.overall_status == ComponentStatus.HEALTHY:
+                    raise ValueError("Statut global incohérent avec composants unhealthy")
+            
+            elif isinstance(response, TemplateListResponse):
+                # Vérification cohérence count
+                if response.total_count != len(response.templates):
+                    raise ValueError("total_count incohérent avec le nombre de templates")
+            
+            return True
+        except Exception as e:
+            raise ValueError(f"Validation réponse API échouée: {e}")
+
+
 # === EXPORTS ===
 
 __all__ = [
-    # Enums
+    # === ENUMS ===
     "ExecutionStatus",
     "OptimizationType", 
     "QualityIndicator",
+    "ComponentStatus",
+    "ValidationSeverity",
     
-    # Dataclasses
+    # === STRUCTURES INTERNES ===
     "RawTransaction",
     "AggregationBucketInternal",
     "InternalAggregationResult",
     "ExecutionMetrics",
     
-    # Modèle principal
+    # === MODÈLES INTERNES ===
     "InternalSearchResponse",
     
-    # Transformateur
-    "ResponseTransformer",
+    # === MODÈLES API REST ===
+    "ValidationError",
+    "SecurityCheckResult",
+    "PerformanceAnalysis",
+    "ValidationResponse",
+    "TemplateInfo",
+    "TemplateListResponse",
+    "ComponentHealthInfo",
+    "SystemHealth",
+    "HealthResponse",
+    "MetricsResponse",
     
-    # Builder
-    "ResponseBuilder"
+    # === TRANSFORMATEURS ET BUILDERS ===
+    "ResponseTransformer",
+    "ResponseBuilder",
+    "ValidationResponseBuilder",
+    "HealthResponseBuilder",
+    "TemplateResponseBuilder",
+    
+    # === UTILITAIRES ===
+    "ResponseConverter",
+    "ResponseValidator"
 ]

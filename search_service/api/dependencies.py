@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from functools import wraps
 
-from fastapi import Depends, HTTPException, Request, Header, Query, Path
+from fastapi import Depends, HTTPException, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_429_TOO_MANY_REQUESTS
 import redis.asyncio as redis

@@ -398,6 +398,99 @@ class MetricsCollector:
                 MetricType.HISTOGRAM,
                 MetricCategory.BUSINESS,
                 "Score de satisfaction utilisateur (1-5)"
+            ),
+            MetricDefinition(
+                "api_search_duration_ms",
+                MetricType.HISTOGRAM,
+                MetricCategory.API,
+                "Durée des appels API de recherche",
+                "ms",
+                warning_threshold=200,
+                error_threshold=1000,
+                critical_threshold=5000
+            ),
+            MetricDefinition(
+                "api_search_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'appels API de recherche"
+            ),
+            MetricDefinition(
+                "api_search_success_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'appels API de recherche réussis"
+            ),
+            MetricDefinition(
+                "api_search_error_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'erreurs API de recherche"
+            ),
+            MetricDefinition(
+                "api_search_results_count",
+                MetricType.HISTOGRAM,
+                MetricCategory.API,
+                "Nombre de résultats retournés par recherche"
+            ),
+            MetricDefinition(
+                "api_validation_duration_ms",
+                MetricType.HISTOGRAM,
+                MetricCategory.API,
+                "Durée des appels API de validation",
+                "ms"
+            ),
+            MetricDefinition(
+                "api_validation_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'appels API de validation"
+            ),
+            MetricDefinition(
+                "api_validation_success_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre de validations réussies"
+            ),
+            MetricDefinition(
+                "api_validation_error_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'erreurs de validation"
+            ),
+            MetricDefinition(
+                "api_health_percentage",
+                MetricType.GAUGE,
+                MetricCategory.API,
+                "Pourcentage de santé globale de l'API",
+                "%",
+                warning_threshold=90,
+                error_threshold=75,
+                critical_threshold=50
+            ),
+            MetricDefinition(
+                "api_rate_limit_exceeded",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre de dépassements de limite de taux"
+            ),
+            MetricDefinition(
+                "api_auth_attempts",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre de tentatives d'authentification"
+            ),
+            MetricDefinition(
+                "api_auth_success_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'authentifications réussies"
+            ),
+            MetricDefinition(
+                "api_auth_failure_count",
+                MetricType.COUNTER,
+                MetricCategory.API,
+                "Nombre d'échecs d'authentification"
             )
         ]
         
@@ -1275,7 +1368,190 @@ class BusinessMetrics:
         self.collector.increment(f"financial_category_{category.lower()}_count", 
                                tags=category_tags)
 
-
+class ApiMetrics:
+    """Métriques spécialisées pour l'API REST"""
+    
+    def __init__(self, collector: MetricsCollector):
+        self.collector = collector
+    
+    def record_search_api_call(self, endpoint: str, duration_ms: float,
+                              success: bool, user_id: Optional[int] = None,
+                              results_count: int = 0, cache_hit: bool = False):
+        """Enregistre un appel API de recherche"""
+        
+        tags = {
+            "endpoint": endpoint,
+            "success": str(success),
+            "cache_hit": str(cache_hit),
+            "has_results": str(results_count > 0)
+        }
+        
+        if user_id:
+            tags["user_id"] = str(user_id)
+        
+        self.collector.record("api_search_duration_ms", duration_ms, tags)
+        self.collector.record("api_search_results_count", results_count, tags)
+        self.collector.increment("api_search_count", tags=tags)
+        
+        if success:
+            self.collector.increment("api_search_success_count", tags=tags)
+        else:
+            self.collector.increment("api_search_error_count", tags=tags)
+    
+    def record_validation_api_call(self, duration_ms: float, success: bool,
+                                  user_id: Optional[int] = None,
+                                  validation_errors: int = 0):
+        """Enregistre un appel API de validation"""
+        
+        tags = {
+            "success": str(success),
+            "has_errors": str(validation_errors > 0)
+        }
+        
+        if user_id:
+            tags["user_id"] = str(user_id)
+        
+        self.collector.record("api_validation_duration_ms", duration_ms, tags)
+        self.collector.record("api_validation_errors_count", validation_errors, tags)
+        self.collector.increment("api_validation_count", tags=tags)
+        
+        if success:
+            self.collector.increment("api_validation_success_count", tags=tags)
+        else:
+            self.collector.increment("api_validation_error_count", tags=tags)
+    
+    def record_health_check(self, duration_ms: float, overall_status: str,
+                           components_healthy: int, components_total: int):
+        """Enregistre un check de santé"""
+        
+        tags = {
+            "status": overall_status,
+            "all_healthy": str(components_healthy == components_total)
+        }
+        
+        self.collector.record("api_health_check_duration_ms", duration_ms, tags)
+        self.collector.record("api_health_components_healthy", components_healthy, tags)
+        self.collector.record("api_health_components_total", components_total, tags)
+        self.collector.increment("api_health_check_count", tags=tags)
+        
+        # Calculer le pourcentage de santé
+        health_percentage = (components_healthy / components_total * 100) if components_total > 0 else 0
+        self.collector.set_gauge("api_health_percentage", health_percentage)
+    
+    def record_admin_operation(self, operation: str, duration_ms: float,
+                              success: bool, user_id: Optional[int] = None):
+        """Enregistre une opération d'administration"""
+        
+        tags = {
+            "operation": operation,
+            "success": str(success)
+        }
+        
+        if user_id:
+            tags["user_id"] = str(user_id)
+        
+        self.collector.record("api_admin_duration_ms", duration_ms, tags)
+        self.collector.increment("api_admin_count", tags=tags)
+        
+        if success:
+            self.collector.increment("api_admin_success_count", tags=tags)
+        else:
+            self.collector.increment("api_admin_error_count", tags=tags)
+    
+    def record_rate_limit_event(self, endpoint: str, user_id: Optional[int],
+                               limit_exceeded: bool, current_rate: float):
+        """Enregistre un événement de limitation de taux"""
+        
+        tags = {
+            "endpoint": endpoint,
+            "limit_exceeded": str(limit_exceeded)
+        }
+        
+        if user_id:
+            tags["user_id"] = str(user_id)
+        
+        self.collector.record("api_rate_limit_current", current_rate, tags)
+        self.collector.increment("api_rate_limit_checks", tags=tags)
+        
+        if limit_exceeded:
+            self.collector.increment("api_rate_limit_exceeded", tags=tags)
+    
+    def record_authentication_event(self, auth_method: str, success: bool,
+                                   duration_ms: float, user_id: Optional[int] = None):
+        """Enregistre un événement d'authentification"""
+        
+        tags = {
+            "auth_method": auth_method,
+            "success": str(success)
+        }
+        
+        if user_id:
+            tags["user_id"] = str(user_id)
+        
+        self.collector.record("api_auth_duration_ms", duration_ms, tags)
+        self.collector.increment("api_auth_attempts", tags=tags)
+        
+        if success:
+            self.collector.increment("api_auth_success_count", tags=tags)
+        else:
+            self.collector.increment("api_auth_failure_count", tags=tags)
+    
+    def record_error_event(self, error_type: str, endpoint: str, 
+                          status_code: int, user_id: Optional[int] = None):
+        """Enregistre un événement d'erreur"""
+        
+        tags = {
+            "error_type": error_type,
+            "endpoint": endpoint,
+            "status_code": str(status_code)
+        }
+        
+        if user_id:
+            tags["user_id"] = str(user_id)
+        
+        self.collector.increment("api_error_events", tags=tags)
+        
+        # Métriques spécifiques par type d'erreur
+        if status_code >= 500:
+            self.collector.increment("api_server_errors", tags=tags)
+        elif status_code >= 400:
+            self.collector.increment("api_client_errors", tags=tags)
+    
+    def get_api_summary(self, hours: int = 1) -> Dict[str, Any]:
+        """Retourne un résumé des métriques API"""
+        
+        since = datetime.now() - timedelta(hours=hours)
+        
+        # Métriques de base
+        total_requests = self.collector.get_metric_stats("api_request_count", since).get("sum", 0)
+        total_errors = self.collector.get_metric_stats("api_error_count", since).get("sum", 0)
+        
+        # Calcul du taux d'erreur
+        error_rate = (total_errors / total_requests * 100) if total_requests > 0 else 0
+        
+        # Durées moyennes
+        avg_duration = self.collector.get_metric_stats("api_request_duration_ms", since).get("avg", 0)
+        
+        # Métriques de recherche spécifiques
+        search_requests = self.collector.get_metric_stats("api_search_count", since).get("sum", 0)
+        search_success = self.collector.get_metric_stats("api_search_success_count", since).get("sum", 0)
+        search_success_rate = (search_success / search_requests * 100) if search_requests > 0 else 0
+        
+        return {
+            "period_hours": hours,
+            "timestamp": datetime.now().isoformat(),
+            "total_requests": total_requests,
+            "total_errors": total_errors,
+            "error_rate_percent": error_rate,
+            "avg_duration_ms": avg_duration,
+            "search": {
+                "requests": search_requests,
+                "success_rate_percent": search_success_rate
+            },
+            "health": {
+                "current_percentage": self.collector.get_current_value("api_health_percentage", 100)
+            }
+        }
 # === DASHBOARD ET REPORTING ===
 
 class MetricsDashboard:
@@ -1423,6 +1699,7 @@ search_metrics = SearchMetrics(metrics_collector)
 elasticsearch_metrics = ElasticsearchMetrics(metrics_collector)
 lexical_search_metrics = LexicalSearchMetrics(metrics_collector)
 business_metrics = BusinessMetrics(metrics_collector)
+api_metrics = ApiMetrics(metrics_collector)
 
 # Dashboard
 metrics_dashboard = MetricsDashboard(metrics_collector, alert_manager)
@@ -1538,6 +1815,8 @@ __all__ = [
     "business_metrics",
     "performance_profiler",
     "metrics_dashboard",
+    "ApiMetrics",
+    "api_metrics",
     
     # === FONCTIONS UTILITAIRES ===
     "get_system_metrics",
@@ -1549,6 +1828,7 @@ __all__ = [
     "get_error_metrics_summary",
     "initialize_metrics_system",
     "shutdown_metrics_system",
+
     
     # === CALLBACKS ===
     "log_alert_callback",

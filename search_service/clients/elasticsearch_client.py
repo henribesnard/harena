@@ -1,12 +1,30 @@
 """
 Client Elasticsearch optimisé pour Bonsai - Search Service
-Spécialisé dans les recherches lexicales de transactions financières
+========================================================
+
+Client spécialisé dans les recherches lexicales de transactions financières
+avec gestion d'instance globale et fonction get_default_client().
+
+Responsabilités principales:
+- Recherches lexicales ultra-rapides (<50ms)
+- Validation défensive des requêtes (évite body=None)
+- Gestion SSL native pour Bonsai
+- Interface générique pour lexical_engine.py
+- Métriques spécialisées Elasticsearch
+- Health checks détaillés (cluster, index, mapping)
+
+Architecture:
+- Instance globale _default_client
+- Factory function get_default_client()
+- Lazy initialization thread-safe
 """
 
 import logging
 import ssl
+import asyncio
 from typing import Dict, Any, List, Optional
 import aiohttp
+import threading
 
 from .base_client import (
     BaseClient, 
@@ -14,9 +32,22 @@ from .base_client import (
     CircuitBreakerConfig, 
     HealthCheckConfig,
 )
-from config import settings
+
+try:
+    from config import settings
+except ImportError:
+    # Fallback si config n'est pas disponible
+    class settings:
+        ELASTICSEARCH_URL = "https://localhost:9200"
+        ELASTICSEARCH_INDEX = "harena_transactions"
+        test_user_id = 34
+
 
 logger = logging.getLogger(__name__)
+
+# === INSTANCE GLOBALE ===
+_default_client: Optional['ElasticsearchClient'] = None
+_client_lock = threading.Lock()
 
 
 class ElasticsearchClient(BaseClient):
@@ -748,8 +779,293 @@ class ElasticsearchClient(BaseClient):
         logger.info("Elasticsearch query stats reset")
 
 
+# === GESTION D'INSTANCE GLOBALE ===
+
+def get_default_client() -> ElasticsearchClient:
+    """
+    Retourne l'instance globale du client Elasticsearch
+    Lazy initialization thread-safe
+    
+    Returns:
+        ElasticsearchClient: Instance globale du client
+        
+    Raises:
+        RuntimeError: Si la configuration est invalide
+    """
+    global _default_client
+    
+    if _default_client is None:
+        with _client_lock:
+            # Double-check locking pattern
+            if _default_client is None:
+                _default_client = create_default_client()
+                logger.info("Default Elasticsearch client created")
+    
+    return _default_client
+
+
+def create_default_client() -> ElasticsearchClient:
+    """
+    Crée une nouvelle instance du client Elasticsearch avec la configuration par défaut
+    
+    Returns:
+        ElasticsearchClient: Nouvelle instance configurée
+        
+    Raises:
+        RuntimeError: Si la configuration est manquante ou invalide
+    """
+    # Configuration depuis settings
+    try:
+        elasticsearch_url = getattr(settings, 'ELASTICSEARCH_URL', None)
+        elasticsearch_index = getattr(settings, 'ELASTICSEARCH_INDEX', "harena_transactions")
+        
+        if not elasticsearch_url:
+            raise RuntimeError("ELASTICSEARCH_URL not configured in settings")
+        
+        # Configuration retry et circuit breaker
+        retry_config = RetryConfig(
+            max_retries=3,
+            backoff_factor=1.0,
+            retry_statuses=[429, 502, 503, 504]
+        )
+        
+        circuit_breaker_config = CircuitBreakerConfig(
+            failure_threshold=5,
+            reset_timeout=60.0,
+            expected_exception=Exception
+        )
+        
+        client = ElasticsearchClient(
+            bonsai_url=elasticsearch_url,
+            index_name=elasticsearch_index,
+            timeout=10.0,
+            retry_config=retry_config,
+            circuit_breaker_config=circuit_breaker_config
+        )
+        
+        logger.info(f"Elasticsearch client created for {elasticsearch_url}")
+        return client
+        
+    except Exception as e:
+        error_msg = f"Failed to create Elasticsearch client: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+
+async def initialize_default_client() -> ElasticsearchClient:
+    """
+    Initialise le client Elasticsearch par défaut (démarre la session)
+    
+    Returns:
+        ElasticsearchClient: Client initialisé et prêt à utiliser
+        
+    Raises:
+        RuntimeError: Si l'initialisation échoue
+    """
+    client = get_default_client()
+    
+    try:
+        await client.start()
+        logger.info("Default Elasticsearch client initialized successfully")
+        return client
+    except Exception as e:
+        error_msg = f"Failed to initialize default Elasticsearch client: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+
+async def shutdown_default_client():
+    """
+    Arrête proprement le client Elasticsearch par défaut
+    """
+    global _default_client
+    
+    if _default_client is not None:
+        try:
+            await _default_client.stop()
+            logger.info("Default Elasticsearch client shut down")
+        except Exception as e:
+            logger.error(f"Error shutting down Elasticsearch client: {e}")
+        finally:
+            with _client_lock:
+                _default_client = None
+
+
+def reset_default_client():
+    """
+    Remet à zéro le client par défaut (force une nouvelle création)
+    Utile pour les tests ou changements de configuration
+    """
+    global _default_client
+    
+    with _client_lock:
+        if _default_client is not None:
+            # Note: Ceci ne ferme pas la session, juste reset la référence
+            # Pour fermer proprement, utiliser shutdown_default_client()
+            logger.info("Default Elasticsearch client reset")
+        _default_client = None
+
+
+# === FONCTIONS UTILITAIRES ===
+
+async def test_elasticsearch_connection() -> Dict[str, Any]:
+    """
+    Teste la connexion Elasticsearch avec le client par défaut
+    
+    Returns:
+        Dict contenant le résultat du test de connexion
+    """
+    try:
+        client = get_default_client()
+        await client.start()
+        
+        # Test de base
+        connection_ok = await client.test_connection()
+        
+        # Health check complet
+        health_info = await client.get_health_status()
+        
+        return {
+            "connection_test": connection_ok,
+            "health_check": health_info,
+            "client_stats": client.get_query_stats()
+        }
+        
+    except Exception as e:
+        return {
+            "connection_test": False,
+            "error": str(e),
+            "health_check": {"status": "error", "message": str(e)}
+        }
+
+
+async def quick_search(user_id: int, query: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Effectue une recherche rapide pour tests et debugging
+    
+    Args:
+        user_id: ID utilisateur
+        query: Terme de recherche
+        limit: Nombre de résultats
+        
+    Returns:
+        Résultats de recherche
+    """
+    try:
+        client = get_default_client()
+        await client.start()
+        
+        return await client.search_transactions(
+            user_id=user_id,
+            query=query,
+            limit=limit,
+            include_highlights=True
+        )
+        
+    except Exception as e:
+        logger.error(f"Quick search failed: {e}")
+        return {
+            "error": str(e),
+            "took": 0,
+            "hits": {"total": {"value": 0}, "hits": []}
+        }
+
+
+def get_client_metrics() -> Dict[str, Any]:
+    """
+    Retourne les métriques du client par défaut
+    
+    Returns:
+        Dict contenant les métriques du client
+    """
+    try:
+        if _default_client is not None:
+            return _default_client.get_query_stats()
+        else:
+            return {"error": "No default client initialized"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# === CONFIGURATION POUR TESTS ===
+
+class MockElasticsearchClient:
+    """Client mock pour les tests unitaires"""
+    
+    def __init__(self):
+        self.search_calls = []
+        self.count_calls = []
+        self.mock_responses = {}
+    
+    def set_mock_response(self, method: str, response: Dict[str, Any]):
+        """Configure une réponse mock"""
+        self.mock_responses[method] = response
+    
+    async def start(self):
+        """Mock start"""
+        pass
+    
+    async def stop(self):
+        """Mock stop"""
+        pass
+    
+    async def search(self, index: str, body: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Mock search"""
+        self.search_calls.append({"index": index, "body": body, "kwargs": kwargs})
+        return self.mock_responses.get("search", {
+            "took": 1,
+            "hits": {"total": {"value": 0}, "hits": []},
+            "aggregations": {}
+        })
+    
+    async def count(self, index: str, body: Dict[str, Any] = None, **kwargs) -> Dict[str, Any]:
+        """Mock count"""
+        self.count_calls.append({"index": index, "body": body, "kwargs": kwargs})
+        return self.mock_responses.get("count", {"count": 0})
+    
+    async def health(self) -> Dict[str, Any]:
+        """Mock health"""
+        return self.mock_responses.get("health", {"status": "green"})
+    
+    def get_query_stats(self) -> Dict[str, Any]:
+        """Mock stats"""
+        return {
+            "search_count": len(self.search_calls),
+            "count_count": len(self.count_calls),
+            "cache_hits": 0
+        }
+
+
+def use_mock_client_for_tests():
+    """
+    Configure un client mock pour les tests
+    À utiliser dans les tests unitaires
+    """
+    global _default_client
+    with _client_lock:
+        _default_client = MockElasticsearchClient()
+    return _default_client
+
+
 # === EXPORTS ===
 
 __all__ = [
-    "ElasticsearchClient"
+    # === CLASSE PRINCIPALE ===
+    "ElasticsearchClient",
+    
+    # === GESTION D'INSTANCE GLOBALE ===
+    "get_default_client",           # FONCTION PRINCIPALE UTILISÉE PAR LEXICAL_ENGINE
+    "create_default_client",
+    "initialize_default_client",
+    "shutdown_default_client",
+    "reset_default_client",
+    
+    # === FONCTIONS UTILITAIRES ===
+    "test_elasticsearch_connection",
+    "quick_search",
+    "get_client_metrics",
+    
+    # === TESTS ===
+    "MockElasticsearchClient",
+    "use_mock_client_for_tests"
 ]

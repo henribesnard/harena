@@ -1,19 +1,26 @@
 """
 Configuration centralisée pour le Search Service
 Spécialisé pour la recherche lexicale Elasticsearch haute performance
+Version corrigée - Pydantic V2 compatible
 """
 
-from typing import Dict, List, Optional
+import os
+from typing import Dict, List, Optional, Any
 from enum import Enum
 
-# === IMPORT PYDANTIC COMPATIBLE V1/V2 ===
+# === IMPORT PYDANTIC V2 COMPATIBLE ===
 try:
-    # Pydantic v2 - nouveau package
+    # Pydantic v2
     from pydantic_settings import BaseSettings
-    from pydantic import Field, validator
+    from pydantic import Field, field_validator, ConfigDict
+    PYDANTIC_V2 = True
 except ImportError:
-    # Pydantic v1 - ancien import
-    from pydantic import BaseSettings, Field, validator
+    try:
+        # Pydantic v1 fallback
+        from pydantic import BaseSettings, Field, validator
+        PYDANTIC_V2 = False
+    except ImportError:
+        raise ImportError("Pydantic requis (v1 ou v2)")
 
 
 class LogLevel(str, Enum):
@@ -38,6 +45,8 @@ class Settings(BaseSettings):
     app_version: str = Field(default="1.0.0", description="Version du service")
     environment: str = Field(default="development", description="Environnement (dev/staging/prod)")
     debug: bool = Field(default=False, description="Mode debug")
+    debug_mode: bool = Field(default=False, description="Mode debug détaillé")
+    development_mode: bool = Field(default=True, description="Mode développement")
     log_level: LogLevel = Field(default=LogLevel.INFO, description="Niveau de logging")
     
     # === CONFIGURATION SERVEUR ===
@@ -94,6 +103,10 @@ class Settings(BaseSettings):
         default="harena_transactions",
         description="Nom de l'index principal"
     )
+    elasticsearch_index: str = Field(
+        default="harena_transactions",
+        description="Alias pour elasticsearch_index_name"
+    )
     elasticsearch_doc_type: str = Field(
         default="_doc",
         description="Type de document Elasticsearch"
@@ -112,6 +125,16 @@ class Settings(BaseSettings):
     cache_max_size: int = Field(
         default=1000,
         description="Taille maximum cache en mémoire"
+    )
+    
+    # Variables manquantes identifiées
+    lexical_cache_size: int = Field(
+        default=1000,
+        description="Taille cache lexical"
+    )
+    max_concurrent_queries: int = Field(
+        default=10,
+        description="Nombre max de requêtes concurrentes"
     )
     
     # Redis (si utilisé)
@@ -203,6 +226,14 @@ class Settings(BaseSettings):
         default="search_service",
         description="Préfixe pour les métriques"
     )
+    metrics_retention_hours: int = Field(
+        default=24,
+        description="Rétention des métriques en heures"
+    )
+    export_metrics_on_shutdown: bool = Field(
+        default=True,
+        description="Exporter métriques à l'arrêt"
+    )
     health_check_timeout: int = Field(
         default=5,
         description="Timeout health check (secondes)"
@@ -219,6 +250,10 @@ class Settings(BaseSettings):
     )
     
     # === SÉCURITÉ ===
+    cors_enabled: bool = Field(
+        default=True,
+        description="Activer CORS"
+    )
     allow_all_origins: bool = Field(
         default=False,
         description="Autoriser toutes les origines CORS (dev only)"
@@ -283,52 +318,117 @@ class Settings(BaseSettings):
         description="Champs retournés par défaut"
     )
 
+    # === Configuration avancée ajoutée ===
+    field_configurations: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "searchable_text": {"type": "text", "boost": 2.0},
+            "primary_description": {"type": "text", "boost": 1.5},
+            "merchant_name": {"type": "text", "boost": 1.8},
+            "category_name": {"type": "text", "boost": 1.2}
+        },
+        description="Configuration des champs indexés"
+    )
+
     # === CONFIGURATION PYDANTIC ===
-    class Config:
-        """Configuration Pydantic"""
-        env_file = ".env"
-        env_prefix = "SEARCH_SERVICE_"
-        case_sensitive = False
-        validate_assignment = True
+    if PYDANTIC_V2:
+        model_config = ConfigDict(
+            env_file=".env",
+            env_prefix="SEARCH_SERVICE_",
+            case_sensitive=False,
+            validate_assignment=True,
+            extra="ignore"
+        )
+    else:
+        class Config:
+            """Configuration Pydantic V1"""
+            env_file = ".env"
+            env_prefix = "SEARCH_SERVICE_"
+            case_sensitive = False
+            validate_assignment = True
 
-    @validator("elasticsearch_timeout")
-    def validate_elasticsearch_timeout(cls, v):
-        """Valide le timeout Elasticsearch"""
-        if v < 1 or v > 300:
-            raise ValueError("Elasticsearch timeout doit être entre 1 et 300 secondes")
-        return v
+    # === VALIDATORS V2/V1 COMPATIBLE ===
+    if PYDANTIC_V2:
+        @field_validator("elasticsearch_timeout")
+        @classmethod
+        def validate_elasticsearch_timeout(cls, v: int) -> int:
+            """Valide le timeout Elasticsearch"""
+            if v < 1 or v > 300:
+                raise ValueError("Elasticsearch timeout doit être entre 1 et 300 secondes")
+            return v
 
-    @validator("max_results_per_query")
-    def validate_max_results(cls, v):
-        """Valide la limite de résultats"""
-        if v < 1 or v > 10000:
-            raise ValueError("max_results_per_query doit être entre 1 et 10000")
-        return v
+        @field_validator("max_results_per_query")
+        @classmethod
+        def validate_max_results(cls, v: int) -> int:
+            """Valide la limite de résultats"""
+            if v < 1 or v > 10000:
+                raise ValueError("max_results_per_query doit être entre 1 et 10000")
+            return v
 
-    @validator("cache_ttl_seconds")
-    def validate_cache_ttl(cls, v):
-        """Valide le TTL du cache"""
-        if v < 60 or v > 3600:
-            raise ValueError("cache_ttl_seconds doit être entre 60 et 3600 secondes")
-        return v
+        @field_validator("cache_ttl_seconds")
+        @classmethod
+        def validate_cache_ttl(cls, v: int) -> int:
+            """Valide le TTL du cache"""
+            if v < 60 or v > 3600:
+                raise ValueError("cache_ttl_seconds doit être entre 60 et 3600 secondes")
+            return v
 
-    @validator("rate_limit_requests_per_minute")
-    def validate_rate_limit(cls, v):
-        """Valide le rate limiting"""
-        if v < 1 or v > 10000:
-            raise ValueError("rate_limit_requests_per_minute doit être entre 1 et 10000")
-        return v
+        @field_validator("rate_limit_requests_per_minute")
+        @classmethod
+        def validate_rate_limit(cls, v: int) -> int:
+            """Valide le rate limiting"""
+            if v < 1 or v > 10000:
+                raise ValueError("rate_limit_requests_per_minute doit être entre 1 et 10000")
+            return v
 
-    @validator("default_search_fields")
-    def validate_search_fields(cls, v):
-        """Valide les champs de recherche"""
-        required_fields = ["searchable_text", "primary_description"]
-        for field in required_fields:
-            if field not in v:
-                raise ValueError(f"Champ obligatoire manquant: {field}")
-        return v
+        @field_validator("default_search_fields")
+        @classmethod
+        def validate_search_fields(cls, v: List[str]) -> List[str]:
+            """Valide les champs de recherche"""
+            required_fields = ["searchable_text", "primary_description"]
+            for field in required_fields:
+                if field not in v:
+                    raise ValueError(f"Champ obligatoire manquant: {field}")
+            return v
+    else:
+        # Validators Pydantic V1
+        @validator("elasticsearch_timeout")
+        def validate_elasticsearch_timeout(cls, v):
+            """Valide le timeout Elasticsearch"""
+            if v < 1 or v > 300:
+                raise ValueError("Elasticsearch timeout doit être entre 1 et 300 secondes")
+            return v
 
-    def get_elasticsearch_config(self) -> Dict:
+        @validator("max_results_per_query")
+        def validate_max_results(cls, v):
+            """Valide la limite de résultats"""
+            if v < 1 or v > 10000:
+                raise ValueError("max_results_per_query doit être entre 1 et 10000")
+            return v
+
+        @validator("cache_ttl_seconds")
+        def validate_cache_ttl(cls, v):
+            """Valide le TTL du cache"""
+            if v < 60 or v > 3600:
+                raise ValueError("cache_ttl_seconds doit être entre 60 et 3600 secondes")
+            return v
+
+        @validator("rate_limit_requests_per_minute")
+        def validate_rate_limit(cls, v):
+            """Valide le rate limiting"""
+            if v < 1 or v > 10000:
+                raise ValueError("rate_limit_requests_per_minute doit être entre 1 et 10000")
+            return v
+
+        @validator("default_search_fields")
+        def validate_search_fields(cls, v):
+            """Valide les champs de recherche"""
+            required_fields = ["searchable_text", "primary_description"]
+            for field in required_fields:
+                if field not in v:
+                    raise ValueError(f"Champ obligatoire manquant: {field}")
+            return v
+
+    def get_elasticsearch_config(self) -> Dict[str, Any]:
         """Retourne la configuration Elasticsearch optimisée"""
         config = {
             "hosts": [self.elasticsearch_url],
@@ -349,7 +449,7 @@ class Settings(BaseSettings):
         
         return config
 
-    def get_cache_config(self) -> Dict:
+    def get_cache_config(self) -> Dict[str, Any]:
         """Retourne la configuration cache"""
         if self.cache_backend == CacheBackend.REDIS:
             return {
@@ -390,6 +490,37 @@ class Settings(BaseSettings):
     def access_log_enabled(self) -> bool:
         """Logs d'accès activés"""
         return not self.is_production() or self.debug
+    
+    # Propriétés pour compatibilité avec les autres modules
+    @property
+    def ELASTICSEARCH_INDEX(self) -> str:
+        """Alias pour elasticsearch_index_name"""
+        return self.elasticsearch_index_name
+    
+    @property
+    def FIELD_CONFIGURATIONS(self) -> Dict[str, Any]:
+        """Alias pour field_configurations"""
+        return self.field_configurations
+    
+    @property
+    def LEXICAL_CACHE_SIZE(self) -> int:
+        """Alias pour lexical_cache_size"""
+        return self.lexical_cache_size
+    
+    @property
+    def CACHE_TTL_SECONDS(self) -> int:
+        """Alias pour cache_ttl_seconds"""
+        return self.cache_ttl_seconds
+    
+    @property
+    def MAX_CONCURRENT_QUERIES(self) -> int:
+        """Alias pour max_concurrent_queries"""
+        return self.max_concurrent_queries
+    
+    @property
+    def DEFAULT_QUERY_TIMEOUT_MS(self) -> int:
+        """Alias pour default_query_timeout_ms"""
+        return self.default_query_timeout_ms
 
 
 # Instance globale des settings
@@ -473,3 +604,21 @@ INDEXED_FIELDS = {
     "category_name.keyword": {"type": "keyword"},
     "operation_type.keyword": {"type": "keyword"}
 }
+
+# Validation au démarrage
+def validate_settings():
+    """Valide la configuration au démarrage"""
+    errors = []
+    
+    if not settings.elasticsearch_url:
+        errors.append("elasticsearch_url est requis")
+    
+    if settings.default_results_limit > settings.max_results_per_query:
+        errors.append("default_results_limit ne peut pas être > max_results_per_query")
+    
+    if errors:
+        raise ValueError(f"Configuration invalide: {'; '.join(errors)}")
+
+# Auto-validation
+if not os.getenv("PYTEST_CURRENT_TEST"):
+    validate_settings()

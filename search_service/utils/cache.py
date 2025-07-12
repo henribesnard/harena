@@ -86,6 +86,55 @@ class CacheEntry:
         self.access_count += 1
 
 
+@dataclass
+class CacheStats:
+    """Statistiques du cache"""
+    hits: int = 0
+    misses: int = 0
+    evictions: int = 0
+    expired_entries: int = 0
+    total_size_bytes: int = 0
+    current_entries: int = 0
+    max_entries: int = 0
+    hit_rate: float = 0.0
+    miss_rate: float = 0.0
+    average_access_time_ms: float = 0.0
+    memory_usage_mb: float = 0.0
+    
+    def update_rates(self):
+        """Met à jour les taux de hit/miss"""
+        total_requests = self.hits + self.misses
+        if total_requests > 0:
+            self.hit_rate = self.hits / total_requests
+            self.miss_rate = self.misses / total_requests
+        else:
+            self.hit_rate = 0.0
+            self.miss_rate = 0.0
+    
+    def reset(self):
+        """Remet à zéro les statistiques"""
+        self.hits = 0
+        self.misses = 0
+        self.evictions = 0
+        self.expired_entries = 0
+        self.update_rates()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit les stats en dictionnaire"""
+        return {
+            "hits": self.hits,
+            "misses": self.misses,
+            "hit_rate": round(self.hit_rate, 3),
+            "miss_rate": round(self.miss_rate, 3),
+            "evictions": self.evictions,
+            "expired_entries": self.expired_entries,
+            "current_entries": self.current_entries,
+            "max_entries": self.max_entries,
+            "memory_usage_mb": round(self.memory_usage_mb, 2),
+            "average_access_time_ms": round(self.average_access_time_ms, 2)
+        }
+
+
 class LRUCache:
     """
     Cache LRU (Least Recently Used) thread-safe
@@ -97,27 +146,28 @@ class LRUCache:
         max_size: int = 1000,
         max_memory_mb: int = 100,
         default_ttl: int = 300,  # 5 minutes
-        eviction_policy: EvictionPolicy = EvictionPolicy.LRU
+        eviction_policy: EvictionPolicy = EvictionPolicy.LRU,
+        name: str = "default"
     ):
         self.max_size = max_size
         self.max_memory_bytes = max_memory_mb * 1024 * 1024
         self.default_ttl = default_ttl
         self.eviction_policy = eviction_policy
+        self.name = name
         
         # Stockage principal
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = Lock()
         
-        # Métriques
-        self._hits = 0
-        self._misses = 0
-        self._evictions = 0
+        # Métriques et statistiques
+        self._stats = CacheStats(max_entries=max_size)
         self._current_memory = 0
+        self._access_times: List[float] = []
         
         # Tags pour invalidation groupée
         self._tag_map: Dict[str, set] = {}
         
-        logger.info(f"LRU Cache initialized: max_size={max_size}, max_memory={max_memory_mb}MB")
+        logger.info(f"LRU Cache '{name}' initialized: max_size={max_size}, max_memory={max_memory_mb}MB")
     
     def get(self, key: str) -> Optional[Any]:
         """
@@ -129,9 +179,12 @@ class LRUCache:
         Returns:
             Valeur si trouvée, None sinon
         """
+        start_time = time.time()
+        
         with self._lock:
             if key not in self._cache:
-                self._misses += 1
+                self._stats.misses += 1
+                self._stats.update_rates()
                 return None
             
             entry = self._cache[key]
@@ -139,7 +192,9 @@ class LRUCache:
             # Vérifier expiration
             if entry.is_expired():
                 self._remove_entry(key)
-                self._misses += 1
+                self._stats.misses += 1
+                self._stats.expired_entries += 1
+                self._stats.update_rates()
                 return None
             
             # Mettre à jour l'accès
@@ -149,7 +204,15 @@ class LRUCache:
             if self.eviction_policy == EvictionPolicy.LRU:
                 self._cache.move_to_end(key)
             
-            self._hits += 1
+            self._stats.hits += 1
+            self._stats.update_rates()
+            
+            # Enregistrer le temps d'accès
+            access_time = (time.time() - start_time) * 1000  # ms
+            self._access_times.append(access_time)
+            if len(self._access_times) > 100:  # Garder seulement les 100 derniers
+                self._access_times = self._access_times[-100:]
+            
             return entry.value
     
     def set(
@@ -206,6 +269,8 @@ class LRUCache:
             # Ajouter au cache
             self._cache[key] = entry
             self._current_memory += entry.size_bytes
+            self._stats.total_size_bytes = self._current_memory
+            self._stats.current_entries = len(self._cache)
             
             # Ajouter aux tags
             self._add_to_tags(key, tags)
@@ -230,7 +295,9 @@ class LRUCache:
             self._cache.clear()
             self._tag_map.clear()
             self._current_memory = 0
-            logger.info("Cache cleared")
+            self._stats.current_entries = 0
+            self._stats.total_size_bytes = 0
+            logger.info(f"Cache '{self.name}' cleared")
     
     def invalidate_by_tag(self, tag: str) -> int:
         """
@@ -267,6 +334,7 @@ class LRUCache:
             
             for key in expired_keys:
                 self._remove_entry(key)
+                self._stats.expired_entries += 1
             
             return len(expired_keys)
     
@@ -303,7 +371,7 @@ class LRUCache:
             # Supprimer le premier (plus ancien)
             oldest_key = next(iter(self._cache))
             self._remove_entry(oldest_key)
-            self._evictions += 1
+            self._stats.evictions += 1
     
     def _evict_lfu(self):
         """Évince les entrées les moins fréquemment utilisées"""
@@ -321,20 +389,22 @@ class LRUCache:
         for i in range(min(entries_to_remove, len(sorted_entries))):
             key = sorted_entries[i][0]
             self._remove_entry(key)
-            self._evictions += 1
+            self._stats.evictions += 1
     
     def _evict_expired(self):
         """Évince toutes les entrées expirées"""
         expired_count = self.cleanup_expired()
-        self._evictions += expired_count
+        self._stats.evictions += expired_count
     
     def _remove_entry(self, key: str):
         """Supprime une entrée et met à jour les métadonnées"""
         if key in self._cache:
             entry = self._cache[key]
             self._current_memory -= entry.size_bytes
+            self._stats.total_size_bytes = self._current_memory
             self._remove_from_tags(key, entry.tags)
             del self._cache[key]
+            self._stats.current_entries = len(self._cache)
     
     def _add_to_tags(self, key: str, tags: List[str]):
         """Ajoute une clé aux tags"""
@@ -351,30 +421,36 @@ class LRUCache:
                 if not self._tag_map[tag]:
                     del self._tag_map[tag]
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> CacheStats:
         """Retourne les statistiques du cache"""
         with self._lock:
-            total_requests = self._hits + self._misses
-            hit_rate = self._hits / total_requests if total_requests > 0 else 0
+            # Mettre à jour les statistiques calculées
+            if self._access_times:
+                self._stats.average_access_time_ms = sum(self._access_times) / len(self._access_times)
             
-            return {
-                "size": len(self._cache),
-                "max_size": self.max_size,
-                "memory_usage_mb": self._current_memory / (1024 * 1024),
-                "max_memory_mb": self.max_memory_bytes / (1024 * 1024),
-                "hit_rate": round(hit_rate, 3),
-                "hits": self._hits,
-                "misses": self._misses,
-                "evictions": self._evictions,
-                "tags_count": len(self._tag_map)
-            }
+            self._stats.memory_usage_mb = self._current_memory / (1024 * 1024)
+            self._stats.current_entries = len(self._cache)
+            self._stats.total_size_bytes = self._current_memory
+            
+            return self._stats
+    
+    def get_info(self) -> Dict[str, Any]:
+        """Informations détaillées du cache"""
+        stats = self.get_stats()
+        return {
+            "name": self.name,
+            "eviction_policy": self.eviction_policy.value,
+            "max_size": self.max_size,
+            "max_memory_mb": self.max_memory_bytes / (1024 * 1024),
+            "default_ttl": self.default_ttl,
+            "stats": stats.to_dict()
+        }
     
     def reset_stats(self):
         """Remet à zéro les statistiques"""
         with self._lock:
-            self._hits = 0
-            self._misses = 0
-            self._evictions = 0
+            self._stats.reset()
+            self._access_times.clear()
 
 
 class SmartCache:
@@ -388,17 +464,20 @@ class SmartCache:
         strategy: CacheStrategy = CacheStrategy.MEMORY_ONLY,
         memory_cache_size: int = 1000,
         memory_cache_mb: int = 100,
-        default_ttl: int = 300
+        default_ttl: int = 300,
+        name: str = "smart_cache"
     ):
         self.strategy = strategy
         self.default_ttl = default_ttl
+        self.name = name
         
         # Cache L1 (mémoire)
         if strategy in [CacheStrategy.MEMORY_ONLY, CacheStrategy.HYBRID]:
             self.memory_cache = LRUCache(
                 max_size=memory_cache_size,
                 max_memory_mb=memory_cache_mb,
-                default_ttl=default_ttl
+                default_ttl=default_ttl,
+                name=f"{name}_memory"
             )
         else:
             self.memory_cache = None
@@ -409,7 +488,7 @@ class SmartCache:
         else:
             self.redis_cache = None
         
-        logger.info(f"SmartCache initialized with strategy: {strategy}")
+        logger.info(f"SmartCache '{name}' initialized with strategy: {strategy}")
     
     def get(self, key: str) -> Optional[Any]:
         """Récupère une valeur depuis le cache (L1 puis L2)"""
@@ -509,13 +588,13 @@ class SmartCache:
     
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de tous les niveaux"""
-        stats = {"strategy": self.strategy.value}
+        stats = {"strategy": self.strategy.value, "name": self.name}
         
         if self.memory_cache:
-            stats["memory"] = self.memory_cache.get_stats()
+            stats["memory"] = self.memory_cache.get_stats().to_dict()
         
         if self.redis_cache:
-            stats["redis"] = self.redis_cache.get_stats()
+            stats["redis"] = self.redis_cache.get_stats().to_dict()
         
         return stats
 
@@ -586,6 +665,7 @@ class CacheManager:
     def __init__(self):
         self.caches: Dict[str, SmartCache] = {}
         self._init_default_caches()
+        logger.info("CacheManager initialized")
     
     def _init_default_caches(self):
         """Initialise les caches par défaut"""
@@ -594,7 +674,8 @@ class CacheManager:
             strategy=CacheStrategy.MEMORY_ONLY,
             memory_cache_size=500,
             memory_cache_mb=50,
-            default_ttl=300  # 5 minutes
+            default_ttl=300,  # 5 minutes
+            name="search_results"
         )
         
         # Cache pour agrégations (plus long TTL)
@@ -602,7 +683,8 @@ class CacheManager:
             strategy=CacheStrategy.MEMORY_ONLY,
             memory_cache_size=200,
             memory_cache_mb=20,
-            default_ttl=900  # 15 minutes
+            default_ttl=900,  # 15 minutes
+            name="aggregations"
         )
         
         # Cache pour comptages (très long TTL)
@@ -610,7 +692,8 @@ class CacheManager:
             strategy=CacheStrategy.MEMORY_ONLY,
             memory_cache_size=100,
             memory_cache_mb=10,
-            default_ttl=1800  # 30 minutes
+            default_ttl=1800,  # 30 minutes
+            name="counts"
         )
     
     def get_cache(self, cache_type: str) -> Optional[SmartCache]:
@@ -696,10 +779,13 @@ class CacheManager:
     
     def get_global_stats(self) -> Dict[str, Any]:
         """Statistiques globales de tous les caches"""
-        stats = {}
+        stats = {
+            "total_caches": len(self.caches),
+            "caches": {}
+        }
         
         for cache_name, cache in self.caches.items():
-            stats[cache_name] = cache.get_stats()
+            stats["caches"][cache_name] = cache.get_stats()
         
         return stats
 
@@ -708,6 +794,9 @@ class CacheManager:
 
 # Instance globale du gestionnaire de cache
 cache_manager = CacheManager()
+
+# Alias pour compatibilité avec l'import attendu
+global_cache_manager = cache_manager
 
 
 # === DÉCORATEURS UTILES ===
@@ -756,9 +845,50 @@ def cached(
 
 # === FONCTIONS UTILITAIRES ===
 
-def get_cache_stats() -> Dict[str, Any]:
+def create_cache_key(query: str, filters: Dict[str, Any] = None, user_id: str = None) -> str:
+    """Fonction utilitaire pour créer des clés de cache"""
+    filters = filters or {}
+    query_hash = CacheKeyGenerator.hash_dict({"query": query})
+    filters_hash = CacheKeyGenerator.hash_dict(filters)
+    
+    if user_id:
+        return CacheKeyGenerator.generate_search_key(int(user_id), query_hash, filters_hash)
+    else:
+        return f"search:query:{query_hash}:filters:{filters_hash}"
+
+
+def serialize_cache_value(value: Any) -> str:
+    """Sérialise une valeur pour le cache"""
+    try:
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, separators=(',', ':'))
+        else:
+            return str(value)
+    except Exception as e:
+        logger.warning(f"Could not serialize cache value: {e}")
+        return ""
+
+
+def deserialize_cache_value(data: str) -> Any:
+    """Désérialise une valeur du cache"""
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError:
+        # Si ce n'est pas du JSON, retourner tel quel
+        return data
+    except Exception as e:
+        logger.warning(f"Could not deserialize cache value: {e}")
+        return None
+
+
+def get_cache_statistics() -> Dict[str, Any]:
     """Récupère les statistiques globales du cache"""
     return cache_manager.get_global_stats()
+
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Récupère les statistiques globales du cache (alias)"""
+    return get_cache_statistics()
 
 
 def clear_all_caches():
@@ -779,7 +909,8 @@ async def periodic_cleanup(interval_seconds: int = 300):
         try:
             cleanup_stats = cleanup_expired_entries()
             total_cleaned = sum(
-                sum(cache_stats.values()) for cache_stats in cleanup_stats.values()
+                sum(cache_stats.values()) if isinstance(cache_stats, dict) else 0
+                for cache_stats in cleanup_stats.values()
             )
             if total_cleaned > 0:
                 logger.info(f"Periodic cleanup removed {total_cleaned} expired entries")
@@ -805,14 +936,20 @@ __all__ = [
     
     # Structures de données
     "CacheEntry",
+    "CacheStats",
     
-    # Instance globale
+    # Instances globales
     "cache_manager",
+    "global_cache_manager",
     
     # Décorateurs
     "cached",
     
     # Fonctions utilitaires
+    "create_cache_key",
+    "serialize_cache_value",
+    "deserialize_cache_value",
+    "get_cache_statistics",
     "get_cache_stats",
     "clear_all_caches",
     "cleanup_expired_entries",

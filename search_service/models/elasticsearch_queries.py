@@ -473,7 +473,8 @@ class ESSearchQuery(BaseModel):
     size: int = Field(default=20, description="Nombre de résultats")
     from_: int = Field(default=0, alias="from", description="Offset pagination")
     sort: List[ESSort] = Field(default_factory=list, description="Critères de tri")
-    _source: Optional[Union[bool, List[str]]] = Field(default=None, description="Champs à retourner")
+    # CORRECTION: Remplacer _source par source_fields avec alias
+    source_fields: Optional[Union[bool, List[str]]] = Field(default=None, alias="_source", description="Champs à retourner")
     highlight: Optional[Dict[str, Any]] = Field(default=None, description="Configuration highlighting")
     aggs: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Agrégations")
     timeout: Optional[str] = Field(default=None, description="Timeout de la requête")
@@ -534,8 +535,8 @@ class ESSearchQuery(BaseModel):
         if self.sort:
             es_query["sort"] = [sort_obj.to_es_dict() for sort_obj in self.sort]
         
-        if self._source is not None:
-            es_query["_source"] = self._source
+        if self.source_fields is not None:
+            es_query["_source"] = self.source_fields
         
         if self.highlight is not None:
             es_query["highlight"] = self.highlight
@@ -668,32 +669,6 @@ class FinancialTransactionQueryBuilder:
         self.query.add_aggregation("by_category", agg_container)
         return self
     
-    def add_monthly_aggregation(self, size: int = 12) -> 'FinancialTransactionQueryBuilder':
-        """Ajoute une agrégation par mois"""
-        terms_agg = ESTermsAggregation(
-            field="month_year",
-            size=size,
-            order={"_key": "desc"}
-        )
-        
-        agg_container = ESAggregationContainer(name="by_month", aggregation=terms_agg)
-        
-        # Sous-agrégations
-        sum_agg = ESAggregationContainer(
-            name="total_amount",
-            aggregation=ESMetricAggregation(type=ESAggregationType.SUM, field="amount_abs")
-        )
-        count_agg = ESAggregationContainer(
-            name="transaction_count",
-            aggregation=ESMetricAggregation(type=ESAggregationType.COUNT, field="transaction_id")
-        )
-        
-        agg_container.add_sub_aggregation("total_amount", sum_agg)
-        agg_container.add_sub_aggregation("transaction_count", count_agg)
-        
-        self.query.add_aggregation("by_month", agg_container)
-        return self
-    
     def set_pagination(self, limit: int = 20, offset: int = 0) -> 'FinancialTransactionQueryBuilder':
         """Configure la pagination"""
         self.query.size = limit
@@ -716,11 +691,6 @@ class FinancialTransactionQueryBuilder:
     def set_timeout(self, timeout_ms: int) -> 'FinancialTransactionQueryBuilder':
         """Configure le timeout"""
         self.query.timeout = f"{timeout_ms}ms"
-        return self
-    
-    def enable_request_cache(self) -> 'FinancialTransactionQueryBuilder':
-        """Active le cache de requête"""
-        # Note: request_cache sera ajouté dans le dict final si nécessaire
         return self
     
     def build(self) -> ESSearchQuery:
@@ -855,51 +825,6 @@ class ESQueryTemplates:
                 .add_category_aggregation(size=15)
                 .set_pagination(0, 0)  # Pas de hits, seulement agrégations
                 .build())
-    
-    @staticmethod
-    def monthly_spending_trend(user_id: int, months_back: int = 12) -> ESSearchQuery:
-        """Template: tendance des dépenses mensuelles"""
-        return (FinancialTransactionQueryBuilder()
-                .add_user_filter(user_id)
-                .add_monthly_aggregation(size=months_back)
-                .set_pagination(0, 0)  # Seulement agrégations
-                .build())
-    
-    @staticmethod
-    def merchant_spending_analysis(user_id: int, limit_merchants: int = 20) -> ESSearchQuery:
-        """Template: analyse des dépenses par marchand"""
-        builder = FinancialTransactionQueryBuilder().add_user_filter(user_id)
-        
-        # Agrégation par marchand
-        terms_agg = ESTermsAggregation(
-            field="merchant_name.keyword",
-            size=limit_merchants,
-            order={"total_amount": "desc"}
-        )
-        
-        agg_container = ESAggregationContainer(name="by_merchant", aggregation=terms_agg)
-        
-        # Sous-agrégations
-        sum_agg = ESAggregationContainer(
-            name="total_amount",
-            aggregation=ESMetricAggregation(type=ESAggregationType.SUM, field="amount_abs")
-        )
-        count_agg = ESAggregationContainer(
-            name="transaction_count",
-            aggregation=ESMetricAggregation(type=ESAggregationType.COUNT, field="transaction_id")
-        )
-        avg_agg = ESAggregationContainer(
-            name="avg_amount",
-            aggregation=ESMetricAggregation(type=ESAggregationType.AVG, field="amount_abs")
-        )
-        
-        agg_container.add_sub_aggregation("total_amount", sum_agg)
-        agg_container.add_sub_aggregation("transaction_count", count_agg)
-        agg_container.add_sub_aggregation("avg_amount", avg_agg)
-        
-        builder.query.add_aggregation("by_merchant", agg_container)
-        
-        return builder.set_pagination(0, 0).build()
 
 
 # === VALIDATEURS DE REQUÊTES ===

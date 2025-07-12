@@ -5,8 +5,16 @@ Spécialisé pour la recherche lexicale Elasticsearch haute performance
 
 import os
 from typing import Dict, List, Optional
-from pydantic import BaseSettings, Field, validator
 from enum import Enum
+
+# === IMPORT PYDANTIC COMPATIBLE V1/V2 ===
+try:
+    # Pydantic v2 - nouveau package
+    from pydantic_settings import BaseSettings
+    from pydantic import Field, validator
+except ImportError:
+    # Pydantic v1 - ancien import
+    from pydantic import BaseSettings, Field, validator
 
 
 class LogLevel(str, Enum):
@@ -41,6 +49,8 @@ class Settings(BaseSettings):
     
     # === CONFIGURATION ELASTICSEARCH ===
     # Connexion principale
+    elasticsearch_host: str = Field(default="localhost", description="Host Elasticsearch")
+    elasticsearch_port: int = Field(default=9200, description="Port Elasticsearch")
     elasticsearch_url: str = Field(
         default="http://localhost:9200",
         description="URL Elasticsearch"
@@ -91,6 +101,7 @@ class Settings(BaseSettings):
     )
     
     # === CONFIGURATION CACHE ===
+    cache_enabled: bool = Field(default=True, description="Activer le cache")
     cache_backend: CacheBackend = Field(
         default=CacheBackend.MEMORY,
         description="Backend de cache"
@@ -273,6 +284,7 @@ class Settings(BaseSettings):
         description="Champs retournés par défaut"
     )
 
+    # === CONFIGURATION PYDANTIC ===
     class Config:
         """Configuration Pydantic"""
         env_file = ".env"
@@ -362,6 +374,23 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Vérifie si on est en développement"""
         return self.environment.lower() == "development"
+    
+    @property
+    def is_testing(self) -> bool:
+        """True si environnement de test"""
+        return self.environment.lower() == "testing"
+    
+    @property
+    def cors_origins(self) -> List[str]:
+        """Retourne les origines CORS"""
+        if self.allow_all_origins:
+            return ["*"]
+        return self.allowed_origins
+    
+    @property  
+    def access_log_enabled(self) -> bool:
+        """Logs d'accès activés"""
+        return not self.is_production() or self.debug
 
 
 # Instance globale des settings

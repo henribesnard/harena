@@ -484,7 +484,16 @@ class RequestValidator:
             impact["elasticsearch_load"] = "medium"
         
         return impact
+# === CLASSES SUPPLÉMENTAIRES ===
+class ValidationRequest(BaseModel):
+    """Requête de validation"""
+    query: Dict[str, Any] = Field(..., description="Requête à valider")
+    validate_security: bool = Field(default=True, description="Valider sécurité")
 
+class TemplateRequest(BaseModel):
+    """Requête de template"""
+    template_name: str = Field(..., description="Nom du template")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Paramètres")
 
 # === EXPORTS ===
 
@@ -507,4 +516,9 @@ __all__ = [
     
     # Validateur
     "RequestValidator"
+
+    # Classes supplémentaires
+
+    "ValidationRequest",
+    "TemplateRequest"
 ]

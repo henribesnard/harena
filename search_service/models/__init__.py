@@ -106,6 +106,52 @@ from .filters import (
     FilterValidator
 )
 
+# === MODÈLES ELASTICSEARCH ===
+from .elasticsearch_queries import (
+    # Enums ES
+    ESQueryType,
+    ESBoolClause,
+    ESSortOrder,
+    ESMultiMatchType,
+    ESAggregationType,
+    
+    # Modèles de base
+    ESField,
+    ESSort,
+    
+    # Requêtes simples
+    ESTermQuery,
+    ESTermsQuery,
+    ESRangeQuery,
+    ESMatchQuery,
+    ESMultiMatchQuery,
+    
+    # Requêtes composées
+    ESBoolQuery,
+    
+    # Agrégations
+    ESTermsAggregation,
+    ESMetricAggregation,
+    ESDateHistogramAggregation,
+    ESAggregationContainer,
+    
+    # Requête complète
+    ESSearchQuery,
+    
+    # Builders
+    FinancialTransactionQueryBuilder,
+    
+    # Templates
+    ESQueryTemplates,
+    
+    # Validateurs
+    ESQueryValidator,
+    
+    # Utilitaires
+    optimize_es_query,
+    extract_query_metadata
+)
+
 # Version du module models
 __version__ = "1.0.0"
 
@@ -137,6 +183,17 @@ __all_filters__ = [
     "FilterFactory",
     "FilterValidator",
     "FIELD_CONFIGURATIONS"
+]
+
+# Modèles Elasticsearch
+__all_elasticsearch__ = [
+    "ESSearchQuery",
+    "FinancialTransactionQueryBuilder",
+    "ESQueryTemplates",
+    "ESBoolQuery",
+    "ESTermQuery",
+    "ESMultiMatchQuery",
+    "optimize_es_query"
 ]
 
 # Export principal
@@ -215,7 +272,51 @@ __all__ = [
     
     # Factory et validation
     "FilterFactory",
-    "FilterValidator"
+    "FilterValidator",
+    
+    # === MODÈLES ELASTICSEARCH ===
+    # Enums ES
+    "ESQueryType",
+    "ESBoolClause",
+    "ESSortOrder", 
+    "ESMultiMatchType",
+    "ESAggregationType",
+    
+    # Modèles ES de base
+    "ESField",
+    "ESSort",
+    
+    # Requêtes ES simples
+    "ESTermQuery",
+    "ESTermsQuery",
+    "ESRangeQuery",
+    "ESMatchQuery",
+    "ESMultiMatchQuery",
+    
+    # Requêtes ES composées
+    "ESBoolQuery",
+    
+    # Agrégations ES
+    "ESTermsAggregation",
+    "ESMetricAggregation",
+    "ESDateHistogramAggregation",
+    "ESAggregationContainer",
+    
+    # Requête ES complète
+    "ESSearchQuery",
+    
+    # Builders ES
+    "FinancialTransactionQueryBuilder",
+    
+    # Templates ES
+    "ESQueryTemplates",
+    
+    # Validateurs ES
+    "ESQueryValidator",
+    
+    # Utilitaires ES
+    "optimize_es_query",
+    "extract_query_metadata"
 ]
 
 # === HELPERS D'IMPORT ===
@@ -248,6 +349,16 @@ def get_filter_models():
         "configurations": FIELD_CONFIGURATIONS
     }
 
+def get_elasticsearch_models():
+    """Retourne les modèles Elasticsearch"""
+    return {
+        "search_query": ESSearchQuery,
+        "builder": FinancialTransactionQueryBuilder,
+        "templates": ESQueryTemplates,
+        "bool_query": ESBoolQuery,
+        "validator": ESQueryValidator
+    }
+
 # === VALIDATION MODULE ===
 
 def validate_models_import():
@@ -262,7 +373,9 @@ def validate_models_import():
         "InternalSearchRequest",
         "InternalSearchResponse",
         "FilterSet",
-        "ValidatedFilter"
+        "ValidatedFilter",
+        "ESSearchQuery",
+        "FinancialTransactionQueryBuilder"
     ]
     
     missing = []
@@ -371,6 +484,23 @@ class ModelFactory:
         return filter_set
     
     @staticmethod
+    def create_elasticsearch_query(user_id: int, search_text: str = None, category: str = None) -> ESSearchQuery:
+        """Crée une requête Elasticsearch optimisée"""
+        builder = FinancialTransactionQueryBuilder().add_user_filter(user_id)
+        
+        if search_text:
+            builder.add_text_search(search_text)
+            builder.set_highlighting(True)
+        
+        if category:
+            builder.add_category_filter(category)
+        
+        return (builder
+                .set_pagination(20, 0)
+                .set_sort_by_relevance_and_date()
+                .build())
+    
+    @staticmethod
     def create_sample_response(query_id: str, user_id: int, results_count: int = 5) -> SearchServiceResponse:
         """Crée une réponse d'exemple pour tests"""
         from datetime import datetime
@@ -441,6 +571,7 @@ __helpers__ = [
     "get_contract_models",
     "get_internal_models", 
     "get_filter_models",
+    "get_elasticsearch_models",
     "validate_models_import",
     "ModelFactory"
 ]

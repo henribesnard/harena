@@ -3,21 +3,17 @@ Templates de requêtes Elasticsearch par intention financière
 Bibliothèque de templates optimisés pour le Search Service
 """
 
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field
-from datetime import datetime, timedelta
 import logging
 
 from models.elasticsearch_queries import (
-    ESSearchQuery, FinancialTransactionQueryBuilder, ESQueryTemplates,
-    ESField, ESSort, ESSortOrder, ESMultiMatchType, ESAggregationType
+    ESSearchQuery, FinancialTransactionQueryBuilder
 )
 from models.service_contracts import (
-    SearchServiceQuery, QueryType, FilterOperator, AggregationType,
-    SearchFilter, TextSearchConfig, AggregationRequest
+    SearchServiceQuery, FilterOperator, AggregationRequest
 )
-from config import settings
 
 
 logger = logging.getLogger(__name__)

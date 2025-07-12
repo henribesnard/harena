@@ -3,14 +3,13 @@ Modèles de requêtes internes du Search Service
 Structures simplifiées pour le traitement interne des contrats
 """
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 from dataclasses import dataclass
 
 from .service_contracts import (
-    QueryType, 
+    
     FilterOperator, 
     AggregationType,
     SearchServiceQuery

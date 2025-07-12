@@ -16,8 +16,7 @@ Architecture :
 
 import logging
 import time
-import asyncio
-from typing import Dict, List, Optional, Any, Annotated, Union
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -26,14 +25,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_429_TOO_MANY_REQUESTS
 import redis.asyncio as redis
 
-from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from models.requests import InternalSearchRequest
-from utils.validators import (
-    ContractValidator, SecurityValidator, PerformanceValidator,
-    ValidationError, ValidatorFactory
-)
-from utils.metrics import api_metrics, record_operation_metrics
-from core import get_lexical_engine, get_performance_optimizer
+from models.service_contracts import SearchServiceQuery
+from utils.validators import ValidatorFactory
+
+from utils.metrics import api_metrics
+from core import get_lexical_engine
 from config import settings
 
 

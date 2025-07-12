@@ -5,8 +5,7 @@ Helpers spécialisés pour construction de requêtes, formatage et optimisations
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Union, Tuple
-from datetime import datetime, date
+from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 from enum import Enum
 
@@ -18,7 +17,7 @@ from models import (
     FilterOperator,
     AggregationType
 )
-from config import settings, INDEXED_FIELDS, FIELD_CONFIGURATIONS
+from config import settings, FIELD_CONFIGURATIONS
 
 logger = logging.getLogger(__name__)
 

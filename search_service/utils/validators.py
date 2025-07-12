@@ -6,18 +6,13 @@ Validation des contrats, requêtes Elasticsearch et paramètres
 import re
 import logging
 from typing import Dict, Any, List, Optional, Tuple, Union
-from datetime import datetime, date
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
 
 from models import (
     SearchServiceQuery,
     SearchServiceResponse,
-    InternalSearchRequest,
-    FilterSet,
-    ValidatedFilter,
     FIELD_CONFIGURATIONS,
-    QueryType,
-    FilterOperator
+    QueryType
 )
 from config import (
     settings,

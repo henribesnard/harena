@@ -5,22 +5,19 @@ Responsable du formatage, enrichissement et optimisation des résultats de reche
 
 import re
 import logging
-from typing import Dict, List, Optional, Any, Union, Tuple, Set
+from typing import Dict, List, Optional, Any, Set
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field
 from collections import defaultdict
 import math
 
 from models.responses import (
     InternalSearchResponse, RawTransaction, InternalAggregationResult,
-    ExecutionMetrics, QualityIndicator
+    QualityIndicator
 )
-from models.service_contracts import (
-    SearchResult, AggregationResult, AggregationBucket, ContextEnrichment
-)
+
 from utils.metrics import ResultMetrics
-from config import settings
 
 
 logger = logging.getLogger(__name__)

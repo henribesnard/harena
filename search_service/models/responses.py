@@ -6,7 +6,7 @@ Structures optimisées pour le traitement interne avant conversion vers contrats
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from dataclasses import dataclass, field
 
 from .service_contracts import SearchServiceResponse, AggregationType

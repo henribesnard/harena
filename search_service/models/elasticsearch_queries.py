@@ -7,8 +7,6 @@ import json
 from typing import Any, Dict, List, Optional, Union, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
-from dataclasses import dataclass
-from datetime import datetime
 
 from config import INDEXED_FIELDS, settings
 

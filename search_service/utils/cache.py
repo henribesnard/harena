@@ -8,15 +8,13 @@ import logging
 import hashlib
 import time
 import asyncio
-from typing import Any, Dict, List, Optional, Union, Tuple, Callable
+from typing import Any, Dict, List, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import OrderedDict
 from threading import Lock
-import weakref
 
-from config import settings
 
 logger = logging.getLogger(__name__)
 

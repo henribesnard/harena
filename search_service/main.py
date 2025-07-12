@@ -2,23 +2,20 @@
 🚀 Search Service - Point d'entrée principal FastAPI
 Point d'entrée simplifié pour le service de recherche lexicale haute performance
 """
-
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import  Optional
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
 # === IMPORTS SEARCH SERVICE ===
 from api import (
-    APIManager, api_manager,
-    create_search_service_app,
+     api_manager,
     get_api_health, get_api_info
 )
 from config import settings

@@ -3,23 +3,17 @@ Moteur de recherche lexicale pure Elasticsearch
 Interface principale pour les recherches BM25 optimisées sur les données financières
 """
 
-import asyncio
 import logging
-from typing import Dict, List, Optional, Any, Union, Tuple, Set
+from typing import Dict, List, Optional, Any
 from enum import Enum
-from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-import json
 import time
 import re
 
 from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from models.requests import InternalSearchRequest
 from models.responses import InternalSearchResponse
-from core.query_executor import query_executor_manager, ExecutionContext
 from core.result_processor import result_processor_manager, ProcessingContext, ProcessingStrategy
 from clients.elasticsearch_client import ElasticsearchClient
-from templates import template_manager
 from utils.cache import LRUCache
 from utils.metrics import LexicalSearchMetrics
 from config import settings

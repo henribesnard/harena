@@ -16,24 +16,20 @@ Architecture :
 
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, Optional, Any, Union
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Request, Response, Query, Path, HTTPException
+from fastapi import APIRouter, Depends, Request, Query, Path, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
-from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
+from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from models.requests import ValidationRequest, TemplateRequest
-from models.responses import ValidationResponse, TemplateListResponse, HealthResponse, MetricsResponse
+from models.responses import ValidationResponse, TemplateListResponse, HealthResponse
 from api.dependencies import (
     get_authenticated_user,
     validate_search_request,
     validate_rate_limit,
     check_service_health,
-    create_search_dependencies,
-    create_validation_dependencies,
-    create_metrics_dependencies,
     create_admin_dependencies,
     add_response_headers
 )
@@ -43,7 +39,7 @@ from core import (
 )
 from templates import template_manager
 from utils import (
-    get_system_metrics, get_performance_summary, export_metrics_to_file,
+    get_system_metrics, get_performance_summary, 
     cleanup_old_metrics, get_cache_manager, get_utils_health
 )
 from config import settings

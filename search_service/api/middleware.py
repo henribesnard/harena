@@ -28,7 +28,7 @@ import gzip
 from fastapi import Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp
 from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -37,8 +37,8 @@ from starlette.status import (
 import psutil
 
 from utils.metrics import (
-    metrics_collector, api_metrics, performance_profiler,
-    record_operation_metrics
+    metrics_collector, api_metrics, performance_profiler
+
 )
 from api.dependencies import APIException
 from config import settings

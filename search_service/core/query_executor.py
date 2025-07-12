@@ -5,20 +5,19 @@ Responsable de la construction et exécution optimisée des requêtes
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field
-import json
 import time
 
 from models.requests import InternalSearchRequest, RequestValidator
 from models.responses import InternalSearchResponse, ExecutionMetrics, OptimizationType
-from models.elasticsearch_queries import ESSearchQuery, optimize_es_query, extract_query_metadata
+from models.elasticsearch_queries import  optimize_es_query
 from models.service_contracts import SearchServiceQuery, SearchServiceResponse
 from clients.elasticsearch_client import ElasticsearchClient
 from templates import (
-    template_manager, build_query_from_intent, process_financial_query,
+    template_manager, process_financial_query,
     before_query_execution, after_query_execution
 )
 from utils.cache import LRUCache

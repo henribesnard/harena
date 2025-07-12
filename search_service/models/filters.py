@@ -3,15 +3,14 @@ Modèles de filtres et validation pour le Search Service
 Structures spécialisées pour la gestion des filtres Elasticsearch
 """
 
-from datetime import datetime, date
-from typing import Any, Dict, List, Optional, Union, Tuple
+from datetime import date
+from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 from dataclasses import dataclass
 import re
-from decimal import Decimal
 
-from config import INDEXED_FIELDS, SUPPORTED_FILTER_OPERATORS
+from config import SUPPORTED_FILTER_OPERATORS
 
 
 class FieldType(str, Enum):

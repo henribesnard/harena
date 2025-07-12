@@ -5,7 +5,7 @@ Gère les optimisations adaptatives, la surveillance des performances et l'amél
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any, Union, Tuple, Set, NamedTuple
+from typing import Dict, List, Optional, Any, Tuple, NamedTuple
 from enum import Enum
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -15,9 +15,6 @@ import statistics
 from collections import defaultdict, deque
 
 from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from models.requests import InternalSearchRequest  
-from models.responses import InternalSearchResponse
-from utils.metrics import SearchMetrics
 from config import settings
 
 

@@ -3,7 +3,6 @@ Configuration centralisée pour le Search Service
 Spécialisé pour la recherche lexicale Elasticsearch haute performance
 """
 
-import os
 from typing import Dict, List, Optional
 from enum import Enum
 

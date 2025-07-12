@@ -5,9 +5,7 @@ Spécialisé dans les recherches lexicales de transactions financières
 
 import logging
 import ssl
-import time
-from typing import Dict, Any, List, Optional, Union
-from datetime import datetime
+from typing import Dict, Any, List, Optional
 import aiohttp
 
 from .base_client import (
@@ -15,9 +13,8 @@ from .base_client import (
     RetryConfig, 
     CircuitBreakerConfig, 
     HealthCheckConfig,
-    ClientStatus
 )
-from config import settings, INDEXED_FIELDS
+from config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -3,19 +3,15 @@ Templates d'agrégation Elasticsearch pour analyses financières
 Bibliothèque spécialisée pour agrégations temporelles, catégorielles et métriques
 """
 
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any,  Tuple
 from enum import Enum
-from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 import logging
 from dataclasses import dataclass
 
 from models.elasticsearch_queries import (
-    ESSearchQuery, ESAggregationType, ESTermsAggregation, ESMetricAggregation,
-    ESDateHistogramAggregation, ESAggregationContainer, FinancialTransactionQueryBuilder
+    ESSearchQuery,  FinancialTransactionQueryBuilder
 )
-from models.service_contracts import AggregationRequest, AggregationType
-from config import settings
 
 
 logger = logging.getLogger(__name__)

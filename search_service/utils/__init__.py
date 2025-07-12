@@ -1,393 +1,708 @@
 """
-Module utils du Search Service
-Expose tous les utilitaires pour validation, cache, Elasticsearch et métriques
+Module utils du Search Service - Utilitaires et services transversaux
+====================================================================
+
+Ce module regroupe tous les utilitaires essentiels du Search Service :
+- Métriques et monitoring spécialisés
+- Cache LRU haute performance  
+- Validateurs de requêtes
+- Helpers Elasticsearch
+- Utilitaires de performance
+
+Architecture :
+    Core Components → Utils → External Services
+    
+Utilisé par :
+    - Tous les modules core pour les métriques
+    - API routes pour la validation
+    - Clients pour les helpers Elasticsearch
+    - Performance optimizer pour le cache
 """
 
-# === VALIDATION ===
+import logging
+from typing import Dict, List, Optional, Any, Union, Tuple
+
+# === IMPORTS DES MODULES UTILS ===
+
+from .metrics import (
+    # Classes principales
+    MetricsCollector,
+    AlertManager,
+    MetricsDashboard,
+    
+    # Métriques spécialisées
+    QueryMetrics,
+    ResultMetrics,
+    SearchMetrics,
+    ElasticsearchMetrics,
+    LexicalSearchMetrics,
+    BusinessMetrics,
+    PerformanceProfiler,
+    
+    # Types et enums
+    MetricType,
+    MetricCategory,
+    AlertLevel,
+    MetricDefinition,
+    MetricValue,
+    MetricSample,
+    MetricAlert,
+    
+    # Instances globales
+    metrics_collector,
+    alert_manager,
+    query_metrics,
+    result_metrics,
+    search_metrics,
+    elasticsearch_metrics,
+    lexical_search_metrics,
+    business_metrics,
+    performance_profiler,
+    metrics_dashboard,
+    
+    # Fonctions utilitaires
+    get_system_metrics,
+    get_performance_summary,
+    export_metrics_to_file,
+    cleanup_old_metrics,
+    reset_all_counters,
+    get_top_slow_operations,
+    get_error_metrics_summary,
+    initialize_metrics_system,
+    shutdown_metrics_system,
+    
+    # Callbacks
+    log_alert_callback,
+    system_alert_callback
+)
+
+from .cache import (
+    # Classes de cache
+    LRUCache,
+    CacheEntry,
+    CacheStats,
+    CacheStrategy,
+    
+    # Gestionnaire de cache
+    CacheManager,
+    
+    # Instances globales  
+    global_cache_manager,
+    
+    # Fonctions utilitaires
+    create_cache_key,
+    serialize_cache_value,
+    deserialize_cache_value,
+    cleanup_expired_entries,
+    get_cache_statistics
+)
+
 from .validators import (
-    # Exceptions
+    # Classes de validation
+    QueryValidator,
+    RequestValidator,
+    ResponseValidator,
+    FieldValidator,
+    
+    # Types de validation
+    ValidationRule,
+    ValidationResult,
     ValidationError,
     
-    # Validateurs principaux
-    SecurityValidator,
-    ContractValidator,
-    FilterValidator,
-    ElasticsearchQueryValidator,
-    PerformanceValidator,
-    BatchValidator,
+    # Fonctions de validation
+    validate_search_request,
+    validate_elasticsearch_query,
+    validate_user_permissions,
+    validate_date_ranges,
+    validate_aggregation_request,
+    sanitize_search_input,
     
-    # Factory
-    ValidatorFactory,
-    
-    # Fonctions utilitaires
-    sanitize_query_string,
-    is_valid_user_id,
-    get_field_type,
-    validate_query_timeout,
-    estimate_result_size
+    # Validateurs spécialisés
+    FinancialDataValidator,
+    SecurityValidator
 )
 
-# === ELASTICSEARCH HELPERS ===
 from .elasticsearch_helpers import (
-    # Exceptions
-    ElasticsearchError,
+    # Classes d'aide Elasticsearch
+    ESQueryBuilder,
+    ESResponseParser,
+    ESIndexManager,
+    ESConnectionHelper,
     
-    # Classes principales
-    QueryBuilder,
-    ResponseFormatter,
-    ErrorHandler,
-    IndexManager,
-    QueryOptimizer,
-    FieldAnalyzer,
-    QueryPerformanceAnalyzer,
+    # Types Elasticsearch
+    ESQueryType,
+    ESAggregationType,
+    ESFilterType,
     
-    # Structures de données
-    ElasticsearchResponse,
-    QueryOptimization,
+    # Fonctions helper
+    build_bool_query,
+    build_multi_match_query,
+    build_range_filter,
+    build_term_filter,
+    parse_es_response,
+    extract_highlights,
+    calculate_relevance_score,
+    optimize_es_query,
     
-    # Fonctions utilitaires
-    build_simple_user_query,
-    build_text_search_query,
-    validate_elasticsearch_response,
-    extract_error_details,
-    estimate_query_cost,
-    normalize_query_for_cache,
-    build_count_query,
-    merge_query_filters,
-    get_field_mapping_type,
-    optimize_pagination,
+    # Utilitaires de mapping
+    get_field_mapping,
+    validate_field_exists,
+    get_index_settings,
     
-    # Debugging
-    explain_query_execution,
-    profile_query_execution,
-    log_query_for_debug
+    # Gestionnaire de templates
+    QueryTemplateManager,
+    template_manager
 )
 
-# === CACHE ===
-from .cache import (
-    # Enums
-    CacheStrategy,
-    CacheLevel,
-    EvictionPolicy,
+
+# === CONFIGURATION DU LOGGING ===
+
+logger = logging.getLogger(__name__)
+
+# Loggers spécialisés pour chaque utilitaire
+metrics_logger = logging.getLogger(f"{__name__}.metrics")
+cache_logger = logging.getLogger(f"{__name__}.cache")
+validators_logger = logging.getLogger(f"{__name__}.validators")
+elasticsearch_logger = logging.getLogger(f"{__name__}.elasticsearch_helpers")
+
+
+# === GESTIONNAIRE UTILS GLOBAL ===
+
+class UtilsManager:
+    """Gestionnaire centralisé des utilitaires du Search Service"""
     
-    # Classes principales
-    LRUCache,
-    SmartCache,
-    CacheManager,
-    CacheKeyGenerator,
+    def __init__(self):
+        self._initialized = False
+        self._metrics_system = None
+        self._cache_manager = None
+        self._validator_registry = None
+        self._elasticsearch_helpers = None
+        
+        logger.info("UtilsManager créé")
     
-    # Structures de données
-    CacheEntry,
+    async def initialize(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Initialise tous les utilitaires du Search Service
+        
+        Args:
+            config: Configuration optionnelle pour les utilitaires
+            
+        Returns:
+            Dict contenant le statut d'initialisation de chaque utilitaire
+        """
+        if self._initialized:
+            logger.warning("UtilsManager déjà initialisé")
+            return await self.get_initialization_status()
+        
+        initialization_results = {}
+        
+        try:
+            logger.info("Initialisation des utilitaires du Search Service...")
+            
+            # 1. Initialiser le système de métriques
+            try:
+                initialize_metrics_system()
+                self._metrics_system = metrics_collector
+                initialization_results["metrics"] = "initialized"
+                logger.info("✅ Système de métriques initialisé")
+            except Exception as e:
+                logger.error(f"❌ Erreur initialisation métriques: {e}")
+                initialization_results["metrics"] = f"failed: {e}"
+            
+            # 2. Initialiser le gestionnaire de cache
+            try:
+                cache_config = config.get("cache", {}) if config else {}
+                await global_cache_manager.initialize(**cache_config)
+                self._cache_manager = global_cache_manager
+                initialization_results["cache"] = "initialized"
+                logger.info("✅ Gestionnaire de cache initialisé")
+            except Exception as e:
+                logger.error(f"❌ Erreur initialisation cache: {e}")
+                initialization_results["cache"] = f"failed: {e}"
+            
+            # 3. Initialiser les validateurs
+            try:
+                validator_config = config.get("validators", {}) if config else {}
+                # Les validateurs sont stateless, pas d'initialisation spéciale nécessaire
+                initialization_results["validators"] = "initialized"
+                logger.info("✅ Validateurs initialisés")
+            except Exception as e:
+                logger.error(f"❌ Erreur initialisation validateurs: {e}")
+                initialization_results["validators"] = f"failed: {e}"
+            
+            # 4. Initialiser les helpers Elasticsearch
+            try:
+                es_config = config.get("elasticsearch_helpers", {}) if config else {}
+                await template_manager.initialize(**es_config)
+                self._elasticsearch_helpers = template_manager
+                initialization_results["elasticsearch_helpers"] = "initialized"
+                logger.info("✅ Helpers Elasticsearch initialisés")
+            except Exception as e:
+                logger.error(f"❌ Erreur initialisation ES helpers: {e}")
+                initialization_results["elasticsearch_helpers"] = f"failed: {e}"
+            
+            # 5. Marquer comme initialisé
+            self._initialized = True
+            
+            logger.info("🚀 Tous les utilitaires sont initialisés avec succès")
+            
+            return {
+                "status": "success",
+                "components": initialization_results
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'initialisation des utilitaires: {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "components": initialization_results
+            }
     
-    # Instance globale
-    cache_manager,
+    async def shutdown(self) -> Dict[str, Any]:
+        """Arrêt propre de tous les utilitaires"""
+        if not self._initialized:
+            return {"status": "not_initialized"}
+        
+        shutdown_results = {}
+        
+        try:
+            logger.info("Arrêt des utilitaires...")
+            
+            # Arrêter dans l'ordre inverse de l'initialisation
+            if self._elasticsearch_helpers:
+                await self._elasticsearch_helpers.shutdown()
+                shutdown_results["elasticsearch_helpers"] = "shutdown"
+            
+            if self._cache_manager:
+                await self._cache_manager.shutdown()
+                shutdown_results["cache"] = "shutdown"
+            
+            if self._metrics_system:
+                shutdown_metrics_system()
+                shutdown_results["metrics"] = "shutdown"
+            
+            # Les validateurs n'ont pas besoin d'arrêt explicite
+            shutdown_results["validators"] = "shutdown"
+            
+            self._initialized = False
+            logger.info("✅ Tous les utilitaires arrêtés")
+            
+            return {
+                "status": "success",
+                "components": shutdown_results
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'arrêt des utilitaires: {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "components": shutdown_results
+            }
     
-    # Décorateurs
-    cached,
+    async def get_health_status(self) -> Dict[str, Any]:
+        """Vérification de santé des utilitaires"""
+        if not self._initialized:
+            return {
+                "status": "not_initialized",
+                "error": "Utils not initialized"
+            }
+        
+        try:
+            health_status = {
+                "system_status": "healthy",
+                "components": {}
+            }
+            
+            # Vérifier le système de métriques
+            if self._metrics_system:
+                metrics_health = get_system_metrics()
+                health_status["components"]["metrics"] = {
+                    "status": "healthy",
+                    "details": metrics_health
+                }
+            
+            # Vérifier le cache
+            if self._cache_manager:
+                cache_health = await self._cache_manager.get_health_status()
+                health_status["components"]["cache"] = cache_health
+            
+            # Vérifier les validateurs (toujours healthy s'ils sont chargés)
+            health_status["components"]["validators"] = {"status": "healthy"}
+            
+            # Vérifier les helpers Elasticsearch
+            if self._elasticsearch_helpers:
+                es_health = await self._elasticsearch_helpers.get_health_status()
+                health_status["components"]["elasticsearch_helpers"] = es_health
+            
+            # Déterminer le statut global
+            component_statuses = [
+                comp_health.get("status", "unknown") 
+                for comp_health in health_status["components"].values()
+            ]
+            
+            if all(status == "healthy" for status in component_statuses):
+                health_status["system_status"] = "healthy"
+            elif any(status == "error" for status in component_statuses):
+                health_status["system_status"] = "degraded"
+            else:
+                health_status["system_status"] = "partial"
+            
+            return health_status
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification de santé: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
     
-    # Fonctions utilitaires
-    get_cache_stats,
-    clear_all_caches,
-    cleanup_expired_entries,
-    periodic_cleanup
-)
+    async def get_performance_report(self) -> Dict[str, Any]:
+        """Génère un rapport de performance des utilitaires"""
+        if not self._initialized:
+            return {"error": "Utils not initialized"}
+        
+        try:
+            report = {
+                "generated_at": datetime.now().isoformat(),
+                "components": {}
+            }
+            
+            # Rapport métriques
+            if self._metrics_system:
+                report["components"]["metrics"] = get_performance_summary()
+            
+            # Rapport cache
+            if self._cache_manager:
+                report["components"]["cache"] = await self._cache_manager.get_performance_report()
+            
+            # Rapport validateurs
+            report["components"]["validators"] = {
+                "validation_rules_loaded": len(ValidationRule.__subclasses__()) if 'ValidationRule' in globals() else 0,
+                "status": "active"
+            }
+            
+            # Rapport helpers Elasticsearch
+            if self._elasticsearch_helpers:
+                report["components"]["elasticsearch_helpers"] = await self._elasticsearch_helpers.get_performance_report()
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du rapport: {e}")
+            return {"error": str(e)}
+    
+    async def get_initialization_status(self) -> Dict[str, Any]:
+        """Retourne le statut d'initialisation détaillé"""
+        return {
+            "initialized": self._initialized,
+            "components": {
+                "metrics": self._metrics_system is not None,
+                "cache": self._cache_manager is not None,
+                "validators": True,  # Toujours disponibles
+                "elasticsearch_helpers": self._elasticsearch_helpers is not None
+            }
+        }
+    
+    @property
+    def metrics_system(self):
+        """Accès au système de métriques"""
+        return self._metrics_system if self._initialized else None
+    
+    @property
+    def cache_manager(self):
+        """Accès au gestionnaire de cache"""
+        return self._cache_manager if self._initialized else None
+    
+    @property
+    def elasticsearch_helpers(self):
+        """Accès aux helpers Elasticsearch"""
+        return self._elasticsearch_helpers if self._initialized else None
 
-# Version du module utils
-__version__ = "1.0.0"
 
-# === EXPORTS ORGANISÉS ===
+# === INSTANCE GLOBALE ===
 
-# Validation et sécurité
-__all_validation__ = [
-    "ValidationError",
-    "SecurityValidator",
-    "ContractValidator",
-    "FilterValidator",
-    "ValidatorFactory",
-    "sanitize_query_string",
-    "is_valid_user_id"
-]
+utils_manager = UtilsManager()
 
-# Elasticsearch
-__all_elasticsearch__ = [
-    "ElasticsearchError",
-    "QueryBuilder",
-    "ResponseFormatter",
-    "ErrorHandler",
-    "IndexManager",
-    "ElasticsearchResponse",
-    "build_simple_user_query",
-    "estimate_query_cost"
-]
 
-# Cache
-__all_cache__ = [
-    "CacheStrategy",
-    "LRUCache",
-    "SmartCache",
-    "cache_manager",
-    "cached",
-    "get_cache_stats"
-]
+# === FONCTIONS D'INTERFACE PUBLIQUE ===
 
-# Export principal
+async def initialize_utils(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Initialise tous les utilitaires du Search Service
+    
+    Point d'entrée principal pour l'initialisation des utils
+    """
+    return await utils_manager.initialize(config)
+
+
+async def shutdown_utils() -> Dict[str, Any]:
+    """Arrêt propre de tous les utilitaires"""
+    return await utils_manager.shutdown()
+
+
+async def get_utils_health() -> Dict[str, Any]:
+    """Vérification de santé globale des utilitaires"""
+    return await utils_manager.get_health_status()
+
+
+async def get_utils_performance() -> Dict[str, Any]:
+    """Rapport de performance global des utilitaires"""
+    return await utils_manager.get_performance_report()
+
+
+def get_metrics_system():
+    """Accès sécurisé au système de métriques"""
+    return utils_manager.metrics_system
+
+
+def get_cache_manager():
+    """Accès sécurisé au gestionnaire de cache"""
+    return utils_manager.cache_manager
+
+
+def get_elasticsearch_helpers():
+    """Accès sécurisé aux helpers Elasticsearch"""
+    return utils_manager.elasticsearch_helpers
+
+
+# === FONCTIONS UTILITAIRES INTÉGRÉES ===
+
+def record_operation_metrics(operation_name: str, duration_ms: float, 
+                           success: bool, **kwargs):
+    """Enregistre des métriques pour une opération générique"""
+    
+    if not utils_manager._initialized:
+        logger.warning("Système de métriques non initialisé")
+        return
+    
+    tags = {
+        "operation": operation_name,
+        "success": str(success),
+        **{k: str(v) for k, v in kwargs.items()}
+    }
+    
+    metrics_collector.record(f"{operation_name}_duration_ms", duration_ms, tags)
+    
+    if success:
+        metrics_collector.increment(f"{operation_name}_success_count", tags=tags)
+    else:
+        metrics_collector.increment(f"{operation_name}_error_count", tags=tags)
+
+
+def validate_and_cache_query(query_data: Dict[str, Any], 
+                            cache_key: str,
+                            ttl_seconds: int = 300) -> Tuple[bool, Optional[str], Any]:
+    """
+    Valide une requête et vérifie le cache
+    
+    Returns:
+        Tuple[is_valid, error_message, cached_result]
+    """
+    
+    try:
+        # Validation
+        validation_result = validate_search_request(query_data)
+        if not validation_result.is_valid:
+            return False, validation_result.error_message, None
+        
+        # Vérification cache
+        if utils_manager.cache_manager:
+            cached_result = utils_manager.cache_manager.get(cache_key)
+            if cached_result is not None:
+                return True, None, cached_result
+        
+        return True, None, None
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la validation/cache: {e}")
+        return False, str(e), None
+
+
+def cache_search_result(cache_key: str, result: Any, ttl_seconds: int = 300):
+    """Met en cache un résultat de recherche"""
+    
+    if utils_manager.cache_manager:
+        try:
+            utils_manager.cache_manager.set(cache_key, result, ttl_seconds)
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise en cache: {e}")
+
+
+def get_utils_status() -> Dict[str, str]:
+    """Statut simple des utilitaires pour les health checks"""
+    if not utils_manager._initialized:
+        return {"status": "not_ready", "reason": "utils_not_initialized"}
+    
+    try:
+        components_ready = all([
+            utils_manager._metrics_system is not None,
+            utils_manager._cache_manager is not None,
+            utils_manager._elasticsearch_helpers is not None
+        ])
+        
+        if components_ready:
+            return {"status": "ready"}
+        else:
+            return {"status": "partial", "reason": "some_components_missing"}
+            
+    except Exception as e:
+        return {"status": "error", "reason": str(e)}
+
+
+# === EXPORTS PRINCIPAUX ===
+
 __all__ = [
-    # === VALIDATION ===
-    # Exceptions
-    "ValidationError",
+    # === GESTIONNAIRE PRINCIPAL ===
+    "UtilsManager",
+    "utils_manager",
     
-    # Validateurs
-    "SecurityValidator",
-    "ContractValidator", 
-    "FilterValidator",
-    "ElasticsearchQueryValidator",
-    "PerformanceValidator",
-    "BatchValidator",
-    "ValidatorFactory",
+    # === FONCTIONS D'INITIALISATION ===
+    "initialize_utils",
+    "shutdown_utils",
+    "get_utils_health",
+    "get_utils_performance",
     
-    # Utilitaires validation
-    "sanitize_query_string",
-    "is_valid_user_id",
-    "get_field_type",
-    "validate_query_timeout",
-    "estimate_result_size",
+    # === ACCÈS AUX COMPOSANTS ===
+    "get_metrics_system",
+    "get_cache_manager",
+    "get_elasticsearch_helpers",
     
-    # === ELASTICSEARCH ===
-    # Exceptions
-    "ElasticsearchError",
+    # === FONCTIONS INTÉGRÉES ===
+    "record_operation_metrics",
+    "validate_and_cache_query",
+    "cache_search_result",
+    "get_utils_status",
     
-    # Classes ES
-    "QueryBuilder",
-    "ResponseFormatter",
-    "ErrorHandler", 
-    "IndexManager",
-    "QueryOptimizer",
-    "FieldAnalyzer",
-    "QueryPerformanceAnalyzer",
+    # === MÉTRIQUES ===
+    # Classes principales
+    "MetricsCollector",
+    "AlertManager",
+    "MetricsDashboard",
     
-    # Structures ES
-    "ElasticsearchResponse",
-    "QueryOptimization",
+    # Métriques spécialisées (pour compatibility avec les imports existants)
+    "QueryMetrics",
+    "ResultMetrics", 
+    "SearchMetrics",
+    "ElasticsearchMetrics",
+    "LexicalSearchMetrics",
+    "BusinessMetrics",
+    "PerformanceProfiler",
     
-    # Utilitaires ES
-    "build_simple_user_query",
-    "build_text_search_query",
-    "validate_elasticsearch_response",
-    "extract_error_details",
-    "estimate_query_cost",
-    "normalize_query_for_cache",
-    "build_count_query",
-    "merge_query_filters",
-    "get_field_mapping_type",
-    "optimize_pagination",
+    # Types métriques
+    "MetricType",
+    "MetricCategory",
+    "AlertLevel",
+    "MetricDefinition",
+    "MetricValue",
+    "MetricSample",
+    "MetricAlert",
     
-    # Debugging ES
-    "explain_query_execution",
-    "profile_query_execution",
-    "log_query_for_debug",
+    # Instances globales métriques
+    "metrics_collector",
+    "alert_manager",
+    "query_metrics",
+    "result_metrics",
+    "search_metrics",
+    "elasticsearch_metrics",
+    "lexical_search_metrics",
+    "business_metrics",
+    "performance_profiler",
+    "metrics_dashboard",
+    
+    # Fonctions métriques
+    "get_system_metrics",
+    "get_performance_summary",
+    "export_metrics_to_file",
+    "cleanup_old_metrics",
+    "reset_all_counters",
+    "get_top_slow_operations",
+    "get_error_metrics_summary",
+    "initialize_metrics_system",
+    "shutdown_metrics_system",
+    "log_alert_callback",
+    "system_alert_callback",
     
     # === CACHE ===
-    # Enums cache
-    "CacheStrategy",
-    "CacheLevel",
-    "EvictionPolicy",
-    
-    # Classes cache
+    # Classes de cache
     "LRUCache",
-    "SmartCache", 
-    "CacheManager",
-    "CacheKeyGenerator",
     "CacheEntry",
+    "CacheStats", 
+    "CacheStrategy",
+    "CacheManager",
     
     # Instance globale cache
-    "cache_manager",
+    "global_cache_manager",
     
-    # Décorateurs cache
-    "cached",
-    
-    # Utilitaires cache
-    "get_cache_stats",
-    "clear_all_caches",
+    # Fonctions cache
+    "create_cache_key",
+    "serialize_cache_value",
+    "deserialize_cache_value",
     "cleanup_expired_entries",
-    "periodic_cleanup"
+    "get_cache_statistics",
+    
+    # === VALIDATEURS ===
+    # Classes de validation
+    "QueryValidator",
+    "RequestValidator", 
+    "ResponseValidator",
+    "FieldValidator",
+    "FinancialDataValidator",
+    "SecurityValidator",
+    
+    # Types validation
+    "ValidationRule",
+    "ValidationResult",
+    "ValidationError",
+    
+    # Fonctions validation
+    "validate_search_request",
+    "validate_elasticsearch_query",
+    "validate_user_permissions",
+    "validate_date_ranges",
+    "validate_aggregation_request",
+    "sanitize_search_input",
+    
+    # === HELPERS ELASTICSEARCH ===
+    # Classes helper
+    "ESQueryBuilder",
+    "ESResponseParser",
+    "ESIndexManager",
+    "ESConnectionHelper",
+    "QueryTemplateManager",
+    
+    # Types ES
+    "ESQueryType",
+    "ESAggregationType", 
+    "ESFilterType",
+    
+    # Instance globale
+    "template_manager",
+    
+    # Fonctions helper
+    "build_bool_query",
+    "build_multi_match_query",
+    "build_range_filter",
+    "build_term_filter",
+    "parse_es_response",
+    "extract_highlights",
+    "calculate_relevance_score",
+    "optimize_es_query",
+    "get_field_mapping",
+    "validate_field_exists",
+    "get_index_settings"
 ]
 
-# === HELPERS D'IMPORT ===
 
-def get_validation_tools():
-    """Retourne les outils de validation principaux"""
-    return {
-        "contract_validator": ContractValidator,
-        "security_validator": SecurityValidator,
-        "filter_validator": FilterValidator,
-        "factory": ValidatorFactory
-    }
+# === INFORMATIONS DU MODULE ===
 
-def get_elasticsearch_tools():
-    """Retourne les outils Elasticsearch principaux"""
-    return {
-        "query_builder": QueryBuilder,
-        "response_formatter": ResponseFormatter,
-        "error_handler": ErrorHandler,
-        "index_manager": IndexManager,
-        "field_analyzer": FieldAnalyzer,
-        "performance_analyzer": QueryPerformanceAnalyzer
-    }
+__version__ = "1.0.0"
+__author__ = "Search Service Team" 
+__description__ = "Utilitaires et services transversaux du Search Service"
 
-def get_cache_tools():
-    """Retourne les outils de cache principaux"""
-    return {
-        "lru_cache": LRUCache,
-        "smart_cache": SmartCache,
-        "manager": cache_manager,
-        "key_generator": CacheKeyGenerator
-    }
+# Imports nécessaires pour les types
+from datetime import datetime
 
-# === FACTORY CENTRALISÉE ===
-
-class UtilsFactory:
-    """Factory centralisée pour tous les utilitaires"""
-    
-    @staticmethod
-    def create_complete_validator() -> ValidatorFactory:
-        """Crée un validateur complet configuré"""
-        return ValidatorFactory()
-    
-    @staticmethod
-    def create_query_builder() -> QueryBuilder:
-        """Crée un constructeur de requêtes optimisé"""
-        return QueryBuilder()
-    
-    @staticmethod
-    def create_response_formatter() -> ResponseFormatter:
-        """Crée un formateur de réponses"""
-        return ResponseFormatter()
-    
-    @staticmethod
-    def create_cache_manager() -> CacheManager:
-        """Crée un gestionnaire de cache"""
-        return CacheManager()
-    
-    @staticmethod
-    def create_search_cache(max_size: int = 500, max_memory_mb: int = 50) -> SmartCache:
-        """Crée un cache optimisé pour les recherches"""
-        return SmartCache(
-            strategy=CacheStrategy.MEMORY_ONLY,
-            memory_cache_size=max_size,
-            memory_cache_mb=max_memory_mb,
-            default_ttl=300  # 5 minutes
-        )
-    
-    @staticmethod
-    def get_all_tools():
-        """Retourne tous les outils organisés"""
-        return {
-            "validation": get_validation_tools(),
-            "elasticsearch": get_elasticsearch_tools(), 
-            "cache": get_cache_tools()
-        }
-
-# === CONFIGURATION PAR DÉFAUT ===
-
-def configure_default_utils():
-    """Configure les utilitaires avec les paramètres par défaut"""
-    # Démarrer le nettoyage périodique du cache
-    import asyncio
-    try:
-        # Vérifier si une boucle d'événements est déjà en cours
-        loop = asyncio.get_running_loop()
-        # Programmer la tâche de nettoyage
-        loop.create_task(periodic_cleanup(interval_seconds=300))  # 5 minutes
-    except RuntimeError:
-        # Pas de boucle en cours, sera configuré plus tard
-        pass
-
-# === VALIDATION MODULE ===
-
-def validate_utils_import():
-    """Valide que tous les utilitaires sont correctement importés"""
-    import sys
-    current_module = sys.modules[__name__]
-    
-    # Vérifier les classes essentielles
-    essential_classes = [
-        "ValidationError", "ContractValidator", "SecurityValidator",
-        "ElasticsearchError", "QueryBuilder", "ResponseFormatter",
-        "LRUCache", "SmartCache", "cache_manager"
-    ]
-    
-    missing = []
-    for class_name in essential_classes:
-        if not hasattr(current_module, class_name):
-            missing.append(class_name)
-    
-    if missing:
-        raise ImportError(f"Classes manquantes dans utils: {missing}")
-    
-    return True
-
-# === HELPERS DE DEBUGGING ===
-
-def get_utils_status() -> dict:
-    """Retourne le statut de tous les utilitaires"""
-    status = {
-        "validation": {
-            "available": True,
-            "validators_count": 6,
-            "factory_ready": hasattr(ValidatorFactory, 'validate_complete_request')
-        },
-        "elasticsearch": {
-            "available": True,
-            "query_builder_ready": hasattr(QueryBuilder, 'build_from_internal_request'),
-            "response_formatter_ready": hasattr(ResponseFormatter, 'format_elasticsearch_response'),
-            "error_handler_ready": hasattr(ErrorHandler, 'parse_elasticsearch_error')
-        },
-        "cache": {
-            "available": True,
-            "manager_initialized": cache_manager is not None,
-            "lru_cache_ready": hasattr(LRUCache, 'get'),
-            "smart_cache_ready": hasattr(SmartCache, 'get'),
-            "global_stats": get_cache_stats() if cache_manager else {}
-        }
-    }
-    
-    return status
-
-def log_utils_status():
-    """Log le statut des utilitaires pour debugging"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    try:
-        status = get_utils_status()
-        logger.info("Utils Status:")
-        for category, info in status.items():
-            logger.info(f"  {category}: {info}")
-    except Exception as e:
-        logger.error(f"Error getting utils status: {e}")
-
-# === INITIALISATION AUTOMATIQUE ===
-
-# Auto-validation au chargement
-try:
-    validate_utils_import()
-    configure_default_utils()
-except Exception as e:
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.warning(f"⚠️ Utils initialization warning: {e}")
-
-# Helpers disponibles
-__helpers__ = [
-    "get_validation_tools",
-    "get_elasticsearch_tools",
-    "get_cache_tools",
-    "UtilsFactory",
-    "configure_default_utils",
-    "validate_utils_import",
-    "get_utils_status",
-    "log_utils_status"
-]
-
-# Ajout des helpers aux exports
-__all__.extend(__helpers__)
+# Logging de l'import du module
+logger.info(f"Module utils initialisé - version {__version__}")

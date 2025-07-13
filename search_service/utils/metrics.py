@@ -27,6 +27,7 @@ import json
 import hashlib
 from contextlib import contextmanager
 import psutil
+import os
 
 from search_service.config import settings
 
@@ -141,15 +142,40 @@ class MetricsCollector:
         self._lock = threading.RLock()
         self._start_time = datetime.now()
         
+        # Vérifier si les métriques sont activées globalement
+        self._metrics_enabled = os.getenv('ENABLE_METRICS', 'true').lower() == 'true'
+        
+        # Vérifier si on est sur Heroku (variable DYNO existe seulement sur Heroku)
+        is_heroku = bool(os.getenv('DYNO'))
+
+        # Vérifier la variable d'environnement personnalisée pour les métriques système
+        disable_system_metrics = os.getenv('DISABLE_SYSTEM_METRICS', 'false').lower() == 'true'
+
+        # Désactiver automatiquement sur Heroku OU si la variable est définie OU si les métriques sont désactivées
+        self._system_metrics_enabled = self._metrics_enabled and not (is_heroku or disable_system_metrics)
+
         # Métriques système automatiques
-        self._system_metrics_enabled = True
         self._system_metrics_interval = 30  # secondes
         
-        self._register_default_metrics()
-        self._start_system_metrics_collection()
+        # Logs informatifs
+        if not self._metrics_enabled:
+            logger.info("Système de métriques complètement désactivé via ENABLE_METRICS=false")
+        elif is_heroku:
+            logger.info("Métriques système désactivées automatiquement (détection Heroku)")
+        elif disable_system_metrics:
+            logger.info("Métriques système désactivées via DISABLE_SYSTEM_METRICS=true")
+        else:
+            logger.info("Métriques système activées")
+
+        if self._metrics_enabled:
+            self._register_default_metrics()
+            self._start_system_metrics_collection()
     
     def register_metric(self, definition: MetricDefinition):
         """Enregistre une nouvelle métrique"""
+        if not self._metrics_enabled:
+            return
+            
         with self._lock:
             self._definitions[definition.name] = definition
             logger.debug(f"Métrique enregistrée: {definition.name}")
@@ -157,6 +183,9 @@ class MetricsCollector:
     def record(self, name: str, value: Union[int, float], 
                tags: Optional[Dict[str, str]] = None):
         """Enregistre une valeur de métrique"""
+        
+        if not self._metrics_enabled:
+            return
         
         if name not in self._definitions:
             logger.warning(f"Métrique non définie: {name}")
@@ -175,6 +204,9 @@ class MetricsCollector:
                   tags: Optional[Dict[str, str]] = None):
         """Incrémente un compteur"""
         
+        if not self._metrics_enabled:
+            return
+        
         # Récupérer la valeur actuelle et l'incrémenter
         current = self.get_current_value(name, default=0)
         self.record(name, current + amount, tags)
@@ -182,11 +214,16 @@ class MetricsCollector:
     def set_gauge(self, name: str, value: Union[int, float],
                   tags: Optional[Dict[str, str]] = None):
         """Définit la valeur d'une gauge"""
-        self.record(name, value, tags)
+        if self._metrics_enabled:
+            self.record(name, value, tags)
     
     @contextmanager
     def timer(self, name: str, tags: Optional[Dict[str, str]] = None):
         """Context manager pour mesurer la durée"""
+        if not self._metrics_enabled:
+            yield
+            return
+            
         start_time = time.time()
         try:
             yield
@@ -196,6 +233,9 @@ class MetricsCollector:
     
     def get_current_value(self, name: str, default: Any = None) -> Any:
         """Récupère la valeur actuelle d'une métrique"""
+        if not self._metrics_enabled:
+            return default
+            
         with self._lock:
             samples = self._metrics.get(name)
             if samples:
@@ -205,6 +245,9 @@ class MetricsCollector:
     def get_samples(self, name: str, since: Optional[datetime] = None,
                    limit: Optional[int] = None) -> List[MetricSample]:
         """Récupère les échantillons d'une métrique"""
+        
+        if not self._metrics_enabled:
+            return []
         
         with self._lock:
             samples = list(self._metrics.get(name, []))
@@ -221,6 +264,9 @@ class MetricsCollector:
     
     def get_metric_stats(self, name: str, since: Optional[datetime] = None) -> Dict[str, Any]:
         """Calcule les statistiques d'une métrique"""
+        
+        if not self._metrics_enabled:
+            return {"count": 0}
         
         samples = self.get_samples(name, since)
         if not samples:
@@ -384,6 +430,21 @@ class MetricsCollector:
                 error_threshold=85,
                 critical_threshold=95
             ),
+            # Métriques système disque I/O
+            MetricDefinition(
+                "system_disk_read_bytes",
+                MetricType.GAUGE,
+                MetricCategory.SYSTEM,
+                "Octets lus depuis le disque",
+                "bytes"
+            ),
+            MetricDefinition(
+                "system_disk_write_bytes",
+                MetricType.GAUGE,
+                MetricCategory.SYSTEM,
+                "Octets écrits sur le disque",
+                "bytes"
+            ),
             
             # Métriques métier
             MetricDefinition(
@@ -517,10 +578,14 @@ class MetricsCollector:
                     cpu_percent = process.cpu_percent()
                     self.set_gauge("system_cpu_usage_percent", cpu_percent)
                     
-                    # Métriques disque I/O
-                    io_counters = process.io_counters()
-                    self.set_gauge("system_disk_read_bytes", io_counters.read_bytes)
-                    self.set_gauge("system_disk_write_bytes", io_counters.write_bytes)
+                    # Métriques disque I/O (uniquement si disponibles)
+                    try:
+                        io_counters = process.io_counters()
+                        self.set_gauge("system_disk_read_bytes", io_counters.read_bytes)
+                        self.set_gauge("system_disk_write_bytes", io_counters.write_bytes)
+                    except (AttributeError, OSError):
+                        # I/O counters non disponibles sur certaines plateformes (comme Heroku)
+                        logger.debug("Métriques I/O disque non disponibles sur cette plateforme")
                     
                     time.sleep(self._system_metrics_interval)
                     
@@ -535,6 +600,9 @@ class MetricsCollector:
     
     def cleanup_old_samples(self, hours: int = 24):
         """Nettoie les échantillons anciens"""
+        
+        if not self._metrics_enabled:
+            return
         
         cutoff_time = datetime.now() - timedelta(hours=hours)
         cleaned_count = 0
@@ -557,6 +625,9 @@ class MetricsCollector:
     
     def export_metrics(self, format: str = "json") -> str:
         """Exporte les métriques dans différents formats"""
+        
+        if not self._metrics_enabled:
+            return '{"metrics_disabled": true}'
         
         if format == "json":
             return self._export_json()
@@ -631,14 +702,23 @@ class AlertManager:
         self.alert_callbacks: Dict[AlertLevel, List[Callable]] = defaultdict(list)
         self.check_interval = 60  # secondes
         
+        # Désactiver les alertes si les métriques sont désactivées
+        if not self.metrics_collector._metrics_enabled:
+            logger.info("Gestionnaire d'alertes désactivé (métriques désactivées)")
+            return
+        
         self._start_alert_monitoring()
     
     def add_alert_callback(self, level: AlertLevel, callback: Callable[[MetricAlert], None]):
         """Ajoute un callback pour un niveau d'alerte"""
-        self.alert_callbacks[level].append(callback)
+        if self.metrics_collector._metrics_enabled:
+            self.alert_callbacks[level].append(callback)
     
     def check_alerts(self):
         """Vérifie toutes les métriques pour les seuils d'alerte"""
+        
+        if not self.metrics_collector._metrics_enabled:
+            return
         
         for name, definition in self.metrics_collector._definitions.items():
             current_value = self.metrics_collector.get_current_value(name)
@@ -729,10 +809,14 @@ class AlertManager:
     
     def get_active_alerts(self) -> List[Dict[str, Any]]:
         """Retourne les alertes actives"""
+        if not self.metrics_collector._metrics_enabled:
+            return []
         return [alert.to_dict() for alert in self.active_alerts.values()]
     
     def get_alert_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Retourne l'historique des alertes"""
+        if not self.metrics_collector._metrics_enabled:
+            return []
         recent_alerts = list(self.alert_history)[-limit:]
         return [alert.to_dict() for alert in recent_alerts]
 
@@ -819,6 +903,10 @@ class PerformanceProfiler:
                          tags: Optional[Dict[str, str]] = None):
         """Profile une opération avec métriques détaillées"""
         
+        if not self.collector._metrics_enabled:
+            yield None
+            return
+        
         profile_id = f"{operation_name}_{time.time()}"
         start_time = time.time()
         start_memory = psutil.Process().memory_info().rss
@@ -867,6 +955,9 @@ performance_profiler = PerformanceProfiler(metrics_collector)
 def get_system_metrics() -> Dict[str, Any]:
     """Retourne un résumé des métriques système"""
     
+    if not metrics_collector._metrics_enabled:
+        return {"metrics_disabled": True}
+    
     return {
         "uptime_seconds": (datetime.now() - metrics_collector._start_time).total_seconds(),
         "total_metrics": len(metrics_collector._definitions),
@@ -878,6 +969,9 @@ def get_system_metrics() -> Dict[str, Any]:
 
 def get_performance_summary(hours: int = 1) -> Dict[str, Any]:
     """Génère un résumé de performance sur une période"""
+    
+    if not metrics_collector._metrics_enabled:
+        return {"metrics_disabled": True, "period_hours": hours}
     
     since = datetime.now() - timedelta(hours=hours)
     
@@ -927,6 +1021,9 @@ def cleanup_old_metrics(hours: int = 24):
 def reset_all_counters():
     """Remet à zéro tous les compteurs"""
     
+    if not metrics_collector._metrics_enabled:
+        return
+    
     counter_metrics = [
         name for name, definition in metrics_collector._definitions.items()
         if definition.type == MetricType.COUNTER
@@ -940,6 +1037,9 @@ def reset_all_counters():
 
 def get_top_slow_operations(limit: int = 10, hours: int = 1) -> List[Dict[str, Any]]:
     """Retourne les opérations les plus lentes"""
+    
+    if not metrics_collector._metrics_enabled:
+        return []
     
     since = datetime.now() - timedelta(hours=hours)
     
@@ -974,6 +1074,9 @@ def get_top_slow_operations(limit: int = 10, hours: int = 1) -> List[Dict[str, A
 
 def get_error_metrics_summary(hours: int = 24) -> Dict[str, Any]:
     """Résumé des métriques d'erreurs"""
+    
+    if not metrics_collector._metrics_enabled:
+        return {"metrics_disabled": True, "period_hours": hours}
     
     since = datetime.now() - timedelta(hours=hours)
     
@@ -1030,6 +1133,9 @@ class QueryMetrics:
     def get_summary(self) -> Dict[str, Any]:
         """Retourne un résumé des métriques d'exécution"""
         
+        if not self.collector._metrics_enabled:
+            return {"metrics_disabled": True}
+        
         success_count = self.collector.get_current_value("query_execution_success_count", 0)
         error_count = self.collector.get_current_value("query_execution_error_count", 0)
         total_count = success_count + error_count
@@ -1084,6 +1190,9 @@ class ResultMetrics:
     def get_summary(self) -> Dict[str, Any]:
         """Retourne un résumé des métriques de traitement"""
         
+        if not self.collector._metrics_enabled:
+            return {"metrics_disabled": True}
+        
         success_count = self.collector.get_current_value("result_processing_success_count", 0)
         error_count = self.collector.get_current_value("result_processing_error_count", 0)
         total_count = success_count + error_count
@@ -1098,76 +1207,6 @@ class ResultMetrics:
             "avg_duration_ms": self.collector.get_metric_stats("result_processing_duration_ms").get("avg", 0),
             "avg_efficiency_percent": self.collector.get_metric_stats("result_processing_efficiency_percent").get("avg", 0)
         }
-
-
-class SearchMetrics:
-    """Métriques spécialisées pour la recherche"""
-    
-    def __init__(self, collector: MetricsCollector):
-        self.collector = collector
-    
-    def record_search_request(self, user_id: int, intent_type: str, 
-                            query_complexity: str):
-        """Enregistre une demande de recherche"""
-        
-        tags = {
-            "user_id": str(user_id),
-            "intent_type": intent_type,
-            "complexity": query_complexity
-        }
-        
-        self.collector.increment("api_request_count", tags=tags)
-        self.collector.increment("lexical_search_count", tags=tags)
-    
-    def record_search_execution(self, duration_ms: float, cache_hit: bool,
-                              results_count: int, quality_score: float):
-        """Enregistre l'exécution d'une recherche"""
-        
-        tags = {
-            "cache_hit": str(cache_hit),
-            "has_results": str(results_count > 0)
-        }
-        
-        self.collector.record("lexical_search_duration_ms", duration_ms, tags)
-        self.collector.record("lexical_search_quality_score", quality_score, tags)
-        self.collector.record("results_processed_count", results_count, tags)
-        
-        # Mettre à jour le taux de cache hit
-        if cache_hit:
-            self.collector.increment("lexical_cache_hits")
-        self.collector.increment("lexical_cache_requests")
-        
-        # Calculer le taux
-        hits = self.collector.get_current_value("lexical_cache_hits", 0)
-        requests = self.collector.get_current_value("lexical_cache_requests", 1)
-        hit_rate = (hits / requests) * 100
-        self.collector.set_gauge("lexical_cache_hit_rate", hit_rate)
-    
-    def record_elasticsearch_execution(self, duration_ms: float, 
-                                     success: bool, error_type: str = None):
-        """Enregistre l'exécution Elasticsearch"""
-        
-        tags = {
-            "success": str(success),
-            "error_type": error_type or "none"
-        }
-        
-        self.collector.record("elasticsearch_search_duration_ms", duration_ms, tags)
-        
-        if success:
-            self.collector.increment("elasticsearch_search_count", tags=tags)
-        else:
-            self.collector.increment("elasticsearch_error_count", tags=tags)
-    
-    def record_optimization_applied(self, optimization_type: str, 
-                                  improvement_percent: float):
-        """Enregistre une optimisation appliquée"""
-        
-        tags = {"optimization_type": optimization_type}
-        
-        self.collector.increment("query_optimization_count", tags=tags)
-        self.collector.record("optimization_improvement_percent", 
-                            improvement_percent, tags)
 
 
 class ElasticsearchMetrics:
@@ -1368,6 +1407,7 @@ class BusinessMetrics:
         self.collector.increment(f"financial_category_{category.lower()}_count", 
                                tags=category_tags)
 
+
 class ApiMetrics:
     """Métriques spécialisées pour l'API REST"""
     
@@ -1520,6 +1560,9 @@ class ApiMetrics:
     def get_api_summary(self, hours: int = 1) -> Dict[str, Any]:
         """Retourne un résumé des métriques API"""
         
+        if not self.collector._metrics_enabled:
+            return {"metrics_disabled": True, "period_hours": hours}
+        
         since = datetime.now() - timedelta(hours=hours)
         
         # Métriques de base
@@ -1552,6 +1595,8 @@ class ApiMetrics:
                 "current_percentage": self.collector.get_current_value("api_health_percentage", 100)
             }
         }
+
+
 # === DASHBOARD ET REPORTING ===
 
 class MetricsDashboard:
@@ -1563,6 +1608,9 @@ class MetricsDashboard:
     
     def generate_health_report(self) -> Dict[str, Any]:
         """Génère un rapport de santé complet"""
+        
+        if not self.collector._metrics_enabled:
+            return {"metrics_disabled": True}
         
         current_time = datetime.now()
         
@@ -1627,6 +1675,9 @@ class MetricsDashboard:
     
     def generate_performance_trends(self, hours: int = 24) -> Dict[str, Any]:
         """Génère les tendances de performance"""
+        
+        if not self.collector._metrics_enabled:
+            return {"metrics_disabled": True, "period_hours": hours}
         
         since = datetime.now() - timedelta(hours=hours)
         
@@ -1695,7 +1746,6 @@ query_metrics = QueryMetrics(metrics_collector)
 result_metrics = ResultMetrics(metrics_collector)
 
 # Métriques spécialisées avec instances
-search_metrics = SearchMetrics(metrics_collector)
 elasticsearch_metrics = ElasticsearchMetrics(metrics_collector)
 lexical_search_metrics = LexicalSearchMetrics(metrics_collector)
 business_metrics = BusinessMetrics(metrics_collector)
@@ -1734,10 +1784,11 @@ def system_alert_callback(alert: MetricAlert):
 
 
 # Enregistrer les callbacks par défaut
-alert_manager.add_alert_callback(AlertLevel.WARNING, log_alert_callback)
-alert_manager.add_alert_callback(AlertLevel.ERROR, log_alert_callback)
-alert_manager.add_alert_callback(AlertLevel.CRITICAL, log_alert_callback)
-alert_manager.add_alert_callback(AlertLevel.CRITICAL, system_alert_callback)
+if metrics_collector._metrics_enabled:
+    alert_manager.add_alert_callback(AlertLevel.WARNING, log_alert_callback)
+    alert_manager.add_alert_callback(AlertLevel.ERROR, log_alert_callback)
+    alert_manager.add_alert_callback(AlertLevel.CRITICAL, log_alert_callback)
+    alert_manager.add_alert_callback(AlertLevel.CRITICAL, system_alert_callback)
 
 
 # === FONCTIONS D'INITIALISATION ===
@@ -1745,10 +1796,14 @@ alert_manager.add_alert_callback(AlertLevel.CRITICAL, system_alert_callback)
 def initialize_metrics_system():
     """Initialise le système de métriques"""
     
+    if not metrics_collector._metrics_enabled:
+        logger.info("🚫 Système de métriques désactivé - pas d'initialisation")
+        return
+    
     logger.info("🚀 Initialisation du système de métriques Search Service")
     
     # Nettoyer les anciennes métriques au démarrage
-    cleanup_old_metrics(hours=settings.metrics_retention_hours if hasattr(settings, 'metrics_retention_hours') else 24)
+    cleanup_old_metrics(hours=getattr(settings, 'metrics_retention_hours', 24))
     
     # Enregistrer les métriques personnalisées si nécessaire
     # (Elles sont déjà enregistrées via _register_default_metrics)
@@ -1760,6 +1815,10 @@ def shutdown_metrics_system():
     """Arrêt propre du système de métriques"""
     
     logger.info("🛑 Arrêt du système de métriques")
+    
+    if not metrics_collector._metrics_enabled:
+        logger.info("🚫 Système de métriques était déjà désactivé")
+        return
     
     # Exporter les métriques finales si configuré
     if hasattr(settings, 'export_metrics_on_shutdown') and settings.export_metrics_on_shutdown:

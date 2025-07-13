@@ -17,7 +17,7 @@ from models.responses import (
     QualityIndicator
 )
 
-from utils.metrics import ResultMetrics
+from utils.metrics import MetricsCollector, ResultMetrics
 
 
 logger = logging.getLogger(__name__)
@@ -82,8 +82,14 @@ class EnhancedResult:
 class FinancialResultProcessor:
     """Processeur spécialisé pour les résultats de transactions financières"""
     
-    def __init__(self):
-        self.metrics = ResultMetrics()
+    def __init__(self, metrics_collector: Optional[MetricsCollector] = None):
+        # Créer un MetricsCollector par défaut si non fourni
+        if metrics_collector is None:
+            self._metrics_collector = MetricsCollector()
+        else:
+            self._metrics_collector = metrics_collector
+            
+        self.metrics = ResultMetrics(self._metrics_collector)
         self.category_patterns = self._load_category_patterns()
         self.merchant_normalizer = self._load_merchant_normalizer()
         self.financial_terms = self._load_financial_terms()
@@ -880,14 +886,12 @@ class FinancialResultProcessor:
                                  context: ProcessingContext):
         """Enregistre les métriques de traitement"""
         
-        self.metrics.record_processing_session(
-            user_id=context.user_id,
-            original_count=len(original_response.raw_results),
-            processed_count=len(updated_response.raw_results),
-            processing_time_ms=processing_time_ms,
-            quality_improvement=updated_response.quality_score - original_response.quality_score,
-            strategy=context.processing_strategy.value,
-            algorithm=context.relevance_algorithm.value
+        self.metrics.record_processing_result(
+            processing_type=context.processing_strategy.value,
+            duration_ms=processing_time_ms,
+            input_count=len(original_response.raw_results),
+            output_count=len(updated_response.raw_results),
+            success=True
         )
     
     def _validate_processing_input(self, response: InternalSearchResponse,
@@ -953,8 +957,14 @@ class FinancialResultProcessor:
 class AggregationResultProcessor:
     """Processeur spécialisé pour les résultats d'agrégation"""
     
-    def __init__(self):
-        self.metrics = ResultMetrics()
+    def __init__(self, metrics_collector: Optional[MetricsCollector] = None):
+        # Créer un MetricsCollector par défaut si non fourni
+        if metrics_collector is None:
+            self._metrics_collector = MetricsCollector()
+        else:
+            self._metrics_collector = metrics_collector
+            
+        self.metrics = ResultMetrics(self._metrics_collector)
     
     def process_aggregation_results(self, aggregations: List[InternalAggregationResult],
                                   context: ProcessingContext) -> List[InternalAggregationResult]:
@@ -1175,9 +1185,15 @@ class AggregationResultProcessor:
 class ResultProcessorManager:
     """Gestionnaire principal pour le traitement des résultats"""
     
-    def __init__(self):
-        self.financial_processor = FinancialResultProcessor()
-        self.aggregation_processor = AggregationResultProcessor()
+    def __init__(self, metrics_collector: Optional[MetricsCollector] = None):
+        # Créer ou utiliser le MetricsCollector fourni
+        if metrics_collector is None:
+            self._metrics_collector = MetricsCollector()
+        else:
+            self._metrics_collector = metrics_collector
+            
+        self.financial_processor = FinancialResultProcessor(self._metrics_collector)
+        self.aggregation_processor = AggregationResultProcessor(self._metrics_collector)
         self._initialized = True
     
     def process_complete_response(self, response: InternalSearchResponse,
@@ -1217,7 +1233,9 @@ class ResultProcessorManager:
 
 
 # === INSTANCE GLOBALE ===
-result_processor_manager = ResultProcessorManager()
+# Créer l'instance globale avec un MetricsCollector partagé
+_global_metrics_collector = MetricsCollector()
+result_processor_manager = ResultProcessorManager(_global_metrics_collector)
 
 
 # === FONCTIONS D'UTILITÉ PRINCIPALES ===

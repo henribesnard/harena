@@ -118,7 +118,10 @@ async def lifespan(app: FastAPI):
         
         # 1. Initialisation des utilitaires
         logger.info("📚 Initialisation des utilitaires...")
-        initialize_utils()
+        try:
+            initialize_utils()
+        except Exception as e:
+            logger.warning(f"Erreur initialisation utilitaires: {e}")
         
         # 2. Initialisation des composants core
         logger.info("🔧 Initialisation des composants core...")
@@ -133,13 +136,19 @@ async def lifespan(app: FastAPI):
         # Vérification santé composants
         logger.info("🏥 Vérification santé des composants...")
         
-        utils_health = get_utils_health()
-        if utils_health.get("overall_status") != "healthy":
-            logger.warning(f"Santé utilitaires dégradée: {utils_health}")
+        try:
+            utils_health = get_utils_health()
+            if utils_health.get("overall_status") != "healthy":
+                logger.warning(f"Santé utilitaires dégradée: {utils_health}")
+        except Exception as e:
+            logger.warning(f"Impossible de vérifier la santé des utilitaires: {e}")
         
-        api_health = await get_api_health()
-        if not api_health.get("healthy", False):
-            logger.warning(f"Santé API dégradée: {api_health}")
+        try:
+            api_health = await get_api_health()
+            if not api_health.get("healthy", False):
+                logger.warning(f"Santé API dégradée: {api_health}")
+        except Exception as e:
+            logger.warning(f"Impossible de vérifier la santé de l'API: {e}")
         
         # === FINALISATION DÉMARRAGE ===
         startup_duration = (datetime.now() - startup_start).total_seconds()
@@ -149,6 +158,9 @@ async def lifespan(app: FastAPI):
         logger.info(f"📊 Elasticsearch: {settings.elasticsearch_host}:{settings.elasticsearch_port}")
         logger.info(f"💾 Cache: {'Activé' if getattr(settings, 'cache_enabled', True) else 'Désactivé'}")
         logger.info(f"📈 Métriques: {'Activées' if getattr(settings, 'metrics_enabled', True) else 'Désactivées'}")
+        
+        # Stocker le temps de démarrage pour les métriques d'uptime
+        app.state.start_time = startup_start.timestamp()
         
         # Point de démarrage - l'application est prête
         yield
@@ -184,6 +196,9 @@ async def lifespan(app: FastAPI):
         # Tentative de nettoyage en cas d'erreur
         try:
             await api_manager.shutdown()
+        except:
+            pass
+        try:
             shutdown_utils()
         except:
             pass
@@ -210,7 +225,7 @@ def create_app(
     """
     
     # Configuration environnement
-    env = environment or settings.environment
+    env = environment or getattr(settings, 'environment', 'development')
     debug_mode = debug if debug is not None else (env == "development")
     
     logger.info(f"🏗️ Création application Search Service - Env: {env}, Debug: {debug_mode}")
@@ -259,9 +274,9 @@ def create_app(
     # === INCLUSION ROUTES PRINCIPALES ===
     
     # Inclure les routes de l'API manager
-    app.include_router(api_manager.router, prefix="/api/v1")
+    app.include_router(api_manager.router)
     if hasattr(api_manager, 'admin_router'):
-        app.include_router(api_manager.admin_router, prefix="/admin")
+        app.include_router(api_manager.admin_router)
     
     # === ROUTES DE BASE ===
     
@@ -337,12 +352,6 @@ def create_app(
     return app
 
 
-# === INSTANCE PRINCIPALE ===
-
-# Création de l'instance principale de l'application
-app = create_app()
-
-
 # === FONCTIONS UTILITAIRES POUR DÉMARRAGE ===
 
 def create_development_app() -> FastAPI:
@@ -399,7 +408,7 @@ def main():
         "host": host,
         "port": port,
         "reload": reload,
-        "log_level": settings.log_level.lower(),
+        "log_level": getattr(settings, 'log_level', 'info').lower(),
         "access_log": getattr(settings, 'access_log_enabled', True),
     }
     
@@ -409,6 +418,12 @@ def main():
     
     # Démarrage du serveur
     uvicorn.run(**uvicorn_config)
+
+
+# === INSTANCE PRINCIPALE ===
+
+# Création de l'instance principale de l'application
+app = create_app()
 
 
 # === POINT D'ENTRÉE SCRIPT ===

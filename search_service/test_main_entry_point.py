@@ -1,12 +1,12 @@
 """
-🧪 TEST DU POINT D'ENTRÉE PRINCIPAL (main.py)
-============================================
+🧪 TEST DU POINT D'ENTRÉE PRINCIPAL (search_service/main.py)
+===========================================================
 
 Test prioritaire du main.py car c'est le point d'entrée de l'application.
 Si main.py fonctionne, on sait que les imports principaux sont corrects.
 
 Usage:
-    pytest tests/test_main_entry_point.py -v
+    pytest test_main_entry_point.py -v
 """
 
 import pytest
@@ -17,10 +17,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 
-# Ajouter le projet au path
-PROJECT_ROOT = Path(__file__).parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# Ajouter search_service au path pour imports directs
+SEARCH_SERVICE_PATH = Path(__file__).parent / "search_service"
+if str(SEARCH_SERVICE_PATH) not in sys.path:
+    sys.path.insert(0, str(SEARCH_SERVICE_PATH))
 
 # Configuration environnement test
 os.environ.update({
@@ -33,25 +33,26 @@ os.environ.update({
 
 
 class TestMainEntryPoint:
-    """Tests du point d'entrée principal main.py"""
+    """Tests du point d'entrée principal search_service/main.py"""
     
     def test_01_import_main_module(self):
         """Test 1: Vérifier que le module main.py s'importe sans erreur"""
-        print("\n🧪 Test 1: Import du module main.py")
+        print("\n🧪 Test 1: Import du module search_service/main.py")
         
         try:
+            # Import depuis search_service
             import main
             assert main is not None
-            print("  ✅ Module main importé avec succès")
+            print("  ✅ Module search_service/main importé avec succès")
             
         except ImportError as e:
-            pytest.fail(f"❌ Échec import main.py: {e}")
+            pytest.fail(f"❌ Échec import search_service/main.py: {e}")
         except Exception as e:
-            pytest.fail(f"❌ Erreur inattendue lors import main.py: {e}")
+            pytest.fail(f"❌ Erreur inattendue lors import search_service/main.py: {e}")
     
     def test_02_main_dependencies_imports(self):
         """Test 2: Vérifier que toutes les dépendances du main.py s'importent"""
-        print("\n🧪 Test 2: Import des dépendances du main.py")
+        print("\n🧪 Test 2: Import des dépendances du search_service/main.py")
         
         # Test imports un par un pour identifier les problèmes
         dependencies = [
@@ -350,7 +351,7 @@ class TestMainEntryPoint:
 
 
 class TestMainImportsDependencies:
-    """Tests spécialisés pour les imports et dépendances du main.py"""
+    """Tests spécialisés pour les imports et dépendances du search_service/main.py"""
     
     def test_01_api_module_availability(self):
         """Test que le module api est disponible avec tous ses composants"""
@@ -587,11 +588,11 @@ if __name__ == "__main__":
     Exécution directe des tests pour debugging
     
     Usage:
-        python tests/test_main_entry_point.py
+        python test_main_entry_point.py
     """
     import pytest
     
-    print("🚀 Exécution des tests du main.py")
+    print("🚀 Exécution des tests du search_service/main.py")
     print("=" * 50)
     
     # Exécuter les tests avec pytest

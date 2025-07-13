@@ -445,16 +445,17 @@ async def health_check(request: Request) -> HealthResponse:
         except Exception as e:
             cache_health = {"status": "error", "error": str(e)}
         
-        # Construire les informations des composants
+        # Construire les informations des composants avec sérialisation datetime
         components = []
         all_healthy = True
+        current_time_iso = datetime.now().isoformat()
         
         # Composant Core
         if isinstance(core_health, dict) and core_health.get("system_status") == "healthy":
             components.append({
                 "name": "core_engine",
                 "status": "healthy",
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "response_time_ms": core_health.get("check_duration_ms", 0),
                 "dependencies": ["elasticsearch", "query_executor"],
                 "metrics": core_health
@@ -464,7 +465,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "core_engine",
                 "status": "unhealthy",
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "error_message": core_health.get("error", "Core health check failed") if isinstance(core_health, dict) else str(core_health),
                 "dependencies": ["elasticsearch", "query_executor"],
                 "metrics": {}
@@ -475,7 +476,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "elasticsearch",
                 "status": "healthy",
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "response_time_ms": es_health.get("response_time_ms", 0),
                 "dependencies": [],
                 "metrics": {
@@ -489,7 +490,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "elasticsearch",
                 "status": "unhealthy",
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "error_message": es_health.get("error", "Elasticsearch connection failed") if isinstance(es_health, dict) else str(es_health),
                 "dependencies": [],
                 "metrics": {}
@@ -500,7 +501,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "utils",
                 "status": "healthy",
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "response_time_ms": utils_health.get("check_duration_ms", 0),
                 "dependencies": ["cache"],
                 "metrics": utils_health
@@ -509,7 +510,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "utils",
                 "status": "degraded",  # Utils non critiques
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "error_message": utils_health.get("error", "Utils check failed") if isinstance(utils_health, dict) else str(utils_health),
                 "dependencies": ["cache"],
                 "metrics": {}
@@ -520,7 +521,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "cache",
                 "status": "healthy",
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "dependencies": [],
                 "metrics": cache_health
             })
@@ -528,7 +529,7 @@ async def health_check(request: Request) -> HealthResponse:
             components.append({
                 "name": "cache",
                 "status": "degraded",  # Cache non critique
-                "last_check": datetime.now(),
+                "last_check": current_time_iso,
                 "error_message": cache_health.get("error", "Cache check failed") if isinstance(cache_health, dict) else str(cache_health),
                 "dependencies": [],
                 "metrics": {}
@@ -551,7 +552,7 @@ async def health_check(request: Request) -> HealthResponse:
         # Métriques de performance
         health_check_duration = (time.time() - start_time) * 1000
         
-        # Construire la réponse avec le bon modèle
+        # Construire la réponse avec le bon modèle et sérialisation datetime
         system_health = {
             "overall_status": overall_status,
             "uptime_seconds": time.time() - getattr(request.app.state, 'start_time', time.time()),
@@ -565,7 +566,7 @@ async def health_check(request: Request) -> HealthResponse:
         response_data = {
             "system": system_health,
             "components": components,
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now().isoformat(),
             "service_version": "1.0.0",
             "environment": getattr(settings, 'environment', 'production'),
             "metadata": {
@@ -575,10 +576,9 @@ async def health_check(request: Request) -> HealthResponse:
             }
         }
         
-        response = HealthResponse(**response_data)
-        
+        # Créer la réponse JSON directement avec les données sérialisées
         response_json = JSONResponse(
-            content=response.dict(),
+            content=response_data,
             status_code=status_code,
             headers={"X-Health-Check-Duration": f"{health_check_duration:.2f}ms"}
         )
@@ -593,7 +593,7 @@ async def health_check(request: Request) -> HealthResponse:
     except Exception as e:
         logger.error(f"Health check failed [{correlation_id}]: {e}", exc_info=True)
         
-        # Réponse d'erreur minimale
+        # Réponse d'erreur minimale avec sérialisation datetime correcte
         error_system = {
             "overall_status": "unhealthy",
             "uptime_seconds": 0.0,
@@ -607,26 +607,27 @@ async def health_check(request: Request) -> HealthResponse:
         error_components = [{
             "name": "system",
             "status": "unhealthy",
-            "last_check": datetime.now(),
+            "last_check": datetime.now().isoformat(),
             "error_message": f"Health check process failed: {str(e)}",
             "dependencies": [],
             "metrics": {}
         }]
         
-        error_response = HealthResponse(
-            system=error_system,
-            components=error_components,
-            service_version="1.0.0",
-            environment="unknown",
-            metadata={
+        error_response_data = {
+            "system": error_system,
+            "components": error_components,
+            "timestamp": datetime.now().isoformat(),
+            "service_version": "1.0.0",
+            "environment": "unknown",
+            "metadata": {
                 "correlation_id": correlation_id,
                 "error_timestamp": datetime.now().isoformat(),
                 "error": str(e)
             }
-        )
+        }
         
         return JSONResponse(
-            content=error_response.dict(),
+            content=error_response_data,
             status_code=503
         )
 

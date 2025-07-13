@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # === ROUTEUR PRINCIPAL ===
 
-router = APIRouter(prefix="/api/v1", tags=["search"])
+router = APIRouter(tags=["search"])
 
 
 # === FONCTION D'AIDE POUR ADMIN ===
@@ -673,7 +673,7 @@ async def export_metrics(
 
 # === ENDPOINTS D'ADMINISTRATION ===
 
-admin_router = APIRouter(prefix="/admin", tags=["admin"])
+admin_router = APIRouter(tags=["admin"])
 
 @admin_router.post(
     "/cache/clear",

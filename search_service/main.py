@@ -14,10 +14,10 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 # === IMPORTS SEARCH SERVICE ===
-from api import api_manager
-from config import settings
-from core import CoreManager
-from utils import (
+from search_service.api import api_manager
+from search_service.config import settings
+from search_service.core import CoreManager
+from search_service.utils import (
     get_utils_health,
     initialize_utils,
     shutdown_utils,

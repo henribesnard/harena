@@ -8,13 +8,13 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple, Union
 from datetime import datetime
 
-from models import (
+from search_service.models import (
     SearchServiceQuery,
     SearchServiceResponse,
     FIELD_CONFIGURATIONS,
     QueryType
 )
-from config import (
+from search_service.config import (
     settings,
     SUPPORTED_INTENT_TYPES,
     SUPPORTED_FILTER_OPERATORS,
@@ -332,7 +332,7 @@ class ContractValidator:
         errors = []
         
         # Validation types d'agrégation
-        from config import SUPPORTED_AGGREGATION_TYPES
+        from search_service.config import SUPPORTED_AGGREGATION_TYPES
         invalid_types = [
             agg_type for agg_type in aggregations.types 
             if agg_type not in SUPPORTED_AGGREGATION_TYPES

@@ -26,7 +26,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_429
 
 # Imports sécurisés avec fallbacks
 try:
-    from models.service_contracts import SearchServiceQuery
+    from search_service.models.service_contracts import SearchServiceQuery
 except ImportError:
     # Fallback si le modèle n'existe pas encore
     class SearchServiceQuery:
@@ -41,7 +41,7 @@ except ImportError:
 
 # Import sécurisé des validateurs
 try:
-    from utils.validators import ValidatorFactory
+    from search_service.utils.validators import ValidatorFactory
 except ImportError:
     # Fallback pour ValidatorFactory
     class ValidatorFactory:
@@ -56,7 +56,7 @@ except ImportError:
 
 # Import sécurisé des métriques
 try:
-    from utils.metrics import api_metrics
+    from search_service.utils.metrics import api_metrics
 except ImportError:
     # Fallback pour api_metrics
     class MockApiMetrics:
@@ -68,7 +68,7 @@ except ImportError:
 
 # Import sécurisé du core
 try:
-    from core import get_lexical_engine, core_manager
+    from search_service.core import get_lexical_engine, core_manager
 except ImportError:
     # Fallback pour core
     def get_lexical_engine():
@@ -81,7 +81,7 @@ except ImportError:
 
 # Import sécurisé de la config
 try:
-    from config import settings
+    from search_service.config import settings
 except ImportError:
     # Fallback pour settings
     class MockSettings:

@@ -10,13 +10,13 @@ from dataclasses import dataclass, field
 import time
 import re
 
-from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from models.responses import InternalSearchResponse
-from core.result_processor import result_processor_manager, ProcessingContext, ProcessingStrategy
-from clients.elasticsearch_client import ElasticsearchClient
-from utils.cache import LRUCache
-from utils.metrics import LexicalSearchMetrics
-from config import settings
+from search_service.models.service_contracts import SearchServiceQuery, SearchServiceResponse
+from search_service.models.responses import InternalSearchResponse
+from search_service.core.result_processor import result_processor_manager, ProcessingContext, ProcessingStrategy
+from search_service.clients.elasticsearch_client import ElasticsearchClient
+from search_service.utils.cache import LRUCache
+from search_service.utils.metrics import LexicalSearchMetrics
+from search_service.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -791,7 +791,7 @@ class LexicalSearchEngine:
                                       optimizations: List[QueryOptimization]) -> InternalSearchResponse:
         """Convertit la réponse Elasticsearch vers le format interne"""
         
-        from models.responses import InternalSearchResponse, RawTransaction, ExecutionMetrics
+        from search_service.models.responses import InternalSearchResponse, RawTransaction, ExecutionMetrics
         
         hits = es_response.get("hits", {}).get("hits", [])
         raw_results = []
@@ -857,7 +857,7 @@ class LexicalSearchEngine:
                                    optimizations: List[QueryOptimization]) -> SearchServiceResponse:
         """Convertit vers le contrat de réponse de service"""
         
-        from models.responses import ResponseTransformer
+        from search_service.models.responses import ResponseTransformer
         
         service_response = ResponseTransformer.to_contract(internal_response)
         
@@ -874,7 +874,7 @@ class LexicalSearchEngine:
                               error_message: str) -> SearchServiceResponse:
         """Crée une réponse d'erreur"""
         
-        from models.service_contracts import (
+        from search_service.models.service_contracts import (
             SearchServiceResponse, ResponseMetadata, PerformanceMetrics, ContextEnrichment
         )
         
@@ -1264,7 +1264,7 @@ def get_lexical_components():
 def auto_initialize_lexical_engine():
     """Tentative d'initialisation automatique"""
     try:
-        from clients.elasticsearch_client import get_default_client
+        from search_service.clients.elasticsearch_client import get_default_client
         
         es_client = get_default_client()
         if es_client:

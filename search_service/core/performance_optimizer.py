@@ -14,8 +14,8 @@ import time
 import statistics
 from collections import defaultdict, deque
 
-from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from config import settings
+from search_service.models.service_contracts import SearchServiceQuery, SearchServiceResponse
+from search_service.config import settings
 
 
 logger = logging.getLogger(__name__)

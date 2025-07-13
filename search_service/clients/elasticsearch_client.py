@@ -21,7 +21,6 @@ Architecture:
 
 import logging
 import ssl
-import asyncio
 from typing import Dict, Any, List, Optional
 import aiohttp
 import threading
@@ -34,7 +33,7 @@ from .base_client import (
 )
 
 try:
-    from config import settings
+    from search_service.config import settings
 except ImportError:
     # Fallback si config n'est pas disponible
     class settings:

@@ -11,19 +11,19 @@ from datetime import datetime
 from dataclasses import dataclass, field
 import time
 
-from models.requests import InternalSearchRequest, RequestValidator
-from models.responses import InternalSearchResponse, ExecutionMetrics, OptimizationType
-from models.elasticsearch_queries import  optimize_es_query
-from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from clients.elasticsearch_client import ElasticsearchClient
-from templates import (
+from search_service.models.requests import InternalSearchRequest, RequestValidator
+from search_service.models.responses import InternalSearchResponse, ExecutionMetrics, OptimizationType
+from search_service.models.elasticsearch_queries import  optimize_es_query
+from search_service.models.service_contracts import SearchServiceQuery, SearchServiceResponse
+from search_service.clients.elasticsearch_client import ElasticsearchClient
+from search_service.templates import (
     template_manager, process_financial_query,
     before_query_execution, after_query_execution
 )
-from utils.cache import LRUCache
-from utils.metrics import QueryMetrics
-from utils.elasticsearch_helpers import ElasticsearchQueryBuilder
-from config import settings
+from search_service.utils.cache import LRUCache
+from search_service.utils.metrics import QueryMetrics
+from search_service.utils.elasticsearch_helpers import ElasticsearchQueryBuilder
+from search_service.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -834,7 +834,7 @@ class HighLevelQueryExecutor:
                 return self._create_error_response(contract, f"Template construction failed: {str(e)}")
             
             # 2. Convertir en requête interne
-            from models.requests import RequestTransformer
+            from search_service.models.requests import RequestTransformer
             internal_request = RequestTransformer.from_contract(contract)
             
             # 3. Créer le contexte d'exécution
@@ -855,7 +855,7 @@ class HighLevelQueryExecutor:
             
             # 5. Transformer en réponse de contrat
             if execution_result.success:
-                from models.responses import ResponseTransformer
+                from search_service.models.responses import ResponseTransformer
                 service_response = ResponseTransformer.to_contract(execution_result.response)
                 
                 # Enrichir avec les métriques d'exécution
@@ -896,7 +896,7 @@ class HighLevelQueryExecutor:
         Exécute une agrégation directement par intention
         """
         try:
-            from templates.aggregation_templates import AggregationIntent, execute_financial_aggregation
+            from search_service.templates.aggregation_templates import AggregationIntent, execute_financial_aggregation
             
             # Convertir l'intention
             agg_intent = AggregationIntent(intent)
@@ -917,7 +917,7 @@ class HighLevelQueryExecutor:
                               error_message: str) -> SearchServiceResponse:
         """Crée une réponse d'erreur standardisée"""
         
-        from models.service_contracts import (
+        from search_service.models.service_contracts import (
             SearchServiceResponse, ResponseMetadata, PerformanceMetrics,
             ContextEnrichment
         )

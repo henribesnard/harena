@@ -18,7 +18,6 @@ Architecture :
 import logging
 import time
 import uuid
-import json
 import asyncio
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
@@ -36,12 +35,12 @@ from starlette.status import (
 )
 import psutil
 
-from utils.metrics import (
+from search_service.utils.metrics import (
     metrics_collector, api_metrics, performance_profiler
 
 )
-from api.dependencies import APIException
-from config import settings
+from search_service.api.dependencies import APIException
+from search_service.config import settings
 
 
 logger = logging.getLogger(__name__)

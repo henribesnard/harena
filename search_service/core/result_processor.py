@@ -12,12 +12,12 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 import math
 
-from models.responses import (
+from search_service.models.responses import (
     InternalSearchResponse, RawTransaction, InternalAggregationResult,
     QualityIndicator
 )
 
-from utils.metrics import MetricsCollector, ResultMetrics
+from search_service.utils.metrics import MetricsCollector, ResultMetrics
 
 
 logger = logging.getLogger(__name__)

@@ -17,33 +17,33 @@ Architecture :
 import logging
 import asyncio
 import time
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request, Query, Path, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
-from models.service_contracts import SearchServiceQuery, SearchServiceResponse
-from models.responses import ValidationResponse, TemplateListResponse, HealthResponse
-from api.dependencies import (
+from search_service.models.service_contracts import SearchServiceQuery, SearchServiceResponse
+from search_service.models.responses import ValidationResponse, TemplateListResponse, HealthResponse
+from search_service.api.dependencies import (
     get_authenticated_user,
     validate_search_request,
     validate_rate_limit,
     check_service_health,
     add_response_headers
 )
-from core import (
+from search_service.core import (
     get_lexical_engine, get_query_executor, get_result_processor,
     get_performance_optimizer, get_core_health, get_core_performance
 )
-from templates import template_manager
-from utils import (
+from search_service.templates import template_manager
+from search_service.utils import (
     get_system_metrics, get_performance_summary, 
     cleanup_old_metrics, get_cache_manager, get_utils_health,
     get_utils_performance
 )
-from config import settings
+from search_service.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -223,7 +223,7 @@ async def validate_search_request_endpoint(
     start_time = time.time()
     
     try:
-        from utils.validators import ValidatorFactory
+        from search_service.utils.validators import ValidatorFactory
         
         logger.debug(f"Validating search request for user {user_info['user_id']} [{correlation_id}]")
         
@@ -618,7 +618,7 @@ async def export_metrics(
             
         elif format == "prometheus":
             # Export format Prometheus
-            from utils.metrics import metrics_collector
+            from search_service.utils.metrics import metrics_collector
             prometheus_data = metrics_collector.export_metrics("prometheus")
             
             response = PlainTextResponse(
@@ -840,7 +840,7 @@ def _get_request_count_24h() -> int:
     """Récupère le nombre de requêtes des dernières 24h"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         since = datetime.now() - timedelta(hours=24)
         stats = metrics_collector.get_metric_stats("api_request_count", since)
         return int(stats.get("sum", 0))
@@ -852,7 +852,7 @@ def _get_avg_response_time() -> float:
     """Récupère le temps de réponse moyen"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         since = datetime.now() - timedelta(hours=1)
         stats = metrics_collector.get_metric_stats("api_request_duration_ms", since)
         return round(stats.get("avg", 0), 2)
@@ -864,7 +864,7 @@ def _get_error_rate_24h() -> float:
     """Récupère le taux d'erreur des dernières 24h"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         since = datetime.now() - timedelta(hours=24)
         
         error_stats = metrics_collector.get_metric_stats("api_error_count", since)
@@ -884,7 +884,7 @@ def _get_avg_search_time(hours: int) -> float:
     """Récupère le temps moyen des recherches"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         since = datetime.now() - timedelta(hours=hours)
         stats = metrics_collector.get_metric_stats("lexical_search_duration_ms", since)
         return round(stats.get("avg", 0), 2)
@@ -896,7 +896,7 @@ def _get_search_success_rate(hours: int) -> float:
     """Récupère le taux de succès des recherches"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         since = datetime.now() - timedelta(hours=hours)
         
         success_stats = metrics_collector.get_metric_stats("lexical_search_success_count", since)
@@ -916,7 +916,7 @@ def _get_cache_hit_rate() -> float:
     """Récupère le taux de cache hit"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         return metrics_collector.get_current_value("lexical_cache_hit_rate", 0.0)
     except:
         return 0.0
@@ -926,7 +926,7 @@ def _get_total_searches(hours: int) -> int:
     """Récupère le nombre total de recherches"""
     
     try:
-        from utils.metrics import metrics_collector
+        from search_service.utils.metrics import metrics_collector
         since = datetime.now() - timedelta(hours=hours)
         stats = metrics_collector.get_metric_stats("lexical_search_count", since)
         return int(stats.get("sum", 0))

@@ -8,10 +8,10 @@ from enum import Enum
 from pydantic import BaseModel, Field
 import logging
 
-from models.elasticsearch_queries import (
+from search_service.models.elasticsearch_queries import (
     ESSearchQuery, FinancialTransactionQueryBuilder
 )
-from models.service_contracts import (
+from search_service.models.service_contracts import (
     SearchServiceQuery, FilterOperator, AggregationRequest
 )
 

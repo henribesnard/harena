@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from dataclasses import dataclass
 import re
 
-from config import SUPPORTED_FILTER_OPERATORS
+from search_service.config import SUPPORTED_FILTER_OPERATORS
 
 
 class FieldType(str, Enum):

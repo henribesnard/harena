@@ -28,7 +28,7 @@ import hashlib
 from contextlib import contextmanager
 import psutil
 
-from config import settings
+from search_service.config import settings
 
 
 logger = logging.getLogger(__name__)

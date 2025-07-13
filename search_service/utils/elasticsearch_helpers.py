@@ -26,9 +26,9 @@ from enum import Enum
 
 # Imports locaux - à adapter selon la structure des models
 try:
-    from models.requests import InternalSearchRequest
-    from models.filters import TermFilter, FilterOperator, AggregationType
-    from models.elasticsearch_queries import TextQuery, FieldBoost
+    from search_service.models.requests import InternalSearchRequest
+    from search_service.models.filters import TermFilter, FilterOperator, AggregationType
+    from search_service.models.elasticsearch_queries import TextQuery, FieldBoost
 except ImportError:
     # Fallback si les models ne sont pas encore implémentés
     InternalSearchRequest = None
@@ -39,7 +39,7 @@ except ImportError:
     FieldBoost = None
 
 try:
-    from config import settings
+    from search_service.config import settings
     FIELD_CONFIGURATIONS = getattr(settings, 'FIELD_CONFIGURATIONS', {})
 except ImportError:
     # Configuration par défaut

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from config import INDEXED_FIELDS, settings
+from search_service.config import INDEXED_FIELDS, settings
 
 
 class ESQueryType(str, Enum):

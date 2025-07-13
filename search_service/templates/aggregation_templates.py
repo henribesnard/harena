@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import logging
 from dataclasses import dataclass
 
-from models.elasticsearch_queries import (
+from search_service.models.elasticsearch_queries import (
     ESSearchQuery,  FinancialTransactionQueryBuilder
 )
 

@@ -25,10 +25,7 @@ from .dependencies import (
     validate_rate_limit,
     check_service_health,
     
-    # Dépendances spécialisées
-    create_search_dependencies,
-    create_validation_dependencies,
-    create_metrics_dependencies,
+    # Dépendances spécialisées (seulement celles qui existent)
     create_admin_dependencies,
     
     # Fonctions d'initialisation
@@ -36,19 +33,24 @@ from .dependencies import (
     shutdown_dependencies
 )
 
-# === IMPORTS MIDDLEWARE ===
-from .middleware import (
-    # Classes middleware
-    StructuredLoggingMiddleware,
-    MetricsMiddleware,
-    SecurityMiddleware,
-    ErrorHandlingMiddleware,
-    CompressionMiddleware,
-    
-    # Factory et utilitaires
-    create_middleware_stack,
-    initialize_middleware
-)
+# === IMPORTS MIDDLEWARE (commentés car le module n'existe pas encore) ===
+# try:
+#     from .middleware import (
+#         StructuredLoggingMiddleware,
+#         MetricsMiddleware,
+#         SecurityMiddleware,
+#         ErrorHandlingMiddleware,
+#         CompressionMiddleware,
+#         create_middleware_stack,
+#         initialize_middleware
+#     )
+# except ImportError:
+#     # Fallbacks pour middleware
+#     def create_middleware_stack():
+#         return []
+#     
+#     async def initialize_middleware():
+#         pass
 
 # === CLASSE GESTIONNAIRE SIMPLIFIÉE ===
 class APIManager:
@@ -62,12 +64,12 @@ class APIManager:
         self.admin_router = admin_router
         self.auth_manager = auth_manager
         self.rate_limiter = rate_limiter
-        self.middleware_stack = create_middleware_stack()
+        # self.middleware_stack = create_middleware_stack()  # Commenté temporairement
     
     async def initialize(self):
         """Initialise tous les composants API"""
         await initialize_dependencies()
-        await initialize_middleware()
+        # await initialize_middleware()  # Commenté temporairement
         await initialize_routes()
     
     async def shutdown(self):
@@ -97,23 +99,11 @@ __all__ = [
     "check_service_health",
     
     # === DÉPENDANCES SPÉCIALISÉES ===
-    "create_search_dependencies",
-    "create_validation_dependencies", 
-    "create_metrics_dependencies",
     "create_admin_dependencies",
-    
-    # === MIDDLEWARE ===
-    "StructuredLoggingMiddleware",
-    "MetricsMiddleware",
-    "SecurityMiddleware",
-    "ErrorHandlingMiddleware",
-    "CompressionMiddleware",
-    "create_middleware_stack",
     
     # === FONCTIONS D'INITIALISATION ===
     "initialize_routes",
     "shutdown_routes",
     "initialize_dependencies",
-    "shutdown_dependencies",
-    "initialize_middleware"
+    "shutdown_dependencies"
 ]

@@ -16,11 +16,12 @@ Architecture :
 
 import logging
 import asyncio
+import time
 from typing import Dict, Optional, Any, Union
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request, Query, Path, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from models.service_contracts import SearchServiceQuery, SearchServiceResponse
@@ -30,7 +31,6 @@ from api.dependencies import (
     validate_search_request,
     validate_rate_limit,
     check_service_health,
-    create_admin_dependencies,
     add_response_headers
 )
 from core import (
@@ -40,7 +40,8 @@ from core import (
 from templates import template_manager
 from utils import (
     get_system_metrics, get_performance_summary, 
-    cleanup_old_metrics, get_cache_manager, get_utils_health
+    cleanup_old_metrics, get_cache_manager, get_utils_health,
+    get_utils_performance
 )
 from config import settings
 
@@ -50,6 +51,20 @@ logger = logging.getLogger(__name__)
 # === ROUTEUR PRINCIPAL ===
 
 router = APIRouter(prefix="/api/v1", tags=["search"])
+
+
+# === FONCTION D'AIDE POUR ADMIN ===
+
+async def require_admin_permission(
+    user_info: Dict[str, Any] = Depends(get_authenticated_user)
+) -> Dict[str, Any]:
+    """Vérifie les permissions admin"""
+    if "admin" not in user_info.get("permissions", []):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin permission required"
+        )
+    return user_info
 
 
 # === ENDPOINTS DE RECHERCHE ===
@@ -194,7 +209,7 @@ async def search_lexical(
         429: {"description": "Limite de taux dépassée"}
     }
 )
-async def validate_search_request(
+async def validate_search_request_endpoint(
     request: Request,
     search_query: SearchServiceQuery,
     user_info: Dict[str, Any] = Depends(get_authenticated_user),
@@ -532,6 +547,7 @@ async def health_check(request: Request) -> HealthResponse:
 
 @router.get(
     "/metrics",
+    response_model=None,
     summary="Métriques de performance exportables",
     description="""
     Exporte les métriques de performance du Search Service.
@@ -548,7 +564,13 @@ async def health_check(request: Request) -> HealthResponse:
     - Métriques métier (taux succès recherches, etc.)
     """,
     responses={
-        200: {"description": "Métriques exportées selon le format demandé"},
+        200: {
+            "description": "Métriques exportées selon le format demandé",
+            "content": {
+                "application/json": {"example": {"service": "search-service", "metrics": "..."}},
+                "text/plain": {"example": "# Prometheus metrics\n..."}
+            }
+        },
         401: {"description": "Authentification requise"},
         403: {"description": "Permission métriques requise"},
         429: {"description": "Limite de taux dépassée"}
@@ -561,7 +583,7 @@ async def export_metrics(
     user_info: Dict[str, Any] = Depends(get_authenticated_user),
     rate_limit_info: Dict[str, Any] = Depends(lambda r: validate_rate_limit("metrics", r)),
     _permissions_check = Depends(lambda u: _check_metrics_permission(u))
-) -> Union[JSONResponse, PlainTextResponse]:
+) -> Response:
     """
     Exporte les métriques selon le format demandé
     """
@@ -657,7 +679,7 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
     "/cache/clear",
     summary="Vider le cache du service",
     description="Vide tous les caches du Search Service (requêtes, résultats, templates)",
-    dependencies=create_admin_dependencies()
+    dependencies=[Depends(require_admin_permission)]  # ✅ FIX: Utilisation directe de Depends
 )
 async def clear_cache(request: Request) -> JSONResponse:
     """Vide tous les caches du service"""
@@ -715,7 +737,7 @@ async def clear_cache(request: Request) -> JSONResponse:
     "/config",
     summary="Configuration actuelle du service",
     description="Retourne la configuration actuelle du Search Service (sans secrets)",
-    dependencies=create_admin_dependencies()
+    dependencies=[Depends(require_admin_permission)]  # ✅ FIX: Utilisation directe de Depends
 )
 async def get_service_config(request: Request) -> JSONResponse:
     """Retourne la configuration du service"""
@@ -912,11 +934,6 @@ def _get_total_searches(hours: int) -> int:
         return 0
 
 
-# Importer les modules nécessaires
-import time
-from utils import get_utils_performance
-
-
 # === ROUTEUR COMBINÉ ===
 
 # Inclure le routeur admin dans le routeur principal
@@ -924,8 +941,8 @@ router.include_router(admin_router)
 
 
 # === GESTIONNAIRE D'ERREURS SPÉCIALISÉ ===
+# Note: Les exception handlers doivent être ajoutés sur l'app FastAPI principal, pas sur le router
 
-@router.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
     """Gestionnaire d'erreurs personnalisé pour les routes API"""
     
@@ -1024,8 +1041,8 @@ async def shutdown_routes():
 
 
 # === MIDDLEWARE SPÉCIALISÉ POUR LES ROUTES ===
+# Note: Le middleware doit être ajouté sur l'app FastAPI principal, pas sur le router
 
-@router.middleware("http")
 async def routes_middleware(request: Request, call_next):
     """Middleware spécialisé pour les routes API"""
     
@@ -1158,7 +1175,7 @@ __all__ = [
     
     # === ENDPOINTS PUBLICS ===
     "search_lexical",
-    "validate_search_request", 
+    "validate_search_request_endpoint", 
     "list_query_templates",
     "health_check",
     "export_metrics",
@@ -1166,6 +1183,9 @@ __all__ = [
     # === ENDPOINTS ADMIN ===
     "clear_cache",
     "get_service_config",
+    
+    # === FONCTIONS D'AIDE ===
+    "require_admin_permission",
     
     # === GESTIONNAIRES ===
     "custom_http_exception_handler",

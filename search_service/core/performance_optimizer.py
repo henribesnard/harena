@@ -35,6 +35,7 @@ class PerformanceProfile(str, Enum):
     PRECISION_FIRST = "precision_first"   # Priorité à la précision
     THROUGHPUT_FIRST = "throughput_first" # Priorité au débit
     COST_OPTIMIZED = "cost_optimized"     # Optimisation coût/performance
+    BALANCED = "balanced"                # Équilibre général
 
 
 class QueryComplexity(str, Enum):

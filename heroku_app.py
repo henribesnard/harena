@@ -113,14 +113,13 @@ def create_app():
             logger.error(f"❌ DB critique: {e}")
             raise RuntimeError("Database connection failed")
         
-        # Vérifier santé des services existants uniquement
+        # Vérifier santé des services existants seulement (search_service a architecture différente)
         services_health = [
             ("user_service", "user_service"),
             ("db_service", "db_service"),
             ("sync_service", "sync_service"),
             ("enrichment_service", "enrichment_service"),
-            ("search_service", "search_service"),
-            # conversation_service supprimé temporairement (pas encore développé)
+            # search_service testé séparément car architecture différente
         ]
         
         for service_name, module_path in services_health:
@@ -144,8 +143,11 @@ def create_app():
                 successful += 1
         
         # Traitement spécial pour search_service (architecture différente)
+        logger.info("🔍 Tentative de chargement search_service via api_manager...")
         try:
             from search_service.api import api_manager
+            logger.info("✅ search_service.api importé avec succès")
+            
             if hasattr(api_manager, 'router') and api_manager.router:
                 app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search_service"])
                 routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
@@ -155,8 +157,11 @@ def create_app():
             else:
                 logger.error("❌ search_service: api_manager.router non trouvé")
                 loader.services_status["search_service"] = {"status": "error", "error": "api_manager.router manquant"}
+        except ImportError as ie:
+            logger.error(f"❌ search_service: Import Error - {str(ie)}")
+            loader.services_status["search_service"] = {"status": "error", "error": f"Import Error: {str(ie)}"}
         except Exception as e:
-            logger.error(f"❌ search_service: {str(e)}")
+            logger.error(f"❌ search_service: Erreur générale - {str(e)}")
             loader.services_status["search_service"] = {"status": "error", "error": str(e)}
         
         # Gérer les modules multiples du sync_service si le principal échoue
@@ -173,8 +178,15 @@ def create_app():
         
         logger.info(f"✅ Démarrage terminé: {successful} services chargés")
         
+        # Rapport final détaillé
+        ok_services = [name for name, status in loader.services_status.items() if status.get("status") == "ok"]
+        failed_services = [name for name, status in loader.services_status.items() if status.get("status") == "error"]
+        
+        logger.info(f"📊 Services OK: {', '.join(ok_services)}")
+        if failed_services:
+            logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
+        
         # Note: conversation_service sera ajouté une fois développé
-        logger.info("💡 Services disponibles: user, sync, enrichment, search")
         logger.info("🔮 À venir: conversation_service avec AutoGen + DeepSeek")
 
     @app.get("/health")

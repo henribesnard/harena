@@ -70,7 +70,7 @@ async def require_admin_permission(
 # === ENDPOINTS DE RECHERCHE ===
 
 @router.post(
-    "/search/lexical",
+    "/lexical",
     response_model=SearchServiceResponse,
     summary="Recherche lexicale Elasticsearch",
     description="""
@@ -184,7 +184,7 @@ async def search_lexical(
 
 
 @router.post(
-    "/search/validate",
+    "/validate",
     response_model=ValidationResponse,
     summary="Validation de requête de recherche",
     description="""
@@ -289,7 +289,7 @@ async def validate_search_request_endpoint(
 # === ENDPOINTS DE CONFIGURATION ===
 
 @router.get(
-    "/search/templates",
+    "/templates",
     response_model=TemplateListResponse,
     summary="Liste des templates de requêtes",
     description="""

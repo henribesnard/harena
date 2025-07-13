@@ -241,112 +241,6 @@ class InternalSearchResponse(BaseModel):
     class Config:
         use_enum_values = True
         arbitrary_types_allowed = True
-    
-    def mark_completed(self):
-        """Marque la réponse comme terminée"""
-        self.execution_metrics.mark_completed()
-    
-    def add_raw_result(self, result: RawTransaction):
-        """Ajoute un résultat brut"""
-        self.raw_results.append(result)
-        
-        # Mise à jour du score max
-        if self.max_score is None or result.score > self.max_score:
-            self.max_score = result.score
-    
-    def add_aggregation(self, aggregation: InternalAggregationResult):
-        """Ajoute un résultat d'agrégation"""
-        aggregation.calculate_totals()
-        self.aggregations.append(aggregation)
-    
-    def calculate_quality_score(self):
-        """Calcule le score de qualité global"""
-        if not self.raw_results:
-            self.quality_score = 0.0
-            self.quality_indicator = QualityIndicator.VERY_POOR
-            return
-        
-        # Score basé sur plusieurs facteurs
-        scores = []
-        
-        # 1. Score moyen des résultats
-        avg_score = sum(r.score for r in self.raw_results) / len(self.raw_results)
-        scores.append(avg_score)
-        
-        # 2. Distribution des scores (éviter trop de scores faibles)
-        high_score_ratio = len([r for r in self.raw_results if r.score > 0.7]) / len(self.raw_results)
-        scores.append(high_score_ratio)
-        
-        # 3. Couverture des résultats vs demande
-        if self.total_hits > 0:
-            coverage_ratio = min(len(self.raw_results) / min(20, self.total_hits), 1.0)
-            scores.append(coverage_ratio)
-        
-        # Score final pondéré
-        self.quality_score = sum(scores) / len(scores)
-        
-        # Détermination de l'indicateur
-        if self.quality_score > 0.9:
-            self.quality_indicator = QualityIndicator.EXCELLENT
-        elif self.quality_score > 0.7:
-            self.quality_indicator = QualityIndicator.GOOD
-        elif self.quality_score > 0.5:
-            self.quality_indicator = QualityIndicator.AVERAGE
-        elif self.quality_score > 0.3:
-            self.quality_indicator = QualityIndicator.POOR
-        else:
-            self.quality_indicator = QualityIndicator.VERY_POOR
-    
-    def generate_followup_suggestions(self):
-        """Génère des suggestions de questions de suivi"""
-        suggestions = []
-        
-        # Basé sur les résultats trouvés
-        if self.raw_results:
-            # Suggestions basées sur les catégories trouvées
-            categories = list(set(r.source.get("category_name") for r in self.raw_results 
-                                if r.source.get("category_name")))
-            if categories:
-                self.related_categories = categories[:5]
-                for cat in categories[:3]:
-                    suggestions.append(f"Voir plus de transactions {cat}")
-            
-            # Suggestions basées sur les marchands
-            merchants = list(set(r.source.get("merchant_name") for r in self.raw_results 
-                               if r.source.get("merchant_name")))
-            if merchants:
-                for merchant in merchants[:2]:
-                    suggestions.append(f"Historique complet {merchant}")
-            
-            # Suggestions temporelles
-            if len(self.raw_results) > 5:
-                suggestions.append("Comparer avec le mois précédent")
-                suggestions.append("Évolution sur 6 mois")
-        
-        # Suggestions d'agrégation si pas déjà fait
-        if not self.aggregations and len(self.raw_results) > 3:
-            suggestions.append("Voir le total par catégorie")
-            suggestions.append("Répartition par mois")
-        
-        self.suggested_followups = suggestions[:5]  # Limite à 5 suggestions
-    
-    def get_standardized_results(self) -> List[Dict[str, Any]]:
-        """Retourne les résultats au format standardisé"""
-        return [result.to_standardized_result() for result in self.raw_results]
-    
-    def get_performance_summary(self) -> Dict[str, Any]:
-        """Retourne un résumé de performance"""
-        return {
-            "status": self.status.value,
-            "total_time_ms": self.execution_metrics.total_execution_time,
-            "elasticsearch_time_ms": self.execution_metrics.elasticsearch_took,
-            "served_from_cache": self.served_from_cache,
-            "optimizations_count": len(self.execution_metrics.optimizations_applied),
-            "quality_score": round(self.quality_score, 3),
-            "quality_indicator": self.quality_indicator.value,
-            "results_count": len(self.raw_results),
-            "total_hits": self.total_hits
-        }
 
 
 # === MODÈLES API REST ===
@@ -412,20 +306,25 @@ class TemplateListResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Métadonnées de réponse")
 
 
+# === MODÈLES CORRECTS POUR HEALTH CHECK ===
+
 class ComponentHealthInfo(BaseModel):
-    """Informations de santé d'un composant"""
+    """Informations de santé d'un composant - Structure compatible avec routes.py"""
     name: str = Field(..., description="Nom du composant")
-    status: ComponentStatus = Field(..., description="Statut du composant")
+    status: str = Field(..., description="Statut du composant (healthy/degraded/unhealthy)")
     last_check: datetime = Field(..., description="Dernière vérification")
     response_time_ms: Optional[float] = Field(default=None, description="Temps de réponse en ms")
     error_message: Optional[str] = Field(default=None, description="Message d'erreur si unhealthy")
     dependencies: List[str] = Field(default_factory=list, description="Dépendances")
     metrics: Dict[str, Any] = Field(default_factory=dict, description="Métriques spécifiques")
 
+    class Config:
+        use_enum_values = True
+
 
 class SystemHealth(BaseModel):
-    """Santé globale du système"""
-    overall_status: ComponentStatus = Field(..., description="Statut global")
+    """Santé globale du système - Structure compatible avec routes.py"""
+    overall_status: str = Field(..., description="Statut global (healthy/degraded/unhealthy)")
     uptime_seconds: float = Field(..., description="Uptime en secondes")
     memory_usage_mb: float = Field(..., description="Usage mémoire en MB")
     cpu_usage_percent: float = Field(..., description="Usage CPU en %")
@@ -433,15 +332,21 @@ class SystemHealth(BaseModel):
     total_requests: int = Field(default=0, description="Total requêtes")
     error_rate_percent: float = Field(default=0.0, description="Taux d'erreur %")
 
+    class Config:
+        use_enum_values = True
+
 
 class HealthResponse(BaseModel):
-    """Réponse détaillée de santé du service"""
+    """Réponse détaillée de santé du service - Structure compatible avec routes.py"""
     system: SystemHealth = Field(..., description="Santé système globale")
     components: List[ComponentHealthInfo] = Field(..., description="Santé des composants")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp")
     service_version: str = Field(default="1.0.0", description="Version du service")
     environment: str = Field(default="production", description="Environnement")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Métadonnées")
+
+    class Config:
+        use_enum_values = True
 
 
 class MetricsResponse(BaseModel):
@@ -624,6 +529,132 @@ class ResponseTransformer:
         return variance ** 0.5
 
 
+# === AJOUT DES MÉTHODES MANQUANTES POUR InternalSearchResponse ===
+
+# Extension de la classe InternalSearchResponse avec les méthodes manquantes
+def _calculate_quality_score(self):
+    """Calcule le score de qualité global"""
+    if not self.raw_results:
+        self.quality_score = 0.0
+        self.quality_indicator = QualityIndicator.VERY_POOR
+        return
+    
+    # Score basé sur plusieurs facteurs
+    scores = []
+    
+    # 1. Score moyen des résultats
+    avg_score = sum(r.score for r in self.raw_results) / len(self.raw_results)
+    scores.append(avg_score)
+    
+    # 2. Distribution des scores (éviter trop de scores faibles)
+    high_score_ratio = len([r for r in self.raw_results if r.score > 0.7]) / len(self.raw_results)
+    scores.append(high_score_ratio)
+    
+    # 3. Couverture des résultats vs demande
+    if self.total_hits > 0:
+        coverage_ratio = min(len(self.raw_results) / min(20, self.total_hits), 1.0)
+        scores.append(coverage_ratio)
+    
+    # Score final pondéré
+    self.quality_score = sum(scores) / len(scores)
+    
+    # Détermination de l'indicateur
+    if self.quality_score > 0.9:
+        self.quality_indicator = QualityIndicator.EXCELLENT
+    elif self.quality_score > 0.7:
+        self.quality_indicator = QualityIndicator.GOOD
+    elif self.quality_score > 0.5:
+        self.quality_indicator = QualityIndicator.AVERAGE
+    elif self.quality_score > 0.3:
+        self.quality_indicator = QualityIndicator.POOR
+    else:
+        self.quality_indicator = QualityIndicator.VERY_POOR
+
+
+def _generate_followup_suggestions(self):
+    """Génère des suggestions de questions de suivi"""
+    suggestions = []
+    
+    # Basé sur les résultats trouvés
+    if self.raw_results:
+        # Suggestions basées sur les catégories trouvées
+        categories = list(set(r.source.get("category_name") for r in self.raw_results 
+                            if r.source.get("category_name")))
+        if categories:
+            self.related_categories = categories[:5]
+            for cat in categories[:3]:
+                suggestions.append(f"Voir plus de transactions {cat}")
+        
+        # Suggestions basées sur les marchands
+        merchants = list(set(r.source.get("merchant_name") for r in self.raw_results 
+                           if r.source.get("merchant_name")))
+        if merchants:
+            for merchant in merchants[:2]:
+                suggestions.append(f"Historique complet {merchant}")
+        
+        # Suggestions temporelles
+        if len(self.raw_results) > 5:
+            suggestions.append("Comparer avec le mois précédent")
+            suggestions.append("Évolution sur 6 mois")
+    
+    # Suggestions d'agrégation si pas déjà fait
+    if not self.aggregations and len(self.raw_results) > 3:
+        suggestions.append("Voir le total par catégorie")
+        suggestions.append("Répartition par mois")
+    
+    self.suggested_followups = suggestions[:5]  # Limite à 5 suggestions
+
+
+def _get_standardized_results(self) -> List[Dict[str, Any]]:
+    """Retourne les résultats au format standardisé"""
+    return [result.to_standardized_result() for result in self.raw_results]
+
+
+def _mark_completed(self):
+    """Marque la réponse comme terminée"""
+    self.execution_metrics.mark_completed()
+
+
+def _add_raw_result(self, result: RawTransaction):
+    """Ajoute un résultat brut"""
+    self.raw_results.append(result)
+    
+    # Mise à jour du score max
+    if self.max_score is None or result.score > self.max_score:
+        self.max_score = result.score
+
+
+def _add_aggregation(self, aggregation: InternalAggregationResult):
+    """Ajoute un résultat d'agrégation"""
+    aggregation.calculate_totals()
+    self.aggregations.append(aggregation)
+
+
+def _get_performance_summary(self) -> Dict[str, Any]:
+    """Retourne un résumé de performance"""
+    return {
+        "status": self.status.value,
+        "total_time_ms": self.execution_metrics.total_execution_time,
+        "elasticsearch_time_ms": self.execution_metrics.elasticsearch_took,
+        "served_from_cache": self.served_from_cache,
+        "optimizations_count": len(self.execution_metrics.optimizations_applied),
+        "quality_score": round(self.quality_score, 3),
+        "quality_indicator": self.quality_indicator.value,
+        "results_count": len(self.raw_results),
+        "total_hits": self.total_hits
+    }
+
+
+# Ajouter les méthodes à la classe InternalSearchResponse
+InternalSearchResponse.calculate_quality_score = _calculate_quality_score
+InternalSearchResponse.generate_followup_suggestions = _generate_followup_suggestions
+InternalSearchResponse.get_standardized_results = _get_standardized_results
+InternalSearchResponse.mark_completed = _mark_completed
+InternalSearchResponse.add_raw_result = _add_raw_result
+InternalSearchResponse.add_aggregation = _add_aggregation
+InternalSearchResponse.get_performance_summary = _get_performance_summary
+
+
 # === BUILDERS ET HELPERS ===
 
 class ResponseBuilder:
@@ -752,22 +783,22 @@ class ValidationResponseBuilder:
 
 
 class HealthResponseBuilder:
-    """Builder pour les réponses de santé"""
+    """Builder pour les réponses de santé - Compatible avec routes.py"""
     
     def __init__(self):
         self.components = []
         self.system_health = SystemHealth(
-            overall_status=ComponentStatus.HEALTHY,
+            overall_status="healthy",
             uptime_seconds=0.0,
             memory_usage_mb=0.0,
             cpu_usage_percent=0.0
         )
     
-    def add_component(self, name: str, status: ComponentStatus,
+    def add_component(self, name: str, status: str,
                      response_time_ms: float = None, error_message: str = None,
                      dependencies: List[str] = None, 
                      metrics: Dict[str, Any] = None) -> 'HealthResponseBuilder':
-        """Ajoute un composant"""
+        """Ajoute un composant avec status en string"""
         self.components.append(ComponentHealthInfo(
             name=name,
             status=status,
@@ -789,19 +820,19 @@ class HealthResponseBuilder:
     def calculate_overall_status(self) -> 'HealthResponseBuilder':
         """Calcule le statut global basé sur les composants"""
         if not self.components:
-            self.system_health.overall_status = ComponentStatus.UNKNOWN
+            self.system_health.overall_status = "unknown"
             return self
         
         statuses = [comp.status for comp in self.components]
         
-        if ComponentStatus.UNHEALTHY in statuses:
-            self.system_health.overall_status = ComponentStatus.UNHEALTHY
-        elif ComponentStatus.DEGRADED in statuses:
-            self.system_health.overall_status = ComponentStatus.DEGRADED
-        elif all(status == ComponentStatus.HEALTHY for status in statuses):
-            self.system_health.overall_status = ComponentStatus.HEALTHY
+        if "unhealthy" in statuses:
+            self.system_health.overall_status = "unhealthy"
+        elif "degraded" in statuses:
+            self.system_health.overall_status = "degraded"
+        elif all(status == "healthy" for status in statuses):
+            self.system_health.overall_status = "healthy"
         else:
-            self.system_health.overall_status = ComponentStatus.UNKNOWN
+            self.system_health.overall_status = "unknown"
         
         return self
     
@@ -948,8 +979,8 @@ class ResponseValidator:
             elif isinstance(response, HealthResponse):
                 # Vérification cohérence statut global vs composants
                 unhealthy_components = [c for c in response.components 
-                                      if c.status == ComponentStatus.UNHEALTHY]
-                if unhealthy_components and response.system.overall_status == ComponentStatus.HEALTHY:
+                                      if c.status == "unhealthy"]
+                if unhealthy_components and response.system.overall_status == "healthy":
                     raise ValueError("Statut global incohérent avec composants unhealthy")
             
             elif isinstance(response, TemplateListResponse):
@@ -960,6 +991,326 @@ class ResponseValidator:
             return True
         except Exception as e:
             raise ValueError(f"Validation réponse API échouée: {e}")
+
+
+# === FACTORIES ET HELPERS SUPPLÉMENTAIRES ===
+
+class HealthResponseFactory:
+    """Factory pour créer facilement des réponses de santé"""
+    
+    @staticmethod
+    def create_healthy_response(
+        uptime_seconds: float = 0.0,
+        memory_mb: float = 0.0,
+        cpu_percent: float = 0.0
+    ) -> HealthResponse:
+        """Crée une réponse de santé OK"""
+        
+        system = SystemHealth(
+            overall_status="healthy",
+            uptime_seconds=uptime_seconds,
+            memory_usage_mb=memory_mb,
+            cpu_usage_percent=cpu_percent,
+            active_connections=0,
+            total_requests=0,
+            error_rate_percent=0.0
+        )
+        
+        components = [
+            ComponentHealthInfo(
+                name="core_engine",
+                status="healthy",
+                last_check=datetime.now(timezone.utc),
+                response_time_ms=5.0,
+                dependencies=["elasticsearch"],
+                metrics={"status": "operational"}
+            ),
+            ComponentHealthInfo(
+                name="elasticsearch",
+                status="healthy",
+                last_check=datetime.now(timezone.utc),
+                response_time_ms=10.0,
+                dependencies=[],
+                metrics={"cluster_status": "green"}
+            )
+        ]
+        
+        return HealthResponse(
+            system=system,
+            components=components,
+            service_version="1.0.0",
+            environment="production",
+            metadata={
+                "created_by": "factory",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+    
+    @staticmethod
+    def create_unhealthy_response(error_message: str = "Service unavailable") -> HealthResponse:
+        """Crée une réponse de santé en erreur"""
+        
+        system = SystemHealth(
+            overall_status="unhealthy",
+            uptime_seconds=0.0,
+            memory_usage_mb=0.0,
+            cpu_usage_percent=0.0,
+            active_connections=0,
+            total_requests=0,
+            error_rate_percent=100.0
+        )
+        
+        components = [
+            ComponentHealthInfo(
+                name="system",
+                status="unhealthy",
+                last_check=datetime.now(timezone.utc),
+                error_message=error_message,
+                dependencies=[],
+                metrics={}
+            )
+        ]
+        
+        return HealthResponse(
+            system=system,
+            components=components,
+            service_version="1.0.0",
+            environment="unknown",
+            metadata={
+                "created_by": "factory",
+                "error": error_message,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+
+class ValidationResponseFactory:
+    """Factory pour créer facilement des réponses de validation"""
+    
+    @staticmethod
+    def create_valid_response(metadata: Dict[str, Any] = None) -> ValidationResponse:
+        """Crée une réponse de validation valide"""
+        
+        security_check = SecurityCheckResult(
+            passed=True,
+            user_id_check=True,
+            data_isolation_check=True,
+            permissions_check=True,
+            warnings=[]
+        )
+        
+        performance_analysis = PerformanceAnalysis(
+            complexity="simple",
+            estimated_time_ms=25,
+            warnings=[],
+            optimization_suggestions=[],
+            cache_eligible=True,
+            field_count=3,
+            filter_count=1
+        )
+        
+        return ValidationResponse(
+            valid=True,
+            errors=[],
+            warnings=[],
+            security_check=security_check,
+            performance_analysis=performance_analysis,
+            metadata=metadata or {}
+        )
+    
+    @staticmethod
+    def create_invalid_response(
+        field: str, 
+        error_message: str, 
+        metadata: Dict[str, Any] = None
+    ) -> ValidationResponse:
+        """Crée une réponse de validation invalide"""
+        
+        error = ValidationError(
+            field=field,
+            error_type="validation_error",
+            message=error_message,
+            severity=ValidationSeverity.ERROR,
+            suggested_fix=f"Please correct the {field} field"
+        )
+        
+        security_check = SecurityCheckResult(
+            passed=False,
+            user_id_check=True,
+            data_isolation_check=True,
+            permissions_check=True,
+            warnings=["Request validation failed"]
+        )
+        
+        performance_analysis = PerformanceAnalysis(
+            complexity="unknown",
+            estimated_time_ms=0,
+            warnings=["Cannot estimate performance for invalid request"],
+            optimization_suggestions=[],
+            cache_eligible=False,
+            field_count=0,
+            filter_count=0
+        )
+        
+        return ValidationResponse(
+            valid=False,
+            errors=[error],
+            warnings=[],
+            security_check=security_check,
+            performance_analysis=performance_analysis,
+            metadata=metadata or {}
+        )
+
+
+# === UTILITAIRES DE SÉRIALISATION ===
+
+class ResponseSerializer:
+    """Utilitaires pour sérialiser les réponses"""
+    
+    @staticmethod
+    def serialize_health_response(response: HealthResponse) -> Dict[str, Any]:
+        """Sérialise une HealthResponse en dictionnaire"""
+        return {
+            "system": {
+                "overall_status": response.system.overall_status,
+                "uptime_seconds": response.system.uptime_seconds,
+                "memory_usage_mb": response.system.memory_usage_mb,
+                "cpu_usage_percent": response.system.cpu_usage_percent,
+                "active_connections": response.system.active_connections,
+                "total_requests": response.system.total_requests,
+                "error_rate_percent": response.system.error_rate_percent
+            },
+            "components": [
+                {
+                    "name": comp.name,
+                    "status": comp.status,
+                    "last_check": comp.last_check.isoformat(),
+                    "response_time_ms": comp.response_time_ms,
+                    "error_message": comp.error_message,
+                    "dependencies": comp.dependencies,
+                    "metrics": comp.metrics
+                }
+                for comp in response.components
+            ],
+            "timestamp": response.timestamp.isoformat(),
+            "service_version": response.service_version,
+            "environment": response.environment,
+            "metadata": response.metadata
+        }
+    
+    @staticmethod
+    def deserialize_health_response(data: Dict[str, Any]) -> HealthResponse:
+        """Désérialise un dictionnaire en HealthResponse"""
+        
+        system = SystemHealth(**data["system"])
+        
+        components = [
+            ComponentHealthInfo(
+                name=comp["name"],
+                status=comp["status"],
+                last_check=datetime.fromisoformat(comp["last_check"]),
+                response_time_ms=comp.get("response_time_ms"),
+                error_message=comp.get("error_message"),
+                dependencies=comp.get("dependencies", []),
+                metrics=comp.get("metrics", {})
+            )
+            for comp in data["components"]
+        ]
+        
+        return HealthResponse(
+            system=system,
+            components=components,
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            service_version=data["service_version"],
+            environment=data["environment"],
+            metadata=data.get("metadata", {})
+        )
+
+
+# === HELPERS POUR TESTS ===
+
+class ResponseTestHelpers:
+    """Helpers pour les tests des modèles de réponse"""
+    
+    @staticmethod
+    def create_mock_raw_transaction(
+        transaction_id: str = "txn_123",
+        amount: float = 100.0,
+        score: float = 0.8
+    ) -> RawTransaction:
+        """Crée une transaction de test"""
+        
+        source = {
+            "transaction_id": transaction_id,
+            "user_id": 1,
+            "account_id": "acc_123",
+            "amount": amount,
+            "amount_abs": abs(amount),
+            "transaction_type": "debit" if amount < 0 else "credit",
+            "currency_code": "EUR",
+            "date": "2024-01-15",
+            "primary_description": "Test transaction",
+            "merchant_name": "Test Merchant",
+            "category_name": "Test Category",
+            "operation_type": "card_payment",
+            "month_year": "2024-01",
+            "weekday": "Monday"
+        }
+        
+        return RawTransaction(
+            source=source,
+            score=score,
+            index="test_index",
+            id=transaction_id,
+            highlights={"primary_description": ["Test <em>transaction</em>"]},
+            explanation={"value": score, "description": "BM25 score"}
+        )
+    
+    @staticmethod
+    def create_mock_internal_response(
+        request_id: str = "req_123",
+        user_id: int = 1,
+        num_results: int = 5
+    ) -> InternalSearchResponse:
+        """Crée une réponse interne de test"""
+        
+        response = InternalSearchResponse(
+            request_id=request_id,
+            user_id=user_id,
+            status=ExecutionStatus.SUCCESS
+        )
+        
+        # Ajouter des résultats de test
+        for i in range(num_results):
+            transaction = ResponseTestHelpers.create_mock_raw_transaction(
+                transaction_id=f"txn_{i}",
+                amount=100.0 * (i + 1),
+                score=0.9 - (i * 0.1)
+            )
+            response.add_raw_result(transaction)
+        
+        response.total_hits = num_results
+        response.served_from_cache = False
+        
+        # Simuler les métriques
+        response.execution_metrics.elasticsearch_took = 15
+        response.execution_metrics.total_execution_time = 45
+        
+        return response
+    
+    @staticmethod
+    def assert_health_response_valid(response: HealthResponse):
+        """Valide qu'une HealthResponse est correcte"""
+        assert response.system is not None
+        assert response.components is not None
+        assert len(response.components) > 0
+        assert response.service_version is not None
+        assert response.timestamp is not None
+        
+        # Vérifier la cohérence du statut
+        if response.system.overall_status == "healthy":
+            unhealthy_components = [c for c in response.components if c.status == "unhealthy"]
+            assert len(unhealthy_components) == 0, "Statut global healthy avec composants unhealthy"
 
 
 # === EXPORTS ===
@@ -1000,7 +1351,25 @@ __all__ = [
     "HealthResponseBuilder",
     "TemplateResponseBuilder",
     
+    # === FACTORIES ===
+    "HealthResponseFactory",
+    "ValidationResponseFactory",
+    
     # === UTILITAIRES ===
     "ResponseConverter",
-    "ResponseValidator"
+    "ResponseValidator",
+    "ResponseSerializer",
+    "ResponseTestHelpers"
 ]
+
+
+# === INFORMATIONS DU MODULE ===
+
+__version__ = "1.0.0"
+__author__ = "Search Service Team"  
+__description__ = "Modèles de réponses internes et API avec corrections pour compatibilité routes.py"
+
+# Log de chargement
+import logging
+logger = logging.getLogger(__name__)
+logger.info(f"Module models.responses chargé - version {__version__} (avec corrections health check)")

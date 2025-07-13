@@ -417,95 +417,165 @@ async def health_check(request: Request) -> HealthResponse:
     try:
         logger.debug(f"Health check started [{correlation_id}]")
         
-        # Vérifications parallèles des composants
-        health_checks = await asyncio.gather(
-            get_core_health(),
-            get_utils_health(),
-            _check_elasticsearch_connectivity(),
-            _check_cache_health(),
-            return_exceptions=True
-        )
+        # Exécuter les vérifications en série pour éviter le problème asyncio.gather
+        # Initialiser les résultats
+        core_health = None
+        utils_health = None
+        es_health = None
+        cache_health = None
         
-        core_health, utils_health, es_health, cache_health = health_checks
+        # Vérifications individuelles avec gestion d'erreur
+        try:
+            core_health = await get_core_health()
+        except Exception as e:
+            core_health = {"status": "error", "error": str(e)}
         
-        # Analyser les résultats
+        try:
+            utils_health = await get_utils_health()
+        except Exception as e:
+            utils_health = {"status": "error", "error": str(e)}
+        
+        try:
+            es_health = await _check_elasticsearch_connectivity()
+        except Exception as e:
+            es_health = {"status": "error", "error": str(e)}
+        
+        try:
+            cache_health = await _check_cache_health()
+        except Exception as e:
+            cache_health = {"status": "error", "error": str(e)}
+        
+        # Construire les informations des composants
+        components = []
         all_healthy = True
-        components_status = {}
         
-        # Santé des composants core
-        if isinstance(core_health, dict):
-            components_status["core"] = core_health
-            if core_health.get("system_status") != "healthy":
-                all_healthy = False
+        # Composant Core
+        if isinstance(core_health, dict) and core_health.get("system_status") == "healthy":
+            components.append({
+                "name": "core_engine",
+                "status": "healthy",
+                "last_check": datetime.now(),
+                "response_time_ms": core_health.get("check_duration_ms", 0),
+                "dependencies": ["elasticsearch", "query_executor"],
+                "metrics": core_health
+            })
         else:
-            components_status["core"] = {"status": "error", "error": str(core_health)}
             all_healthy = False
+            components.append({
+                "name": "core_engine",
+                "status": "unhealthy",
+                "last_check": datetime.now(),
+                "error_message": core_health.get("error", "Core health check failed") if isinstance(core_health, dict) else str(core_health),
+                "dependencies": ["elasticsearch", "query_executor"],
+                "metrics": {}
+            })
         
-        # Santé des utilitaires
-        if isinstance(utils_health, dict):
-            components_status["utils"] = utils_health
-            if utils_health.get("system_status") != "healthy":
-                all_healthy = False
+        # Composant Elasticsearch
+        if isinstance(es_health, dict) and es_health.get("connected"):
+            components.append({
+                "name": "elasticsearch",
+                "status": "healthy",
+                "last_check": datetime.now(),
+                "response_time_ms": es_health.get("response_time_ms", 0),
+                "dependencies": [],
+                "metrics": {
+                    "cluster_name": es_health.get("cluster_name", "unknown"),
+                    "nodes": es_health.get("nodes", 0),
+                    "status": es_health.get("status", "unknown")
+                }
+            })
         else:
-            components_status["utils"] = {"status": "error", "error": str(utils_health)}
             all_healthy = False
+            components.append({
+                "name": "elasticsearch",
+                "status": "unhealthy",
+                "last_check": datetime.now(),
+                "error_message": es_health.get("error", "Elasticsearch connection failed") if isinstance(es_health, dict) else str(es_health),
+                "dependencies": [],
+                "metrics": {}
+            })
         
-        # Santé Elasticsearch
-        if isinstance(es_health, dict):
-            components_status["elasticsearch"] = es_health
-            if not es_health.get("connected", False):
-                all_healthy = False
+        # Composant Utils
+        if isinstance(utils_health, dict) and utils_health.get("system_status") == "healthy":
+            components.append({
+                "name": "utils",
+                "status": "healthy",
+                "last_check": datetime.now(),
+                "response_time_ms": utils_health.get("check_duration_ms", 0),
+                "dependencies": ["cache"],
+                "metrics": utils_health
+            })
         else:
-            components_status["elasticsearch"] = {"status": "error", "error": str(es_health)}
-            all_healthy = False
+            components.append({
+                "name": "utils",
+                "status": "degraded",  # Utils non critiques
+                "last_check": datetime.now(),
+                "error_message": utils_health.get("error", "Utils check failed") if isinstance(utils_health, dict) else str(utils_health),
+                "dependencies": ["cache"],
+                "metrics": {}
+            })
         
-        # Santé du cache
-        if isinstance(cache_health, dict):
-            components_status["cache"] = cache_health
+        # Composant Cache
+        if isinstance(cache_health, dict) and cache_health.get("status") in ["healthy", "available"]:
+            components.append({
+                "name": "cache",
+                "status": "healthy",
+                "last_check": datetime.now(),
+                "dependencies": [],
+                "metrics": cache_health
+            })
         else:
-            components_status["cache"] = {"status": "error", "error": str(cache_health)}
+            components.append({
+                "name": "cache",
+                "status": "degraded",  # Cache non critique
+                "last_check": datetime.now(),
+                "error_message": cache_health.get("error", "Cache check failed") if isinstance(cache_health, dict) else str(cache_health),
+                "dependencies": [],
+                "metrics": {}
+            })
         
         # Déterminer le statut global
-        if all_healthy:
+        unhealthy_count = len([c for c in components if c["status"] == "unhealthy"])
+        degraded_count = len([c for c in components if c["status"] == "degraded"])
+        
+        if unhealthy_count == 0 and degraded_count == 0:
             overall_status = "healthy"
             status_code = HTTP_200_OK
+        elif unhealthy_count == 0:
+            overall_status = "degraded" 
+            status_code = HTTP_200_OK
         else:
-            # Vérifier si au moins les composants critiques fonctionnent
-            core_ok = components_status.get("core", {}).get("system_status") == "healthy"
-            es_ok = components_status.get("elasticsearch", {}).get("connected", False)
-            
-            if core_ok and es_ok:
-                overall_status = "degraded"
-                status_code = HTTP_200_OK
-            else:
-                overall_status = "unhealthy"
-                status_code = 503
+            overall_status = "unhealthy"
+            status_code = 503
         
         # Métriques de performance
         health_check_duration = (time.time() - start_time) * 1000
         
-        # Construire la réponse
-        response = HealthResponse(
-            status=overall_status,
-            timestamp=datetime.now().isoformat(),
-            service_info={
-                "name": "search-service",
-                "version": "1.0.0",
-                "environment": getattr(settings, 'environment', 'unknown'),
-                "uptime_seconds": time.time() - getattr(request.app.state, 'start_time', time.time())
-            },
-            components=components_status,
-            performance={
-                "health_check_duration_ms": health_check_duration,
-                "last_24h_requests": _get_request_count_24h(),
-                "avg_response_time_ms": _get_avg_response_time(),
-                "error_rate_percent": _get_error_rate_24h()
-            },
-            metadata={
+        # Construire la réponse avec le bon modèle
+        system_health = {
+            "overall_status": overall_status,
+            "uptime_seconds": time.time() - getattr(request.app.state, 'start_time', time.time()),
+            "memory_usage_mb": _get_memory_usage_mb(),
+            "cpu_usage_percent": _get_cpu_usage_percent(),
+            "active_connections": _get_active_connections(),
+            "total_requests": _get_request_count_24h(),
+            "error_rate_percent": _get_error_rate_24h()
+        }
+        
+        response_data = {
+            "system": system_health,
+            "components": components,
+            "timestamp": datetime.now(),
+            "service_version": "1.0.0",
+            "environment": getattr(settings, 'environment', 'production'),
+            "metadata": {
                 "correlation_id": correlation_id,
-                "check_timestamp": datetime.now().isoformat()
+                "health_check_duration_ms": health_check_duration,
+                "components_checked": len(components)
             }
-        )
+        }
+        
+        response = HealthResponse(**response_data)
         
         response_json = JSONResponse(
             content=response.dict(),
@@ -523,19 +593,35 @@ async def health_check(request: Request) -> HealthResponse:
     except Exception as e:
         logger.error(f"Health check failed [{correlation_id}]: {e}", exc_info=True)
         
+        # Réponse d'erreur minimale
+        error_system = {
+            "overall_status": "unhealthy",
+            "uptime_seconds": 0.0,
+            "memory_usage_mb": 0.0,
+            "cpu_usage_percent": 0.0,
+            "active_connections": 0,
+            "total_requests": 0,
+            "error_rate_percent": 100.0
+        }
+        
+        error_components = [{
+            "name": "system",
+            "status": "unhealthy",
+            "last_check": datetime.now(),
+            "error_message": f"Health check process failed: {str(e)}",
+            "dependencies": [],
+            "metrics": {}
+        }]
+        
         error_response = HealthResponse(
-            status="unhealthy",
-            timestamp=datetime.now().isoformat(),
-            service_info={
-                "name": "search-service",
-                "version": "1.0.0",
-                "error": "Health check process failed"
-            },
-            components={"error": str(e)},
-            performance={},
+            system=error_system,
+            components=error_components,
+            service_version="1.0.0",
+            environment="unknown",
             metadata={
                 "correlation_id": correlation_id,
-                "error_timestamp": datetime.now().isoformat()
+                "error_timestamp": datetime.now().isoformat(),
+                "error": str(e)
             }
         )
         
@@ -679,7 +765,7 @@ admin_router = APIRouter(tags=["admin"])
     "/cache/clear",
     summary="Vider le cache du service",
     description="Vide tous les caches du Search Service (requêtes, résultats, templates)",
-    dependencies=[Depends(require_admin_permission)]  # ✅ FIX: Utilisation directe de Depends
+    dependencies=[Depends(require_admin_permission)]
 )
 async def clear_cache(request: Request) -> JSONResponse:
     """Vide tous les caches du service"""
@@ -737,7 +823,7 @@ async def clear_cache(request: Request) -> JSONResponse:
     "/config",
     summary="Configuration actuelle du service",
     description="Retourne la configuration actuelle du Search Service (sans secrets)",
-    dependencies=[Depends(require_admin_permission)]  # ✅ FIX: Utilisation directe de Depends
+    dependencies=[Depends(require_admin_permission)]
 )
 async def get_service_config(request: Request) -> JSONResponse:
     """Retourne la configuration du service"""
@@ -803,7 +889,8 @@ async def _check_elasticsearch_connectivity() -> Dict[str, Any]:
             "connected": health.get("status") == "healthy",
             "cluster_name": health.get("cluster_name", "unknown"),
             "nodes": health.get("nodes", 0),
-            "status": health.get("elasticsearch_status", "unknown")
+            "status": health.get("elasticsearch_status", "unknown"),
+            "response_time_ms": health.get("response_time_ms", 0)
         }
         
     except Exception as e:
@@ -834,6 +921,34 @@ def _check_metrics_permission(user_info: Dict[str, Any]) -> bool:
             detail="Metrics permission required"
         )
     return True
+
+
+def _get_memory_usage_mb() -> float:
+    """Récupère l'usage mémoire en MB"""
+    try:
+        import psutil
+        process = psutil.Process()
+        return round(process.memory_info().rss / (1024 * 1024), 2)
+    except:
+        return 0.0
+
+
+def _get_cpu_usage_percent() -> float:
+    """Récupère l'usage CPU en pourcentage"""
+    try:
+        import psutil
+        return round(psutil.cpu_percent(interval=0.1), 2)
+    except:
+        return 0.0
+
+
+def _get_active_connections() -> int:
+    """Récupère le nombre de connexions actives"""
+    try:
+        # À implémenter selon le système de monitoring
+        return 0
+    except:
+        return 0
 
 
 def _get_request_count_24h() -> int:
@@ -937,7 +1052,7 @@ def _get_total_searches(hours: int) -> int:
 # === ROUTEUR COMBINÉ ===
 
 # Inclure le routeur admin dans le routeur principal
-router.include_router(admin_router)
+router.include_router(admin_router, prefix="/admin")
 
 
 # === GESTIONNAIRE D'ERREURS SPÉCIALISÉ ===

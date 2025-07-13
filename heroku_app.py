@@ -148,10 +148,13 @@ def create_app():
         # 1. User Service
         try:
             from user_service.api.endpoints.users import router as user_router
-            if loader.load_service_router(app, "user_service", "user_service.api.endpoints.users", "/api/v1/users"):
-                app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
+            app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
+            routes_count = len(user_router.routes) if hasattr(user_router, 'routes') else 0
+            logger.info(f"✅ user_service: {routes_count} routes sur /api/v1/users")
+            loader.services_status["user_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/users"}
         except Exception as e:
             logger.error(f"❌ User Service: {e}")
+            loader.services_status["user_service"] = {"status": "error", "error": str(e)}
 
         # 2. Sync Service - modules principaux (inspiré de la version complexe)
         sync_modules = [
@@ -169,42 +172,66 @@ def create_app():
                 module = __import__(module_path, fromlist=["router"])
                 router = getattr(module, "router")
                 service_name = f"sync_{module_path.split('.')[-1]}"
-                if loader.load_service_router(app, service_name, module_path, prefix):
-                    app.include_router(router, prefix=prefix, tags=[module_path.split('.')[-1]])
-                    sync_successful += 1
+                app.include_router(router, prefix=prefix, tags=[module_path.split('.')[-1]])
+                routes_count = len(router.routes) if hasattr(router, 'routes') else 0
+                logger.info(f"✅ {service_name}: {routes_count} routes sur {prefix}")
+                loader.services_status[service_name] = {"status": "ok", "routes": routes_count, "prefix": prefix}
+                sync_successful += 1
             except Exception as e:
                 logger.error(f"❌ {module_path}: {e}")
+                loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)}
 
         # 3. Enrichment Service
         try:
             from enrichment_service.api.routes import router as enrichment_router
-            if loader.load_service_router(app, "enrichment_service", "enrichment_service.api.routes", "/api/v1/enrichment"):
-                app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
+            app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
+            routes_count = len(enrichment_router.routes) if hasattr(enrichment_router, 'routes') else 0
+            logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment")
+            loader.services_status["enrichment_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/enrichment"}
         except Exception as e:
             logger.error(f"❌ Enrichment Service: {e}")
+            loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)}
 
-        # 4. Search Service (architecture différente)
-        logger.info("🔍 Tentative de chargement search_service via api_manager...")
+        # 4. Search Service - CORRECTION: éviter le double enregistrement
+        logger.info("🔍 Chargement search_service...")
         try:
-            from search_service.api import api_manager
-            logger.info("✅ search_service.api importé avec succès")
-            
-            if hasattr(api_manager, 'router') and api_manager.router:
-                app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search_service"])
-                routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
+            # Option 1: Import direct du router si disponible dans api/routes.py
+            try:
+                from search_service.api.routes import router as search_router
+                app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+                routes_count = len(search_router.routes) if hasattr(search_router, 'routes') else 0
                 logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search")
                 loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/search"}
-            else:
-                logger.error("❌ search_service: api_manager.router non trouvé")
-                loader.services_status["search_service"] = {"status": "error", "error": "api_manager.router manquant"}
-        except ImportError as ie:
-            logger.error(f"❌ search_service: Import Error - {str(ie)}")
-            loader.services_status["search_service"] = {"status": "error", "error": f"Import Error: {str(ie)}"}
+            except ImportError:
+                # Option 2: Si pas de router direct, essayer api_manager
+                logger.info("🔍 Pas de router direct, tentative via api_manager...")
+                from search_service.api import api_manager
+                
+                if hasattr(api_manager, 'router') and api_manager.router:
+                    # ATTENTION: Ne PAS ajouter de préfixe supplémentaire si le router en a déjà un
+                    # Vérifier si le router a déjà un préfixe configuré
+                    router_prefix = getattr(api_manager.router, 'prefix', '') 
+                    
+                    if router_prefix and '/api/v1' in router_prefix:
+                        # Le router a déjà un préfixe /api/v1, ne pas en ajouter
+                        app.include_router(api_manager.router, tags=["search"])
+                        final_prefix = router_prefix
+                    else:
+                        # Le router n'a pas de préfixe ou un préfixe partiel
+                        app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search"])
+                        final_prefix = "/api/v1/search"
+                    
+                    routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
+                    logger.info(f"✅ search_service: {routes_count} routes sur {final_prefix}")
+                    loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": final_prefix}
+                else:
+                    logger.error("❌ search_service: api_manager.router non trouvé")
+                    loader.services_status["search_service"] = {"status": "error", "error": "api_manager.router manquant"}
+                    
         except Exception as e:
             logger.error(f"❌ search_service: Erreur générale - {str(e)}")
             loader.services_status["search_service"] = {"status": "error", "error": str(e)}
 
-      
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") == "ok"])
         logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")

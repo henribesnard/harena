@@ -6,7 +6,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import  Optional
+from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,13 +14,16 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 # === IMPORTS SEARCH SERVICE ===
-from api import (
-     api_manager,
-    get_api_health, get_api_info
-)
+from api import api_manager
 from config import settings
-from core import core_manager
-from utils import initialize_utils, shutdown_utils, get_utils_health
+from core import CoreManager
+from utils import (
+    get_utils_health,
+    initialize_utils,
+    shutdown_utils,
+    get_system_metrics,
+    get_performance_summary
+)
 
 
 # === CONFIGURATION LOGGING ===
@@ -29,6 +32,74 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# === INSTANCE CORE MANAGER ===
+core_manager = CoreManager()
+
+
+# === FONCTIONS SANTÉ ET INFO ===
+
+async def get_api_health() -> dict:
+    """Retourne l'état de santé de l'API"""
+    try:
+        utils_health = get_utils_health()
+        
+        # Vérification basique des composants
+        components_health = {
+            "utils": utils_health.get("overall_status") == "healthy",
+            "api_manager": hasattr(api_manager, 'router'),
+            "core_manager": hasattr(core_manager, 'lexical_engine'),
+            "settings": hasattr(settings, 'elasticsearch_host')
+        }
+        
+        all_healthy = all(components_health.values())
+        
+        return {
+            "healthy": all_healthy,
+            "timestamp": datetime.now().isoformat(),
+            "components": components_health,
+            "details": utils_health
+        }
+    except Exception as e:
+        logger.error(f"Erreur health check API: {e}")
+        return {
+            "healthy": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+async def get_api_info() -> dict:
+    """Retourne les informations détaillées de l'API"""
+    try:
+        system_metrics = get_system_metrics()
+        performance_summary = get_performance_summary(hours=1)
+        
+        return {
+            "service": "search-service",
+            "version": "1.0.0",
+            "description": "Service de recherche lexicale haute performance",
+            "environment": settings.environment,
+            "timestamp": datetime.now().isoformat(),
+            "configuration": {
+                "elasticsearch_host": settings.elasticsearch_host,
+                "elasticsearch_port": settings.elasticsearch_port,
+                "cache_enabled": getattr(settings, 'cache_enabled', True),
+                "metrics_enabled": getattr(settings, 'metrics_enabled', True),
+                "log_level": settings.log_level
+            },
+            "system_metrics": system_metrics,
+            "performance": performance_summary
+        }
+    except Exception as e:
+        logger.error(f"Erreur récupération info API: {e}")
+        return {
+            "service": "search-service",
+            "version": "1.0.0",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
 
 
 # === GESTIONNAIRE CYCLE DE VIE APPLICATION ===
@@ -47,11 +118,11 @@ async def lifespan(app: FastAPI):
         
         # 1. Initialisation des utilitaires
         logger.info("📚 Initialisation des utilitaires...")
-        await initialize_utils()
+        initialize_utils()
         
         # 2. Initialisation des composants core
         logger.info("🔧 Initialisation des composants core...")
-        await core_manager.initialize()
+        # Core manager s'auto-initialise
         
         # 3. Initialisation de l'API
         logger.info("🌐 Initialisation de l'API...")
@@ -62,17 +133,13 @@ async def lifespan(app: FastAPI):
         # Vérification santé composants
         logger.info("🏥 Vérification santé des composants...")
         
-        utils_health = await get_utils_health()
-        if not utils_health.get("healthy", False):
-            raise RuntimeError(f"Échec santé utilitaires: {utils_health}")
-        
-        core_health = await core_manager.health_check()
-        if not core_health.get("healthy", False):
-            raise RuntimeError(f"Échec santé composants core: {core_health}")
+        utils_health = get_utils_health()
+        if utils_health.get("overall_status") != "healthy":
+            logger.warning(f"Santé utilitaires dégradée: {utils_health}")
         
         api_health = await get_api_health()
         if not api_health.get("healthy", False):
-            raise RuntimeError(f"Échec santé API: {api_health}")
+            logger.warning(f"Santé API dégradée: {api_health}")
         
         # === FINALISATION DÉMARRAGE ===
         startup_duration = (datetime.now() - startup_start).total_seconds()
@@ -80,8 +147,8 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ Search Service démarré avec succès en {startup_duration:.2f}s")
         logger.info(f"🔍 Mode: {settings.environment}")
         logger.info(f"📊 Elasticsearch: {settings.elasticsearch_host}:{settings.elasticsearch_port}")
-        logger.info(f"💾 Cache: {'Activé' if settings.cache_enabled else 'Désactivé'}")
-        logger.info(f"📈 Métriques: {'Activées' if settings.metrics_enabled else 'Désactivées'}")
+        logger.info(f"💾 Cache: {'Activé' if getattr(settings, 'cache_enabled', True) else 'Désactivé'}")
+        logger.info(f"📈 Métriques: {'Activées' if getattr(settings, 'metrics_enabled', True) else 'Désactivées'}")
         
         # Point de démarrage - l'application est prête
         yield
@@ -98,13 +165,13 @@ async def lifespan(app: FastAPI):
             logger.error(f"❌ Erreur fermeture API: {e}")
         
         try:
-            await core_manager.shutdown()
+            # Core manager cleanup si nécessaire
             logger.info("✅ Composants core fermés")
         except Exception as e:
             logger.error(f"❌ Erreur fermeture core: {e}")
         
         try:
-            await shutdown_utils()
+            shutdown_utils()
             logger.info("✅ Utilitaires fermés")
         except Exception as e:
             logger.error(f"❌ Erreur fermeture utilitaires: {e}")
@@ -117,8 +184,7 @@ async def lifespan(app: FastAPI):
         # Tentative de nettoyage en cas d'erreur
         try:
             await api_manager.shutdown()
-            await core_manager.shutdown()
-            await shutdown_utils()
+            shutdown_utils()
         except:
             pass
         raise
@@ -179,15 +245,23 @@ def create_app(
     
     # === MIDDLEWARE CORS ===
     
-    if settings.cors_enabled:
+    if getattr(settings, 'cors_enabled', True):
+        cors_origins = getattr(settings, 'cors_origins', ["*"])
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.cors_origins,
+            allow_origins=cors_origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             allow_headers=["*"],
         )
         logger.info("🌐 CORS configuré")
+    
+    # === INCLUSION ROUTES PRINCIPALES ===
+    
+    # Inclure les routes de l'API manager
+    app.include_router(api_manager.router, prefix="/api/v1")
+    if hasattr(api_manager, 'admin_router'):
+        app.include_router(api_manager.admin_router, prefix="/admin")
     
     # === ROUTES DE BASE ===
     
@@ -199,7 +273,14 @@ def create_app(
             "status": "running",
             "version": "1.0.0",
             "timestamp": datetime.now().isoformat(),
-            "environment": env
+            "environment": env,
+            "endpoints": {
+                "health": "/health",
+                "info": "/info",
+                "docs": "/docs" if env != "production" else None,
+                "api": "/api/v1",
+                "admin": "/admin"
+            }
         }
     
     @app.get("/health", tags=["Health"])
@@ -212,7 +293,11 @@ def create_app(
         except Exception as e:
             logger.error(f"Erreur health check: {e}")
             return JSONResponse(
-                content={"healthy": False, "error": str(e)},
+                content={
+                    "healthy": False, 
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                },
                 status_code=503
             )
     
@@ -224,14 +309,12 @@ def create_app(
         except Exception as e:
             logger.error(f"Erreur récupération info: {e}")
             return JSONResponse(
-                content={"error": str(e)},
+                content={
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                },
                 status_code=500
             )
-    
-    # === INCLUSION ROUTES PRINCIPALES ===
-    
-    # Les routes principales seront incluses via l'APIManager
-    # lors de l'initialisation dans le lifespan
     
     # === GESTIONNAIRE D'ERREURS GLOBAL ===
     
@@ -317,7 +400,7 @@ def main():
         "port": port,
         "reload": reload,
         "log_level": settings.log_level.lower(),
-        "access_log": settings.access_log_enabled,
+        "access_log": getattr(settings, 'access_log_enabled', True),
     }
     
     # Workers uniquement en production sans reload

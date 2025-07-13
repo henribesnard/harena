@@ -16,13 +16,13 @@ Architecture :
 import logging
 import time
 import psutil
-from typing import Dict, List, Optional, Any
+from typing import Dict, Any
 from datetime import datetime, timedelta
 from enum import Enum
 
-# Imports locaux
-from .metrics import metrics_collector, alert_manager, metrics_dashboard
-from .cache import get_cache_manager
+# Imports locaux - CORRECTION: Importer cache_manager directement
+from .metrics import metrics_collector, alert_manager
+from .cache import cache_manager  # ← CORRECTION: au lieu de get_cache_manager
 
 
 logger = logging.getLogger(__name__)
@@ -248,20 +248,15 @@ def get_utils_performance() -> Dict[str, Any]:
             "system_performance": {}
         }
         
-        # Performance du cache
+        # Performance du cache - CORRECTION: utiliser cache_manager directement
         try:
-            cache_manager = get_cache_manager()
-            cache_stats = cache_manager.get_stats()
+            cache_stats = cache_manager.get_global_stats()
             
+            # Adapter la structure selon ce qui est disponible dans cache_manager
             performance_data["cache_performance"] = {
-                "hit_rate_percent": cache_stats.get("hit_rate", 0) * 100,
-                "total_hits": cache_stats.get("hits", 0),
-                "total_misses": cache_stats.get("misses", 0),
-                "total_requests": cache_stats.get("hits", 0) + cache_stats.get("misses", 0),
-                "current_size": cache_stats.get("current_size", 0),
-                "max_size": cache_stats.get("max_size", 0),
-                "memory_usage_mb": cache_stats.get("memory_usage", 0) / (1024 * 1024),
-                "avg_access_time_ms": cache_stats.get("avg_access_time_ms", 0)
+                "total_caches": cache_stats.get("total_caches", 0),
+                "caches_info": cache_stats.get("caches", {}),
+                "status": "operational"
             }
         except Exception as e:
             logger.warning(f"Erreur collecte performance cache: {e}")
@@ -326,11 +321,15 @@ def cleanup_old_metrics(hours: int = 24) -> Dict[str, Any]:
         final_count = sum(len(samples) for samples in getattr(metrics_collector, '_metrics', {}).values())
         cleaned_count = original_count - final_count
         
-        # Nettoyage du cache si nécessaire
+        # Nettoyage du cache si nécessaire - CORRECTION: utiliser cache_manager directement
         cache_cleaned = 0
         try:
-            cache_manager = get_cache_manager()
-            cache_cleaned = cache_manager.cleanup_expired()
+            cache_stats = cache_manager.cleanup_all_caches()
+            # Calculer le total nettoyé
+            cache_cleaned = sum(
+                sum(cache_data.values()) if isinstance(cache_data, dict) else 0
+                for cache_data in cache_stats.values()
+            )
         except Exception as e:
             logger.warning(f"Erreur nettoyage cache: {e}")
         
@@ -620,37 +619,30 @@ def _check_metrics_health() -> Dict[str, Any]:
 
 
 def _check_cache_health() -> Dict[str, Any]:
-    """Vérifie la santé du système de cache"""
+    """Vérifie la santé du système de cache - CORRECTION: utiliser cache_manager directement"""
     try:
-        cache_manager = get_cache_manager()
-        stats = cache_manager.get_stats()
+        stats = cache_manager.get_global_stats()
         
-        hit_rate = stats.get("hit_rate", 0)
-        current_size = stats.get("current_size", 0)
-        max_size = stats.get("max_size", 1)
+        # Évaluer la santé du cache basée sur les stats globales
+        total_caches = stats.get("total_caches", 0)
+        caches_info = stats.get("caches", {})
         
-        # Évaluer la santé du cache
-        if hit_rate > 0.8:  # > 80% hit rate
+        if total_caches == 0:
+            status = HealthStatus.DEGRADED
+            message = "Aucun cache configuré"
+        elif caches_info:
             status = HealthStatus.HEALTHY
-            message = "Cache performant"
-        elif hit_rate > 0.5:  # > 50% hit rate
-            status = HealthStatus.DEGRADED
-            message = "Cache moyennement performant"
-        elif current_size == 0:
-            status = HealthStatus.DEGRADED
-            message = "Cache vide"
+            message = "Cache opérationnel"
         else:
             status = HealthStatus.DEGRADED
-            message = "Cache peu performant"
+            message = "Cache en état dégradé"
         
         return {
             "status": status,
             "message": message,
             "details": {
-                "hit_rate": round(hit_rate * 100, 1),
-                "current_size": current_size,
-                "max_size": max_size,
-                "fill_percentage": round((current_size / max_size) * 100, 1) if max_size > 0 else 0
+                "total_caches": total_caches,
+                "caches_info": caches_info
             }
         }
     except Exception as e:
@@ -705,6 +697,26 @@ def _check_system_health() -> Dict[str, Any]:
         }
 
 
+# === FONCTIONS UTILITAIRES AJOUTÉES ===
+
+def initialize_utils():
+    """
+    Initialise tous les composants utils
+    """
+    # Le cache manager s'auto-initialise
+    # Le metrics collector s'auto-initialise
+    logger.info("Utils initialized")
+
+
+def shutdown_utils():
+    """
+    Arrêt propre de tous les composants utils
+    """
+    # Nettoyer les métriques anciennes
+    cleanup_old_metrics(hours=1)
+    logger.info("Utils shutdown complete")
+
+
 # === EXPORTS ===
 
 __all__ = [
@@ -717,5 +729,9 @@ __all__ = [
     "get_performance_summary", 
     "get_utils_performance",
     "cleanup_old_metrics",
-    "get_utils_health"
+    "get_utils_health",
+    
+    # === FONCTIONS UTILITAIRES ===
+    "initialize_utils",
+    "shutdown_utils"
 ]

@@ -1,458 +1,478 @@
 """
-Application Harena pour développement local.
-
-Module optimisé pour le développement et le débogage en environnement local,
-avec des fonctionnalités supplémentaires pour faciliter le développement.
+Application Harena pour tests locaux avant déploiement.
+Version de développement avec diagnostics étendus et hot reload.
 """
 
 import logging
 import os
 import sys
-import traceback
+import asyncio
 from pathlib import Path
+from typing import Dict, List, Tuple
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+import uvicorn
 
 # Configuration du logging pour développement
 logging.basicConfig(
-    level=logging.DEBUG,  # Niveau DEBUG pour plus de détails en local
-    format='%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
 )
 logger = logging.getLogger("harena_local")
 
-# Définir l'environnement global
-os.environ["ENVIRONMENT"] = "development"
+# Configuration locale par défaut
+def setup_local_environment():
+    """Configure l'environnement local avec des valeurs par défaut."""
+    
+    # Base de données locale par défaut
+    if not os.environ.get("DATABASE_URL"):
+        os.environ["DATABASE_URL"] = "postgresql://localhost:5432/harena_dev"
+        logger.info("🔧 DATABASE_URL définie pour développement local")
+    
+    # Variables d'environnement par défaut pour les tests
+    default_env = {
+        "ENVIRONMENT": "development",
+        "DEBUG": "true",
+        "ELASTICSEARCH_URL": "http://localhost:9200",
+        "QDRANT_URL": "http://localhost:6333",
+        "REDIS_URL": "redis://localhost:6379",
+        # Variables OpenAI pour les tests (à remplacer par vos clés)
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "sk-test-key"),
+        "EMBEDDING_MODEL": "text-embedding-3-small",
+        # Variables Bridge API (optionnelles pour tests)
+        "BRIDGE_BASE_URL": "https://sync.bankin.com",
+        "BRIDGE_CLIENT_ID": os.environ.get("BRIDGE_CLIENT_ID", ""),
+        "BRIDGE_CLIENT_SECRET": os.environ.get("BRIDGE_CLIENT_SECRET", ""),
+    }
+    
+    for key, value in default_env.items():
+        if not os.environ.get(key):
+            os.environ[key] = value
+    
+    logger.info("✅ Environnement local configuré")
 
-# S'assurer que tous les modules sont accessibles
+# Ajouter le répertoire courant au path
 current_dir = Path(__file__).parent.absolute()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
-    logger.info(f"Ajout du répertoire courant au sys.path: {current_dir}")
 
-logger.info(f"Python path: {sys.path}")
-
-# ======== DÉFINITION DES SERVICES ========
-
-class ServiceRegistry:
-    """Classe pour gérer les services disponibles et leurs routeurs."""
+class LocalServiceTester:
+    """Testeur de services pour développement local."""
     
     def __init__(self):
-        self.services = {}
-        
-    def register(self, name: str, router=None, prefix: str = None, status: str = "pending"):
-        """Enregistre un service dans le registre."""
-        self.services[name] = {
-            "router": router,
-            "prefix": prefix,
-            "status": status
-        }
-        logger.info(f"Service {name} enregistré avec statut {status}")
-        
-    def get_service_status(self) -> Dict[str, str]:
-        """Retourne le statut de tous les services."""
-        return {name: info["status"] for name, info in self.services.items()}
+        self.services_status = {}
+        self.detailed_errors = {}
     
-    def get_available_routers(self) -> List[Dict[str, Any]]:
-        """Retourne les routeurs disponibles avec leurs préfixes."""
-        routers = [
-            {"name": name, "router": info["router"], "prefix": info["prefix"]}
-            for name, info in self.services.items()
-            if info["status"] == "ok" and info["router"] is not None
+    def test_database_connection(self) -> bool:
+        """Test de connexion à la base de données."""
+        try:
+            from db_service.session import engine
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT version()"))
+                version = result.fetchone()[0]
+                logger.info(f"✅ PostgreSQL connecté: {version[:50]}...")
+                return True
+        except Exception as e:
+            logger.error(f"❌ Base de données: {e}")
+            self.detailed_errors["database"] = str(e)
+            return False
+    
+    def test_external_dependencies(self) -> Dict[str, bool]:
+        """Test des dépendances externes (Elasticsearch, Qdrant, Redis)."""
+        dependencies = {}
+        
+        # Test Elasticsearch
+        try:
+            import httpx
+            response = httpx.get(os.environ.get("ELASTICSEARCH_URL", "http://localhost:9200"), timeout=5)
+            if response.status_code == 200:
+                logger.info("✅ Elasticsearch accessible")
+                dependencies["elasticsearch"] = True
+            else:
+                logger.warning("⚠️ Elasticsearch non accessible")
+                dependencies["elasticsearch"] = False
+        except Exception as e:
+            logger.warning(f"⚠️ Elasticsearch: {e}")
+            dependencies["elasticsearch"] = False
+        
+        # Test Qdrant
+        try:
+            import httpx
+            response = httpx.get(f"{os.environ.get('QDRANT_URL', 'http://localhost:6333')}/collections", timeout=5)
+            logger.info("✅ Qdrant accessible")
+            dependencies["qdrant"] = True
+        except Exception as e:
+            logger.warning(f"⚠️ Qdrant: {e}")
+            dependencies["qdrant"] = False
+        
+        # Test Redis
+        try:
+            import redis
+            r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
+            r.ping()
+            logger.info("✅ Redis accessible")
+            dependencies["redis"] = True
+        except Exception as e:
+            logger.warning(f"⚠️ Redis: {e}")
+            dependencies["redis"] = False
+        
+        return dependencies
+    
+    def test_service_imports(self) -> Dict[str, bool]:
+        """Test d'import de tous les services avec fallbacks."""
+        services_config = {
+            "user_service": ["user_service.main", "user_service"],
+            "db_service": ["db_service.main", "db_service", "db_service.session"],
+            "sync_service": ["sync_service.main", "sync_service"],
+            "enrichment_service": ["enrichment_service.main", "enrichment_service"],
+            "search_service": ["search_service.main", "search_service"],
+            "conversation_service": ["conversation_service.main", "conversation_service"]
+        }
+        
+        results = {}
+        for service_name, module_paths in services_config.items():
+            imported = False
+            last_error = None
+            
+            for module_path in module_paths:
+                try:
+                    __import__(module_path)
+                    logger.info(f"✅ {service_name}: Import OK ({module_path})")
+                    results[service_name] = True
+                    imported = True
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+            
+            if not imported:
+                logger.error(f"❌ {service_name}: {last_error}")
+                results[service_name] = False
+                self.detailed_errors[service_name] = last_error
+        
+        return results
+    
+    def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
+        """Charge et enregistre un router avec diagnostics étendus."""
+        try:
+            # Import dynamique du router
+            module = __import__(router_path, fromlist=["router"])
+            router = getattr(module, "router", None)
+            
+            if router:
+                # Enregistrer le router
+                app.include_router(router, prefix=prefix, tags=[service_name])
+                routes_count = len(router.routes) if hasattr(router, 'routes') else 0
+                
+                # Lister les routes pour debug
+                if hasattr(router, 'routes'):
+                    routes_info = []
+                    for route in router.routes:
+                        methods = getattr(route, 'methods', {'GET'})
+                        path = getattr(route, 'path', 'unknown')
+                        routes_info.append(f"{list(methods)[0]} {prefix}{path}")
+                    
+                    logger.info(f"✅ {service_name}: {routes_count} routes chargées")
+                    logger.debug(f"   Routes: {', '.join(routes_info[:3])}{'...' if len(routes_info) > 3 else ''}")
+                
+                self.services_status[service_name] = {
+                    "status": "ok", 
+                    "routes": routes_count, 
+                    "prefix": prefix,
+                    "routes_detail": routes_info if hasattr(router, 'routes') else []
+                }
+                return True
+            else:
+                logger.error(f"❌ {service_name}: Pas de router trouvé dans {router_path}")
+                self.services_status[service_name] = {"status": "error", "error": "Pas de router"}
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ {service_name}: {str(e)}")
+            self.services_status[service_name] = {"status": "error", "error": str(e)}
+            self.detailed_errors[f"{service_name}_router"] = str(e)
+            return False
+    
+    def get_comprehensive_report(self) -> Dict:
+        """Génère un rapport complet pour debug."""
+        ok_services = [name for name, status in self.services_status.items() 
+                      if status.get("status") == "ok"]
+        
+        total_routes = sum(status.get("routes", 0) for status in self.services_status.values() 
+                          if status.get("status") == "ok")
+        
+        return {
+            "summary": {
+                "services_loaded": len(ok_services),
+                "total_services": len(self.services_status),
+                "total_routes": total_routes,
+                "status": "ready" if len(ok_services) >= 3 else "degraded"
+            },
+            "services": self.services_status,
+            "errors": self.detailed_errors if self.detailed_errors else None,
+            "environment": os.environ.get("ENVIRONMENT"),
+            "database_url_set": bool(os.environ.get("DATABASE_URL")),
+            "openai_key_set": bool(os.environ.get("OPENAI_API_KEY", "").startswith("sk-"))
+        }
+
+def create_local_app():
+    """Créer l'application FastAPI pour tests locaux."""
+    
+    # Configuration environnement local
+    setup_local_environment()
+    
+    app = FastAPI(
+        title="Harena Finance Platform - Local Dev",
+        description="Version de développement avec diagnostics étendus",
+        version="1.0.0-dev",
+        debug=True
+    )
+
+    # CORS permissif pour développement
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    tester = LocalServiceTester()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Gestionnaire du cycle de vie de l'application."""
+        logger.info("🚀 Démarrage Harena Finance Platform - MODE DÉVELOPPEMENT")
+        
+        # Tests préliminaires
+        logger.info("🔍 Tests des dépendances...")
+        
+        # Test DB critique
+        if not tester.test_database_connection():
+            logger.error("💥 ARRÊT: Base de données non accessible")
+            logger.info("💡 Vérifiez que PostgreSQL est démarré et accessible")
+            # En mode dev, on continue quand même pour voir les autres erreurs
+        
+        # Test dépendances externes (non bloquant)
+        dependencies = tester.test_external_dependencies()
+        missing_deps = [name for name, status in dependencies.items() if not status]
+        if missing_deps:
+            logger.warning(f"⚠️ Dépendances manquantes: {', '.join(missing_deps)}")
+            logger.info("💡 Certaines fonctionnalités seront limitées")
+        
+        # Test imports des services
+        logger.info("📦 Test des imports de services...")
+        import_results = tester.test_service_imports()
+        failed_imports = [name for name, status in import_results.items() if not status]
+        if failed_imports:
+            logger.warning(f"⚠️ Services non importables: {', '.join(failed_imports)}")
+        
+        # Chargement des routers avec fallbacks adaptés
+        logger.info("📋 Chargement des routes des services...")
+        
+        service_routers = [
+            ("user_service", ["user_service.api.endpoints.users"], "/api/v1/users"),
+            ("sync_service", ["sync_service.api.router", "sync_service.api.routes"], "/api/v1/sync"),
+            ("enrichment_service", ["enrichment_service.api.routes"], "/api/v1/enrichment"),
+            ("search_service", ["search_service.api.routes", "search_service.routes"], "/api/v1/search"),
+            ("conversation_service", ["conversation_service.api.routes"], "/api/v1/conversation"),
         ]
-        logger.info(f"Nombre de routeurs disponibles: {len(routers)}")
-        return routers
-
-# Création du registre de services
-service_registry = ServiceRegistry()
-
-# ======== FONCTION DU CYCLE DE VIE ========
-
-async def startup():
-    """Fonction d'initialisation de l'application"""
-    logger.info("Application Harena en démarrage en mode développement...")
-    
-    # Vérification des variables d'environnement critiques
-    required_env_vars = ["DATABASE_URL", "BRIDGE_CLIENT_ID", "BRIDGE_CLIENT_SECRET"]
-    missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
-    
-    if missing_vars:
-        logger.warning(f"Variables d'environnement manquantes: {', '.join(missing_vars)}")
-        logger.warning("Pour faciliter le développement, des valeurs par défaut seront utilisées si possible.")
-    
-    # Test de la connexion base de données
-    try:
-        from user_service.db.session import engine
-        from sqlalchemy import text
         
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-            logger.info("Connexion à la base de données établie avec succès")
-    except Exception as db_error:
-        logger.error(f"Erreur de connexion à la base de données: {db_error}")
-        logger.info("Vérifiez que votre fichier .env contient DATABASE_URL=postgresql://user:password@localhost:5432/harena")
-
-
-async def shutdown():
-    """Fonction de nettoyage lors de l'arrêt de l'application"""
-    logger.info("Application Harena en arrêt...")
-    # Aucune fermeture spécifique nécessaire
-
-# ======== GESTIONNAIRE DE CYCLE DE VIE ========
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Gestionnaire du cycle de vie de l'application.
-    Utilise le nouveau modèle recommandé par FastAPI.
-    """
-    # Code d'initialisation (avant le yield)
-    await startup()
-    
-    yield  # L'application s'exécute ici
-    
-    # Code de nettoyage (après le yield)
-    await shutdown()
-
-# ======== CRÉATION DE L'APPLICATION ========
-
-# Création de l'application FastAPI pour développement local
-app = FastAPI(
-    title="Harena Finance API (Local Development)",
-    description="API pour les services financiers Harena - Développement local",
-    version="1.0.0-dev",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
-    debug=True,  # Active le mode debug pour plus d'informations
-    lifespan=lifespan  # Utilisation du nouveau gestionnaire de cycle de vie
-)
-
-# Configuration CORS permissive pour développement
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # En développement, on accepte toutes les origines
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ======== IMPORTATION DES SERVICES ET ENDPOINTS ========
-
-# User Service - Essai d'importation avec gestion d'erreur détaillée
-try:
-    from user_service.api.endpoints import users as users_router
-    from config_service.config import settings as user_settings
-    service_registry.register(
-        "user_service", 
-        router=users_router.router, 
-        prefix=user_settings.API_V1_STR + "/users",
-        status="ok"
-    )
-    logger.info(f"User Service importé avec succès, préfixe: {user_settings.API_V1_STR}/users")
-except ImportError as e:
-    logger.error(f"Erreur lors de l'importation du User Service: {e}")
-    logger.error(traceback.format_exc())
-    service_registry.register("user_service", status="failed")
-    logger.info("Pour activer le User Service, assurez-vous que les modules user_service et config_service sont disponibles")
-
-# Sync Service - Utiliser l'API router centralisé pour enregistrer tous les endpoints
-try:
-    from sync_service.api.router import register_routers, setup_middleware
-    from sync_service.main import create_app as create_sync_app
-    
-    # Créer l'application Sync Service
-    sync_app = create_sync_app()
-    service_registry.register("sync_service_app", router=None, status="ok")
-    
-    # Enregistrer les endpoints d'API Sync Service
-    try:
-        from sync_service.api.endpoints.sync import router as sync_router
-        service_registry.register(
-            "sync_service", 
-            router=sync_router,
-            prefix="/api/v1/sync",
-            status="ok"
-        )
-        logger.info("Sync Service importé avec succès, préfixe: /api/v1/sync")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Sync Router: {e}")
-        logger.error(traceback.format_exc())
-        service_registry.register("sync_service", status="failed")
+        successful = 0
+        for service_name, router_paths, prefix in service_routers:
+            router_loaded = False
+            
+            for router_path in router_paths:
+                if tester.load_service_router(app, service_name, router_path, prefix):
+                    successful += 1
+                    router_loaded = True
+                    break
+            
+            if not router_loaded:
+                logger.warning(f"⚠️ {service_name}: Aucun router trouvé dans {router_paths}")
         
-    # Sync Service - Transactions
-    try:
-        from sync_service.api.endpoints.transactions import router as transactions_router
-        service_registry.register(
-            "transactions_service", 
-            router=transactions_router,
-            prefix="/api/v1/transactions",
-            status="ok"
-        )
-        logger.info("Transactions Service importé avec succès, préfixe: /api/v1/transactions")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Transactions Router: {e}")
-        service_registry.register("transactions_service", status="failed")
-    
-    # Sync Service - Webhooks
-    try:
-        from sync_service.api.endpoints.webhooks import router as webhooks_router
-        service_registry.register(
-            "webhooks_service", 
-            router=webhooks_router,
-            prefix="/webhooks",  # Important! Le préfixe doit correspondre à celui utilisé dans le router
-            status="ok"
-        )
-        logger.info("Webhooks Service importé avec succès, préfixe: /webhooks")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Webhooks Router: {e}")
-        service_registry.register("webhooks_service", status="failed")
-    
-    # Sync Service - Comptes
-    try:
-        from sync_service.api.endpoints.accounts import router as accounts_router
-        service_registry.register(
-            "accounts_service", 
-            router=accounts_router,
-            prefix="/api/v1/accounts",
-            status="ok"
-        )
-        logger.info("Accounts Service importé avec succès, préfixe: /api/v1/accounts")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Accounts Router: {e}")
-        service_registry.register("accounts_service", status="failed")
-    
-    # Sync Service - Items
-    try:
-        from sync_service.api.endpoints.items import router as items_router
-        service_registry.register(
-            "items_service", 
-            router=items_router,
-            prefix="/api/v1/items",
-            status="ok"
-        )
-        logger.info("Items Service importé avec succès, préfixe: /api/v1/items")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Items Router: {e}")
-        service_registry.register("items_service", status="failed")
+        # Fallback spécial pour sync_service avec modules individuels
+        if "sync_service" not in [s for s, status in tester.services_status.items() if status.get("status") == "ok"]:
+            logger.info("🔄 Tentative de chargement des modules sync individuels...")
+            sync_modules = [
+                ("sync_transactions", "sync_service.api.endpoints.transactions", "/api/v1/transactions"),
+                ("sync_accounts", "sync_service.api.endpoints.accounts", "/api/v1/accounts"),
+                ("sync_categories", "sync_service.api.endpoints.categories", "/api/v1/categories"),
+            ]
+            
+            for service_name, router_path, prefix in sync_modules:
+                if tester.load_service_router(app, service_name, router_path, prefix):
+                    successful += 1
         
-    # Sync Service - Stocks
-    try:
-        from sync_service.api.endpoints.stocks import router as stocks_router
-        service_registry.register(
-            "stocks_service", 
-            router=stocks_router,
-            prefix="/api/v1/stocks",
-            status="ok"
-        )
-        logger.info("Stocks Service importé avec succès, préfixe: /api/v1/stocks")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Stocks Router: {e}")
-        service_registry.register("stocks_service", status="failed")
-    
-    # Sync Service - Categories
-    try:
-        from sync_service.api.endpoints.categories import router as categories_router
-        service_registry.register(
-            "categories_service", 
-            router=categories_router,
-            prefix="/api/v1/categories",
-            status="ok"
-        )
-        logger.info("Categories Service importé avec succès, préfixe: /api/v1/categories")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Categories Router: {e}")
-        service_registry.register("categories_service", status="failed")
-    
-    # Sync Service - Insights
-    try:
-        from sync_service.api.endpoints.insights import router as insights_router
-        service_registry.register(
-            "insights_service", 
-            router=insights_router,
-            prefix="/api/v1/insights",
-            status="ok"
-        )
-        logger.info("Insights Service importé avec succès, préfixe: /api/v1/insights")
-    except ImportError as e:
-        logger.error(f"Erreur lors de l'importation du Insights Router: {e}")
-        service_registry.register("insights_service", status="failed")
+        # Rapport final
+        report = tester.get_comprehensive_report()
+        logger.info(f"✅ Démarrage terminé: {successful} services chargés")
+        logger.info(f"📊 Statut global: {report['summary']['status'].upper()}")
         
-except ImportError as e:
-    logger.error(f"Erreur lors de l'importation du Sync Service: {e}")
-    logger.error(traceback.format_exc())
-    service_registry.register("sync_service_app", status="failed")
-    logger.info("Pour activer le Sync Service, assurez-vous que le module sync_service est disponible")
-
-# ======== INCLUSION DES ROUTERS ========
-
-# Inclure tous les routers disponibles
-for service_info in service_registry.get_available_routers():
-    try:
-        # Utiliser include_router au lieu de mount pour les routers FastAPI
-        app.include_router(
-            service_info["router"],
-            prefix=service_info["prefix"],
-            tags=[service_info["name"]]
-        )
-        logger.info(f"Router {service_info['name']} inclus avec préfixe {service_info['prefix']}")
-    except Exception as e:
-        logger.error(f"Erreur lors de l'inclusion du router {service_info['name']}: {e}")
-        logger.error(traceback.format_exc())
-
-# ======== ENDPOINTS DE BASE ========
-
-@app.get("/", tags=["health"])
-async def root():
-    """
-    Point d'entrée racine pour vérifier que l'application est en ligne.
-    """
-    active_services = [name for name, info in service_registry.services.items() if info["status"] == "ok"]
-    
-    return {
-        "status": "ok",
-        "application": "Harena Finance API (Local Development)",
-        "version": "1.0.0-dev",
-        "environment": "development",
-        "services": active_services,
-        "documentation": {
-            "main": "/docs",
-        }
-    }
-
-@app.get("/health", tags=["health"])
-async def health_check():
-    """
-    Vérification de l'état de santé de tous les services.
-    """
-    # Vérifier la connexion à la base de données
-    db_status = "unknown"
-    try:
-        from user_service.db.session import engine
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {str(e)}"
-    
-    # Vérification des services externes
-    bridge_status = "configured" if os.environ.get("BRIDGE_CLIENT_ID") else "not_configured"
-    
-    # État général de l'application
-    overall_status = "ok"
-    service_statuses = service_registry.get_service_status()
-    
-    if "failed" in service_statuses.values() or db_status.startswith("error"):
-        overall_status = "degraded"
-    
-    return {
-        "status": overall_status,
-        "services": service_statuses,
-        "database": db_status,
-        "bridge_api": bridge_status,
-        "environment": "development",
-        "timestamp": str(datetime.now())
-    }
-
-@app.get("/debug", tags=["debug"])
-async def debug_info():
-    """
-    Endpoint pour le débogage - fournit des informations détaillées sur l'environnement.
-    """
-    # En mode développement, afficher toutes les informations utiles
-    env_vars = {
-        k: ("***HIDDEN***" if k in ["DATABASE_URL", "BRIDGE_CLIENT_SECRET", "SECRET_KEY"] 
-            else ("SET" if v else "NOT SET"))
-        for k, v in os.environ.items() 
-        if k.isupper()
-    }
-    
-    return {
-        "status": "debug enabled",
-        "environment": "development",
-        "python_version": sys.version,
-        "services": service_registry.get_service_status(),
-        "environment_variables": env_vars,
-        "routes": [
-            {"path": route.path, "name": route.name, "methods": route.methods if hasattr(route, "methods") else None} 
-            for route in app.routes
-        ],
-        "timestamp": str(datetime.now())
-    }
-
-@app.get("/test-webhook", tags=["debug"])
-async def test_webhook(background_tasks: BackgroundTasks):
-    """
-    Endpoint pour tester manuellement le traitement d'un webhook Bridge.
-    
-    Returns:
-        Dict: Résultat du test
-    """
-    try:
-        from sync_service.webhook_handler.processor import process_webhook
+        if report['summary']['status'] == 'degraded':
+            logger.warning("⚠️ Application en mode dégradé - Vérifiez les erreurs ci-dessus")
         
-        # Créer un payload de test (similaire à celui envoyé par Bridge)
-        test_payload = {
-            "type": "TEST_EVENT",
-            "content": {
-                "message": "This is a test webhook from the local app",
-                "timestamp": datetime.now().isoformat()
-            }
-        }
+        yield  # Point de démarrage de l'application
         
-        # Obtenir une session de base de données
-        from db_service.session import get_db
-        db = next(get_db())
-        
-        # Traiter le webhook
-        webhook_event = await process_webhook(db, test_payload)
-        
-        return {
-            "status": "success",
-            "message": "Webhook test processed successfully",
-            "webhook_id": webhook_event.id if webhook_event else None,
-            "webhook_type": "TEST_EVENT"
-        }
-    except Exception as e:
-        logger.error(f"Erreur lors du test du webhook: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Error processing test webhook: {str(e)}",
-            "traceback": traceback.format_exc()
-        }
+        # Cleanup optionnel ici
+        logger.info("🔄 Arrêt de l'application")
 
-# ======== GESTIONNAIRE D'EXCEPTIONS ========
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Gestionnaire global d'exceptions pour toute l'application.
-    Fournit des détails complets en mode développement.
-    """
-    logger.error(f"Exception non gérée: {str(exc)}", exc_info=True)
-    
-    # En développement, on fournit tous les détails de l'erreur
-    return JSONResponse(
-        status_code=500,
-        content={
-            "status": "error",
-            "message": "Internal server error",
-            "detail": str(exc),
-            "traceback": traceback.format_exc(),
-            "request_url": str(request.url),
-            "request_method": request.method
-        }
+    app = FastAPI(
+        title="Harena Finance Platform - Local Dev",
+        description="Version de développement avec diagnostics étendus",
+        version="1.0.0-dev",
+        debug=True,
+        lifespan=lifespan
     )
 
-# Point d'entrée pour le serveur de développement
+    # CORS permissif pour développement
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.on_event("startup")
+    async def startup():
+        logger.info("🚀 Démarrage Harena Finance Platform - MODE DÉVELOPPEMENT")
+        
+        # Tests préliminaires
+        logger.info("🔍 Tests des dépendances...")
+        
+        # Test DB critique
+        if not tester.test_database_connection():
+            logger.error("💥 ARRÊT: Base de données non accessible")
+            logger.info("💡 Vérifiez que PostgreSQL est démarré et accessible")
+            # En mode dev, on continue quand même pour voir les autres erreurs
+        
+        # Test dépendances externes (non bloquant)
+        dependencies = tester.test_external_dependencies()
+        missing_deps = [name for name, status in dependencies.items() if not status]
+        if missing_deps:
+            logger.warning(f"⚠️ Dépendances manquantes: {', '.join(missing_deps)}")
+            logger.info("💡 Certaines fonctionnalités seront limitées")
+        
+        # Test imports des services
+        logger.info("📦 Test des imports de services...")
+        import_results = tester.test_service_imports()
+        failed_imports = [name for name, status in import_results.items() if not status]
+        if failed_imports:
+            logger.warning(f"⚠️ Services non importables: {', '.join(failed_imports)}")
+        
+        # Chargement des routers avec fallbacks adaptés
+        logger.info("📋 Chargement des routes des services...")
+        
+        service_routers = [
+            ("user_service", ["user_service.api.endpoints.users"], "/api/v1/users"),
+            ("sync_service", ["sync_service.api.router", "sync_service.api.routes"], "/api/v1/sync"),
+            ("enrichment_service", ["enrichment_service.api.routes"], "/api/v1/enrichment"),
+            ("search_service", ["search_service.api.routes", "search_service.routes"], "/api/v1/search"),
+            ("conversation_service", ["conversation_service.api.routes"], "/api/v1/conversation"),
+        ]
+        
+        successful = 0
+        for service_name, router_paths, prefix in service_routers:
+            router_loaded = False
+            
+            for router_path in router_paths:
+                if tester.load_service_router(app, service_name, router_path, prefix):
+                    successful += 1
+                    router_loaded = True
+                    break
+            
+            if not router_loaded:
+                logger.warning(f"⚠️ {service_name}: Aucun router trouvé dans {router_paths}")
+        
+        # Fallback spécial pour sync_service avec modules individuels
+        if "sync_service" not in [s for s, status in tester.services_status.items() if status.get("status") == "ok"]:
+            logger.info("🔄 Tentative de chargement des modules sync individuels...")
+            sync_modules = [
+                ("sync_transactions", "sync_service.api.endpoints.transactions", "/api/v1/transactions"),
+                ("sync_accounts", "sync_service.api.endpoints.accounts", "/api/v1/accounts"),
+                ("sync_categories", "sync_service.api.endpoints.categories", "/api/v1/categories"),
+            ]
+            
+            for service_name, router_path, prefix in sync_modules:
+                if tester.load_service_router(app, service_name, router_path, prefix):
+                    successful += 1
+        
+        # Rapport final
+        report = tester.get_comprehensive_report()
+        logger.info(f"✅ Démarrage terminé: {successful} services chargés")
+        logger.info(f"📊 Statut global: {report['summary']['status'].upper()}")
+        
+        if report['summary']['status'] == 'degraded':
+            logger.warning("⚠️ Application en mode dégradé - Vérifiez les erreurs ci-dessus")
+
+    @app.get("/health")
+    async def health():
+        """Health check pour développement."""
+        return tester.get_comprehensive_report()
+
+    @app.get("/debug")
+    async def debug():
+        """Endpoint de debug détaillé."""
+        return {
+            "services": tester.services_status,
+            "errors": tester.detailed_errors,
+            "environment_vars": {
+                "DATABASE_URL": "***" if os.environ.get("DATABASE_URL") else None,
+                "OPENAI_API_KEY": "***" if os.environ.get("OPENAI_API_KEY") else None,
+                "ELASTICSEARCH_URL": os.environ.get("ELASTICSEARCH_URL"),
+                "QDRANT_URL": os.environ.get("QDRANT_URL"),
+                "REDIS_URL": os.environ.get("REDIS_URL"),
+            },
+            "python_path": sys.path[:3],
+            "current_dir": str(current_dir)
+        }
+
+    @app.get("/")
+    async def root():
+        """Page d'accueil développement."""
+        report = tester.get_comprehensive_report()
+        return {
+            "message": "🏦 Harena Finance Platform - MODE DÉVELOPPEMENT",
+            "status": report['summary']['status'],
+            "services_loaded": f"{report['summary']['services_loaded']}/{report['summary']['total_services']}",
+            "total_routes": report['summary']['total_routes'],
+            "endpoints": {
+                "/health": "Rapport complet de santé",
+                "/debug": "Informations de debug détaillées",
+                "/docs": "Documentation API Swagger",
+                "/api/v1/*": "APIs des services métier"
+            },
+            "tips": [
+                "Utilisez /debug pour voir les erreurs détaillées",
+                "Vérifiez /docs pour l'API interactive",
+                "Consultez les logs de la console pour plus d'infos"
+            ]
+        }
+
+    return app
+
+# Créer l'app
+app = create_local_app()
+
+def run_dev_server():
+    """Lance le serveur de développement avec hot reload."""
+    logger.info("🔥 Lancement du serveur de développement avec hot reload")
+    logger.info("📡 Accès: http://localhost:8000")
+    logger.info("📚 Docs: http://localhost:8000/docs")
+    logger.info("🔍 Debug: http://localhost:8000/debug")
+    
+    uvicorn.run(
+        "local_app:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=[str(current_dir)],
+        log_level="info"
+    )
+
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 3000))
-    
-    logger.info(f"Démarrage de l'application Harena en mode développement sur port {port}")
-    uvicorn.run("local_app:app", host="0.0.0.0", port=port, reload=True)
+    run_dev_server()

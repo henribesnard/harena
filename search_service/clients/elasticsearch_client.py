@@ -21,6 +21,7 @@ Architecture:
 
 import logging
 import ssl
+import os
 from typing import Dict, Any, List, Optional
 import aiohttp
 import threading
@@ -35,11 +36,13 @@ from .base_client import (
 try:
     from search_service.config import settings
 except ImportError:
-    # Fallback si config n'est pas disponible
+    # Fallback amélioré si config n'est pas disponible
     class settings:
-        ELASTICSEARCH_URL = "https://localhost:9200"
-        ELASTICSEARCH_INDEX = "harena_transactions"
-        test_user_id = 34
+        # Prioriser BONSAI_URL puis fallback vers ELASTICSEARCH_URL
+        BONSAI_URL = os.environ.get("BONSAI_URL", "")
+        ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "https://localhost:9200")
+        ELASTICSEARCH_INDEX = os.environ.get("ELASTICSEARCH_INDEX", "harena_transactions")
+        test_user_id = int(os.environ.get("TEST_USER_ID", "34"))
 
 
 logger = logging.getLogger(__name__)
@@ -150,14 +153,23 @@ class ElasticsearchClient(BaseClient):
     
     async def _verify_bonsai_connection(self):
         """Vérifie la connexion initiale à Bonsai"""
+        # Détecter si on utilise localhost (erreur de config probable)
+        if "localhost" in self.base_url:
+            logger.warning(f"⚠️ Using localhost URL: {self.base_url}")
+            logger.warning("💡 Tip: Check if BONSAI_URL is properly set in your .env file")
+        
         async with self.session.get(self.base_url) as response:
             if response.status == 200:
                 cluster_info = await response.json()
                 cluster_name = cluster_info.get("cluster_name", "unknown")
                 version = cluster_info.get("version", {}).get("number", "unknown")
-                logger.info(f"✅ Bonsai connected: {cluster_name} elasticsearch v{version}")
+                
+                if "localhost" in self.base_url:
+                    logger.info(f"🔗 Local Elasticsearch connected: {cluster_name} v{version}")
+                else:
+                    logger.info(f"✅ Bonsai connected: {cluster_name} elasticsearch v{version}")
             else:
-                logger.warning(f"⚠️ Bonsai responded with status {response.status}")
+                logger.warning(f"⚠️ Elasticsearch responded with status {response.status}")
     
     async def test_connection(self) -> bool:
         """Teste la connectivité de base à Bonsai Elasticsearch"""
@@ -168,13 +180,13 @@ class ElasticsearchClient(BaseClient):
             
             result = await self.execute_with_retry(_test, "connection_test")
             if result:
-                logger.debug("Bonsai connection test successful")
+                logger.debug("Elasticsearch connection test successful")
             else:
-                logger.warning("Bonsai connection test failed")
+                logger.warning("Elasticsearch connection test failed")
             return result
             
         except Exception as e:
-            logger.error(f"Bonsai connection test failed: {e}")
+            logger.error(f"Elasticsearch connection test failed: {e}")
             return False
     
     async def _perform_health_check(self) -> Dict[str, Any]:
@@ -186,7 +198,9 @@ class ElasticsearchClient(BaseClient):
             "index_exists": False,
             "index_health": None,
             "mapping_valid": False,
-            "test_user_transactions": 0
+            "test_user_transactions": 0,
+            "url_used": self.base_url,  # Ajouter l'URL utilisée pour debugging
+            "is_localhost": "localhost" in self.base_url
         }
         
         try:
@@ -815,11 +829,39 @@ def create_default_client() -> ElasticsearchClient:
     """
     # Configuration depuis settings
     try:
+        # 🔧 PRIORITÉ CORRIGÉE : BONSAI_URL d'abord, puis ELASTICSEARCH_URL
+        bonsai_url = getattr(settings, 'BONSAI_URL', None)
         elasticsearch_url = getattr(settings, 'ELASTICSEARCH_URL', None)
-        elasticsearch_index = getattr(settings, 'ELASTICSEARCH_INDEX', "harena_transactions")
         
-        if not elasticsearch_url:
-            raise RuntimeError("ELASTICSEARCH_URL not configured in settings")
+        # Prioriser BONSAI_URL si disponible
+        final_url = None
+        url_source = None
+        
+        if bonsai_url and bonsai_url.strip():
+            final_url = bonsai_url.strip()
+            url_source = "BONSAI_URL"
+        elif elasticsearch_url and elasticsearch_url.strip():
+            final_url = elasticsearch_url.strip()
+            url_source = "ELASTICSEARCH_URL"
+        else:
+            raise RuntimeError(
+                "Neither BONSAI_URL nor ELASTICSEARCH_URL configured in settings. "
+                "Please set BONSAI_URL in your .env file for Bonsai connection."
+            )
+        
+        # Validation de l'URL
+        if not final_url.startswith(('http://', 'https://')):
+            raise RuntimeError(f"Invalid URL format: {final_url}. Must start with http:// or https://")
+        
+        # Log de la configuration utilisée
+        if "localhost" in final_url:
+            logger.warning(f"🟡 Using {url_source}: {final_url} (localhost detected)")
+            logger.warning("💡 For production, ensure BONSAI_URL is set with your Bonsai instance URL")
+        else:
+            logger.info(f"✅ Using {url_source}: {final_url}")
+        
+        # Récupérer l'index
+        elasticsearch_index = getattr(settings, 'ELASTICSEARCH_INDEX', "harena_transactions")
         
         # Configuration retry et circuit breaker
         retry_config = RetryConfig(
@@ -835,14 +877,14 @@ def create_default_client() -> ElasticsearchClient:
         )
         
         client = ElasticsearchClient(
-            bonsai_url=elasticsearch_url,
+            bonsai_url=final_url,
             index_name=elasticsearch_index,
             timeout=10.0,
             retry_config=retry_config,
             circuit_breaker_config=circuit_breaker_config
         )
         
-        logger.info(f"Elasticsearch client created for {elasticsearch_url}")
+        logger.info(f"Elasticsearch client created for {final_url}")
         return client
         
     except Exception as e:
@@ -986,6 +1028,51 @@ def get_client_metrics() -> Dict[str, Any]:
         return {"error": str(e)}
 
 
+def get_client_configuration_info() -> Dict[str, Any]:
+    """
+    Retourne les informations de configuration du client pour debugging
+    
+    Returns:
+        Dict contenant les infos de configuration
+    """
+    try:
+        # Informations depuis settings
+        bonsai_url = getattr(settings, 'BONSAI_URL', None)
+        elasticsearch_url = getattr(settings, 'ELASTICSEARCH_URL', None)
+        elasticsearch_index = getattr(settings, 'ELASTICSEARCH_INDEX', "harena_transactions")
+        test_user_id = getattr(settings, 'test_user_id', 34)
+        
+        # Informations du client actuel
+        client_info = {}
+        if _default_client is not None:
+            client_info = {
+                "base_url": _default_client.base_url,
+                "index_name": _default_client.index_name,
+                "is_localhost": "localhost" in _default_client.base_url,
+                "client_status": _default_client.status.value if hasattr(_default_client, 'status') else "unknown"
+            }
+        
+        return {
+            "configuration": {
+                "bonsai_url": bonsai_url,
+                "elasticsearch_url": elasticsearch_url,
+                "elasticsearch_index": elasticsearch_index,
+                "test_user_id": test_user_id,
+                "url_priority": "BONSAI_URL takes precedence over ELASTICSEARCH_URL"
+            },
+            "current_client": client_info,
+            "environment_variables": {
+                "BONSAI_URL": os.environ.get("BONSAI_URL", "not_set"),
+                "ELASTICSEARCH_URL": os.environ.get("ELASTICSEARCH_URL", "not_set"),
+                "ELASTICSEARCH_INDEX": os.environ.get("ELASTICSEARCH_INDEX", "not_set"),
+                "TEST_USER_ID": os.environ.get("TEST_USER_ID", "not_set")
+            }
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # === CONFIGURATION POUR TESTS ===
 
 class MockElasticsearchClient:
@@ -995,6 +1082,8 @@ class MockElasticsearchClient:
         self.search_calls = []
         self.count_calls = []
         self.mock_responses = {}
+        self.base_url = "mock://elasticsearch"
+        self.index_name = "mock_index"
     
     def set_mock_response(self, method: str, response: Dict[str, Any]):
         """Configure une réponse mock"""
@@ -1026,12 +1115,23 @@ class MockElasticsearchClient:
         """Mock health"""
         return self.mock_responses.get("health", {"status": "green"})
     
+    async def search_transactions(self, user_id: int, query: str = None, **kwargs) -> Dict[str, Any]:
+        """Mock search_transactions"""
+        return self.mock_responses.get("search_transactions", {
+            "took": 1,
+            "hits": {"total": {"value": 0}, "hits": []}
+        })
+    
     def get_query_stats(self) -> Dict[str, Any]:
         """Mock stats"""
         return {
             "search_count": len(self.search_calls),
             "count_count": len(self.count_calls),
-            "cache_hits": 0
+            "cache_hits": 0,
+            "elasticsearch_stats": {
+                "cache_size": 0,
+                "cache_hit_rate": 0.0
+            }
         }
 
 
@@ -1063,6 +1163,7 @@ __all__ = [
     "test_elasticsearch_connection",
     "quick_search",
     "get_client_metrics",
+    "get_client_configuration_info",  # NOUVEAU : Pour debugging de configuration
     
     # === TESTS ===
     "MockElasticsearchClient",

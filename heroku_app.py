@@ -1,6 +1,6 @@
 """
 Application Harena simplifiée pour Heroku.
-Utilise les main.py de chaque service au lieu de dupliquer les diagnostics.
+Inspiré de la version complexe qui fonctionnait bien.
 """
 
 import logging
@@ -29,7 +29,7 @@ if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
 class ServiceLoader:
-    """Chargeur de services simplifié."""
+    """Chargeur de services simplifié inspiré de la version complexe."""
     
     def __init__(self):
         self.services_status = {}
@@ -61,18 +61,36 @@ class ServiceLoader:
             return False
     
     def check_service_health(self, service_name: str, module_path: str):
-        """Vérifie rapidement la santé d'un service via son main.py."""
+        """Vérifie rapidement la santé d'un service - version inspirée de la complexe."""
         try:
-            # Import du main du service
-            main_module = __import__(f"{module_path}.main", fromlist=["app"])
+            # Pour db_service, pas de main.py à vérifier - juste tester la connexion
+            if service_name == "db_service":
+                try:
+                    from db_service.session import engine
+                    from sqlalchemy import text
+                    with engine.connect() as conn:
+                        conn.execute(text("SELECT 1"))
+                    logger.info(f"✅ {service_name}: Connexion DB OK")
+                    return True
+                except Exception as e:
+                    logger.error(f"❌ {service_name}: Connexion DB échouée - {str(e)}")
+                    return False
             
-            # Vérifier l'existence de l'app
-            if hasattr(main_module, "app") or hasattr(main_module, "create_app"):
-                logger.info(f"✅ {service_name}: Module principal OK")
+            # Pour les autres services, essayer d'importer le main
+            try:
+                main_module = __import__(f"{module_path}.main", fromlist=["app"])
+                
+                # Vérifier l'existence de l'app
+                if hasattr(main_module, "app") or hasattr(main_module, "create_app"):
+                    logger.info(f"✅ {service_name}: Module principal OK")
+                    return True
+                else:
+                    logger.warning(f"⚠️ {service_name}: Pas d'app FastAPI trouvée")
+                    return False
+            except ImportError:
+                # Si pas de main.py, c'est pas forcément un problème (comme db_service)
+                logger.info(f"ℹ️ {service_name}: Pas de main.py (normal pour certains services)")
                 return True
-            else:
-                logger.warning(f"⚠️ {service_name}: Pas d'app FastAPI trouvée")
-                return False
                 
         except Exception as e:
             logger.error(f"❌ {service_name}: Échec vérification - {str(e)}")
@@ -127,37 +145,55 @@ def create_app():
         # Charger les routers des services
         logger.info("📋 Chargement des routes des services...")
         
-        # Définition des routers avec les bons chemins
-        service_routers = [
-            ("user_service", "user_service.api.endpoints.users", "/api/v1/users"),
-            ("sync_service", "sync_service.api.router", "/api/v1/sync"),  # ✅ CORRIGÉ: router au lieu de routes
-            ("enrichment_service", "enrichment_service.api.routes", "/api/v1/enrichment"),
+        # 1. User Service
+        try:
+            from user_service.api.endpoints.users import router as user_router
+            if loader.load_service_router(app, "user_service", "user_service.api.endpoints.users", "/api/v1/users"):
+                app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
+        except Exception as e:
+            logger.error(f"❌ User Service: {e}")
+
+        # 2. Sync Service - modules principaux (inspiré de la version complexe)
+        sync_modules = [
+            ("sync_service.api.endpoints.sync", "/api/v1/sync", "Synchronisation"),
+            ("sync_service.api.endpoints.transactions", "/api/v1/transactions", "Transactions"),
+            ("sync_service.api.endpoints.accounts", "/api/v1/accounts", "Comptes"),
+            ("sync_service.api.endpoints.categories", "/api/v1/categories", "Catégories"),
+            ("sync_service.api.endpoints.items", "/api/v1/items", "Items Bridge"),
+            ("sync_service.api.endpoints.webhooks", "/webhooks", "Webhooks"),
         ]
-        
-        # Chargement des services standards
-        successful = 0
-        for service_name, router_path, prefix in service_routers:
-            if loader.load_service_router(app, service_name, router_path, prefix):
-                successful += 1
-        
-        # Traitement spécial pour search_service (architecture différente)
+
+        sync_successful = 0
+        for module_path, prefix, description in sync_modules:
+            try:
+                module = __import__(module_path, fromlist=["router"])
+                router = getattr(module, "router")
+                service_name = f"sync_{module_path.split('.')[-1]}"
+                if loader.load_service_router(app, service_name, module_path, prefix):
+                    app.include_router(router, prefix=prefix, tags=[module_path.split('.')[-1]])
+                    sync_successful += 1
+            except Exception as e:
+                logger.error(f"❌ {module_path}: {e}")
+
+        # 3. Enrichment Service
+        try:
+            from enrichment_service.api.routes import router as enrichment_router
+            if loader.load_service_router(app, "enrichment_service", "enrichment_service.api.routes", "/api/v1/enrichment"):
+                app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
+        except Exception as e:
+            logger.error(f"❌ Enrichment Service: {e}")
+
+        # 4. Search Service (architecture différente)
         logger.info("🔍 Tentative de chargement search_service via api_manager...")
         try:
             from search_service.api import api_manager
             logger.info("✅ search_service.api importé avec succès")
             
             if hasattr(api_manager, 'router') and api_manager.router:
-                # ✅ CORRECTION: Utiliser seulement le router principal, pas le préfixe dans le router
                 app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search_service"])
                 routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
                 logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search")
                 loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/search"}
-                successful += 1
-                
-                # ✅ SUPPRIMÉ: Plus d'inclusion du admin_router pour éviter les doublons
-                # if hasattr(api_manager, 'admin_router'):
-                #     app.include_router(api_manager.admin_router, prefix="/api/v1/search/admin", tags=["search_admin"])
-                
             else:
                 logger.error("❌ search_service: api_manager.router non trouvé")
                 loader.services_status["search_service"] = {"status": "error", "error": "api_manager.router manquant"}
@@ -167,21 +203,11 @@ def create_app():
         except Exception as e:
             logger.error(f"❌ search_service: Erreur générale - {str(e)}")
             loader.services_status["search_service"] = {"status": "error", "error": str(e)}
-        
-        # Gérer les modules multiples du sync_service si le principal échoue
-        if "sync_service" not in [s for s, status in loader.services_status.items() if status.get("status") == "ok"]:
-            logger.info("🔄 Fallback sync_service avec modules individuels...")
-            sync_modules = [
-                ("sync_transactions", "sync_service.api.endpoints.transactions", "/api/v1/transactions"),
-                ("sync_accounts", "sync_service.api.endpoints.accounts", "/api/v1/accounts"),
-                ("sync_categories", "sync_service.api.endpoints.categories", "/api/v1/categories"),
-            ]
-            
-            for service_name, router_path, prefix in sync_modules:
-                if loader.load_service_router(app, service_name, router_path, prefix):
-                    successful += 1
-        
-        logger.info(f"✅ Démarrage terminé: {successful} services chargés")
+
+      
+        # Compter les services réussis
+        successful_services = len([s for s in loader.services_status.values() if s.get("status") == "ok"])
+        logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")
         
         # Rapport final détaillé
         ok_services = [name for name, status in loader.services_status.items() if status.get("status") == "ok"]
@@ -191,7 +217,6 @@ def create_app():
         if failed_services:
             logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
         
-        # Note: conversation_service sera ajouté une fois développé
         logger.info("🔮 À venir: conversation_service avec AutoGen + DeepSeek")
 
     @app.get("/health")
@@ -237,6 +262,8 @@ def create_app():
                 "/api/v1/users/*": "Gestion utilisateurs",
                 "/api/v1/sync/*": "Synchronisation",
                 "/api/v1/transactions/*": "Transactions",
+                "/api/v1/accounts/*": "Comptes",
+                "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/*": "Enrichissement IA",
                 "/api/v1/search/*": "Recherche lexicale"
             }

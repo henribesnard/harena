@@ -113,14 +113,14 @@ def create_app():
             logger.error(f"❌ DB critique: {e}")
             raise RuntimeError("Database connection failed")
         
-        # Vérifier santé des services (appel à leur main.py)
+        # Vérifier santé des services existants uniquement
         services_health = [
             ("user_service", "user_service"),
             ("db_service", "db_service"),
             ("sync_service", "sync_service"),
             ("enrichment_service", "enrichment_service"),
             ("search_service", "search_service"),
-            ("conversation_service", "conversation_service")
+            # conversation_service supprimé temporairement (pas encore développé)
         ]
         
         for service_name, module_path in services_health:
@@ -129,13 +129,12 @@ def create_app():
         # Charger les routers des services
         logger.info("📋 Chargement des routes des services...")
         
-        # Définition des routers
+        # Définition des routers (services existants uniquement)
         service_routers = [
             ("user_service", "user_service.api.endpoints.users", "/api/v1/users"),
             ("sync_service", "sync_service.api.routes", "/api/v1/sync"),
             ("enrichment_service", "enrichment_service.api.routes", "/api/v1/enrichment"),
-            ("search_service", "search_service.api.routes", "/api/v1/search"),
-            ("conversation_service", "conversation_service.api.routes", "/api/v1/conversation"),
+            # conversation_service supprimé temporairement (pas encore développé)
         ]
         
         # Chargement avec fallback pour sync_service (modules multiples)
@@ -143,6 +142,22 @@ def create_app():
         for service_name, router_path, prefix in service_routers:
             if loader.load_service_router(app, service_name, router_path, prefix):
                 successful += 1
+        
+        # Traitement spécial pour search_service (architecture différente)
+        try:
+            from search_service.api import api_manager
+            if hasattr(api_manager, 'router') and api_manager.router:
+                app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search_service"])
+                routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
+                logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search")
+                loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/search"}
+                successful += 1
+            else:
+                logger.error("❌ search_service: api_manager.router non trouvé")
+                loader.services_status["search_service"] = {"status": "error", "error": "api_manager.router manquant"}
+        except Exception as e:
+            logger.error(f"❌ search_service: {str(e)}")
+            loader.services_status["search_service"] = {"status": "error", "error": str(e)}
         
         # Gérer les modules multiples du sync_service si le principal échoue
         if "sync_service" not in [s for s, status in loader.services_status.items() if status.get("status") == "ok"]:
@@ -156,7 +171,11 @@ def create_app():
                 if loader.load_service_router(app, service_name, router_path, prefix):
                     successful += 1
         
-        logger.info(f"✅ Démarrage terminé: {successful} services/modules chargés")
+        logger.info(f"✅ Démarrage terminé: {successful} services chargés")
+        
+        # Note: conversation_service sera ajouté une fois développé
+        logger.info("💡 Services disponibles: user, sync, enrichment, search")
+        logger.info("🔮 À venir: conversation_service avec AutoGen + DeepSeek")
 
     @app.get("/health")
     async def health():
@@ -186,10 +205,22 @@ def create_app():
         return {
             "message": "🏦 Harena Finance Platform",
             "version": "1.0.0",
+            "services_available": [
+                "user_service - Gestion utilisateurs",
+                "sync_service - Synchronisation Bridge API", 
+                "enrichment_service - Enrichissement IA",
+                "search_service - Recherche lexicale"
+            ],
+            "services_coming_soon": [
+                "conversation_service - Assistant IA avec AutoGen + DeepSeek"
+            ],
             "endpoints": {
                 "/health": "Contrôle santé",
                 "/status": "Statut des services",
-                "/api/v1/*": "APIs métier"
+                "/api/v1/users/*": "Gestion utilisateurs",
+                "/api/v1/transactions/*": "Transactions",
+                "/api/v1/enrichment/*": "Enrichissement IA",
+                "/api/v1/search/*": "Recherche"
             }
         }
 

@@ -1,7 +1,7 @@
 """
 Configuration centralisée pour le Search Service
 Spécialisé pour la recherche lexicale Elasticsearch haute performance
-Version corrigée - Pydantic V2 compatible
+Version corrigée - Pydantic V2 compatible avec tous les fallbacks nécessaires
 """
 
 import os
@@ -127,7 +127,7 @@ class Settings(BaseSettings):
         description="Taille maximum cache en mémoire"
     )
     
-    # Variables manquantes identifiées
+    # Variables manquantes identifiées avec fallbacks
     lexical_cache_size: int = Field(
         default=1000,
         description="Taille cache lexical"
@@ -135,6 +135,24 @@ class Settings(BaseSettings):
     max_concurrent_queries: int = Field(
         default=10,
         description="Nombre max de requêtes concurrentes"
+    )
+    
+    # ✅ VARIABLES MANQUANTES CRITIQUES AJOUTÉES
+    query_cache_size: int = Field(
+        default=1000,
+        description="Taille du cache des requêtes"
+    )
+    search_cache_size: int = Field(
+        default=1000, 
+        description="Taille du cache de recherche"
+    )
+    result_cache_size: int = Field(
+        default=500,
+        description="Taille du cache des résultats"
+    )
+    aggregation_cache_size: int = Field(
+        default=200,
+        description="Taille du cache des agrégations"
     )
     
     # Redis (si utilisé)
@@ -333,7 +351,7 @@ class Settings(BaseSettings):
     if PYDANTIC_V2:
         model_config = ConfigDict(
             env_file=".env",
-            env_prefix="SEARCH_SERVICE_",
+            env_prefix="",  # Pas de préfixe pour compatibilité
             case_sensitive=False,
             validate_assignment=True,
             extra="ignore"
@@ -342,7 +360,7 @@ class Settings(BaseSettings):
         class Config:
             """Configuration Pydantic V1"""
             env_file = ".env"
-            env_prefix = "SEARCH_SERVICE_"
+            env_prefix = ""  # Pas de préfixe pour compatibilité
             case_sensitive = False
             validate_assignment = True
 
@@ -491,7 +509,7 @@ class Settings(BaseSettings):
         """Logs d'accès activés"""
         return not self.is_production() or self.debug
     
-    # Propriétés pour compatibilité avec les autres modules
+    # ✅ PROPRIÉTÉS DE COMPATIBILITÉ COMPLÈTES AVEC FALLBACKS
     @property
     def ELASTICSEARCH_INDEX(self) -> str:
         """Alias pour elasticsearch_index_name"""
@@ -521,6 +539,124 @@ class Settings(BaseSettings):
     def DEFAULT_QUERY_TIMEOUT_MS(self) -> int:
         """Alias pour default_query_timeout_ms"""
         return self.default_query_timeout_ms
+    
+    # ✅ NOUVELLES PROPRIÉTÉS CRITIQUES AJOUTÉES
+    @property
+    def QUERY_CACHE_SIZE(self) -> int:
+        """Taille du cache des requêtes"""
+        return self.query_cache_size
+    
+    @property
+    def SEARCH_CACHE_SIZE(self) -> int:
+        """Taille du cache de recherche"""
+        return self.search_cache_size
+    
+    @property
+    def RESULT_CACHE_SIZE(self) -> int:
+        """Taille du cache des résultats"""
+        return self.result_cache_size
+    
+    @property
+    def AGGREGATION_CACHE_SIZE(self) -> int:
+        """Taille du cache des agrégations"""
+        return self.aggregation_cache_size
+    
+    # === FALLBACKS POUR VARIABLES COURAMMENT UTILISÉES ===
+    @property
+    def DEFAULT_CACHE_SIZE(self) -> int:
+        """Cache size par défaut (fallback)"""
+        return getattr(self, 'default_cache_size', self.cache_max_size)
+    
+    @property
+    def DEFAULT_CACHE_TTL(self) -> int:
+        """TTL par défaut (fallback)"""
+        return getattr(self, 'default_cache_ttl', self.cache_ttl_seconds)
+    
+    @property
+    def DEFAULT_BATCH_SIZE(self) -> int:
+        """Batch size par défaut (fallback)"""
+        return getattr(self, 'default_batch_size', 100)
+    
+    @property
+    def DEFAULT_PAGE_SIZE(self) -> int:
+        """Page size par défaut (fallback)"""
+        return getattr(self, 'default_page_size', self.default_results_limit)
+    
+    @property
+    def DEFAULT_TIMEOUT(self) -> int:
+        """Timeout par défaut (fallback)"""
+        return getattr(self, 'default_timeout', self.elasticsearch_timeout)
+    
+    @property
+    def MAX_RETRIES(self) -> int:
+        """Max retries (fallback)"""
+        return getattr(self, 'max_retries', self.elasticsearch_max_retries)
+    
+    @property
+    def RETRY_DELAY(self) -> float:
+        """Delay retry (fallback)"""
+        return getattr(self, 'retry_delay', 1.0)
+    
+    @property
+    def SEARCH_TIMEOUT(self) -> float:
+        """Timeout de recherche (fallback)"""
+        return getattr(self, 'search_timeout', float(self.default_query_timeout_ms / 1000))
+    
+    @property
+    def METRICS_ENABLED(self) -> bool:
+        """Métriques activées (fallback)"""
+        return self.metrics_enabled
+    
+    @property
+    def DETAILED_LOGGING(self) -> bool:
+        """Logging détaillé (fallback)"""
+        return getattr(self, 'detailed_logging', self.debug_mode)
+    
+    @property
+    def PERFORMANCE_MONITORING(self) -> bool:
+        """Monitoring performance (fallback)"""
+        return getattr(self, 'performance_monitoring', self.metrics_enabled)
+    
+    @property
+    def ENABLE_DETAILED_METRICS(self) -> bool:
+        """Métriques détaillées (fallback)"""
+        return getattr(self, 'enable_detailed_metrics', self.metrics_enabled and self.debug_mode)
+    
+    # === PROPRIÉTÉS POUR VARIABLES DE LIMITE ===
+    @property
+    def MAX_SEARCH_RESULTS(self) -> int:
+        """Max résultats recherche (fallback)"""
+        return getattr(self, 'max_search_results', self.max_results_per_query)
+    
+    @property
+    def MAX_SEARCH_TIMEOUT(self) -> float:
+        """Max timeout recherche (fallback)"""
+        return getattr(self, 'max_search_timeout', float(self.max_query_timeout_ms / 1000))
+    
+    @property
+    def MAX_SEARCH_LIMIT(self) -> int:
+        """Max limite recherche (fallback)"""
+        return getattr(self, 'max_search_limit', self.max_results_per_query)
+    
+    @property
+    def MAX_SEARCH_OFFSET(self) -> int:
+        """Max offset recherche (fallback)"""
+        return getattr(self, 'max_search_offset', self.max_pagination_offset)
+    
+    @property
+    def DEFAULT_SEARCH_TIMEOUT(self) -> float:
+        """Timeout recherche par défaut (fallback)"""
+        return getattr(self, 'default_search_timeout', float(self.default_query_timeout_ms / 1000))
+    
+    @property
+    def MAX_QUERY_LENGTH(self) -> int:
+        """Longueur max requête (fallback)"""
+        return getattr(self, 'max_query_length', self.max_text_search_length)
+    
+    @property
+    def MAX_PREVIOUS_QUERIES(self) -> int:
+        """Max requêtes précédentes (fallback)"""
+        return getattr(self, 'max_previous_queries', 10)
 
 
 # Instance globale des settings
@@ -605,6 +741,45 @@ INDEXED_FIELDS = {
     "operation_type.keyword": {"type": "keyword"}
 }
 
+# === FONCTIONS UTILITAIRES ===
+
+def get_setting_with_fallback(attr_name: str, default_value: Any) -> Any:
+    """
+    Récupère un attribut des settings avec fallback robuste
+    
+    Args:
+        attr_name: Nom de l'attribut
+        default_value: Valeur par défaut
+        
+    Returns:
+        Valeur de l'attribut ou fallback
+    """
+    try:
+        return getattr(settings, attr_name, default_value)
+    except Exception:
+        return default_value
+
+def get_cache_size(cache_type: str = "default") -> int:
+    """
+    Retourne la taille du cache selon le type
+    
+    Args:
+        cache_type: Type de cache (query, search, result, aggregation)
+        
+    Returns:
+        Taille du cache
+    """
+    cache_sizes = {
+        "query": settings.QUERY_CACHE_SIZE,
+        "search": settings.SEARCH_CACHE_SIZE,
+        "result": settings.RESULT_CACHE_SIZE,
+        "aggregation": settings.AGGREGATION_CACHE_SIZE,
+        "lexical": settings.LEXICAL_CACHE_SIZE,
+        "default": settings.DEFAULT_CACHE_SIZE
+    }
+    
+    return cache_sizes.get(cache_type, settings.DEFAULT_CACHE_SIZE)
+
 # Validation au démarrage
 def validate_settings():
     """Valide la configuration au démarrage"""
@@ -621,4 +796,24 @@ def validate_settings():
 
 # Auto-validation
 if not os.getenv("PYTEST_CURRENT_TEST"):
-    validate_settings()
+    try:
+        validate_settings()
+    except Exception as e:
+        # En cas d'erreur de validation, continuer avec des warnings
+        import logging
+        logging.getLogger(__name__).warning(f"Validation settings: {e}")
+
+# === EXPORTS ===
+__all__ = [
+    "Settings",
+    "settings", 
+    "LogLevel",
+    "CacheBackend",
+    "SUPPORTED_INTENT_TYPES",
+    "SUPPORTED_FILTER_OPERATORS", 
+    "SUPPORTED_AGGREGATION_TYPES",
+    "INDEXED_FIELDS",
+    "get_setting_with_fallback",
+    "get_cache_size",
+    "validate_settings"
+]

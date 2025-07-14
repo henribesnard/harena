@@ -15,7 +15,6 @@ from search_service.models.responses import InternalSearchResponse
 from search_service.core.result_processor import result_processor_manager, ProcessingContext, ProcessingStrategy
 from search_service.clients.elasticsearch_client import ElasticsearchClient
 from search_service.utils.cache import LRUCache
-from search_service.utils.metrics import LexicalSearchMetrics
 from search_service.config import settings
 
 
@@ -140,6 +139,36 @@ class FinancialFieldConfiguration:
         r'\b\d+\s*€\b',
         r'\beuros?\s+\d+\b'
     ]
+
+
+class MockLexicalSearchMetrics:
+    """Mock pour LexicalSearchMetrics quand metrics désactivées"""
+    
+    def __init__(self):
+        self.disabled = True
+        logger.info("MockLexicalSearchMetrics initialisé (métriques désactivées)")
+    
+    def record_cache_hit(self, user_id: int):
+        """Mock record_cache_hit"""
+        pass
+    
+    def record_search_execution(self, user_id: int, query_type: str, 
+                              execution_time_ms: int, result_count: int, success: bool):
+        """Mock record_search_execution"""
+        pass
+    
+    def record_search_analysis(self, *args, **kwargs):
+        """Mock record_search_analysis"""
+        pass
+    
+    def get_summary(self):
+        """Mock get_summary"""
+        return {
+            "metrics_disabled": True,
+            "total_searches": 0,
+            "avg_execution_time_ms": 0,
+            "cache_hit_rate": 0
+        }
 
 
 class LexicalQueryBuilder:
@@ -555,11 +584,46 @@ class LexicalSearchEngine:
     
     def __init__(self, elasticsearch_client: ElasticsearchClient):
         self.es_client = elasticsearch_client
-        self.metrics = LexicalSearchMetrics()
-        self.cache = LRUCache(max_size=settings.LEXICAL_CACHE_SIZE)
+        self.metrics = self._initialize_metrics()
+        self.cache = LRUCache(max_size=getattr(settings, 'LEXICAL_CACHE_SIZE', 100))
         self._initialized = True
         
         logger.info("LexicalSearchEngine initialisé")
+    
+    def _initialize_metrics(self):
+        """Initialise les métriques avec fallback robuste"""
+        try:
+            from search_service.utils.metrics import metrics_collector, LexicalSearchMetrics
+            
+            if hasattr(metrics_collector, '_metrics_enabled') and metrics_collector._metrics_enabled:
+                logger.info("Initialisation LexicalSearchMetrics avec collector")
+                return LexicalSearchMetrics(metrics_collector)
+            else:
+                logger.info("Métriques désactivées - utilisation du mock")
+                return MockLexicalSearchMetrics()
+        except ImportError:
+            logger.warning("Module metrics non disponible - utilisation du mock")
+            return MockLexicalSearchMetrics()
+        except Exception as e:
+            logger.error(f"Erreur initialisation métriques: {e} - utilisation du mock")
+            return MockLexicalSearchMetrics()
+    
+    def _record_search_metrics(self, user_id: int, query_type: str, execution_time_ms: int,
+                             result_count: int, success: bool):
+        """Enregistre les métriques de recherche avec vérification"""
+        if self.metrics:
+            self.metrics.record_search_execution(
+                user_id=user_id,
+                query_type=query_type,
+                execution_time_ms=execution_time_ms,
+                result_count=result_count,
+                success=success
+            )
+    
+    def _record_cache_hit(self, user_id: int):
+        """Enregistre un cache hit avec vérification"""
+        if self.metrics:
+            self.metrics.record_cache_hit(user_id)
     
     async def search(self, search_request: SearchServiceQuery) -> SearchServiceResponse:
         """Interface principale de recherche lexicale"""
@@ -575,7 +639,7 @@ class LexicalSearchEngine:
                 cached_response = self.cache.get(cache_key)
                 if cached_response:
                     logger.debug(f"Cache hit pour la recherche {request_id}")
-                    self.metrics.record_cache_hit(search_request.query_metadata.user_id)
+                    self._record_cache_hit(search_request.query_metadata.user_id)
                     return cached_response
             
             query_builder = LexicalQueryBuilder(search_context.config)
@@ -611,10 +675,11 @@ class LexicalSearchEngine:
             )
             
             if search_context.cache_enabled:
-                self.cache.set(cache_key, service_response, ttl=settings.CACHE_TTL_SECONDS)
+                cache_ttl = getattr(settings, 'CACHE_TTL_SECONDS', 300)
+                self.cache.set(cache_key, service_response, ttl=cache_ttl)
             
             execution_time = int((time.time() - start_time) * 1000)
-            self.metrics.record_search_execution(
+            self._record_search_metrics(
                 user_id=search_request.query_metadata.user_id,
                 query_type=search_request.search_parameters.query_type,
                 execution_time_ms=execution_time,
@@ -629,7 +694,7 @@ class LexicalSearchEngine:
             
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
-            self.metrics.record_search_execution(
+            self._record_search_metrics(
                 user_id=search_request.query_metadata.user_id,
                 query_type=search_request.search_parameters.query_type,
                 execution_time_ms=execution_time,
@@ -897,7 +962,7 @@ class LexicalSearchEngine:
             performance=PerformanceMetrics(
                 query_complexity="error",
                 optimization_applied=["error_handling"],
-                index_used=settings.ELASTICSEARCH_INDEX,
+                index_used=getattr(settings, 'ELASTICSEARCH_INDEX', 'harena_transactions'),
                 shards_queried=0,
                 cache_hit=False
             ),
@@ -931,22 +996,28 @@ class LexicalSearchEngine:
     
     def get_search_metrics(self) -> Dict[str, Any]:
         """Retourne les métriques de recherche"""
+        metrics_summary = {}
+        if self.metrics:
+            metrics_summary = self.metrics.get_summary()
+        
         return {
-            "lexical_engine": self.metrics.get_summary(),
-            "cache_stats": self.cache.get_stats(),
+            "lexical_engine": metrics_summary,
+            "cache_stats": self.cache.get_stats() if hasattr(self.cache, 'get_stats') else {},
             "elasticsearch_client": "connected" if self.es_client else "disconnected"
         }
     
     def clear_cache(self):
         """Vide le cache de recherche"""
-        self.cache.clear()
+        if hasattr(self.cache, 'clear'):
+            self.cache.clear()
         logger.info("Cache de recherche lexicale vidé")
     
     async def health_check(self) -> Dict[str, Any]:
         """Vérification de santé du moteur lexical"""
         
         try:
-            es_health = await self.es_client.cluster.health()
+            # Test basique avec health_check du client
+            es_health = await self.es_client.health_check()
             
             test_query = {
                 "query": {"match_all": {}},
@@ -954,7 +1025,7 @@ class LexicalSearchEngine:
             }
             
             test_response = await self.es_client.search(
-                index=settings.ELASTICSEARCH_INDEX,
+                index=getattr(settings, 'ELASTICSEARCH_INDEX', 'harena_transactions'),
                 body=test_query
             )
             
@@ -962,16 +1033,14 @@ class LexicalSearchEngine:
             
             return {
                 "status": "healthy" if search_working else "degraded",
-                "elasticsearch": {
-                    "status": es_health.get("status", "unknown"),
-                    "cluster": es_health.get("cluster_name", "unknown")
-                },
+                "elasticsearch": es_health,
                 "lexical_engine": {
                     "initialized": self._initialized,
                     "search_functional": search_working,
-                    "cache_size": len(self.cache.cache)
+                    "cache_size": len(self.cache.cache) if hasattr(self.cache, 'cache') else 0,
+                    "metrics_enabled": not isinstance(self.metrics, MockLexicalSearchMetrics)
                 },
-                "metrics": self.metrics.get_summary()
+                "metrics": self.get_search_metrics()
             }
             
         except Exception as e:

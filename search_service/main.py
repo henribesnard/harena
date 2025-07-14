@@ -181,64 +181,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Inclusion des routes de recherche (sans health check)
+    # Inclusion des routes de recherche (avec health check)
     app.include_router(router, prefix="/api/v1/search", tags=["search"])
-    
-    # Ajout de l'endpoint de santé SIMPLE dans main.py comme user_service
-    @app.get("/health")
-    async def health_check():
-        """Vérification de l'état de santé du service de recherche - Style user_service."""
-        global _service_initialized, _initialization_error
-        
-        try:
-            # Vérifier l'état d'initialisation global
-            if not _service_initialized:
-                return {
-                    "status": "unhealthy",
-                    "service": "search-service",
-                    "version": "1.0.0",
-                    "error": _initialization_error or "Service not initialized",
-                    "bonsai_configured": bool(os.environ.get("BONSAI_URL")),
-                    "elasticsearch_configured": bool(os.environ.get("ELASTICSEARCH_URL"))
-                }
-            
-            # Si initialisé, faire un health check rapide comme user_service
-            from search_service.core import core_manager
-            
-            if not core_manager.is_initialized():
-                return {
-                    "status": "unhealthy",
-                    "service": "search-service", 
-                    "version": "1.0.0",
-                    "error": "Core manager not initialized despite successful startup",
-                    "bonsai_configured": bool(os.environ.get("BONSAI_URL")),
-                    "elasticsearch_configured": bool(os.environ.get("ELASTICSEARCH_URL"))
-                }
-            
-            # Health check complet mais simple
-            health_status = await core_manager.health_check()
-            
-            return {
-                "status": "healthy" if health_status.get("status") == "healthy" else "degraded",
-                "service": "search-service",
-                "version": "1.0.0",
-                "bonsai_configured": bool(os.environ.get("BONSAI_URL")),
-                "elasticsearch_configured": bool(os.environ.get("ELASTICSEARCH_URL")),
-                "core_manager_initialized": core_manager.is_initialized(),
-                "elasticsearch_status": health_status.get("status", "unknown")
-            }
-            
-        except Exception as e:
-            logger.error(f"Health check failed: {str(e)}")
-            return {
-                "status": "unhealthy",
-                "service": "search-service",
-                "version": "1.0.0",
-                "error": str(e),
-                "bonsai_configured": bool(os.environ.get("BONSAI_URL")),
-                "elasticsearch_configured": bool(os.environ.get("ELASTICSEARCH_URL")),
-                "initialization_error": _initialization_error
-            }
     
     # Réglage du niveau de log pour les modules tiers trop verbeux
     logging.getLogger("httpx").setLevel(logging.WARNING)

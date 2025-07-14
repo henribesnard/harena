@@ -22,6 +22,46 @@ router = APIRouter(tags=["search"])
 # === ENDPOINTS DE RECHERCHE ===
 
 @router.get(
+    "/health",
+    summary="Santé du service de recherche",
+    description="Vérification de l'état de santé du Search Service"
+)
+async def health_check():
+    """Health check simple qui délègue au main.py"""
+    try:
+        # Import dynamique pour éviter les erreurs
+        from search_service.core import core_manager
+        
+        # Vérifier si le core manager est initialisé
+        if not core_manager.is_initialized():
+            return {
+                "status": "unhealthy",
+                "service": "search-service",
+                "version": "1.0.0",
+                "error": "Core manager not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Health check basique
+        return {
+            "status": "healthy",
+            "service": "search-service",
+            "version": "1.0.0",
+            "core_manager_initialized": True,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "status": "unhealthy", 
+            "service": "search-service",
+            "version": "1.0.0",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+@router.get(
     "/",
     summary="Racine du service de recherche",
     description="Informations de base sur le Search Service"
@@ -34,7 +74,7 @@ async def search_root():
         "status": "running",
         "description": "Service de recherche lexicale pour données financières Harena",
         "endpoints": {
-            "/health": "Vérification de santé (dans main.py)",
+            "/health": "Vérification de santé",
             "/search": "Recherche lexicale (à venir)",
             "/validate": "Validation de requêtes (à venir)",
             "/templates": "Templates de requêtes (à venir)",
@@ -94,7 +134,7 @@ async def service_info():
         },
         "endpoints": {
             "GET /": "Informations racine",
-            "GET /health": "Vérification de santé (main.py)",
+            "GET /health": "Vérification de santé",
             "GET /status": "Statut simple",
             "GET /info": "Informations service",
             "POST /search": "Recherche lexicale (à venir)",
@@ -240,6 +280,7 @@ async def dev_config():
 
 __all__ = [
     "router",
+    "health_check",
     "search_root",
     "simple_status", 
     "service_info",
@@ -252,4 +293,4 @@ __all__ = [
     "dev_config"
 ]
 
-logger.info("Routes API simplifiées chargées - Health check géré par main.py")
+logger.info("Routes API simplifiées chargées - Health check inclus")

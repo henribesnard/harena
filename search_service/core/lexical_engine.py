@@ -634,9 +634,33 @@ class LexicalSearchEngine:
         Utilisé par le décorateur @validate_search_request
         """
         from search_service.models.service_contracts import (
-            SearchServiceQuery, QueryMetadata, SearchParameters,SearchFilters,
+            SearchServiceQuery, QueryMetadata, SearchParameters, SearchFilters,
             SearchFilter, TextSearchConfig, SearchOptions
         )
+        
+        # === MAPPING QUERY_TYPE ===
+        # Mappage des valeurs possibles vers l'enum QueryType
+        QUERY_TYPE_MAPPING = {
+            # Valeurs possibles en entrée -> valeurs enum attendues
+            'TEXT_SEARCH': 'text_search',
+            'FILTERED_SEARCH': 'filtered_search', 
+            'SIMPLE_SEARCH': 'simple_search',
+            'TEXT_SEARCH_WITH_FILTER': 'text_search_with_filter',
+            'FILTERED_AGGREGATION': 'filtered_aggregation',
+            'TEMPORAL_AGGREGATION': 'temporal_aggregation',
+            'COMPLEX_QUERY': 'complex_query',
+            # Valeurs déjà conformes
+            'text_search': 'text_search',
+            'filtered_search': 'filtered_search',
+            'simple_search': 'simple_search',
+            'text_search_with_filter': 'text_search_with_filter',
+            'filtered_aggregation': 'filtered_aggregation',
+            'temporal_aggregation': 'temporal_aggregation',
+            'complex_query': 'complex_query',
+            # Fallbacks
+            'basic_search': 'simple_search',
+            'search': 'simple_search'
+        }
         
         # Extraction des métadonnées
         query_metadata_dict = dict_data.get('query_metadata', {})
@@ -651,15 +675,26 @@ class LexicalSearchEngine:
             timestamp=query_metadata_dict.get('timestamp', datetime.now().isoformat())
         )
         
-        # Extraction des paramètres de recherche
+        # Extraction des paramètres de recherche avec mapping query_type
         search_params_dict = dict_data.get('search_parameters', {})
+        raw_query_type = search_params_dict.get('query_type', 'basic_search')
+        
+        # 🔥 CORRECTION: Mapper le query_type vers l'enum
+        mapped_query_type = QUERY_TYPE_MAPPING.get(raw_query_type, 'simple_search')
+        
         search_parameters = SearchParameters(
-            query_type=search_params_dict.get('query_type', 'basic_search'),
+            query_type=mapped_query_type,  # ✅ Utiliser la valeur mappée
             fields=search_params_dict.get('fields', []),
             limit=search_params_dict.get('limit', 20),
             offset=search_params_dict.get('offset', 0),
             timeout_ms=search_params_dict.get('timeout_ms', 5000)
         )
+        
+        # === LOGIQUE DE DÉTECTION AUTOMATIQUE QUERY_TYPE ===
+        # Si pas de query_type explicite, détecter automatiquement
+        if raw_query_type in ['basic_search', 'search'] or not raw_query_type:
+            detected_query_type = self._auto_detect_query_type(dict_data)
+            search_parameters.query_type = detected_query_type
         
         # Extraction des filtres
         filters_dict = dict_data.get('filters', {})
@@ -727,6 +762,29 @@ class LexicalSearchEngine:
             aggregations=dict_data.get('aggregations', {}),
             options=options
         )
+
+    def _auto_detect_query_type(self, dict_data: Dict[str, Any]) -> str:
+        """
+        Détecte automatiquement le type de requête basé sur le contenu
+        """
+        filters_dict = dict_data.get('filters', {})
+        has_text_search = bool(filters_dict.get('text_search', {}).get('query', ''))
+        has_filters = bool(filters_dict.get('required', []) + filters_dict.get('optional', []) + filters_dict.get('ranges', []))
+        has_aggregations = bool(dict_data.get('aggregations', {}).get('enabled', False))
+        
+        # Logique de détection
+        if has_aggregations and has_filters:
+            return 'filtered_aggregation'
+        elif has_aggregations:
+            return 'temporal_aggregation'
+        elif has_text_search and has_filters:
+            return 'text_search_with_filter'
+        elif has_text_search:
+            return 'text_search'
+        elif has_filters:
+            return 'filtered_search'
+        else:
+            return 'simple_search'
     
     @validate_search_request
     async def search(self, search_request: SearchServiceQuery) -> SearchServiceResponse:

@@ -9,6 +9,8 @@ from enum import Enum
 from dataclasses import dataclass, field
 import time
 import re
+import uuid
+from datetime import datetime
 
 from search_service.models.service_contracts import SearchServiceQuery, SearchServiceResponse
 from search_service.models.responses import InternalSearchResponse
@@ -16,6 +18,7 @@ from search_service.core.result_processor import result_processor_manager, Proce
 from search_service.clients.elasticsearch_client import ElasticsearchClient
 from search_service.utils.cache import LRUCache
 from search_service.config import settings
+from search_service.decorators import validate_search_request
 
 
 logger = logging.getLogger(__name__)
@@ -625,6 +628,107 @@ class LexicalSearchEngine:
         if self.metrics:
             self.metrics.record_cache_hit(user_id)
     
+    def _convert_dict_to_search_request(self, dict_data: Dict[str, Any]) -> SearchServiceQuery:
+        """
+        Convertit un dictionnaire en objet SearchServiceQuery
+        Utilisé par le décorateur @validate_search_request
+        """
+        from search_service.models.service_contracts import (
+            SearchServiceQuery, QueryMetadata, SearchParameters, FilterCriteria,
+            SearchFilter, TextSearchConfig, SearchOptions
+        )
+        
+        # Extraction des métadonnées
+        query_metadata_dict = dict_data.get('query_metadata', {})
+        query_metadata = QueryMetadata(
+            query_id=query_metadata_dict.get('query_id', str(uuid.uuid4())),
+            user_id=query_metadata_dict.get('user_id'),
+            intent_type=query_metadata_dict.get('intent_type', 'UNKNOWN'),
+            confidence=query_metadata_dict.get('confidence', 0.0),
+            agent_name=query_metadata_dict.get('agent_name', 'unknown'),
+            team_name=query_metadata_dict.get('team_name', 'unknown'),
+            execution_context=query_metadata_dict.get('execution_context', {}),
+            timestamp=query_metadata_dict.get('timestamp', datetime.now().isoformat())
+        )
+        
+        # Extraction des paramètres de recherche
+        search_params_dict = dict_data.get('search_parameters', {})
+        search_parameters = SearchParameters(
+            query_type=search_params_dict.get('query_type', 'basic_search'),
+            fields=search_params_dict.get('fields', []),
+            limit=search_params_dict.get('limit', 20),
+            offset=search_params_dict.get('offset', 0),
+            timeout_ms=search_params_dict.get('timeout_ms', 5000)
+        )
+        
+        # Extraction des filtres
+        filters_dict = dict_data.get('filters', {})
+        
+        # Conversion des filtres required
+        required_filters = []
+        for filter_data in filters_dict.get('required', []):
+            if isinstance(filter_data, dict):
+                required_filters.append(SearchFilter(
+                    field=filter_data.get('field', ''),
+                    operator=filter_data.get('operator', 'eq'),
+                    value=filter_data.get('value', '')
+                ))
+        
+        # Conversion des filtres optional
+        optional_filters = []
+        for filter_data in filters_dict.get('optional', []):
+            if isinstance(filter_data, dict):
+                optional_filters.append(SearchFilter(
+                    field=filter_data.get('field', ''),
+                    operator=filter_data.get('operator', 'eq'),
+                    value=filter_data.get('value', '')
+                ))
+        
+        # Conversion des filtres ranges
+        range_filters = []
+        for filter_data in filters_dict.get('ranges', []):
+            if isinstance(filter_data, dict):
+                range_filters.append(SearchFilter(
+                    field=filter_data.get('field', ''),
+                    operator=filter_data.get('operator', 'gte'),
+                    value=filter_data.get('value', '')
+                ))
+        
+        # Conversion text_search
+        text_search = None
+        text_search_dict = filters_dict.get('text_search')
+        if text_search_dict and isinstance(text_search_dict, dict):
+            text_search = TextSearchConfig(
+                query=text_search_dict.get('query', ''),
+                fields=text_search_dict.get('fields', []),
+                operator=text_search_dict.get('operator', 'match')
+            )
+        
+        filters = FilterCriteria(
+            required=required_filters,
+            optional=optional_filters,
+            ranges=range_filters,
+            text_search=text_search
+        )
+        
+        # Extraction options
+        options_dict = dict_data.get('options', {})
+        options = SearchOptions(
+            include_highlights=options_dict.get('include_highlights', False),
+            include_explanation=options_dict.get('include_explanation', False),
+            cache_enabled=options_dict.get('cache_enabled', True),
+            return_raw_elasticsearch=options_dict.get('return_raw_elasticsearch', False)
+        )
+        
+        return SearchServiceQuery(
+            query_metadata=query_metadata,
+            search_parameters=search_parameters,
+            filters=filters,
+            aggregations=dict_data.get('aggregations', {}),
+            options=options
+        )
+    
+    @validate_search_request
     async def search(self, search_request: SearchServiceQuery) -> SearchServiceResponse:
         """Interface principale de recherche lexicale"""
         

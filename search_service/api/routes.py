@@ -52,7 +52,8 @@ def create_search_service_query(
             "conversation_id": "api_direct",
             "turn_number": 1,
             "agent_chain": ["api_endpoint"]
-        }
+        },
+        "timestamp": datetime.now().isoformat()
     }
     
     # Paramètres de recherche (format dict simple)
@@ -121,14 +122,16 @@ def create_search_service_query(
     search_filters = {
         "required": required_filters,
         "optional": optional_filters,
-        "ranges": range_filters
+        "ranges": range_filters,
+        "text_search": text_search
     }
     
     # Options par défaut (format dict simple)
     options = {
         "cache_enabled": True,
         "include_explanation": False,
-        "include_aggregations": False
+        "include_highlights": False,
+        "return_raw_elasticsearch": False
     }
     
     # Créer le contrat en utilisant des dicts simples pour éviter les erreurs d'import
@@ -136,7 +139,7 @@ def create_search_service_query(
         "query_metadata": query_metadata,
         "search_parameters": search_parameters,
         "filters": search_filters,
-        "text_search": text_search,
+        "aggregations": {},
         "options": options
     }
     
@@ -147,6 +150,7 @@ def create_search_service_query(
         else:
             return contract_dict
     except Exception as e:
+        logger.warning(f"⚠️ Fallback vers dict simple pour SearchServiceQuery: {e}")
         # Fallback vers un dict simple si la construction échoue
         return contract_dict
 
@@ -487,6 +491,9 @@ async def search_transactions(request: Request, search_request: dict):
             offset=offset
         )
         
+        # Log pour debug
+        logger.info(f"🔍 Recherche pour user_id={user_id}, query='{query}', type={type(service_query)}")
+        
         # Appeler la méthode search() qui existe réellement
         service_response = await search_engine.search(service_query)
         
@@ -619,6 +626,9 @@ async def quick_search_endpoint(
             offset=0,
             intent_type="QUICK_SEARCH"
         )
+        
+        # Log pour debug
+        logger.info(f"🔍 Quick search pour user_id={user_id}, query='{query}', type={type(service_query)}")
         
         # Appeler search() au lieu de search_transactions()
         service_response = await search_engine.search(service_query)

@@ -11,7 +11,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -20,8 +20,8 @@ from fastapi.responses import JSONResponse
 try:
     from search_service.models.service_contracts import SearchServiceQuery
 except ImportError:
-    logger.warning("SearchServiceQuery non disponible, utilisation de dict")
-    SearchServiceQuery = dict  # Fallback
+    # Fallback si les modèles ne sont pas disponibles
+    SearchServiceQuery = dict
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def create_search_service_query(
     limit: int = 20,
     offset: int = 0,
     intent_type: str = "TEXT_SEARCH"
-) -> SearchServiceQuery:
+) -> Union[Dict[str, Any], Any]:
     """Crée un SearchServiceQuery à partir des paramètres simples de l'API"""
     
     # Métadonnées de base (format dict simple pour compatibilité)
@@ -142,9 +142,11 @@ def create_search_service_query(
     
     # Tenter de créer le SearchServiceQuery, avec fallback vers dict
     try:
-        return SearchServiceQuery(**contract_dict)
+        if SearchServiceQuery != dict:
+            return SearchServiceQuery(**contract_dict)
+        else:
+            return contract_dict
     except Exception as e:
-        logger.warning(f"Fallback vers dict simple pour SearchServiceQuery: {e}")
         # Fallback vers un dict simple si la construction échoue
         return contract_dict
 

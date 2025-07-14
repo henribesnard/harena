@@ -4,19 +4,186 @@ Routes API REST pour le Search Service
 
 Version corrigée - cohérente avec main.py et états de production corrects.
 Suppression des fallbacks trompeurs, utilisation des vrais états du service.
+Fix: Utilisation de search() au lieu de search_transactions()
 """
 
 import logging
 import os
+import time
 from datetime import datetime
+from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+# Import pour les contrats de service
+from search_service.models.service_contracts import (
+    SearchServiceQuery, QueryMetadata, SearchParameters, 
+    SearchFilters, TermFilter, FilterOperator, TextSearchQuery, SearchOptions
+)
 
 logger = logging.getLogger(__name__)
 
 # === ROUTEUR PRINCIPAL ===
 router = APIRouter(tags=["search"])
+
+# === FONCTIONS HELPER POUR COMPATIBILITÉ API ===
+
+def create_search_service_query(
+    user_id: int,
+    query: str = "",
+    filters: Dict[str, Any] = None,
+    limit: int = 20,
+    offset: int = 0,
+    intent_type: str = "TEXT_SEARCH"
+) -> SearchServiceQuery:
+    """Crée un SearchServiceQuery à partir des paramètres simples de l'API"""
+    
+    # Métadonnées de base
+    query_metadata = QueryMetadata(
+        query_id=f"api_{int(time.time() * 1000)}",
+        user_id=user_id,
+        intent_type=intent_type,
+        confidence=0.9,
+        agent_name="api_endpoint",
+        team_name="direct_search",
+        execution_context={
+            "conversation_id": "api_direct",
+            "turn_number": 1,
+            "agent_chain": ["api_endpoint"]
+        }
+    )
+    
+    # Paramètres de recherche
+    search_parameters = SearchParameters(
+        query_type="TEXT_SEARCH",
+        fields=[
+            "transaction_id", "user_id", "amount", "date",
+            "primary_description", "merchant_name", "category_name",
+            "searchable_text"
+        ],
+        limit=limit,
+        offset=offset,
+        timeout_ms=5000
+    )
+    
+    # Filtres obligatoires
+    required_filters = [
+        TermFilter(field="user_id", operator=FilterOperator.EQ, value=user_id)
+    ]
+    
+    # Ajouter filtres additionnels si fournis
+    optional_filters = []
+    range_filters = []
+    
+    if filters:
+        for field, value in filters.items():
+            if field == "user_id":
+                continue  # Déjà ajouté
+            elif isinstance(value, dict) and ("gte" in value or "lte" in value):
+                # Filtre de range
+                if "gte" in value and "lte" in value:
+                    range_filters.append(
+                        TermFilter(
+                            field=field, 
+                            operator=FilterOperator.BETWEEN, 
+                            value=[value["gte"], value["lte"]]
+                        )
+                    )
+                elif "gte" in value:
+                    range_filters.append(
+                        TermFilter(field=field, operator=FilterOperator.GTE, value=value["gte"])
+                    )
+                elif "lte" in value:
+                    range_filters.append(
+                        TermFilter(field=field, operator=FilterOperator.LTE, value=value["lte"])
+                    )
+            else:
+                # Filtre terme simple
+                optional_filters.append(
+                    TermFilter(field=field, operator=FilterOperator.EQ, value=value)
+                )
+    
+    # Recherche textuelle
+    text_search = None
+    if query and query.strip():
+        text_search = TextSearchQuery(
+            query=query.strip(),
+            fields=["searchable_text", "primary_description", "merchant_name"],
+            operator="match"
+        )
+    
+    # Créer les filtres
+    search_filters = SearchFilters(
+        required=required_filters,
+        optional=optional_filters,
+        ranges=range_filters
+    )
+    
+    # Options par défaut
+    options = SearchOptions(
+        cache_enabled=True,
+        include_explanation=False,
+        include_aggregations=False
+    )
+    
+    return SearchServiceQuery(
+        query_metadata=query_metadata,
+        search_parameters=search_parameters,
+        filters=search_filters,
+        text_search=text_search,
+        options=options
+    )
+
+def convert_service_response_to_legacy(service_response) -> Dict[str, Any]:
+    """Convertit SearchServiceResponse vers le format attendu par l'API legacy"""
+    
+    # Extraire les données de la réponse
+    hits_data = []
+    
+    for result in service_response.results:
+        hit = {
+            "_source": {
+                "transaction_id": result.transaction_id,
+                "user_id": result.user_id,
+                "account_id": result.account_id,
+                "amount": result.amount,
+                "amount_abs": result.amount_abs,
+                "transaction_type": result.transaction_type,
+                "currency_code": result.currency_code,
+                "date": result.date,
+                "primary_description": result.primary_description,
+                "merchant_name": result.merchant_name,
+                "category_name": result.category_name,
+                "operation_type": result.operation_type,
+                "month_year": result.month_year,
+                "weekday": result.weekday,
+                "searchable_text": result.searchable_text
+            },
+            "_score": result.score
+        }
+        
+        # Ajouter highlights si présents
+        if hasattr(result, 'highlights') and result.highlights:
+            hit["highlight"] = result.highlights
+        
+        hits_data.append(hit)
+    
+    # Format de réponse compatible
+    return {
+        "took": service_response.response_metadata.elasticsearch_took,
+        "hits": {
+            "total": {
+                "value": service_response.response_metadata.total_hits,
+                "relation": "eq"
+            },
+            "hits": hits_data
+        },
+        "query_id": service_response.response_metadata.query_id,
+        "cache_hit": service_response.response_metadata.cache_hit
+    }
+
+# === ENDPOINTS ===
 
 @router.get("/health", summary="Vérification de l'état du service")
 async def health_check(request: Request):
@@ -189,6 +356,7 @@ async def service_status(request: Request):
 @router.post("/search", summary="Recherche de transactions")
 async def search_transactions(request: Request, search_request: dict):
     """
+    ✅ ENDPOINT CORRIGÉ - Utilise search() au lieu de search_transactions()
     Endpoint principal de recherche - vérifications strictes sans fallbacks
     """
     try:
@@ -256,8 +424,10 @@ async def search_transactions(request: Request, search_request: dict):
                 detail="Search engine not available from core manager"
             )
         
-        # Effectuer la recherche
-        result = await search_engine.search_transactions(
+        # ✅ CORRECTION: Utiliser search() avec SearchServiceQuery au lieu de search_transactions()
+        
+        # Créer le SearchServiceQuery à partir des paramètres
+        service_query = create_search_service_query(
             user_id=user_id,
             query=query,
             filters=filters,
@@ -265,7 +435,13 @@ async def search_transactions(request: Request, search_request: dict):
             offset=offset
         )
         
-        return JSONResponse(content=result, status_code=200)
+        # Appeler la méthode search() qui existe réellement
+        service_response = await search_engine.search(service_query)
+        
+        # Convertir vers le format legacy attendu par le client
+        legacy_result = convert_service_response_to_legacy(service_response)
+        
+        return JSONResponse(content=legacy_result, status_code=200)
     
     except HTTPException:
         raise
@@ -330,6 +506,7 @@ async def quick_search_endpoint(
     limit: int = 5
 ):
     """
+    ✅ ENDPOINT CORRIGÉ - Quick search avec search() au lieu de search_transactions()
     Recherche rapide utilisant les composants réels du service
     """
     try:
@@ -379,16 +556,25 @@ async def quick_search_endpoint(
                 status_code=503
             )
         
-        # Effectuer la recherche via le moteur
-        result = await search_engine.search_transactions(
+        # ✅ CORRECTION: Utiliser search() avec SearchServiceQuery au lieu de search_transactions()
+        
+        # Créer le SearchServiceQuery pour quick search
+        service_query = create_search_service_query(
             user_id=user_id,
             query=query,
             filters={},
             limit=limit,
-            offset=0
+            offset=0,
+            intent_type="QUICK_SEARCH"
         )
         
-        return JSONResponse(content=result, status_code=200)
+        # Appeler search() au lieu de search_transactions()
+        service_response = await search_engine.search(service_query)
+        
+        # Convertir vers le format legacy
+        legacy_result = convert_service_response_to_legacy(service_response)
+        
+        return JSONResponse(content=legacy_result, status_code=200)
             
     except Exception as e:
         logger.error(f"❌ Quick search error: {e}")

@@ -1,16 +1,14 @@
-# search_service/api/routes.py
 """
-Routes API REST simplifiées pour le Search Service
-==================================================
+Routes API REST pour le Search Service
+=====================================
 
-Version simplifiée pour démarrage - à enrichir progressivement.
-Health check géré par main.py pour éviter les conflits.
+Version corrigée - cohérente avec main.py et états de production corrects.
+Suppression des fallbacks trompeurs, utilisation des vrais états du service.
 """
 
 import logging
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -20,72 +18,11 @@ logger = logging.getLogger(__name__)
 # === ROUTEUR PRINCIPAL ===
 router = APIRouter(tags=["search"])
 
-# === VARIABLE GLOBALE POUR TRACKER L'INITIALISATION ===
-_initialization_attempted = False
-_initialization_successful = False
-_initialization_error = None
-
-async def _ensure_core_initialization():
-    """
-    Force l'initialisation du core manager si elle n'a pas été faite
-    ✅ CORRECTION: Utilisation de la nouvelle API simplifiée
-    """
-    global _initialization_attempted, _initialization_successful, _initialization_error
-    
-    if _initialization_attempted:
-        return _initialization_successful, _initialization_error
-    
-    _initialization_attempted = True
-    
-    try:
-        logger.info("🔧 Tentative d'initialisation forcée du search_service...")
-        
-        # Vérifier les variables d'environnement
-        bonsai_url = os.environ.get("BONSAI_URL")
-        
-        if not bonsai_url:
-            raise ValueError("BONSAI_URL n'est pas configurée")
-        
-        # Import et initialisation
-        from search_service.clients.elasticsearch_client import get_default_client, initialize_default_client
-        from search_service.core import core_manager
-        
-        # ✅ CORRECTION MAJEURE: Utiliser initialize_default_client() 
-        # qui gère automatiquement la détection de l'URL
-        elasticsearch_client = await initialize_default_client()
-        logger.info("✅ Client Elasticsearch initialisé via routes.py")
-        
-        # Initialiser le core manager
-        await core_manager.initialize(elasticsearch_client)
-        
-        # Vérifier l'initialisation
-        if core_manager.is_initialized():
-            logger.info("✅ Core manager initialisé avec succès via routes.py")
-            _initialization_successful = True
-            _initialization_error = None
-        else:
-            raise RuntimeError("Core manager non initialisé après tentative")
-            
-    except Exception as e:
-        error_msg = f"Échec initialisation search_service: {str(e)}"
-        logger.error(f"❌ {error_msg}")
-        _initialization_successful = False
-        _initialization_error = error_msg
-    
-    return _initialization_successful, _initialization_error
-
 @router.get("/health", summary="Vérification de l'état du service")
 async def health_check(request: Request):
     """
-    Endpoint de health check pour vérifier l'état du service de recherche.
-    
-    Vérifie:
-    - L'état de l'initialisation du service
-    - La connectivité à Elasticsearch/Bonsai
-    - L'état du core manager
-    
-    Returns:
-        JSONResponse: Statut de santé détaillé
+    Health check basé uniquement sur l'état RÉEL du service initialisé par main.py
+    Pas de fallbacks trompeurs, seuls les vrais états sont retournés.
     """
     health_status = {
         "service": "search_service",
@@ -96,88 +33,88 @@ async def health_check(request: Request):
     }
     
     try:
-        # Vérifier l'état du service depuis main.py
+        # Récupérer l'état RÉEL depuis main.py (pas de fallbacks)
         service_initialized = getattr(request.app.state, 'service_initialized', False)
         elasticsearch_client = getattr(request.app.state, 'elasticsearch_client', None)
+        core_manager = getattr(request.app.state, 'core_manager', None)
         initialization_error = getattr(request.app.state, 'initialization_error', None)
         
-        if service_initialized and elasticsearch_client:
-            # Service correctement initialisé
+        # CAS 1: Service correctement initialisé par main.py
+        if service_initialized and elasticsearch_client and core_manager:
             try:
-                # Test de santé Elasticsearch
+                # Vérifier l'état réel d'Elasticsearch
                 es_health = await elasticsearch_client.health_check()
                 
-                # Vérifier le core manager
-                core_manager = getattr(request.app.state, 'core_manager', None)
-                core_status = "initialized" if (core_manager and core_manager.is_initialized()) else "not_initialized"
+                # Vérifier l'état réel du core manager
+                core_initialized = core_manager.is_initialized()
                 
-                health_status.update({
-                    "status": "healthy",
-                    "details": {
-                        "service_initialized": True,
-                        "elasticsearch": es_health,
-                        "core_manager": core_status,
-                        "bonsai_url_configured": bool(os.environ.get("BONSAI_URL"))
-                    }
-                })
-                
-                return JSONResponse(content=health_status, status_code=200)
+                if core_initialized:
+                    health_status.update({
+                        "status": "healthy",
+                        "details": {
+                            "service_initialized": True,
+                            "elasticsearch": es_health,
+                            "core_manager": "initialized",
+                            "bonsai_url_configured": bool(os.environ.get("BONSAI_URL")),
+                            "initialization_source": "main.py"
+                        }
+                    })
+                    return JSONResponse(content=health_status, status_code=200)
+                else:
+                    health_status.update({
+                        "status": "degraded",
+                        "details": {
+                            "service_initialized": True,
+                            "elasticsearch": es_health,
+                            "core_manager": "not_initialized",
+                            "bonsai_url_configured": bool(os.environ.get("BONSAI_URL")),
+                            "error": "Core manager exists but not initialized"
+                        }
+                    })
+                    return JSONResponse(content=health_status, status_code=503)
                 
             except Exception as e:
                 # Erreur lors des tests de santé
                 health_status.update({
-                    "status": "degraded",
+                    "status": "degraded", 
                     "details": {
                         "service_initialized": True,
                         "elasticsearch_error": str(e),
-                        "core_manager": "error",
-                        "bonsai_url_configured": bool(os.environ.get("BONSAI_URL"))
+                        "core_manager": "error_during_check",
+                        "bonsai_url_configured": bool(os.environ.get("BONSAI_URL")),
+                        "initialization_source": "main.py"
                     }
                 })
-                
                 return JSONResponse(content=health_status, status_code=503)
         
+        # CAS 2: Erreur d'initialisation connue
         elif initialization_error:
-            # Erreur d'initialisation connue
             health_status.update({
                 "status": "unhealthy",
                 "details": {
                     "service_initialized": False,
                     "initialization_error": initialization_error,
-                    "bonsai_url_configured": bool(os.environ.get("BONSAI_URL"))
+                    "bonsai_url_configured": bool(os.environ.get("BONSAI_URL")),
+                    "initialization_source": "main.py",
+                    "recommendation": "Check logs and restart service"
                 }
             })
-            
             return JSONResponse(content=health_status, status_code=503)
         
+        # CAS 3: Service pas encore initialisé (démarrage en cours)
         else:
-            # Initialisation en cours ou pas encore tentée
-            logger.info("🔄 Service non initialisé, tentative d'initialisation forcée...")
-            
-            # Tentative d'initialisation forcée
-            success, error = await _ensure_core_initialization()
-            
-            if success:
-                health_status.update({
-                    "status": "healthy",
-                    "details": {
-                        "service_initialized": True,
-                        "elasticsearch": "initialized_via_fallback",
-                        "core_manager": "initialized_via_fallback",
-                        "bonsai_url_configured": bool(os.environ.get("BONSAI_URL"))
-                    }
-                })
-                return JSONResponse(content=health_status, status_code=200)
-            else:
-                health_status.update({
-                    "status": "unhealthy",
-                    "details": {
-                        "service_initialized": False,
-                        "fallback_initialization_error": error,
-                        "bonsai_url_configured": bool(os.environ.get("BONSAI_URL"))
-                    }
-                })
-                return JSONResponse(content=health_status, status_code=503)
+            health_status.update({
+                "status": "starting",
+                "details": {
+                    "service_initialized": False,
+                    "elasticsearch_client_available": elasticsearch_client is not None,
+                    "core_manager_available": core_manager is not None,
+                    "bonsai_url_configured": bool(os.environ.get("BONSAI_URL")),
+                    "initialization_source": "main.py",
+                    "message": "Service is starting up, please wait"
+                }
+            })
+            return JSONResponse(content=health_status, status_code=503)
     
     except Exception as e:
         # Erreur inattendue dans le health check
@@ -189,22 +126,14 @@ async def health_check(request: Request):
                 "bonsai_url_configured": bool(os.environ.get("BONSAI_URL"))
             }
         })
-        
         return JSONResponse(content=health_status, status_code=500)
-
 
 @router.get("/status", summary="Statut détaillé du service")
 async def service_status(request: Request):
     """
-    Endpoint pour obtenir un statut détaillé du service.
-    
-    Returns:
-        JSONResponse: Informations détaillées sur l'état du service
+    Statut détaillé basé sur l'état réel du service
     """
     try:
-        # Import des utilitaires de configuration
-        from search_service.clients.elasticsearch_client import get_client_configuration_info, get_client_metrics
-        
         # Informations de base
         status_info = {
             "service": "search_service",
@@ -212,15 +141,24 @@ async def service_status(request: Request):
             "version": "1.0.0"
         }
         
-        # État du service depuis main.py
+        # État du service depuis main.py (état réel)
         service_state = {
             "service_initialized": getattr(request.app.state, 'service_initialized', False),
             "elasticsearch_client_available": getattr(request.app.state, 'elasticsearch_client', None) is not None,
+            "core_manager_available": getattr(request.app.state, 'core_manager', None) is not None,
             "initialization_error": getattr(request.app.state, 'initialization_error', None)
         }
         
+        # Vérifier l'état réel du core manager si disponible
+        core_manager = getattr(request.app.state, 'core_manager', None)
+        if core_manager:
+            service_state["core_manager_initialized"] = core_manager.is_initialized()
+        else:
+            service_state["core_manager_initialized"] = False
+        
         # Configuration Elasticsearch
         try:
+            from search_service.clients.elasticsearch_client import get_client_configuration_info
             config_info = get_client_configuration_info()
             status_info["configuration"] = config_info
         except Exception as e:
@@ -228,6 +166,7 @@ async def service_status(request: Request):
         
         # Métriques du client
         try:
+            from search_service.clients.elasticsearch_client import get_client_metrics
             metrics = get_client_metrics()
             status_info["metrics"] = metrics
         except Exception as e:
@@ -247,21 +186,127 @@ async def service_status(request: Request):
             status_code=500
         )
 
-
-@router.get("/test-connection", summary="Test de connexion Elasticsearch")
-async def test_elasticsearch_connection_endpoint():
+@router.post("/search", summary="Recherche de transactions")
+async def search_transactions(request: Request, search_request: dict):
     """
-    Endpoint pour tester la connexion à Elasticsearch/Bonsai.
-    
-    Returns:
-        JSONResponse: Résultat du test de connexion
+    Endpoint principal de recherche - vérifications strictes sans fallbacks
     """
     try:
-        from search_service.clients.elasticsearch_client import test_elasticsearch_connection
+        # Vérification stricte de l'état du service
+        service_initialized = getattr(request.app.state, 'service_initialized', False)
+        elasticsearch_client = getattr(request.app.state, 'elasticsearch_client', None)
+        core_manager = getattr(request.app.state, 'core_manager', None)
         
-        result = await test_elasticsearch_connection()
+        # Vérifications strictes - pas de fallbacks
+        if not service_initialized:
+            raise HTTPException(
+                status_code=503,
+                detail="Service not initialized. Please check service health and restart if needed."
+            )
         
-        if result.get("connection_test", False):
+        if not elasticsearch_client:
+            raise HTTPException(
+                status_code=503,
+                detail="Elasticsearch client not available. Service needs restart."
+            )
+        
+        if not core_manager:
+            raise HTTPException(
+                status_code=503,
+                detail="Core manager not available. Service needs restart."
+            )
+        
+        # Vérifier que le core manager est réellement initialisé
+        if not core_manager.is_initialized():
+            raise HTTPException(
+                status_code=503,
+                detail="Core manager not properly initialized. Service needs restart."
+            )
+        
+        # Validation des paramètres d'entrée
+        user_id = search_request.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="user_id is required"
+            )
+        
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="user_id must be a positive integer"
+            )
+        
+        query = search_request.get("query", "")
+        filters = search_request.get("filters", {})
+        limit = search_request.get("limit", 20)
+        offset = search_request.get("offset", 0)
+        
+        # Validation des limites
+        if limit > 100:
+            limit = 100
+        if offset < 0:
+            offset = 0
+        
+        # Obtenir le moteur de recherche
+        search_engine = core_manager.get_search_engine()
+        if not search_engine:
+            raise HTTPException(
+                status_code=503,
+                detail="Search engine not available from core manager"
+            )
+        
+        # Effectuer la recherche
+        result = await search_engine.search_transactions(
+            user_id=user_id,
+            query=query,
+            filters=filters,
+            limit=limit,
+            offset=offset
+        )
+        
+        return JSONResponse(content=result, status_code=200)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la recherche: {e}")
+        import traceback
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Search failed: {str(e)}"
+        )
+
+@router.get("/test-connection", summary="Test de connexion Elasticsearch")
+async def test_elasticsearch_connection_endpoint(request: Request):
+    """
+    Test de connexion utilisant le client réel du service
+    """
+    try:
+        elasticsearch_client = getattr(request.app.state, 'elasticsearch_client', None)
+        
+        if not elasticsearch_client:
+            return JSONResponse(
+                content={
+                    "connection_test": False,
+                    "error": "Elasticsearch client not available",
+                    "health_check": {"status": "unavailable"}
+                },
+                status_code=503
+            )
+        
+        # Test de connexion réel
+        connection_test = await elasticsearch_client.test_connection()
+        health_check = await elasticsearch_client.health_check()
+        
+        result = {
+            "connection_test": connection_test,
+            "health_check": health_check,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        if connection_test:
             return JSONResponse(content=result, status_code=200)
         else:
             return JSONResponse(content=result, status_code=503)
@@ -271,135 +316,95 @@ async def test_elasticsearch_connection_endpoint():
             content={
                 "connection_test": False,
                 "error": str(e),
-                "health_check": {"status": "error", "message": str(e)}
+                "health_check": {"status": "error", "message": str(e)},
+                "timestamp": datetime.utcnow().isoformat()
             },
             status_code=500
         )
 
-
 @router.get("/quick-search", summary="Recherche rapide pour tests")
 async def quick_search_endpoint(
+    request: Request,
     user_id: int = 34,
     query: str = "test",
     limit: int = 5
 ):
     """
-    Endpoint pour effectuer une recherche rapide (utile pour les tests).
-    
-    Args:
-        user_id: ID utilisateur (défaut: 34)
-        query: Terme de recherche (défaut: "test")
-        limit: Nombre de résultats (défaut: 5)
-    
-    Returns:
-        JSONResponse: Résultats de recherche
+    Recherche rapide utilisant les composants réels du service
     """
     try:
-        from search_service.clients.elasticsearch_client import quick_search
+        # Utiliser les composants réels du service
+        elasticsearch_client = getattr(request.app.state, 'elasticsearch_client', None)
+        core_manager = getattr(request.app.state, 'core_manager', None)
         
-        result = await quick_search(
+        if not elasticsearch_client:
+            return JSONResponse(
+                content={
+                    "error": "Elasticsearch client not available",
+                    "took": 0,
+                    "hits": {"total": {"value": 0}, "hits": []}
+                },
+                status_code=503
+            )
+        
+        if not core_manager or not core_manager.is_initialized():
+            # Fallback sur une recherche directe si le core manager n'est pas disponible
+            try:
+                from search_service.clients.elasticsearch_client import quick_search
+                result = await quick_search(user_id=user_id, query=query, limit=limit)
+                
+                if "error" in result:
+                    return JSONResponse(content=result, status_code=503)
+                else:
+                    return JSONResponse(content=result, status_code=200)
+            except Exception as e:
+                return JSONResponse(
+                    content={
+                        "error": f"Quick search failed: {str(e)}",
+                        "took": 0,
+                        "hits": {"total": {"value": 0}, "hits": []}
+                    },
+                    status_code=500
+                )
+        
+        # Utiliser le moteur de recherche du core manager
+        search_engine = core_manager.get_search_engine()
+        if not search_engine:
+            return JSONResponse(
+                content={
+                    "error": "Search engine not available",
+                    "took": 0,
+                    "hits": {"total": {"value": 0}, "hits": []}
+                },
+                status_code=503
+            )
+        
+        # Effectuer la recherche via le moteur
+        result = await search_engine.search_transactions(
             user_id=user_id,
             query=query,
-            limit=limit
+            filters={},
+            limit=limit,
+            offset=0
         )
         
-        if "error" in result:
-            return JSONResponse(content=result, status_code=503)
-        else:
-            return JSONResponse(content=result, status_code=200)
+        return JSONResponse(content=result, status_code=200)
             
     except Exception as e:
+        logger.error(f"❌ Quick search error: {e}")
         return JSONResponse(
             content={
-                "error": "Quick search failed",
-                "details": str(e),
+                "error": f"Quick search failed: {str(e)}",
                 "took": 0,
                 "hits": {"total": {"value": 0}, "hits": []}
             },
             status_code=500
         )
 
-
-@router.post("/search", summary="Recherche de transactions")
-async def search_transactions(
-    request: Request,
-    search_request: dict
-):
-    """
-    Endpoint principal pour la recherche de transactions.
-    
-    Args:
-        search_request: Paramètres de recherche
-        
-    Returns:
-        JSONResponse: Résultats de recherche
-    """
-    try:
-        # Vérifier que le service est initialisé
-        service_initialized = getattr(request.app.state, 'service_initialized', False)
-        core_manager = getattr(request.app.state, 'core_manager', None)
-        
-        if not service_initialized or not core_manager:
-            # Tentative d'initialisation forcée
-            success, error = await _ensure_core_initialization()
-            if not success:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Service not initialized: {error}"
-                )
-        
-        # Extraire les paramètres
-        user_id = search_request.get("user_id")
-        query = search_request.get("query", "")
-        filters = search_request.get("filters", {})
-        limit = search_request.get("limit", 20)
-        offset = search_request.get("offset", 0)
-        
-        if not user_id:
-            raise HTTPException(
-                status_code=400,
-                detail="user_id is required"
-            )
-        
-        # Effectuer la recherche via le core manager
-        if hasattr(request.app.state, 'core_manager'):
-            core_manager = request.app.state.core_manager
-            
-            # Utiliser l'engine de recherche
-            search_engine = core_manager.get_search_engine()
-            
-            result = await search_engine.search_transactions(
-                user_id=user_id,
-                query=query,
-                filters=filters,
-                limit=limit,
-                offset=offset
-            )
-            
-            return JSONResponse(content=result, status_code=200)
-        else:
-            raise HTTPException(
-                status_code=503,
-                detail="Search engine not available"
-            )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la recherche: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Search failed: {str(e)}"
-        )
-
-
 @router.get("/config", summary="Configuration du service")
 async def get_service_configuration():
     """
-    Endpoint pour obtenir la configuration actuelle du service.
-    
-    Returns:
-        JSONResponse: Configuration du service
+    Configuration du service
     """
     try:
         config = {
@@ -432,51 +437,10 @@ async def get_service_configuration():
             status_code=500
         )
 
-
-# === ROUTES DE DEBUG/DÉVELOPPEMENT ===
-
-@router.post("/reset-client", summary="Reset du client Elasticsearch (dev only)")
-async def reset_elasticsearch_client():
-    """
-    Endpoint pour réinitialiser le client Elasticsearch.
-    Utile pour le développement et les tests.
-    """
-    try:
-        from search_service.clients.elasticsearch_client import reset_default_client
-        
-        reset_default_client()
-        
-        # Reset des variables globales
-        global _initialization_attempted, _initialization_successful, _initialization_error
-        _initialization_attempted = False
-        _initialization_successful = False
-        _initialization_error = None
-        
-        return JSONResponse(
-            content={
-                "message": "Elasticsearch client reset successfully",
-                "timestamp": datetime.utcnow().isoformat()
-            },
-            status_code=200
-        )
-        
-    except Exception as e:
-        return JSONResponse(
-            content={
-                "error": "Failed to reset client",
-                "details": str(e)
-            },
-            status_code=500
-        )
-
-
 @router.get("/metrics", summary="Métriques du service")
 async def get_service_metrics():
     """
-    Endpoint pour obtenir les métriques du service.
-    
-    Returns:
-        JSONResponse: Métriques détaillées
+    Métriques du service
     """
     try:
         from search_service.clients.elasticsearch_client import get_client_metrics
@@ -493,6 +457,87 @@ async def get_service_metrics():
         return JSONResponse(
             content={
                 "error": "Failed to get metrics",
+                "details": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            status_code=500
+        )
+
+# === ROUTES DE DEBUG/DÉVELOPPEMENT ===
+
+@router.post("/restart", summary="Redémarrage du service (dev/debug)")
+async def restart_service(request: Request):
+    """
+    Endpoint pour redémarrer le service en réinitialisant les composants
+    ATTENTION: À utiliser seulement en développement/debug
+    """
+    try:
+        logger.warning("🔄 Tentative de redémarrage du service via endpoint...")
+        
+        # Marquer le service comme non initialisé
+        request.app.state.service_initialized = False
+        request.app.state.elasticsearch_client = None
+        request.app.state.core_manager = None
+        request.app.state.initialization_error = "Manual restart requested"
+        
+        return JSONResponse(
+            content={
+                "message": "Service marked for restart. Please restart the application for full reinitialization.",
+                "timestamp": datetime.utcnow().isoformat(),
+                "status": "restart_requested",
+                "recommendation": "Use 'heroku restart' for production restart"
+            },
+            status_code=200
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la demande de redémarrage: {e}")
+        return JSONResponse(
+            content={
+                "message": "Restart request failed",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            status_code=500
+        )
+
+@router.get("/debug/state", summary="État de debug du service")
+async def debug_service_state(request: Request):
+    """
+    Endpoint de debug pour voir l'état détaillé des composants
+    """
+    try:
+        debug_info = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "app_state": {
+                "service_initialized": getattr(request.app.state, 'service_initialized', None),
+                "elasticsearch_client_type": str(type(getattr(request.app.state, 'elasticsearch_client', None))),
+                "core_manager_type": str(type(getattr(request.app.state, 'core_manager', None))),
+                "initialization_error": getattr(request.app.state, 'initialization_error', None)
+            },
+            "environment": {
+                "bonsai_url_set": bool(os.environ.get("BONSAI_URL")),
+                "bonsai_url_length": len(os.environ.get("BONSAI_URL", "")),
+                "elasticsearch_index": os.environ.get("ELASTICSEARCH_INDEX"),
+                "test_user_id": os.environ.get("TEST_USER_ID")
+            }
+        }
+        
+        # Vérifier l'état du core manager si disponible
+        core_manager = getattr(request.app.state, 'core_manager', None)
+        if core_manager:
+            debug_info["core_manager"] = {
+                "is_initialized": core_manager.is_initialized(),
+                "has_lexical_engine": hasattr(core_manager, 'lexical_engine'),
+                "has_query_executor": hasattr(core_manager, 'query_executor')
+            }
+        
+        return JSONResponse(content=debug_info, status_code=200)
+        
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "error": "Debug state failed",
                 "details": str(e),
                 "timestamp": datetime.utcnow().isoformat()
             },

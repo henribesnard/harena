@@ -639,9 +639,7 @@ class LexicalSearchEngine:
         )
         
         # === MAPPING QUERY_TYPE ===
-        # Mappage des valeurs possibles vers l'enum QueryType
         QUERY_TYPE_MAPPING = {
-            # Valeurs possibles en entrée -> valeurs enum attendues
             'TEXT_SEARCH': 'text_search',
             'FILTERED_SEARCH': 'filtered_search', 
             'SIMPLE_SEARCH': 'simple_search',
@@ -649,7 +647,6 @@ class LexicalSearchEngine:
             'FILTERED_AGGREGATION': 'filtered_aggregation',
             'TEMPORAL_AGGREGATION': 'temporal_aggregation',
             'COMPLEX_QUERY': 'complex_query',
-            # Valeurs déjà conformes
             'text_search': 'text_search',
             'filtered_search': 'filtered_search',
             'simple_search': 'simple_search',
@@ -657,7 +654,6 @@ class LexicalSearchEngine:
             'filtered_aggregation': 'filtered_aggregation',
             'temporal_aggregation': 'temporal_aggregation',
             'complex_query': 'complex_query',
-            # Fallbacks
             'basic_search': 'simple_search',
             'search': 'simple_search'
         }
@@ -679,19 +675,18 @@ class LexicalSearchEngine:
         search_params_dict = dict_data.get('search_parameters', {})
         raw_query_type = search_params_dict.get('query_type', 'basic_search')
         
-        # 🔥 CORRECTION: Mapper le query_type vers l'enum
+        # Mapper le query_type vers l'enum
         mapped_query_type = QUERY_TYPE_MAPPING.get(raw_query_type, 'simple_search')
         
         search_parameters = SearchParameters(
-            query_type=mapped_query_type,  # ✅ Utiliser la valeur mappée
+            query_type=mapped_query_type,
             fields=search_params_dict.get('fields', []),
             limit=search_params_dict.get('limit', 20),
             offset=search_params_dict.get('offset', 0),
             timeout_ms=search_params_dict.get('timeout_ms', 5000)
         )
         
-        # === LOGIQUE DE DÉTECTION AUTOMATIQUE QUERY_TYPE ===
-        # Si pas de query_type explicite, détecter automatiquement
+        # Détection automatique si nécessaire
         if raw_query_type in ['basic_search', 'search'] or not raw_query_type:
             detected_query_type = self._auto_detect_query_type(dict_data)
             search_parameters.query_type = detected_query_type
@@ -729,21 +724,23 @@ class LexicalSearchEngine:
                     value=filter_data.get('value', '')
                 ))
         
-        # Conversion text_search
-        text_search = None
+        # ✅ CORRECTION : Garder text_search comme dictionnaire dans SearchFilters
         text_search_dict = filters_dict.get('text_search')
-        if text_search_dict and isinstance(text_search_dict, dict):
-            text_search = TextSearchConfig(
-                query=text_search_dict.get('query', ''),
-                fields=text_search_dict.get('fields', []),
-                operator=text_search_dict.get('operator', 'match')
-            )
+        if text_search_dict and not isinstance(text_search_dict, dict):
+            # Si c'est un objet TextSearchConfig, le convertir en dict
+            if hasattr(text_search_dict, 'model_dump'):
+                text_search_dict = text_search_dict.model_dump()
+            elif hasattr(text_search_dict, 'dict'):
+                text_search_dict = text_search_dict.dict()
+            else:
+                text_search_dict = None
         
+        # Créer SearchFilters avec text_search en tant que dict
         filters = SearchFilters(
             required=required_filters,
             optional=optional_filters,
             ranges=range_filters,
-            text_search=text_search
+            text_search=text_search_dict  # ✅ Passer le dict directement
         )
         
         # Extraction options
@@ -755,11 +752,23 @@ class LexicalSearchEngine:
             return_raw_elasticsearch=options_dict.get('return_raw_elasticsearch', False)
         )
         
+        # ✅ CORRECTION : Créer text_search au niveau racine
+        text_search_config = None
+        if text_search_dict and isinstance(text_search_dict, dict):
+            text_search_config = TextSearchConfig(
+                query=text_search_dict.get('query', ''),
+                fields=text_search_dict.get('fields', []),
+                operator=text_search_dict.get('operator', 'match'),
+                fuzziness=text_search_dict.get('fuzziness'),
+                minimum_should_match=text_search_dict.get('minimum_should_match')
+            )
+        
         return SearchServiceQuery(
             query_metadata=query_metadata,
             search_parameters=search_parameters,
             filters=filters,
             aggregations=dict_data.get('aggregations', {}),
+            text_search=text_search_config,  # ✅ Au niveau racine
             options=options
         )
 
@@ -1508,7 +1517,6 @@ def auto_initialize_lexical_engine():
         logger.warning(f"Échec auto-initialisation LexicalEngine: {str(e)}")
     
     return False
-
 
 # === CONFIGURATION ET LOGGING ===
 

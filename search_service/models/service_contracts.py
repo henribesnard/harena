@@ -64,7 +64,7 @@ class SearchFilter(BaseModel):
     @classmethod
     def validate_field_name(cls, v):
         """Valide que le nom de champ est autorisé"""
-        from config import INDEXED_FIELDS
+        from search_service.config import INDEXED_FIELDS
         allowed_fields = list(INDEXED_FIELDS.keys())
         if v not in allowed_fields:
             raise ValueError(f"Champ non autorisé: {v}. Champs disponibles: {allowed_fields}")

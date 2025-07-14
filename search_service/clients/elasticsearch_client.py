@@ -38,9 +38,8 @@ try:
 except ImportError:
     # Fallback amélioré si config n'est pas disponible
     class settings:
-        # Prioriser BONSAI_URL puis fallback vers ELASTICSEARCH_URL
+        # Utiliser uniquement BONSAI_URL - plus simple et unifié
         BONSAI_URL = os.environ.get("BONSAI_URL", "")
-        ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "https://localhost:9200")
         ELASTICSEARCH_INDEX = os.environ.get("ELASTICSEARCH_INDEX", "harena_transactions")
         test_user_id = int(os.environ.get("TEST_USER_ID", "34"))
 
@@ -56,30 +55,31 @@ class ElasticsearchClient(BaseClient):
     """
     Client Elasticsearch/Bonsai optimisé pour le Search Service
     
-    Responsabilités principales:
-    - Recherches lexicales ultra-rapides (<50ms)
-    - Validation défensive des requêtes (évite body=None)
-    - Gestion SSL native pour Bonsai
-    - Interface générique pour lexical_engine.py
-    - Métriques spécialisées Elasticsearch
-    - Health checks détaillés (cluster, index, mapping)
-    
-    Optimisations spécifiques:
-    - Connection pooling pour Bonsai
-    - Query validation avant envoi
-    - Gestion des timeouts adaptatifs
-    - Cache des requêtes fréquentes
+    CORRECTION MAJEURE: Constructeur simplifié avec auto-détection de l'URL
     """
     
     def __init__(
         self,
-        bonsai_url: str,
+        bonsai_url: Optional[str] = None,  # ← MAINTENANT OPTIONNEL
         index_name: str = "harena_transactions",
         timeout: float = 10.0,
         retry_config: Optional[RetryConfig] = None,
         circuit_breaker_config: Optional[CircuitBreakerConfig] = None,
         **kwargs
     ):
+        """
+        Initialise le client Elasticsearch/Bonsai
+        
+        Args:
+            bonsai_url: URL Bonsai (optionnel, auto-détecté depuis BONSAI_URL)
+            index_name: Nom de l'index Elasticsearch
+            timeout: Timeout des requêtes
+            retry_config: Configuration des retries
+            circuit_breaker_config: Configuration du circuit breaker
+        """
+        # === AUTO-DÉTECTION DE L'URL BONSAI ===
+        final_url = self._resolve_bonsai_url(bonsai_url)
+        
         # Configuration SSL spécialisée pour Bonsai
         health_check_config = HealthCheckConfig(
             enabled=True,
@@ -96,7 +96,7 @@ class ElasticsearchClient(BaseClient):
         }
         
         super().__init__(
-            base_url=bonsai_url,
+            base_url=final_url,
             service_name="elasticsearch",
             timeout=timeout,
             retry_config=retry_config,
@@ -121,9 +121,82 @@ class ElasticsearchClient(BaseClient):
             "cache_hits": 0
         }
         
-        logger.info(f"Elasticsearch client initialized for Bonsai index: {index_name}")
+        logger.info(f"✅ Elasticsearch client initialized for index: {index_name}")
+        logger.info(f"🔗 Using URL: {final_url}")
     
-    async def start(self):
+    def _resolve_bonsai_url(self, provided_url: Optional[str] = None) -> str:
+        """
+        Résout l'URL Bonsai depuis différentes sources
+        
+        Priorité:
+        1. URL fournie en paramètre
+        2. Variable d'environnement BONSAI_URL
+        3. Settings.BONSAI_URL
+        4. Erreur si aucune URL trouvée
+        
+        Args:
+            provided_url: URL fournie directement
+            
+        Returns:
+            str: URL Bonsai validée
+            
+        Raises:
+            RuntimeError: Si aucune URL valide n'est trouvée
+        """
+        # 1. URL fournie en paramètre
+        if provided_url and provided_url.strip():
+            final_url = provided_url.strip()
+            logger.info(f"🔗 Using provided URL: {final_url}")
+        # 2. Variable d'environnement BONSAI_URL
+        elif os.environ.get("BONSAI_URL"):
+            final_url = os.environ.get("BONSAI_URL").strip()
+            logger.info(f"🔗 Using BONSAI_URL from environment: {final_url}")
+        # 3. Settings.BONSAI_URL
+        elif hasattr(settings, 'BONSAI_URL') and settings.BONSAI_URL:
+            final_url = settings.BONSAI_URL.strip()
+            logger.info(f"🔗 Using BONSAI_URL from settings: {final_url}")
+        else:
+            raise RuntimeError(
+                "❌ BONSAI_URL not configured. Please set BONSAI_URL in your .env file.\n"
+                "Example: BONSAI_URL=https://your-cluster.eu-west-1.bonsaisearch.net:443"
+            )
+        
+        # Validation de l'URL
+        if not final_url.startswith(('http://', 'https://')):
+            raise RuntimeError(
+                f"❌ Invalid BONSAI_URL format: {final_url}\n"
+                f"Must start with http:// or https://"
+            )
+        
+        # Avertissement si localhost détecté
+        if "localhost" in final_url:
+            logger.warning(f"⚠️ Using localhost URL: {final_url}")
+            logger.warning("💡 This is fine for development, but ensure BONSAI_URL is set for production")
+        
+        return final_url
+    
+    # === MÉTHODE D'INITIALISATION SIMPLIFIÉE ===
+    
+    async def initialize(self):
+        """
+        Initialise le client (alias pour start() pour compatibilité)
+        """
+        await self.start()
+        logger.info("✅ ElasticsearchClient initialized successfully")
+    
+    async def stop(self):
+        """Arrête le client et ferme la session HTTP"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            logger.info(f"✅ {self.service_name} client session closed")
+        
+        # Appeler la méthode parent si elle existe
+        if hasattr(super(), 'stop'):
+            await super().stop()
+    
+    async def close(self):
+        """Alias pour stop() pour compatibilité"""
+        await self.stop()
         """Démarre le client avec configuration SSL optimisée pour Bonsai"""
         if self._session is None:
             timeout = aiohttp.ClientTimeout(total=self.timeout)
@@ -143,13 +216,13 @@ class ElasticsearchClient(BaseClient):
                 headers=self.headers
             )
             
-            logger.info(f"{self.service_name} client started with SSL for Bonsai")
+            logger.info(f"🚀 {self.service_name} client started with SSL for Bonsai")
             
             # Test initial de connexion
             try:
                 await self._verify_bonsai_connection()
             except Exception as e:
-                logger.warning(f"Initial Bonsai connection test failed: {e}")
+                logger.warning(f"⚠️ Initial Bonsai connection test failed: {e}")
     
     async def _verify_bonsai_connection(self):
         """Vérifie la connexion initiale à Bonsai"""
@@ -171,6 +244,40 @@ class ElasticsearchClient(BaseClient):
             else:
                 logger.warning(f"⚠️ Elasticsearch responded with status {response.status}")
     
+    # === MÉTHODE HEALTH CHECK SIMPLIFIÉE ===
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Effectue un health check simplifié
+        
+        Returns:
+            Dict: Statut de santé du service
+        """
+        try:
+            # Test de connexion de base
+            async with self.session.get(self.base_url) as response:
+                if response.status == 200:
+                    cluster_info = await response.json()
+                    return {
+                        "status": "healthy",
+                        "cluster_name": cluster_info.get("cluster_name", "unknown"),
+                        "version": cluster_info.get("version", {}).get("number", "unknown"),
+                        "url": self.base_url,
+                        "index": self.index_name
+                    }
+                else:
+                    return {
+                        "status": "unhealthy",
+                        "error": f"HTTP {response.status}",
+                        "url": self.base_url
+                    }
+        except Exception as e:
+            return {
+                "status": "unhealthy", 
+                "error": str(e),
+                "url": self.base_url
+            }
+    
     async def test_connection(self) -> bool:
         """Teste la connectivité de base à Bonsai Elasticsearch"""
         try:
@@ -180,13 +287,13 @@ class ElasticsearchClient(BaseClient):
             
             result = await self.execute_with_retry(_test, "connection_test")
             if result:
-                logger.debug("Elasticsearch connection test successful")
+                logger.debug("✅ Elasticsearch connection test successful")
             else:
-                logger.warning("Elasticsearch connection test failed")
+                logger.warning("⚠️ Elasticsearch connection test failed")
             return result
             
         except Exception as e:
-            logger.error(f"Elasticsearch connection test failed: {e}")
+            logger.error(f"❌ Elasticsearch connection test failed: {e}")
             return False
     
     async def _perform_health_check(self) -> Dict[str, Any]:
@@ -199,7 +306,7 @@ class ElasticsearchClient(BaseClient):
             "index_health": None,
             "mapping_valid": False,
             "test_user_transactions": 0,
-            "url_used": self.base_url,  # Ajouter l'URL utilisée pour debugging
+            "url_used": self.base_url,
             "is_localhost": "localhost" in self.base_url
         }
         
@@ -255,7 +362,7 @@ class ElasticsearchClient(BaseClient):
         except Exception as e:
             health_info["status"] = "unhealthy"
             health_info["error"] = str(e)
-            logger.error(f"Elasticsearch health check failed: {e}")
+            logger.error(f"❌ Elasticsearch health check failed: {e}")
         
         return health_info
     
@@ -285,10 +392,10 @@ class ElasticsearchClient(BaseClient):
                     health_info["mapping_valid"] = len(missing_fields) == 0
                     if missing_fields:
                         health_info["missing_fields"] = missing_fields
-                        logger.warning(f"Missing critical fields in mapping: {missing_fields}")
+                        logger.warning(f"⚠️ Missing critical fields in mapping: {missing_fields}")
                     
         except Exception as e:
-            logger.warning(f"Could not check mapping validity: {e}")
+            logger.warning(f"⚠️ Could not check mapping validity: {e}")
             health_info["mapping_valid"] = False
     
     async def _count_test_transactions(self) -> int:
@@ -373,7 +480,7 @@ class ElasticsearchClient(BaseClient):
         cache_key = self._generate_cache_key(index, search_body)
         if cache_key in self._query_cache:
             self.query_stats["cache_hits"] += 1
-            logger.debug(f"Cache hit for search query")
+            logger.debug(f"💨 Cache hit for search query")
             return self._query_cache[cache_key]
         
         async def _search():
@@ -763,7 +870,7 @@ class ElasticsearchClient(BaseClient):
     def clear_cache(self):
         """Vide le cache des requêtes"""
         self._query_cache.clear()
-        logger.info("Elasticsearch query cache cleared")
+        logger.info("🧹 Elasticsearch query cache cleared")
     
     def get_query_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques spécialisées Elasticsearch"""
@@ -789,10 +896,10 @@ class ElasticsearchClient(BaseClient):
             "cache_hits": 0
         }
         self.reset_metrics()
-        logger.info("Elasticsearch query stats reset")
+        logger.info("📊 Elasticsearch query stats reset")
 
 
-# === GESTION D'INSTANCE GLOBALE ===
+# === GESTION D'INSTANCE GLOBALE SIMPLIFIÉE ===
 
 def get_default_client() -> ElasticsearchClient:
     """
@@ -812,7 +919,7 @@ def get_default_client() -> ElasticsearchClient:
             # Double-check locking pattern
             if _default_client is None:
                 _default_client = create_default_client()
-                logger.info("Default Elasticsearch client created")
+                logger.info("✅ Default Elasticsearch client created")
     
     return _default_client
 
@@ -821,74 +928,46 @@ def create_default_client() -> ElasticsearchClient:
     """
     Crée une nouvelle instance du client Elasticsearch avec la configuration par défaut
     
+    CORRECTION MAJEURE: Plus besoin de passer bonsai_url, auto-détecté
+    
     Returns:
         ElasticsearchClient: Nouvelle instance configurée
         
     Raises:
         RuntimeError: Si la configuration est manquante ou invalide
     """
-    # Configuration depuis settings
     try:
-        # 🔧 PRIORITÉ CORRIGÉE : BONSAI_URL d'abord, puis ELASTICSEARCH_URL
-        bonsai_url = getattr(settings, 'BONSAI_URL', None)
-        elasticsearch_url = getattr(settings, 'ELASTICSEARCH_URL', None)
-        
-        # Prioriser BONSAI_URL si disponible
-        final_url = None
-        url_source = None
-        
-        if bonsai_url and bonsai_url.strip():
-            final_url = bonsai_url.strip()
-            url_source = "BONSAI_URL"
-        elif elasticsearch_url and elasticsearch_url.strip():
-            final_url = elasticsearch_url.strip()
-            url_source = "ELASTICSEARCH_URL"
-        else:
-            raise RuntimeError(
-                "Neither BONSAI_URL nor ELASTICSEARCH_URL configured in settings. "
-                "Please set BONSAI_URL in your .env file for Bonsai connection."
-            )
-        
-        # Validation de l'URL
-        if not final_url.startswith(('http://', 'https://')):
-            raise RuntimeError(f"Invalid URL format: {final_url}. Must start with http:// or https://")
-        
-        # Log de la configuration utilisée
-        if "localhost" in final_url:
-            logger.warning(f"🟡 Using {url_source}: {final_url} (localhost detected)")
-            logger.warning("💡 For production, ensure BONSAI_URL is set with your Bonsai instance URL")
-        else:
-            logger.info(f"✅ Using {url_source}: {final_url}")
-        
-        # Récupérer l'index
+        # Récupérer l'index depuis settings
         elasticsearch_index = getattr(settings, 'ELASTICSEARCH_INDEX', "harena_transactions")
         
         # Configuration retry et circuit breaker
         retry_config = RetryConfig(
-            max_retries=3,
-            backoff_factor=1.0,
-            retry_statuses=[429, 502, 503, 504]
+            max_attempts=3,
+            base_delay=1.0,
+            max_delay=10.0,
+            exponential_base=2.0
         )
         
         circuit_breaker_config = CircuitBreakerConfig(
             failure_threshold=5,
-            reset_timeout=60.0,
-            expected_exception=Exception
+            success_threshold=2,
+            timeout_seconds=60.0
         )
         
+        # ✅ CRÉATION SIMPLIFIÉE - Plus besoin de passer bonsai_url
         client = ElasticsearchClient(
-            bonsai_url=final_url,
+            # bonsai_url sera auto-détecté dans __init__
             index_name=elasticsearch_index,
             timeout=10.0,
             retry_config=retry_config,
             circuit_breaker_config=circuit_breaker_config
         )
         
-        logger.info(f"Elasticsearch client created for {final_url}")
+        logger.info(f"✅ Elasticsearch client created successfully")
         return client
         
     except Exception as e:
-        error_msg = f"Failed to create Elasticsearch client: {e}"
+        error_msg = f"❌ Failed to create Elasticsearch client: {e}"
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
@@ -906,11 +985,11 @@ async def initialize_default_client() -> ElasticsearchClient:
     client = get_default_client()
     
     try:
-        await client.start()
-        logger.info("Default Elasticsearch client initialized successfully")
+        await client.initialize()
+        logger.info("✅ Default Elasticsearch client initialized successfully")
         return client
     except Exception as e:
-        error_msg = f"Failed to initialize default Elasticsearch client: {e}"
+        error_msg = f"❌ Failed to initialize default Elasticsearch client: {e}"
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
@@ -924,9 +1003,9 @@ async def shutdown_default_client():
     if _default_client is not None:
         try:
             await _default_client.stop()
-            logger.info("Default Elasticsearch client shut down")
+            logger.info("✅ Default Elasticsearch client shut down")
         except Exception as e:
-            logger.error(f"Error shutting down Elasticsearch client: {e}")
+            logger.error(f"❌ Error shutting down Elasticsearch client: {e}")
         finally:
             with _client_lock:
                 _default_client = None
@@ -943,7 +1022,7 @@ def reset_default_client():
         if _default_client is not None:
             # Note: Ceci ne ferme pas la session, juste reset la référence
             # Pour fermer proprement, utiliser shutdown_default_client()
-            logger.info("Default Elasticsearch client reset")
+            logger.info("🔄 Default Elasticsearch client reset")
         _default_client = None
 
 
@@ -958,7 +1037,7 @@ async def test_elasticsearch_connection() -> Dict[str, Any]:
     """
     try:
         client = get_default_client()
-        await client.start()
+        await client.initialize()
         
         # Test de base
         connection_ok = await client.test_connection()
@@ -994,7 +1073,7 @@ async def quick_search(user_id: int, query: str, limit: int = 10) -> Dict[str, A
     """
     try:
         client = get_default_client()
-        await client.start()
+        await client.initialize()
         
         return await client.search_transactions(
             user_id=user_id,
@@ -1004,7 +1083,7 @@ async def quick_search(user_id: int, query: str, limit: int = 10) -> Dict[str, A
         )
         
     except Exception as e:
-        logger.error(f"Quick search failed: {e}")
+        logger.error(f"❌ Quick search failed: {e}")
         return {
             "error": str(e),
             "took": 0,
@@ -1038,7 +1117,6 @@ def get_client_configuration_info() -> Dict[str, Any]:
     try:
         # Informations depuis settings
         bonsai_url = getattr(settings, 'BONSAI_URL', None)
-        elasticsearch_url = getattr(settings, 'ELASTICSEARCH_URL', None)
         elasticsearch_index = getattr(settings, 'ELASTICSEARCH_INDEX', "harena_transactions")
         test_user_id = getattr(settings, 'test_user_id', 34)
         
@@ -1055,15 +1133,13 @@ def get_client_configuration_info() -> Dict[str, Any]:
         return {
             "configuration": {
                 "bonsai_url": bonsai_url,
-                "elasticsearch_url": elasticsearch_url,
                 "elasticsearch_index": elasticsearch_index,
                 "test_user_id": test_user_id,
-                "url_priority": "BONSAI_URL takes precedence over ELASTICSEARCH_URL"
+                "simplified_config": "Using only BONSAI_URL (no fallback to ELASTICSEARCH_URL)"
             },
             "current_client": client_info,
             "environment_variables": {
                 "BONSAI_URL": os.environ.get("BONSAI_URL", "not_set"),
-                "ELASTICSEARCH_URL": os.environ.get("ELASTICSEARCH_URL", "not_set"),
                 "ELASTICSEARCH_INDEX": os.environ.get("ELASTICSEARCH_INDEX", "not_set"),
                 "TEST_USER_ID": os.environ.get("TEST_USER_ID", "not_set")
             }
@@ -1088,6 +1164,10 @@ class MockElasticsearchClient:
     def set_mock_response(self, method: str, response: Dict[str, Any]):
         """Configure une réponse mock"""
         self.mock_responses[method] = response
+    
+    async def initialize(self):
+        """Mock initialize"""
+        pass
     
     async def start(self):
         """Mock start"""
@@ -1114,6 +1194,10 @@ class MockElasticsearchClient:
     async def health(self) -> Dict[str, Any]:
         """Mock health"""
         return self.mock_responses.get("health", {"status": "green"})
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Mock health_check"""
+        return self.mock_responses.get("health_check", {"status": "healthy"})
     
     async def search_transactions(self, user_id: int, query: str = None, **kwargs) -> Dict[str, Any]:
         """Mock search_transactions"""
@@ -1163,7 +1247,7 @@ __all__ = [
     "test_elasticsearch_connection",
     "quick_search",
     "get_client_metrics",
-    "get_client_configuration_info",  # NOUVEAU : Pour debugging de configuration
+    "get_client_configuration_info",
     
     # === TESTS ===
     "MockElasticsearchClient",

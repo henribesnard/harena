@@ -41,35 +41,34 @@ async def lifespan(app: FastAPI):
     
     # Vérification des variables d'environnement critiques
     bonsai_url = os.environ.get("BONSAI_URL")
-    elasticsearch_url = os.environ.get("ELASTICSEARCH_URL")
     
-    if not bonsai_url and not elasticsearch_url:
-        logger.error("❌ Ni BONSAI_URL ni ELASTICSEARCH_URL ne sont configurées")
-        _initialization_error = "Variables d'environnement manquantes: BONSAI_URL ou ELASTICSEARCH_URL"
+    if not bonsai_url:
+        logger.error("❌ BONSAI_URL n'est pas configurée")
+        logger.error("💡 Veuillez définir BONSAI_URL dans votre fichier .env")
+        logger.error("   Exemple: BONSAI_URL=https://your-cluster.eu-west-1.bonsaisearch.net:443")
+        _initialization_error = "Variable d'environnement manquante: BONSAI_URL"
         _service_initialized = False
         yield
         return
     
     logger.info(f"🔍 Configuration détectée:")
-    logger.info(f"   - BONSAI_URL: {'✅ SET' if bonsai_url else '❌ NOT SET'}")
-    logger.info(f"   - ELASTICSEARCH_URL: {'✅ SET' if elasticsearch_url else '❌ NOT SET'}")
+    logger.info(f"   - BONSAI_URL: ✅ SET")
+    logger.info(f"   - URL utilisée: {bonsai_url[:50]}...")
     
     # Initialisation des composants
     try:
         # Import dynamique pour éviter les erreurs de démarrage
         logger.info("📦 Import des modules...")
-        from search_service.clients.elasticsearch_client import ElasticsearchClient
+        from search_service.clients.elasticsearch_client import get_default_client, initialize_default_client
         from search_service.core import core_manager
         logger.info("✅ Modules importés avec succès")
         
         logger.info("📡 Initialisation du client Elasticsearch/Bonsai...")
         
-        # Initialiser le client Elasticsearch avec l'URL Bonsai
+        # ✅ CORRECTION MAJEURE: Plus besoin de passer bonsai_url
+        # Le client auto-détecte l'URL depuis BONSAI_URL
         try:
-            elasticsearch_client = ElasticsearchClient()
-            logger.info("📊 Client Elasticsearch créé, tentative d'initialisation...")
-            
-            await elasticsearch_client.initialize()
+            elasticsearch_client = await initialize_default_client()
             logger.info("✅ Client Elasticsearch/Bonsai initialisé et connecté")
             
             # Test de connectivité
@@ -77,47 +76,54 @@ async def lifespan(app: FastAPI):
             health = await elasticsearch_client.health_check()
             logger.info(f"📊 Santé Elasticsearch: {health}")
             
-        except Exception as es_error:
-            logger.error(f"❌ Erreur initialisation client Elasticsearch: {str(es_error)}")
-            logger.error(f"📋 Type d'erreur: {type(es_error).__name__}")
-            import traceback
-            logger.error(f"📄 Trace complète:\n{traceback.format_exc()}")
+            # Test de connexion basique
+            connection_test = await elasticsearch_client.test_connection()
+            if connection_test:
+                logger.info("✅ Test de connexion Elasticsearch réussi")
+            else:
+                logger.warning("⚠️ Test de connexion Elasticsearch échoué")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'initialisation du client Elasticsearch: {e}")
             raise
         
-        # Initialiser le core manager avec le client ES
-        logger.info("🔧 Initialisation du core manager...")
+        # Initialisation du core manager
+        logger.info("🧠 Initialisation du core manager...")
         try:
             await core_manager.initialize(elasticsearch_client)
-            logger.info("✅ Core manager initialisé avec succès")
             
-            # Vérification état du core manager
-            logger.info("🔍 Vérification état core manager...")
-            is_init = core_manager.is_initialized()
-            logger.info(f"📊 Core manager initialisé: {is_init}")
-            
-        except Exception as core_error:
-            logger.error(f"❌ Erreur initialisation core manager: {str(core_error)}")
-            logger.error(f"📋 Type d'erreur: {type(core_error).__name__}")
-            import traceback
-            logger.error(f"📄 Trace complète:\n{traceback.format_exc()}")
+            if core_manager.is_initialized():
+                logger.info("✅ Core manager initialisé avec succès")
+            else:
+                raise RuntimeError("Core manager non initialisé après tentative")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'initialisation du core manager: {e}")
             raise
         
-        # Stocker le client dans les variables globales
-        _elasticsearch_client = elasticsearch_client
+        # Marquer le service comme initialisé
         _service_initialized = True
         _initialization_error = None
+        _elasticsearch_client = elasticsearch_client
         
-        # Stocker aussi dans l'app state pour compatibilité
+        # State pour les routes
+        app.state.service_initialized = True
         app.state.elasticsearch_client = elasticsearch_client
-        app.state.initialization_failed = False
+        app.state.core_manager = core_manager
         
-        # Effectuer un test de santé initial
-        logger.info("🏥 Test de santé initial...")
-        health_status = await core_manager.health_check()
-        if health_status.get("status") == "healthy":
-            logger.info("✅ Service de recherche opérationnel")
-        else:
-            logger.warning(f"⚠️ Service en mode dégradé: {health_status.get('error', 'Unknown')}")
+        logger.info("🎉 Search Service initialisé avec succès!")
+        logger.info("📋 Composants initialisés:")
+        logger.info("   ✅ Client Elasticsearch/Bonsai")
+        logger.info("   ✅ Core Manager")
+        logger.info("   ✅ Routes API")
+        
+        # Informations de configuration pour debugging
+        try:
+            from search_service.clients.elasticsearch_client import get_client_configuration_info
+            config_info = get_client_configuration_info()
+            logger.info(f"🔧 Configuration utilisée: {config_info}")
+        except Exception as e:
+            logger.debug(f"Cannot get config info: {e}")
         
     except Exception as e:
         logger.error(f"❌ ERREUR CRITIQUE lors de l'initialisation")
@@ -127,11 +133,10 @@ async def lifespan(app: FastAPI):
         # Log détaillé des variables d'environnement pour debug
         logger.error("🔍 DIAGNOSTIC ENVIRONNEMENT:")
         logger.error(f"   - BONSAI_URL présent: {bool(os.environ.get('BONSAI_URL'))}")
-        logger.error(f"   - ELASTICSEARCH_URL présent: {bool(os.environ.get('ELASTICSEARCH_URL'))}")
         
         if os.environ.get('BONSAI_URL'):
             bonsai_url = os.environ.get('BONSAI_URL')
-            logger.error(f"   - BONSAI_URL format: {bonsai_url[:20]}..." if len(bonsai_url) > 20 else f"   - BONSAI_URL: {bonsai_url}")
+            logger.error(f"   - BONSAI_URL format: {bonsai_url[:30]}..." if len(bonsai_url) > 30 else f"   - BONSAI_URL: {bonsai_url}")
         
         # Stack trace complète pour debugging
         import traceback
@@ -144,7 +149,7 @@ async def lifespan(app: FastAPI):
         _elasticsearch_client = None
         
         # App state pour compatibilité
-        app.state.initialization_failed = True
+        app.state.service_initialized = False
         app.state.elasticsearch_client = None
         app.state.initialization_error = str(e)
     
@@ -155,9 +160,20 @@ async def lifespan(app: FastAPI):
     
     # Nettoyage propre
     try:
-        if _elasticsearch_client and hasattr(_elasticsearch_client, 'close'):
-            await _elasticsearch_client.close()
+        if _elasticsearch_client:
+            # Utiliser la fonction de shutdown globale
+            from search_service.clients.elasticsearch_client import shutdown_default_client
+            await shutdown_default_client()
             logger.info("✅ Client Elasticsearch fermé proprement")
+        
+        # Nettoyage du core manager
+        if hasattr(app.state, 'core_manager') and app.state.core_manager:
+            try:
+                await app.state.core_manager.shutdown()
+                logger.info("✅ Core manager fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors du nettoyage du core manager: {e}")
+                
     except Exception as e:
         logger.error(f"❌ Erreur lors du nettoyage: {str(e)}")
 
@@ -192,9 +208,40 @@ def create_app() -> FastAPI:
     return app
 
 
+# === FONCTIONS UTILITAIRES POUR STATUS ===
+
+def get_service_status() -> dict:
+    """
+    Retourne le statut du service pour debugging
+    """
+    return {
+        "service_initialized": _service_initialized,
+        "initialization_error": _initialization_error,
+        "elasticsearch_client_available": _elasticsearch_client is not None
+    }
+
+
+def is_service_ready() -> bool:
+    """
+    Vérifie si le service est prêt à traiter des requêtes
+    """
+    return _service_initialized and _elasticsearch_client is not None
+
+
 # Pour les tests/développement
 app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Vérifier la configuration avant de démarrer
+    if not os.environ.get("BONSAI_URL"):
+        print("❌ ERREUR: BONSAI_URL n'est pas configurée")
+        print("💡 Veuillez définir BONSAI_URL dans votre fichier .env")
+        print("   Exemple: BONSAI_URL=https://your-cluster.eu-west-1.bonsaisearch.net:443")
+        exit(1)
+    
+    print("🚀 Démarrage du Search Service...")
+    print(f"🔗 BONSAI_URL configurée: {os.environ.get('BONSAI_URL')[:50]}...")
+    
     uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=True)

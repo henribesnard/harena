@@ -1107,11 +1107,17 @@ def get_error_metrics_summary(hours: int = 24) -> Dict[str, Any]:
 # === MÉTRIQUES SPÉCIALISÉES SEARCH SERVICE ===
 
 class QueryMetrics:
-    """Métriques pour le query_executor - Alias pour compatibilité"""
+    """Métriques pour le query_executor - Classe principale pour compatibilité"""
     
-    def __init__(self, collector: MetricsCollector):
-        self.collector = collector
-        self.elasticsearch_metrics = ElasticsearchMetrics(collector)
+    @classmethod
+    def init(cls):
+        """Méthode d'initialisation statique pour compatibilité"""
+        return cls(metrics_collector)
+    
+    def __init__(self, collector: Optional[MetricsCollector] = None):
+        """Constructeur avec collector optionnel pour compatibilité"""
+        self.collector = collector or metrics_collector
+        self.elasticsearch_metrics = ElasticsearchMetrics(self.collector)
     
     def record_execution_result(self, query_type: str, execution_time_ms: float,
                               success: bool, cache_hit: bool = False):
@@ -1154,8 +1160,9 @@ class QueryMetrics:
 class ResultMetrics:
     """Métriques pour le result_processor"""
     
-    def __init__(self, collector: MetricsCollector):
-        self.collector = collector
+    def __init__(self, collector: Optional[MetricsCollector] = None):
+        """Constructeur avec collector optionnel pour compatibilité"""
+        self.collector = collector or metrics_collector
     
     def record_processing_result(self, processing_type: str, duration_ms: float,
                                input_count: int, output_count: int, success: bool):
@@ -1742,8 +1749,8 @@ class MetricsDashboard:
 # === INSTANCES SPÉCIALISÉES ===
 
 # Métriques principales compatibles avec les imports existants
-query_metrics = QueryMetrics(metrics_collector)
-result_metrics = ResultMetrics(metrics_collector)
+query_metrics = QueryMetrics()
+result_metrics = ResultMetrics()
 
 # Métriques spécialisées avec instances
 elasticsearch_metrics = ElasticsearchMetrics(metrics_collector)
@@ -1866,8 +1873,6 @@ __all__ = [
     # === INSTANCES GLOBALES ===
     "metrics_collector",
     "alert_manager",
-    "query_metrics",
-    "result_metrics", 
     "search_metrics",
     "elasticsearch_metrics",
     "lexical_search_metrics",
@@ -1887,7 +1892,6 @@ __all__ = [
     "get_error_metrics_summary",
     "initialize_metrics_system",
     "shutdown_metrics_system",
-
     
     # === CALLBACKS ===
     "log_alert_callback",

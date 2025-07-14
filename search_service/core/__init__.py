@@ -220,6 +220,22 @@ class CoreManager:
             self._performance_optimizer = get_performance_optimizer()
         return self._performance_optimizer
     
+    def get_search_engine(self):
+        """
+        Retourne le moteur de recherche lexicale
+        
+        Cette méthode est appelée par routes.py et fournit l'interface
+        pour accéder au moteur de recherche depuis l'API.
+        
+        Returns:
+            LexicalSearchEngine: Instance du moteur de recherche si initialisé
+            None: Si le manager ou le moteur n'est pas initialisé
+        """
+        if not self.is_initialized():
+            return None
+        
+        return self.lexical_engine
+    
     async def initialize(self, elasticsearch_client=None):
         """Initialise tous les composants du core"""
         if self._initialized:

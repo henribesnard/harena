@@ -634,7 +634,7 @@ class LexicalSearchEngine:
         Utilisé par le décorateur @validate_search_request
         """
         from search_service.models.service_contracts import (
-            SearchServiceQuery, QueryMetadata, SearchParameters, FilterCriteria,
+            SearchServiceQuery, QueryMetadata, SearchParameters,SearchFilters,
             SearchFilter, TextSearchConfig, SearchOptions
         )
         
@@ -704,7 +704,7 @@ class LexicalSearchEngine:
                 operator=text_search_dict.get('operator', 'match')
             )
         
-        filters = FilterCriteria(
+        filters = SearchFilters(
             required=required_filters,
             optional=optional_filters,
             ranges=range_filters,

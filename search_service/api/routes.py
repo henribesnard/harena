@@ -8,6 +8,7 @@ Health check géré par main.py pour éviter les conflits.
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -19,6 +20,61 @@ logger = logging.getLogger(__name__)
 # === ROUTEUR PRINCIPAL ===
 router = APIRouter(tags=["search"])
 
+# === VARIABLE GLOBALE POUR TRACKER L'INITIALISATION ===
+_initialization_attempted = False
+_initialization_successful = False
+_initialization_error = None
+
+async def _ensure_core_initialization():
+    """
+    Force l'initialisation du core manager si elle n'a pas été faite
+    """
+    global _initialization_attempted, _initialization_successful, _initialization_error
+    
+    if _initialization_attempted:
+        return _initialization_successful, _initialization_error
+    
+    _initialization_attempted = True
+    
+    try:
+        logger.info("🔧 Tentative d'initialisation forcée du search_service...")
+        
+        # Vérifier les variables d'environnement
+        bonsai_url = os.environ.get("BONSAI_URL")
+        elasticsearch_url = os.environ.get("ELASTICSEARCH_URL")
+        
+        if not bonsai_url and not elasticsearch_url:
+            raise ValueError("Ni BONSAI_URL ni ELASTICSEARCH_URL ne sont configurées")
+        
+        # Import et initialisation
+        from search_service.clients.elasticsearch_client import ElasticsearchClient
+        from search_service.core import core_manager
+        
+        # Créer et initialiser le client
+        elasticsearch_client = ElasticsearchClient()
+        await elasticsearch_client.initialize()
+        logger.info("✅ Client Elasticsearch initialisé via routes.py")
+        
+        # Initialiser le core manager
+        await core_manager.initialize(elasticsearch_client)
+        
+        # Vérifier l'initialisation
+        if core_manager.is_initialized():
+            logger.info("✅ Core manager initialisé avec succès via routes.py")
+            _initialization_successful = True
+            _initialization_error = None
+        else:
+            raise RuntimeError("Core manager non initialisé après tentative")
+            
+    except Exception as e:
+        error_msg = f"Échec initialisation search_service: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        _initialization_successful = False
+        _initialization_error = error_msg
+    
+    return _initialization_successful, _initialization_error
+
+
 # === ENDPOINTS DE RECHERCHE ===
 
 @router.get(
@@ -27,8 +83,22 @@ router = APIRouter(tags=["search"])
     description="Vérification de l'état de santé du Search Service"
 )
 async def health_check():
-    """Health check simple qui délègue au main.py"""
+    """Health check avec initialisation automatique si nécessaire"""
     try:
+        # S'assurer que l'initialisation a été tentée
+        is_initialized, init_error = await _ensure_core_initialization()
+        
+        if not is_initialized:
+            return {
+                "status": "unhealthy",
+                "service": "search-service",
+                "version": "1.0.0",
+                "error": init_error or "Core manager not initialized",
+                "initialization_attempted": True,
+                "initialization_successful": False,
+                "timestamp": datetime.now().isoformat()
+            }
+        
         # Import dynamique pour éviter les erreurs
         from search_service.core import core_manager
         
@@ -38,25 +108,35 @@ async def health_check():
                 "status": "unhealthy",
                 "service": "search-service",
                 "version": "1.0.0",
-                "error": "Core manager not initialized",
+                "error": "Core manager not initialized after successful init attempt",
+                "initialization_attempted": True,
+                "initialization_successful": False,
                 "timestamp": datetime.now().isoformat()
             }
         
         # Health check basique
+        health_status = await core_manager.health_check()
+        
         return {
-            "status": "healthy",
+            "status": "healthy" if health_status.get("status") == "healthy" else "degraded",
             "service": "search-service",
             "version": "1.0.0",
             "core_manager_initialized": True,
+            "initialization_attempted": True,
+            "initialization_successful": True,
+            "elasticsearch_status": health_status.get("status", "unknown"),
             "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
         return {
             "status": "unhealthy", 
             "service": "search-service",
             "version": "1.0.0",
             "error": str(e),
+            "initialization_attempted": _initialization_attempted,
+            "initialization_successful": _initialization_successful,
             "timestamp": datetime.now().isoformat()
         }
 

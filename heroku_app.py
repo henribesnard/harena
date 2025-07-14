@@ -192,55 +192,37 @@ def create_app():
             logger.error(f"❌ Enrichment Service: {e}")
             loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)}
 
-        # 4. Search Service - CORRECTION: gérer le préfixe existant
+        # 4. Search Service - CORRECTION FINALE
         logger.info("🔍 Chargement search_service...")
         try:
-            # Option 1: Import direct du router depuis api/routes.py
+            # Méthode 1: Import direct depuis routes.py
             try:
                 from search_service.api.routes import router as search_router
-                
-                # Vérifier si le router a déjà un préfixe
-                existing_prefix = getattr(search_router, 'prefix', '')
-                logger.info(f"🔍 Router search_service prefix existant: '{existing_prefix}'")
-                
-                if existing_prefix and '/api/v1' in existing_prefix:
-                    # Le router a déjà le préfixe /api/v1, ne pas en ajouter
-                    app.include_router(search_router, prefix="/search", tags=["search"])
-                    final_prefix = f"{existing_prefix}/search"
-                else:
-                    # Le router n'a pas de préfixe complet
-                    app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-                    final_prefix = "/api/v1/search"
-                
+                app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
                 routes_count = len(search_router.routes) if hasattr(search_router, 'routes') else 0
-                logger.info(f"✅ search_service: {routes_count} routes sur {final_prefix}")
-                loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": final_prefix}
+                logger.info(f"✅ search_service (direct): {routes_count} routes sur /api/v1/search")
+                loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/search"}
                 
-            except ImportError:
-                # Option 2: Fallback vers api_manager
-                logger.info("🔍 Pas de router direct, tentative via api_manager...")
-                from search_service.api import api_manager
+            except ImportError as e1:
+                logger.warning(f"⚠️ Import direct échoué: {e1}")
                 
-                if hasattr(api_manager, 'router') and api_manager.router:
-                    # Vérifier le préfixe de l'api_manager
-                    api_router_prefix = getattr(api_manager.router, 'prefix', '')
-                    logger.info(f"🔍 API Manager router prefix: '{api_router_prefix}'")
+                # Méthode 2: Via api_manager
+                try:
+                    from search_service.api import api_manager
                     
-                    if api_router_prefix and '/api/v1' in api_router_prefix:
-                        # api_manager.router a déjà /api/v1, juste ajouter /search
-                        app.include_router(api_manager.router, prefix="/search", tags=["search"])
-                        final_prefix = f"{api_router_prefix}/search"
-                    else:
-                        # api_manager.router n'a pas de préfixe complet
+                    if hasattr(api_manager, 'router') and api_manager.router:
                         app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search"])
-                        final_prefix = "/api/v1/search"
-                    
-                    routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
-                    logger.info(f"✅ search_service (api_manager): {routes_count} routes sur {final_prefix}")
-                    loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": final_prefix}
-                else:
-                    logger.error("❌ search_service: api_manager.router non trouvé")
-                    loader.services_status["search_service"] = {"status": "error", "error": "api_manager.router manquant"}
+                        routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
+                        logger.info(f"✅ search_service (api_manager): {routes_count} routes sur /api/v1/search")
+                        loader.services_status["search_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/search"}
+                    else:
+                        raise ImportError("api_manager.router non disponible")
+                        
+                except ImportError as e2:
+                    logger.error(f"❌ search_service: Tous les imports ont échoué")
+                    logger.error(f"   - Direct: {e1}")
+                    logger.error(f"   - API Manager: {e2}")
+                    loader.services_status["search_service"] = {"status": "error", "error": f"Import failed: {str(e2)}"}
                     
         except Exception as e:
             logger.error(f"❌ search_service: Erreur générale - {str(e)}")

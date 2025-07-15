@@ -56,7 +56,7 @@ class SearchRequest(BaseModel):
         return v
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "user_id": 34,
                 "query": "restaurant italien",

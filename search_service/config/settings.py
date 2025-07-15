@@ -1,5 +1,7 @@
+# search_service/config/settings.py
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
+from typing import Optional
 
 class Settings(BaseSettings):
     """Configuration pour le Search Service basée sur le code existant"""

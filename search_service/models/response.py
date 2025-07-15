@@ -1,3 +1,4 @@
+# search_service/models/response.py
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
@@ -52,7 +53,7 @@ class SearchResponse(BaseModel):
     query_info: Optional[Dict[str, Any]] = Field(None, description="Informations de debug")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "results": [
                     {

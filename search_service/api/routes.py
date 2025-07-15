@@ -10,7 +10,7 @@ from ..config.settings import settings
 logger = logging.getLogger(__name__)
 
 # Router principal
-router = APIRouter(prefix="/api/v1", tags=["search"])
+router = APIRouter(tags=["search"])
 
 # Instance globale du moteur de recherche
 search_engine = SearchEngine()

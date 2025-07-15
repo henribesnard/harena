@@ -38,7 +38,7 @@ class ServiceLoader:
         self.search_service_error = None
     
     async def initialize_search_service(self, app: FastAPI):
-        """Initialise le search_service avec ses composants Elasticsearch."""
+        """Initialise le search_service avec la nouvelle architecture simplifiée."""
         logger.info("🔍 Initialisation du search_service...")
         
         try:
@@ -49,9 +49,9 @@ class ServiceLoader:
             
             logger.info(f"📡 BONSAI_URL configurée: {bonsai_url[:50]}...")
             
-            # Import des modules search_service
-            from search_service.clients.elasticsearch_client import initialize_default_client
-            from search_service.core import core_manager
+            # Import des modules search_service avec nouvelle architecture
+            from search_service.core import initialize_default_client
+            from search_service.api import initialize_search_engine
             
             # Initialiser le client Elasticsearch
             logger.info("📡 Initialisation du client Elasticsearch...")
@@ -59,23 +59,20 @@ class ServiceLoader:
             logger.info("✅ Client Elasticsearch initialisé")
             
             # Test de connexion
-            connection_test = await elasticsearch_client.test_connection()
-            if not connection_test:
-                raise RuntimeError("Test de connexion Elasticsearch échoué")
-            logger.info("✅ Test de connexion Elasticsearch réussi")
+            health = await elasticsearch_client.health_check()
+            if health.get("status") != "healthy":
+                logger.warning(f"⚠️ Elasticsearch health: {health}")
+            else:
+                logger.info("✅ Test de connexion Elasticsearch réussi")
             
-            # Initialiser le core manager
-            logger.info("🧠 Initialisation du core manager...")
-            await core_manager.initialize(elasticsearch_client)
-            
-            if not core_manager.is_initialized():
-                raise RuntimeError("Core manager non initialisé")
-            logger.info("✅ Core manager initialisé")
+            # Initialiser le moteur de recherche
+            logger.info("🔍 Initialisation du moteur de recherche...")
+            initialize_search_engine(elasticsearch_client)
+            logger.info("✅ Moteur de recherche initialisé")
             
             # Mettre les composants dans app.state pour les routes
             app.state.service_initialized = True
             app.state.elasticsearch_client = elasticsearch_client
-            app.state.core_manager = core_manager
             app.state.initialization_error = None
             
             self.search_service_initialized = True
@@ -91,7 +88,6 @@ class ServiceLoader:
             # Marquer l'échec dans app.state
             app.state.service_initialized = False
             app.state.elasticsearch_client = None
-            app.state.core_manager = None
             app.state.initialization_error = error_msg
             
             self.search_service_initialized = False
@@ -256,13 +252,13 @@ def create_app():
             logger.error(f"❌ Enrichment Service: {e}")
             loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)}
 
-        # 4. ✅ Search Service - AVEC INITIALISATION CORRECTE
+        # 4. ✅ Search Service - AVEC NOUVELLE ARCHITECTURE SIMPLIFIÉE
         logger.info("🔍 Chargement et initialisation du search_service...")
         try:
             # D'abord initialiser les composants Elasticsearch
             search_init_success = await loader.initialize_search_service(app)
             
-            # Ensuite charger les routes (même si init échoue pour debug)
+            # Ensuite charger les routes
             try:
                 from search_service.api.routes import router as search_router
                 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
@@ -274,7 +270,8 @@ def create_app():
                         "status": "ok", 
                         "routes": routes_count, 
                         "prefix": "/api/v1/search",
-                        "initialized": True
+                        "initialized": True,
+                        "architecture": "simplified_unified"
                     }
                 else:
                     logger.warning(f"⚠️ search_service: {routes_count} routes chargées SANS initialisation")
@@ -283,41 +280,25 @@ def create_app():
                         "routes": routes_count, 
                         "prefix": "/api/v1/search",
                         "initialized": False,
-                        "error": loader.search_service_error
+                        "error": loader.search_service_error,
+                        "architecture": "simplified_unified"
                     }
                     
-            except ImportError as e1:
-                logger.warning(f"⚠️ Import direct échoué: {e1}")
-                
-                # Fallback: Via api_manager
-                try:
-                    from search_service.api import api_manager
-                    
-                    if hasattr(api_manager, 'router') and api_manager.router:
-                        app.include_router(api_manager.router, prefix="/api/v1/search", tags=["search"])
-                        routes_count = len(api_manager.router.routes) if hasattr(api_manager.router, 'routes') else 0
-                        
-                        status = "ok" if search_init_success else "degraded"
-                        logger.info(f"✅ search_service (api_manager): {routes_count} routes sur /api/v1/search")
-                        loader.services_status["search_service"] = {
-                            "status": status, 
-                            "routes": routes_count, 
-                            "prefix": "/api/v1/search",
-                            "initialized": search_init_success,
-                            "error": loader.search_service_error if not search_init_success else None
-                        }
-                    else:
-                        raise ImportError("api_manager.router non disponible")
-                        
-                except ImportError as e2:
-                    logger.error(f"❌ search_service: Tous les imports ont échoué")
-                    logger.error(f"   - Direct: {e1}")
-                    logger.error(f"   - API Manager: {e2}")
-                    loader.services_status["search_service"] = {"status": "error", "error": f"Import failed: {str(e2)}"}
+            except ImportError as e:
+                logger.error(f"❌ search_service: Impossible de charger les routes - {str(e)}")
+                loader.services_status["search_service"] = {
+                    "status": "error", 
+                    "error": f"Routes import failed: {str(e)}",
+                    "architecture": "simplified_unified"
+                }
                     
         except Exception as e:
             logger.error(f"❌ search_service: Erreur générale - {str(e)}")
-            loader.services_status["search_service"] = {"status": "error", "error": str(e)}
+            loader.services_status["search_service"] = {
+                "status": "error", 
+                "error": str(e),
+                "architecture": "simplified_unified"
+            }
 
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
@@ -359,7 +340,8 @@ def create_app():
             "search_service": {
                 "status": search_status.get("status"),
                 "initialized": search_status.get("initialized", False),
-                "error": search_status.get("error")
+                "error": search_status.get("error"),
+                "architecture": search_status.get("architecture")
             }
         }
 
@@ -372,7 +354,8 @@ def create_app():
             "environment": os.environ.get("ENVIRONMENT", "production"),
             "search_service_details": {
                 "initialized": loader.search_service_initialized,
-                "error": loader.search_service_error
+                "error": loader.search_service_error,
+                "architecture": "simplified_unified"
             }
         }
 
@@ -386,7 +369,7 @@ def create_app():
                 "user_service - Gestion utilisateurs",
                 "sync_service - Synchronisation Bridge API", 
                 "enrichment_service - Enrichissement IA",
-                "search_service - Recherche lexicale (AVEC initialisation)"
+                "search_service - Recherche lexicale (Architecture simplifiée)"
             ],
             "services_coming_soon": [
                 "conversation_service - Assistant IA avec AutoGen + DeepSeek"
@@ -400,7 +383,7 @@ def create_app():
                 "/api/v1/accounts/*": "Comptes",
                 "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/*": "Enrichissement IA",
-                "/api/v1/search/*": "Recherche lexicale (INITIALISÉ)"
+                "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)"
             }
         }
 

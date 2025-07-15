@@ -1,5 +1,6 @@
 import logging
 import time
+import json
 from typing import Dict, Any
 from search_service.models.request import SearchRequest
 from search_service.models.response import SearchResponse, SearchResult
@@ -40,7 +41,7 @@ class SearchEngine:
             # Exécution via le client existant
             es_response = await self._execute_search(es_query, request)
             
-            # Traitement des résultats
+            # Traitement des résultats - VERSION CORRIGÉE
             results = self._process_results(es_response)
             
             # Calcul temps d'exécution
@@ -104,39 +105,99 @@ class SearchEngine:
         return response
     
     def _process_results(self, es_response: Dict[str, Any]) -> list[SearchResult]:
-        """Traite les résultats Elasticsearch en objets SearchResult"""
+        """
+        Traite les résultats Elasticsearch en objets SearchResult
+        VERSION CORRIGÉE - Robuste aux données manquantes/nulles
+        """
         results = []
         
         hits = es_response.get('hits', {}).get('hits', [])
+        logger.debug(f"Processing {len(hits)} hits from Elasticsearch")
         
-        for hit in hits:
+        for i, hit in enumerate(hits):
             source = hit.get('_source', {})
             score = hit.get('_score')
             
             try:
+                # ✅ CORRECTION : Gestion robuste de tous les champs avec valeurs par défaut sécurisées
                 result = SearchResult(
-                    transaction_id=source.get('transaction_id', ''),
-                    user_id=source.get('user_id', 0),
-                    account_id=source.get('account_id'),
-                    amount=source.get('amount', 0.0),
-                    amount_abs=source.get('amount_abs', 0.0),
-                    currency_code=source.get('currency_code', 'EUR'),
-                    transaction_type=source.get('transaction_type', ''),
-                    date=source.get('date', ''),
-                    month_year=source.get('month_year'),
-                    weekday=source.get('weekday'),
-                    primary_description=source.get('primary_description', ''),
-                    merchant_name=source.get('merchant_name'),
-                    category_name=source.get('category_name'),
-                    operation_type=source.get('operation_type'),
-                    score=score,
+                    # Champs obligatoires avec fallbacks robustes
+                    transaction_id=str(source.get('transaction_id', f'tx_{i}_{int(time.time())}')),
+                    user_id=int(source.get('user_id', 0)),
+                    amount=float(source.get('amount', 0.0)),
+                    amount_abs=float(source.get('amount_abs', abs(float(source.get('amount', 0.0))))),
+                    currency_code=str(source.get('currency_code', 'EUR')),
+                    
+                    # ✅ CORRECTION CRITIQUE : Gérer les champs obligatoires qui peuvent être vides
+                    transaction_type=str(source.get('transaction_type', 'unknown')),
+                    date=str(source.get('date', '')),
+                    primary_description=str(source.get('primary_description', 'Description non disponible')),
+                    
+                    # Champs optionnels - gestion explicite des None
+                    account_id=source.get('account_id'),  # Peut être None
+                    month_year=source.get('month_year'),  # Peut être None
+                    weekday=source.get('weekday'),        # Peut être None
+                    merchant_name=source.get('merchant_name'),      # Peut être None ou ""
+                    category_name=source.get('category_name'),      # Peut être None ou ""
+                    operation_type=source.get('operation_type'),    # Peut être None ou ""
+                    
+                    # Métadonnées de recherche
+                    score=float(score) if score is not None else 0.0,
                     highlights=hit.get('highlight')
                 )
                 results.append(result)
                 
+                # Log de succès pour debug
+                logger.debug(f"✅ Successfully processed result {i+1}: {result.transaction_id} - {result.primary_description[:50]}")
+                
+            except ValueError as ve:
+                # Erreur de conversion de type (int, float)
+                logger.error(f"❌ ValueError processing search result {i+1}: {str(ve)}")
+                logger.error(f"   Problematic source data: {json.dumps(source, indent=2, default=str)}")
+                logger.error(f"   Score: {score}")
+                
+                # Essayer de créer un résultat minimal avec des types corrects
+                try:
+                    minimal_result = SearchResult(
+                        transaction_id=str(source.get('transaction_id', f'error_tx_{i}')),
+                        user_id=int(source.get('user_id', 0)) if source.get('user_id') is not None else 0,
+                        amount=0.0,
+                        amount_abs=0.0,
+                        currency_code='EUR',
+                        transaction_type='error',
+                        date='',
+                        primary_description=f'Erreur conversion: {str(ve)[:100]}',
+                        score=0.0
+                    )
+                    results.append(minimal_result)
+                    logger.warning(f"⚠️ Created minimal result for failed conversion {i+1}")
+                except Exception as e2:
+                    logger.error(f"❌ Failed to create minimal result: {str(e2)}")
+                    continue
+                    
             except Exception as e:
-                logger.warning(f"Error processing search result: {e}")
+                # Autres erreurs (validation Pydantic, etc.)
+                logger.error(f"❌ General error processing search result {i+1}: {str(e)}")
+                logger.error(f"   Exception type: {type(e).__name__}")
+                logger.error(f"   Source data: {json.dumps(source, indent=2, default=str)}")
+                logger.error(f"   Score: {score}")
+                
+                # Log des champs spécifiques pour debug
+                logger.error(f"   transaction_id: {repr(source.get('transaction_id'))}")
+                logger.error(f"   user_id: {repr(source.get('user_id'))}")
+                logger.error(f"   transaction_type: {repr(source.get('transaction_type'))}")
+                logger.error(f"   primary_description: {repr(source.get('primary_description'))}")
+                logger.error(f"   amount: {repr(source.get('amount'))}")
+                
                 continue
+        
+        success_count = len(results)
+        total_count = len(hits)
+        
+        if success_count < total_count:
+            logger.warning(f"⚠️ Processed only {success_count}/{total_count} results due to errors")
+        else:
+            logger.info(f"✅ Successfully processed all {success_count}/{total_count} Elasticsearch hits")
         
         return results
     

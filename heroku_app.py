@@ -377,7 +377,7 @@ def create_app():
             # Ensuite charger les routes
             try:
                 from conversation_service.api.routes import router as conversation_router
-                app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+                app.include_router(conversation_router, prefix="/api/v1/conversation")
                 routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
                 
                 if conversation_init_success:

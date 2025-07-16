@@ -224,7 +224,7 @@ async def get_metrics() -> MetricsResponse:
             detail={"error": "metrics_error", "message": str(e)}
         )
 
-@system_router.get("/api/v1/conversation/config", response_model=ConfigResponse)
+@system_router.get("/config", response_model=ConfigResponse)
 async def get_config() -> ConfigResponse:
     """Endpoint de configuration du service"""
     
@@ -252,7 +252,7 @@ async def get_config() -> ConfigResponse:
             detail={"error": "config_error", "message": str(e)}
         )
 
-@system_router.post("/api/v1/conversation/clear-cache")
+@system_router.post("/clear-cache")
 async def clear_cache() -> Dict[str, Any]:
     """Endpoint pour vider le cache (développement/debug)"""
     

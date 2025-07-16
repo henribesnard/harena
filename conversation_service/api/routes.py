@@ -11,24 +11,19 @@ from ..models.conversation import (
     ConfigResponse,
     ProcessingMetadata,
     ProcessingError,
-    ValidationError
+    ValidationError,
+    FinancialIntent
 )
-from ..agents.intent_classifier import intent_classifier
-from ..clients.deepseek_client import deepseek_client
-from ..config.settings import settings
+from conversation_service.agents.intent_classifier import intent_classifier
+from conversation_service.clients.deepseek_client import deepseek_client
+from conversation_service.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
 # Router principal
 router = APIRouter()
 
-# Router pour les endpoints conversation
-conversation_router = APIRouter( tags=["conversation"])
-
-# Router pour les endpoints système
-system_router = APIRouter(tags=["system"])
-
-@conversation_router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse, tags=["conversation"])
 async def chat(request: ChatRequest, background_tasks: BackgroundTasks) -> ChatResponse:
     """
     Endpoint principal de conversation - Classification d'intentions
@@ -160,7 +155,7 @@ async def _log_conversation_analytics(request: ChatRequest, response: ChatRespon
     except Exception as e:
         logger.error(f"Erreur analytics: {str(e)}")
 
-@system_router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health_check() -> HealthResponse:
     """Endpoint de santé du service"""
     
@@ -197,7 +192,7 @@ async def health_check() -> HealthResponse:
             dependencies={"error": str(e)}
         )
 
-@system_router.get("/metrics", response_model=MetricsResponse)
+@router.get("/metrics", response_model=MetricsResponse, tags=["system"])
 async def get_metrics() -> MetricsResponse:
     """Endpoint des métriques du service"""
     
@@ -224,7 +219,7 @@ async def get_metrics() -> MetricsResponse:
             detail={"error": "metrics_error", "message": str(e)}
         )
 
-@system_router.get("/config", response_model=ConfigResponse)
+@router.get("/config", response_model=ConfigResponse, tags=["conversation"])
 async def get_config() -> ConfigResponse:
     """Endpoint de configuration du service"""
     
@@ -232,7 +227,7 @@ async def get_config() -> ConfigResponse:
         # Configuration publique (sans secrets)
         public_config = {
             "min_confidence_threshold": settings.MIN_CONFIDENCE_THRESHOLD,
-            "supported_intents": [intent.value for intent in intent_classifier._metrics.get("intent_distribution", {}).keys()],
+            "supported_intents": [intent.value for intent in FinancialIntent],
             "cache_enabled": True,
             "cache_ttl_seconds": settings.CLASSIFICATION_CACHE_TTL,
             "model_used": settings.DEEPSEEK_CHAT_MODEL,
@@ -252,7 +247,7 @@ async def get_config() -> ConfigResponse:
             detail={"error": "config_error", "message": str(e)}
         )
 
-@system_router.post("/clear-cache")
+@router.post("/clear-cache", tags=["conversation"])
 async def clear_cache() -> Dict[str, Any]:
     """Endpoint pour vider le cache (développement/debug)"""
     
@@ -275,7 +270,3 @@ async def clear_cache() -> Dict[str, Any]:
             status_code=500,
             detail={"error": "cache_error", "message": str(e)}
         )
-
-# Inclusion des routers
-router.include_router(conversation_router)
-router.include_router(system_router)

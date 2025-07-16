@@ -1,4 +1,3 @@
-# conversation_service/api/dependencies.py
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional

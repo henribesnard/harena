@@ -11,8 +11,7 @@ from ..models.conversation import (
     ConfigResponse,
     ProcessingMetadata,
     ProcessingError,
-    ValidationError,
-    FinancialIntent
+    ValidationError
 )
 from conversation_service.agents.intent_classifier import intent_classifier
 from conversation_service.clients.deepseek_client import deepseek_client
@@ -20,7 +19,7 @@ from conversation_service.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Router principal
+# ✅ ARCHITECTURE UNIQUE - Router principal seul
 router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse, tags=["conversation"])
@@ -107,54 +106,6 @@ async def chat(request: ChatRequest, background_tasks: BackgroundTasks) -> ChatR
             }
         )
 
-def _generate_response_text(intent_result) -> str:
-    """Génère le texte de réponse basé sur l'intention"""
-    
-    intent_responses = {
-        "search_by_merchant": "J'ai détecté une recherche par marchand. Je vais chercher vos transactions avec ce marchand.",
-        "search_by_category": "J'ai détecté une recherche par catégorie. Je vais chercher vos transactions dans cette catégorie.",
-        "search_by_amount": "J'ai détecté une recherche par montant. Je vais chercher vos transactions selon ce critère de montant.",
-        "search_by_date": "J'ai détecté une recherche par date. Je vais chercher vos transactions pour cette période.",
-        "search_general": "J'ai détecté une recherche générale. Je vais chercher dans toutes vos transactions.",
-        "spending_analysis": "J'ai détecté une demande d'analyse de dépenses. Je vais analyser vos dépenses.",
-        "income_analysis": "J'ai détecté une demande d'analyse de revenus. Je vais analyser vos revenus.",
-        "unclear_intent": "Je n'ai pas bien compris votre demande. Pouvez-vous être plus spécifique ?"
-    }
-    
-    base_response = intent_responses.get(intent_result.intent.value, "Intention détectée")
-    
-    # Ajout des entités détectées
-    entities_info = []
-    if intent_result.entities.merchant:
-        entities_info.append(f"Marchand: {intent_result.entities.merchant}")
-    if intent_result.entities.category:
-        entities_info.append(f"Catégorie: {intent_result.entities.category}")
-    if intent_result.entities.amount:
-        entities_info.append(f"Montant: {intent_result.entities.amount}")
-    if intent_result.entities.period:
-        entities_info.append(f"Période: {intent_result.entities.period}")
-    
-    if entities_info:
-        base_response += f" ({', '.join(entities_info)})"
-    
-    return base_response
-
-def _get_clarification_message(intent_result) -> str:
-    """Génère un message de clarification pour les intentions peu claires"""
-    
-    if intent_result.intent.value == "unclear_intent":
-        return "Pouvez-vous préciser ce que vous recherchez ? Par exemple : 'mes achats Netflix', 'mes restaurants ce mois', ou 'plus de 100€'."
-    
-    return f"Je ne suis pas sûr de votre demande (confiance: {intent_result.confidence:.0%}). Pouvez-vous être plus précis ?"
-
-async def _log_conversation_analytics(request: ChatRequest, response: ChatResponse):
-    """Tâche en arrière-plan pour logger les analytics"""
-    try:
-        # TODO: Implémenter analytics si nécessaire
-        logger.debug(f"Analytics - User: {request.user_id}, Intent: {response.intent}, Confidence: {response.confidence}")
-    except Exception as e:
-        logger.error(f"Erreur analytics: {str(e)}")
-
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health_check() -> HealthResponse:
     """Endpoint de santé du service"""
@@ -219,7 +170,7 @@ async def get_metrics() -> MetricsResponse:
             detail={"error": "metrics_error", "message": str(e)}
         )
 
-@router.get("/config", response_model=ConfigResponse, tags=["conversation"])
+@router.get("/config", response_model=ConfigResponse, tags=["system"])
 async def get_config() -> ConfigResponse:
     """Endpoint de configuration du service"""
     
@@ -227,7 +178,7 @@ async def get_config() -> ConfigResponse:
         # Configuration publique (sans secrets)
         public_config = {
             "min_confidence_threshold": settings.MIN_CONFIDENCE_THRESHOLD,
-            "supported_intents": [intent.value for intent in FinancialIntent],
+            "supported_intents": [intent.value for intent in intent_classifier._metrics.get("intent_distribution", {}).keys()],
             "cache_enabled": True,
             "cache_ttl_seconds": settings.CLASSIFICATION_CACHE_TTL,
             "model_used": settings.DEEPSEEK_CHAT_MODEL,
@@ -247,7 +198,7 @@ async def get_config() -> ConfigResponse:
             detail={"error": "config_error", "message": str(e)}
         )
 
-@router.post("/clear-cache", tags=["conversation"])
+@router.post("/clear-cache", tags=["system"])
 async def clear_cache() -> Dict[str, Any]:
     """Endpoint pour vider le cache (développement/debug)"""
     
@@ -270,3 +221,51 @@ async def clear_cache() -> Dict[str, Any]:
             status_code=500,
             detail={"error": "cache_error", "message": str(e)}
         )
+
+def _generate_response_text(intent_result) -> str:
+    """Génère le texte de réponse basé sur l'intention"""
+    
+    intent_responses = {
+        "search_by_merchant": "J'ai détecté une recherche par marchand. Je vais chercher vos transactions avec ce marchand.",
+        "search_by_category": "J'ai détecté une recherche par catégorie. Je vais chercher vos transactions dans cette catégorie.",
+        "search_by_amount": "J'ai détecté une recherche par montant. Je vais chercher vos transactions selon ce critère de montant.",
+        "search_by_date": "J'ai détecté une recherche par date. Je vais chercher vos transactions pour cette période.",
+        "search_general": "J'ai détecté une recherche générale. Je vais chercher dans toutes vos transactions.",
+        "spending_analysis": "J'ai détecté une demande d'analyse de dépenses. Je vais analyser vos dépenses.",
+        "income_analysis": "J'ai détecté une demande d'analyse de revenus. Je vais analyser vos revenus.",
+        "unclear_intent": "Je n'ai pas bien compris votre demande. Pouvez-vous être plus spécifique ?"
+    }
+    
+    base_response = intent_responses.get(intent_result.intent.value, "Intention détectée")
+    
+    # Ajout des entités détectées
+    entities_info = []
+    if intent_result.entities.merchant:
+        entities_info.append(f"Marchand: {intent_result.entities.merchant}")
+    if intent_result.entities.category:
+        entities_info.append(f"Catégorie: {intent_result.entities.category}")
+    if intent_result.entities.amount:
+        entities_info.append(f"Montant: {intent_result.entities.amount}")
+    if intent_result.entities.period:
+        entities_info.append(f"Période: {intent_result.entities.period}")
+    
+    if entities_info:
+        base_response += f" ({', '.join(entities_info)})"
+    
+    return base_response
+
+def _get_clarification_message(intent_result) -> str:
+    """Génère un message de clarification pour les intentions peu claires"""
+    
+    if intent_result.intent.value == "unclear_intent":
+        return "Pouvez-vous préciser ce que vous recherchez ? Par exemple : 'mes achats Netflix', 'mes restaurants ce mois', ou 'plus de 100€'."
+    
+    return f"Je ne suis pas sûr de votre demande (confiance: {intent_result.confidence:.0%}). Pouvez-vous être plus précis ?"
+
+async def _log_conversation_analytics(request: ChatRequest, response: ChatResponse):
+    """Tâche en arrière-plan pour logger les analytics"""
+    try:
+        # TODO: Implémenter analytics si nécessaire
+        logger.debug(f"Analytics - User: {request.user_id}, Intent: {response.intent}, Confidence: {response.confidence}")
+    except Exception as e:
+        logger.error(f"Erreur analytics: {str(e)}")

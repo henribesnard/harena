@@ -36,6 +36,8 @@ class ServiceLoader:
         self.services_status = {}
         self.search_service_initialized = False
         self.search_service_error = None
+        self.conversation_service_initialized = False
+        self.conversation_service_error = None
     
     async def initialize_search_service(self, app: FastAPI):
         """Initialise le search_service avec la nouvelle architecture simplifiée."""
@@ -92,6 +94,72 @@ class ServiceLoader:
             
             self.search_service_initialized = False
             self.search_service_error = error_msg
+            return False
+    
+    async def initialize_conversation_service(self, app: FastAPI):
+        """Initialise le conversation_service avec DeepSeek."""
+        logger.info("🤖 Initialisation du conversation_service...")
+        
+        try:
+            # Vérifier DEEPSEEK_API_KEY
+            deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+            if not deepseek_key:
+                raise ValueError("DEEPSEEK_API_KEY n'est pas configurée")
+            
+            logger.info(f"🔑 DEEPSEEK_API_KEY configurée: {deepseek_key[:20]}...")
+            
+            # Import et initialisation du conversation service
+            from conversation_service.config import settings
+            from conversation_service.clients import deepseek_client
+            from conversation_service.agents import intent_classifier
+            
+            # Validation de la configuration
+            logger.info("⚙️ Validation de la configuration...")
+            validation = settings.validate_configuration()
+            if not validation["valid"]:
+                raise ValueError(f"Configuration invalide: {validation['errors']}")
+            
+            if validation["warnings"]:
+                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
+            
+            # Test de connexion DeepSeek
+            logger.info("🔍 Test de connexion DeepSeek...")
+            health_check = await deepseek_client.health_check()
+            
+            if health_check["status"] != "healthy":
+                raise ValueError(f"DeepSeek non disponible: {health_check.get('error', 'Unknown error')}")
+            
+            logger.info(f"✅ DeepSeek connecté - Temps de réponse: {health_check['response_time']:.2f}s")
+            
+            # Test de l'agent de classification
+            logger.info("🤖 Test de l'agent de classification...")
+            agent_metrics = intent_classifier.get_metrics()
+            logger.info(f"✅ Agent initialisé - Seuil confiance: {settings.MIN_CONFIDENCE_THRESHOLD}")
+            
+            # Mettre les composants dans app.state
+            app.state.conversation_service_initialized = True
+            app.state.deepseek_client = deepseek_client
+            app.state.intent_classifier = intent_classifier
+            app.state.conversation_initialization_error = None
+            
+            self.conversation_service_initialized = True
+            self.conversation_service_error = None
+            
+            logger.info("🎉 Conversation Service complètement initialisé!")
+            return True
+            
+        except Exception as e:
+            error_msg = f"Erreur initialisation conversation_service: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            
+            # Marquer l'échec dans app.state
+            app.state.conversation_service_initialized = False
+            app.state.deepseek_client = None
+            app.state.intent_classifier = None
+            app.state.conversation_initialization_error = error_msg
+            
+            self.conversation_service_initialized = False
+            self.conversation_service_error = error_msg
             return False
     
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
@@ -300,6 +368,56 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
+        # 5. ✅ CONVERSATION SERVICE - NOUVEAU avec DeepSeek
+        logger.info("🤖 Chargement et initialisation du conversation_service...")
+        try:
+            # D'abord initialiser les composants DeepSeek
+            conversation_init_success = await loader.initialize_conversation_service(app)
+            
+            # Ensuite charger les routes
+            try:
+                from conversation_service.api.routes import router as conversation_router
+                app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+                routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
+                
+                if conversation_init_success:
+                    logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation (AVEC initialisation)")
+                    loader.services_status["conversation_service"] = {
+                        "status": "ok", 
+                        "routes": routes_count, 
+                        "prefix": "/api/v1/conversation",
+                        "initialized": True,
+                        "architecture": "mvp_intent_classifier",
+                        "model": "deepseek-chat"
+                    }
+                else:
+                    logger.warning(f"⚠️ conversation_service: {routes_count} routes chargées SANS initialisation")
+                    loader.services_status["conversation_service"] = {
+                        "status": "degraded", 
+                        "routes": routes_count, 
+                        "prefix": "/api/v1/conversation",
+                        "initialized": False,
+                        "error": loader.conversation_service_error,
+                        "architecture": "mvp_intent_classifier",
+                        "model": "deepseek-chat"
+                    }
+                    
+            except ImportError as e:
+                logger.error(f"❌ conversation_service: Impossible de charger les routes - {str(e)}")
+                loader.services_status["conversation_service"] = {
+                    "status": "error", 
+                    "error": f"Routes import failed: {str(e)}",
+                    "architecture": "mvp_intent_classifier"
+                }
+                    
+        except Exception as e:
+            logger.error(f"❌ conversation_service: Erreur générale - {str(e)}")
+            loader.services_status["conversation_service"] = {
+                "status": "error", 
+                "error": str(e),
+                "architecture": "mvp_intent_classifier"
+            }
+
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
         logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")
@@ -315,18 +433,19 @@ def create_app():
         if failed_services:
             logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
         
-        logger.info("🔮 À venir: conversation_service avec AutoGen + DeepSeek")
+        logger.info("🎉 Plateforme Harena complètement déployée avec Conversation Service!")
 
     @app.get("/health")
     async def health():
-        """Health check global avec détails search_service."""
+        """Health check global avec détails search_service et conversation_service."""
         ok_services = [name for name, status in loader.services_status.items() 
                       if status.get("status") == "ok"]
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détail spécial pour search_service
+        # Détails spéciaux pour search_service et conversation_service
         search_status = loader.services_status.get("search_service", {})
+        conversation_status = loader.services_status.get("conversation_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -342,6 +461,13 @@ def create_app():
                 "initialized": search_status.get("initialized", False),
                 "error": search_status.get("error"),
                 "architecture": search_status.get("architecture")
+            },
+            "conversation_service": {
+                "status": conversation_status.get("status"),
+                "initialized": conversation_status.get("initialized", False),
+                "error": conversation_status.get("error"),
+                "architecture": conversation_status.get("architecture"),
+                "model": conversation_status.get("model")
             }
         }
 
@@ -356,6 +482,12 @@ def create_app():
                 "initialized": loader.search_service_initialized,
                 "error": loader.search_service_error,
                 "architecture": "simplified_unified"
+            },
+            "conversation_service_details": {
+                "initialized": loader.conversation_service_initialized,
+                "error": loader.conversation_service_error,
+                "architecture": "mvp_intent_classifier",
+                "model": "deepseek-chat"
             }
         }
 
@@ -369,10 +501,11 @@ def create_app():
                 "user_service - Gestion utilisateurs",
                 "sync_service - Synchronisation Bridge API", 
                 "enrichment_service - Enrichissement IA",
-                "search_service - Recherche lexicale (Architecture simplifiée)"
+                "search_service - Recherche lexicale (Architecture simplifiée)",
+                "conversation_service - Assistant IA avec DeepSeek (MVP)"
             ],
             "services_coming_soon": [
-                "conversation_service - Assistant IA avec AutoGen + DeepSeek"
+                "conversation_service v2 - Assistant IA avec AutoGen + équipes d'agents"
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
@@ -383,7 +516,8 @@ def create_app():
                 "/api/v1/accounts/*": "Comptes",
                 "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/*": "Enrichissement IA",
-                "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)"
+                "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
+                "/api/v1/conversation/*": "Assistant IA conversationnel (DeepSeek MVP)"
             }
         }
 

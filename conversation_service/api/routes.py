@@ -106,7 +106,7 @@ async def chat(request: ChatRequest, background_tasks: BackgroundTasks) -> ChatR
             }
         )
 
-@router.get("/health", response_model=HealthResponse, tags=["system"])
+@router.get("/health", response_model=HealthResponse, tags=["conversation_system"])
 async def health_check() -> HealthResponse:
     """Endpoint de santé du service"""
     
@@ -143,7 +143,7 @@ async def health_check() -> HealthResponse:
             dependencies={"error": str(e)}
         )
 
-@router.get("/metrics", response_model=MetricsResponse, tags=["system"])
+@router.get("/metrics", response_model=MetricsResponse, tags=["conversation_system"])
 async def get_metrics() -> MetricsResponse:
     """Endpoint des métriques du service"""
     
@@ -170,7 +170,7 @@ async def get_metrics() -> MetricsResponse:
             detail={"error": "metrics_error", "message": str(e)}
         )
 
-@router.get("/config", response_model=ConfigResponse, tags=["system"])
+@router.get("/config", response_model=ConfigResponse, tags=["conversation_system"])
 async def get_config() -> ConfigResponse:
     """Endpoint de configuration du service"""
     
@@ -198,7 +198,7 @@ async def get_config() -> ConfigResponse:
             detail={"error": "config_error", "message": str(e)}
         )
 
-@router.post("/clear-cache", tags=["system"])
+@router.post("/clear-cache", tags=["conversation_system"])
 async def clear_cache() -> Dict[str, Any]:
     """Endpoint pour vider le cache (développement/debug)"""
     

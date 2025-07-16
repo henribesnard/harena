@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Router pour les endpoints conversation
-conversation_router = APIRouter(prefix="/api/v1/conversation", tags=["conversation"])
+conversation_router = APIRouter( tags=["conversation"])
 
 # Router pour les endpoints système
 system_router = APIRouter(tags=["system"])

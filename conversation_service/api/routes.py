@@ -182,7 +182,7 @@ async def get_config() -> ConfigResponse:
             "cache_enabled": True,
             "cache_ttl_seconds": settings.CLASSIFICATION_CACHE_TTL,
             "model_used": settings.DEEPSEEK_CHAT_MODEL,
-            "request_timeout_seconds": settings.REQUEST_TIMEOUT
+            "request_timeout_seconds": settings.DEEPSEEK_INTENT_TIMEOUT
         }
         
         return ConfigResponse(

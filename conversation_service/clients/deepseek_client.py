@@ -141,9 +141,9 @@ class DeepSeekClient:
         
         # Paramètres par défaut
         if temperature is None:
-            temperature = settings.DEEPSEEK_TEMPERATURE
+            temperature = settings.DEEPSEEK_INTENT_TEMPERATURE
         if max_tokens is None:
-            max_tokens = settings.DEEPSEEK_MAX_TOKENS
+            max_tokens = settings.DEEPSEEK_INTENT_MAX_TOKENS
         
         # Vérification du cache
         cache_key = self._generate_cache_key(messages, temperature) if use_cache else None

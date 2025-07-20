@@ -3,7 +3,7 @@ from typing import Dict, Any
 import time
 import logging
 
-from ..models.conversation import (
+from ..models.conversation_models import (
     ChatRequest, 
     ChatResponse, 
     HealthResponse, 

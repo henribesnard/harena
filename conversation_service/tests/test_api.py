@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import json
 
 from ..main import app
-from ..models.conversation import FinancialIntent, IntentResult, EntityHints
+from ..models.conversation_models import FinancialIntent, IntentResult, EntityHints
 from ..clients.deepseek_client import DeepSeekResponse
 
 # Client de test

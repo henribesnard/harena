@@ -4,7 +4,7 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from ..models.conversation import (
+from ..models.conversation_models import (
     FinancialIntent, 
     IntentResult, 
     EntityHints, 

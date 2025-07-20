@@ -9,7 +9,7 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from ..config.settings import settings
-from ..models.conversation import DeepSeekError
+from ..models.conversation_models import DeepSeekError
 
 logger = logging.getLogger(__name__)
 

@@ -79,7 +79,7 @@ def create_mock_deepseek_response(intent: str, confidence: float, entities: Dict
 
 def create_mock_intent_result(intent: str, confidence: float, entities: Dict[str, str] = None):
     """Crée un résultat d'intention mock"""
-    from ..models.conversation import FinancialIntent, IntentResult, EntityHints
+    from ..models.conversation_models import FinancialIntent, IntentResult, EntityHints
     
     return IntentResult(
         intent=FinancialIntent(intent),

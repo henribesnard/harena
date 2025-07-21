@@ -9,6 +9,10 @@ import sys
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Charger le fichier .env en priorité
+load_dotenv()
 
 # Configuration du logging simple
 logging.basicConfig(
@@ -25,23 +29,26 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 # Configuration environnement local par défaut
 def setup_local_environment():
-    """Configure l'environnement local avec des valeurs par défaut."""
+    """Configure l'environnement local avec des valeurs par défaut UNIQUEMENT si variables non définies."""
     
-    # Base de données locale par défaut
-    if not os.environ.get("DATABASE_URL"):
-        os.environ["DATABASE_URL"] = "postgresql://localhost:5432/harena_dev"
-        logger.info("🔧 DATABASE_URL définie pour développement local")
+    # DEBUG: Afficher les variables clés au début
+    logger.info(f"🔍 DATABASE_URL présente: {'Oui' if os.environ.get('DATABASE_URL') else 'Non'}")
+    logger.info(f"🔍 REDIS_URL présente: {'Oui' if os.environ.get('REDIS_URL') else 'Non'}")
+    logger.info(f"🔍 BONSAI_URL présente: {'Oui' if os.environ.get('BONSAI_URL') else 'Non'}")
     
-    # Variables d'environnement par défaut pour les tests
+    # Variables d'environnement par défaut UNIQUEMENT si non définies
     default_env = {
         "ENVIRONMENT": "development",
         "DEBUG": "true",
         
-        # Search Service - Elasticsearch
+        # Base de données - SEULEMENT si pas définie
+        "DATABASE_URL": "postgresql://localhost:5432/harena_dev",
+        
+        # Search Service - Elasticsearch - SEULEMENT si pas définie
         "BONSAI_URL": "http://localhost:9200",
         "ELASTICSEARCH_URL": "http://localhost:9200",
         
-        # Conversation Service - Redis + TinyBERT
+        # Conversation Service - Redis + TinyBERT - SEULEMENT si pas définie
         "REDIS_URL": "redis://localhost:6379",
         "REDIS_CACHE_ENABLED": "true",
         "REDIS_CACHE_PREFIX": "conversation_service_local",
@@ -72,15 +79,22 @@ def setup_local_environment():
         "CIRCUIT_BREAKER_TIMEOUT": "60",
         
         # Autres services (optionnels pour tests)
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "sk-test-key"),
+        "OPENAI_API_KEY": "sk-test-key",
         "BRIDGE_BASE_URL": "https://sync.bankin.com",
-        "BRIDGE_CLIENT_ID": os.environ.get("BRIDGE_CLIENT_ID", ""),
-        "BRIDGE_CLIENT_SECRET": os.environ.get("BRIDGE_CLIENT_SECRET", ""),
+        "BRIDGE_CLIENT_ID": "",
+        "BRIDGE_CLIENT_SECRET": "",
     }
     
+    # IMPORTANT: Ne remplacer que si la variable n'existe PAS
     for key, value in default_env.items():
         if not os.environ.get(key):
             os.environ[key] = value
+            logger.info(f"🔧 {key} définie pour développement local")
+    
+    # DEBUG: Afficher les variables finales
+    logger.info(f"🔍 DATABASE_URL finale: {os.environ.get('DATABASE_URL', 'NON DÉFINIE')[:50]}...")
+    logger.info(f"🔍 REDIS_URL finale: {os.environ.get('REDIS_URL', 'NON DÉFINIE')[:50]}...")
+    logger.info(f"🔍 BONSAI_URL finale: {os.environ.get('BONSAI_URL', 'NON DÉFINIE')[:50]}...")
     
     logger.info("✅ Environnement local configuré pour conversation_service Redis + TinyBERT")
 
@@ -104,12 +118,12 @@ class ServiceLoader:
         logger.info("🔍 Initialisation du search_service...")
         
         try:
-            # Vérifier BONSAI_URL ou ELASTICSEARCH_URL
-            elasticsearch_url = os.environ.get("BONSAI_URL") or os.environ.get("ELASTICSEARCH_URL")
-            if not elasticsearch_url:
-                raise ValueError("BONSAI_URL ou ELASTICSEARCH_URL n'est pas configurée")
+            # Vérifier BONSAI_URL
+            bonsai_url = os.environ.get("BONSAI_URL")
+            if not bonsai_url:
+                raise ValueError("BONSAI_URL n'est pas configurée")
             
-            logger.info(f"📡 Elasticsearch URL configurée: {elasticsearch_url}")
+            logger.info(f"📡 BONSAI_URL configurée: {bonsai_url[:50]}...")
             
             # Import des modules search_service avec nouvelle architecture
             from search_service.core import initialize_default_client
@@ -166,7 +180,7 @@ class ServiceLoader:
             if not redis_url:
                 raise ValueError("REDIS_URL n'est pas configurée")
             
-            logger.info(f"💾 REDIS_URL configurée: {redis_url}")
+            logger.info(f"💾 REDIS_URL configurée: {redis_url[:50]}...")
             
             # Import progressif et sécurisé du conversation service
             logger.info("📦 Import des modules conversation_service...")
@@ -249,32 +263,6 @@ class ServiceLoader:
             self.conversation_service_error = error_msg
             return False
     
-    def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
-        """Charge et enregistre un router de service."""
-        try:
-            # Import dynamique du router
-            module = __import__(router_path, fromlist=["router"])
-            router = getattr(module, "router", None)
-            
-            if router:
-                # Enregistrer le router
-                app.include_router(router, prefix=prefix, tags=[service_name])
-                routes_count = len(router.routes) if hasattr(router, 'routes') else 0
-                
-                # Log et statut
-                logger.info(f"✅ {service_name}: {routes_count} routes sur {prefix}")
-                self.services_status[service_name] = {"status": "ok", "routes": routes_count, "prefix": prefix}
-                return True
-            else:
-                logger.error(f"❌ {service_name}: Pas de router trouvé")
-                self.services_status[service_name] = {"status": "error", "error": "Pas de router"}
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ {service_name}: {str(e)}")
-            self.services_status[service_name] = {"status": "error", "error": str(e)}
-            return False
-    
     def check_service_health(self, service_name: str, module_path: str):
         """Vérifie rapidement la santé d'un service."""
         try:
@@ -338,7 +326,7 @@ def create_app():
     async def startup():
         logger.info("🚀 Démarrage Harena Finance Platform - MODE DÉVELOPPEMENT")
         
-        # Test DB critique avec gestion d'erreurs d'encoding
+        # Test DB critique
         try:
             logger.info("🔍 Test de connexion base de données...")
             from db_service.session import engine
@@ -347,14 +335,8 @@ def create_app():
                 conn.execute(text("SELECT 1"))
             logger.info("✅ Base de données connectée")
         except Exception as e:
-            error_str = str(e)
-            if "'utf-8' codec can't decode" in error_str:
-                logger.error("❌ DB critique: Problème d'encoding détecté")
-                logger.info("💡 Vérifiez l'encoding de vos fichiers de configuration")
-                logger.info("💡 Ou vérifiez que PostgreSQL est démarré avec la bonne locale")
-            else:
-                logger.error(f"❌ DB critique: {error_str}")
-                logger.info("💡 Vérifiez que PostgreSQL est démarré et accessible")
+            logger.error(f"❌ DB critique: {e}")
+            logger.info("💡 Vérifiez que PostgreSQL est démarré et accessible")
             # En mode dev, on continue quand même pour voir les autres erreurs
         
         # Vérifier santé des services existants
@@ -369,17 +351,13 @@ def create_app():
             try:
                 loader.check_service_health(service_name, module_path)
             except Exception as e:
-                error_str = str(e)
-                if "'utf-8' codec can't decode" in error_str:
-                    logger.warning(f"⚠️ {service_name}: Problème d'encoding détecté - fichier corrompu ?")
-                else:
-                    logger.warning(f"⚠️ {service_name}: {error_str}")
+                logger.warning(f"⚠️ {service_name}: {e}")
                 # Continue malgré les erreurs en mode dev
         
         # Charger les routers des services
         logger.info("📋 Chargement des routes des services...")
         
-        # 1. User Service avec gestion d'erreurs d'encoding
+        # 1. User Service
         try:
             from user_service.api.endpoints.users import router as user_router
             app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
@@ -387,13 +365,8 @@ def create_app():
             logger.info(f"✅ user_service: {routes_count} routes sur /api/v1/users")
             loader.services_status["user_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/users"}
         except Exception as e:
-            error_str = str(e)
-            if "'utf-8' codec can't decode" in error_str:
-                logger.error("❌ User Service: Problème d'encoding détecté dans les fichiers")
-                logger.info("💡 Vérifiez l'encoding UTF-8 des fichiers Python dans user_service/")
-            else:
-                logger.error(f"❌ User Service: {error_str}")
-            loader.services_status["user_service"] = {"status": "error", "error": error_str[:100] + "..."}
+            logger.error(f"❌ User Service: {e}")
+            loader.services_status["user_service"] = {"status": "error", "error": str(e)[:100] + "..."}
 
         # 2. Sync Service - modules principaux
         sync_modules = [
@@ -417,14 +390,10 @@ def create_app():
                 loader.services_status[service_name] = {"status": "ok", "routes": routes_count, "prefix": prefix}
                 sync_successful += 1
             except Exception as e:
-                error_str = str(e)
-                if "'utf-8' codec can't decode" in error_str:
-                    logger.error(f"❌ {module_path}: Problème d'encoding détecté")
-                else:
-                    logger.error(f"❌ {module_path}: {error_str}")
-                loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": error_str[:100] + "..."}
+                logger.error(f"❌ {module_path}: {e}")
+                loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)[:100] + "..."}
 
-        # 3. Enrichment Service avec gestion d'erreurs d'encoding
+        # 3. Enrichment Service
         try:
             from enrichment_service.api.routes import router as enrichment_router
             app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
@@ -432,12 +401,8 @@ def create_app():
             logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment")
             loader.services_status["enrichment_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/enrichment"}
         except Exception as e:
-            error_str = str(e)
-            if "'utf-8' codec can't decode" in error_str:
-                logger.error("❌ Enrichment Service: Problème d'encoding détecté")
-            else:
-                logger.error(f"❌ Enrichment Service: {error_str}")
-            loader.services_status["enrichment_service"] = {"status": "error", "error": error_str[:100] + "..."}
+            logger.error(f"❌ Enrichment Service: {e}")
+            loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)[:100] + "..."}
 
         # 4. ✅ Search Service - AVEC NOUVELLE ARCHITECTURE SIMPLIFIÉE
         logger.info("🔍 Chargement et initialisation du search_service...")

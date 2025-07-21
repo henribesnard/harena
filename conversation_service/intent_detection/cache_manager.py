@@ -14,7 +14,7 @@ import aioredis
 from aioredis import Redis
 from aioredis.exceptions import RedisError, ConnectionError as RedisConnectionError
 
-from conversation_service.config.settings import settings
+from config_service.config import settings
 from conversation_service.intent_detection.models import (
     IntentResult, CacheKey, CacheEntry, IntentLevel
 )

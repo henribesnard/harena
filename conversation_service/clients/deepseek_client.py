@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Any
 import httpx
 from httpx import AsyncClient, Timeout, RequestError, HTTPStatusError
 
-from conversation_service.config.settings import settings
+from config_service.config import settings
 from conversation_service.utils.logging import log_intent_detection
 
 logger = logging.getLogger(__name__)

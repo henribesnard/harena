@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional
 from contextvars import ContextVar
 from datetime import datetime
 
-from conversation_service.config.settings import settings
+from config_service.config import settings
 
 # ==========================================
 # CONTEXTE LOGGING

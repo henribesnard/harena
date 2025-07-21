@@ -1,4 +1,3 @@
-# search_service/models/request.py
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, Optional
 

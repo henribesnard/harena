@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from conversation_service.config.settings import settings
+from config_service.config import settings
 from conversation_service.intent_detection.engine import IntentDetectionEngine
 from conversation_service.utils.logging import setup_logging
 from conversation_service.utils import record_intent_performance

@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any
 
 from conversation_service.intent_detection.engine import IntentDetectionEngine
 from conversation_service.intent_detection.models import IntentResult, IntentType, IntentLevel
-from conversation_service.config.settings import settings
+from config_service.config import settings
 from conversation_service.utils.logging import log_intent_detection, log_business_event
 
 logger = logging.getLogger(__name__)

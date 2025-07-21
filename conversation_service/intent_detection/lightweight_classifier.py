@@ -17,7 +17,7 @@ from conversation_service.intent_detection.models import (
     IntentResult, IntentType, IntentLevel, IntentConfidence
 )
 from conversation_service.intent_detection.cache_manager import CacheManager
-from conversation_service.config.settings import settings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -2,10 +2,10 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
-from ..models.request import SearchRequest
-from ..models.response import SearchResponse
-from ..core.search_engine import SearchEngine
-from ..config.settings import settings
+from search_service.models.request import SearchRequest
+from search_service.models.response import SearchResponse
+from search_service.core.search_engine import SearchEngine
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 

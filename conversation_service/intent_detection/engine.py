@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Dict, Any, Optional, List
 
-from conversation_service.config.settings import settings
+from config_service.config import settings
 from conversation_service.intent_detection.models import (
     IntentResult, IntentType, IntentLevel, IntentConfidence, CacheKey
 )

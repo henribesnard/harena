@@ -1,6 +1,6 @@
 """
-Application Harena pour tests locaux avant déploiement.
-Version synchronisée avec heroku_app.py avec support conversation_service Redis + TinyBERT.
+Application Harena pour développement local.
+Structure EXACTEMENT identique à heroku_app.py avec configurations locales.
 """
 
 import logging
@@ -22,81 +22,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("harena_local")
 
-# Fix DATABASE_URL pour tests locaux (si PostgreSQL format)
+# Fix DATABASE_URL pour développement local
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     os.environ["DATABASE_URL"] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Configuration environnement local par défaut
-def setup_local_environment():
-    """Configure l'environnement local avec des valeurs par défaut UNIQUEMENT si variables non définies."""
-    
-    # DEBUG: Afficher les variables clés au début
-    logger.info(f"🔍 DATABASE_URL présente: {'Oui' if os.environ.get('DATABASE_URL') else 'Non'}")
-    logger.info(f"🔍 REDIS_URL présente: {'Oui' if os.environ.get('REDIS_URL') else 'Non'}")
-    logger.info(f"🔍 BONSAI_URL présente: {'Oui' if os.environ.get('BONSAI_URL') else 'Non'}")
-    
-    # Variables d'environnement par défaut UNIQUEMENT si non définies
-    default_env = {
-        "ENVIRONMENT": "development",
-        "DEBUG": "true",
-        
-        # Base de données - SEULEMENT si pas définie
-        "DATABASE_URL": "postgresql://localhost:5432/harena_dev",
-        
-        # Search Service - Elasticsearch - SEULEMENT si pas définie
-        "BONSAI_URL": "http://localhost:9200",
-        "ELASTICSEARCH_URL": "http://localhost:9200",
-        
-        # Conversation Service - Redis + TinyBERT - SEULEMENT si pas définie
-        "REDIS_URL": "redis://localhost:6379",
-        "REDIS_CACHE_ENABLED": "true",
-        "REDIS_CACHE_PREFIX": "conversation_service_local",
-        "REDIS_DB": "0",
-        "REDIS_PASSWORD": "",
-        
-        # TinyBERT Configuration
-        "TINYBERT_MODEL_NAME": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        "EMBEDDING_CACHE_SIZE": "1000",
-        "MIN_CONFIDENCE_THRESHOLD": "0.7",
-        
-        # Cache TTL Configuration
-        "CACHE_TTL_INTENT": "300",     # 5min
-        "CACHE_TTL_ENTITY": "180",     # 3min  
-        "CACHE_TTL_RESPONSE": "60",    # 1min
-        "MEMORY_CACHE_SIZE": "500",
-        "MEMORY_CACHE_TTL": "300",
-        
-        # Performance optimisations
-        "ENABLE_ASYNC_PIPELINE": "true",
-        "PARALLEL_PROCESSING_ENABLED": "true",
-        "THREAD_POOL_SIZE": "4",
-        "MAX_CONCURRENT_REQUESTS": "50",
-        
-        # Circuit breaker
-        "CIRCUIT_BREAKER_ENABLED": "true",
-        "CIRCUIT_BREAKER_FAILURE_THRESHOLD": "5",
-        "CIRCUIT_BREAKER_TIMEOUT": "60",
-        
-        # Autres services (optionnels pour tests)
-        "OPENAI_API_KEY": "sk-test-key",
-        "BRIDGE_BASE_URL": "https://sync.bankin.com",
-        "BRIDGE_CLIENT_ID": "",
-        "BRIDGE_CLIENT_SECRET": "",
-    }
-    
-    # IMPORTANT: Ne remplacer que si la variable n'existe PAS
-    for key, value in default_env.items():
-        if not os.environ.get(key):
-            os.environ[key] = value
-            logger.info(f"🔧 {key} définie pour développement local")
-    
-    # DEBUG: Afficher les variables finales
-    logger.info(f"🔍 DATABASE_URL finale: {os.environ.get('DATABASE_URL', 'NON DÉFINIE')[:50]}...")
-    logger.info(f"🔍 REDIS_URL finale: {os.environ.get('REDIS_URL', 'NON DÉFINIE')[:50]}...")
-    logger.info(f"🔍 BONSAI_URL finale: {os.environ.get('BONSAI_URL', 'NON DÉFINIE')[:50]}...")
-    
-    logger.info("✅ Environnement local configuré pour conversation_service Redis + TinyBERT")
+# PAS de configuration par défaut - TOUT vient du .env
+# Les variables sont chargées par load_dotenv() uniquement
 
 # Ajouter le répertoire courant au path
 current_dir = Path(__file__).parent.absolute()
@@ -104,7 +36,7 @@ if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
 class ServiceLoader:
-    """Chargeur de services simplifié inspiré de heroku_app.py."""
+    """Chargeur de services - COPIE EXACTE de heroku_app.py"""
     
     def __init__(self):
         self.services_status = {}
@@ -114,7 +46,7 @@ class ServiceLoader:
         self.conversation_service_error = None
     
     async def initialize_search_service(self, app: FastAPI):
-        """Initialise le search_service avec la nouvelle architecture simplifiée."""
+        """Initialise le search_service - COPIE EXACTE de heroku_app.py"""
         logger.info("🔍 Initialisation du search_service...")
         
         try:
@@ -171,82 +103,55 @@ class ServiceLoader:
             return False
     
     async def initialize_conversation_service(self, app: FastAPI):
-        """Initialise le conversation_service avec Redis + TinyBERT."""
-        logger.info("🤖 Initialisation du conversation_service avec Redis + TinyBERT...")
+        """Initialise le conversation_service - COPIE EXACTE de heroku_app.py"""
+        logger.info("🤖 Initialisation du conversation_service...")
         
         try:
-            # Vérifier REDIS_URL
-            redis_url = os.environ.get("REDIS_URL")
-            if not redis_url:
-                raise ValueError("REDIS_URL n'est pas configurée")
+            # Vérifier DEEPSEEK_API_KEY
+            deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+            if not deepseek_key:
+                raise ValueError("DEEPSEEK_API_KEY n'est pas configurée")
             
-            logger.info(f"💾 REDIS_URL configurée: {redis_url[:50]}...")
+            logger.info(f"🔑 DEEPSEEK_API_KEY configurée: {deepseek_key[:20]}...")
             
-            # Import progressif et sécurisé du conversation service
-            logger.info("📦 Import des modules conversation_service...")
+            # Import et initialisation du conversation service
+            from conversation_service.config import settings
+            from conversation_service.clients import deepseek_client
+            from conversation_service.agents import intent_classifier
             
-            # Import basique de la configuration
-            try:
-                from conversation_service.config import settings
-                logger.info("✅ Configuration conversation_service importée")
-            except Exception as e:
-                logger.error(f"❌ Erreur import configuration: {e}")
-                raise
+            # Validation de la configuration
+            logger.info("⚙️ Validation de la configuration...")
+            validation = settings.validate_configuration()
+            if not validation["valid"]:
+                raise ValueError(f"Configuration invalide: {validation['errors']}")
             
-            # Test de validation configuration avec fallback
-            try:
-                logger.info("⚙️ Validation de la configuration conversation_service...")
-                if hasattr(settings, 'validate_configuration'):
-                    validation = settings.validate_configuration()
-                    if not validation["valid"]:
-                        raise ValueError(f"Configuration invalide: {validation['errors']}")
-                    
-                    if validation["warnings"]:
-                        logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
-                else:
-                    logger.info("ℹ️ Pas de méthode validate_configuration - continuons")
-            except Exception as e:
-                logger.warning(f"⚠️ Validation configuration échouée, mais continuons: {e}")
+            if validation["warnings"]:
+                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
             
-            # Test Redis avec retry et fallback gracieux
-            logger.info("💾 Test de connexion Redis...")
-            redis_available = False
-            try:
-                import redis
-                r = redis.from_url(redis_url)
-                r.ping()
-                redis_available = True
-                logger.info("✅ Redis accessible")
-            except Exception as e:
-                logger.warning(f"⚠️ Redis non accessible: {e} - Mode sans cache")
-                redis_available = False
+            # Test de connexion DeepSeek
+            logger.info("🔍 Test de connexion DeepSeek...")
+            health_check = await deepseek_client.health_check()
             
-            # Test TinyBERT avec fallback gracieux  
-            logger.info("🧠 Test d'initialisation TinyBERT...")
-            tinybert_available = False
-            try:
-                # Test simple d'import sentence-transformers
-                import sentence_transformers
-                tinybert_available = True
-                logger.info("✅ TinyBERT/sentence-transformers disponible")
-            except ImportError:
-                logger.warning("⚠️ sentence-transformers non installé - Mode sans embeddings")
-                tinybert_available = False
-            except Exception as e:
-                logger.warning(f"⚠️ TinyBERT non disponible: {e} - Mode dégradé")
-                tinybert_available = False
+            if health_check["status"] != "healthy":
+                raise ValueError(f"DeepSeek non disponible: {health_check.get('error', 'Unknown error')}")
             
-            # Mettre les composants dans app.state (mode dégradé OK)
+            logger.info(f"✅ DeepSeek connecté - Temps de réponse: {health_check['response_time']:.2f}s")
+            
+            # Test de l'agent de classification
+            logger.info("🤖 Test de l'agent de classification...")
+            agent_metrics = intent_classifier.get_metrics()
+            logger.info(f"✅ Agent initialisé - Seuil confiance: {settings.MIN_CONFIDENCE_THRESHOLD}")
+            
+            # Mettre les composants dans app.state
             app.state.conversation_service_initialized = True
-            app.state.redis_available = redis_available
-            app.state.tinybert_available = tinybert_available
+            app.state.deepseek_client = deepseek_client
+            app.state.intent_classifier = intent_classifier
             app.state.conversation_initialization_error = None
             
             self.conversation_service_initialized = True
             self.conversation_service_error = None
             
-            status = "complète" if (redis_available and tinybert_available) else "dégradée"
-            logger.info(f"🎉 Conversation Service initialisé en mode {status}!")
+            logger.info("🎉 Conversation Service complètement initialisé!")
             return True
             
         except Exception as e:
@@ -255,16 +160,42 @@ class ServiceLoader:
             
             # Marquer l'échec dans app.state
             app.state.conversation_service_initialized = False
-            app.state.redis_available = False
-            app.state.tinybert_available = False
+            app.state.deepseek_client = None
+            app.state.intent_classifier = None
             app.state.conversation_initialization_error = error_msg
             
             self.conversation_service_initialized = False
             self.conversation_service_error = error_msg
             return False
     
+    def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
+        """Charge et enregistre un router de service - COPIE EXACTE de heroku_app.py"""
+        try:
+            # Import dynamique du router
+            module = __import__(router_path, fromlist=["router"])
+            router = getattr(module, "router", None)
+            
+            if router:
+                # Enregistrer le router
+                app.include_router(router, prefix=prefix, tags=[service_name])
+                routes_count = len(router.routes) if hasattr(router, 'routes') else 0
+                
+                # Log et statut
+                logger.info(f"✅ {service_name}: {routes_count} routes sur {prefix}")
+                self.services_status[service_name] = {"status": "ok", "routes": routes_count, "prefix": prefix}
+                return True
+            else:
+                logger.error(f"❌ {service_name}: Pas de router trouvé")
+                self.services_status[service_name] = {"status": "error", "error": "Pas de router"}
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ {service_name}: {str(e)}")
+            self.services_status[service_name] = {"status": "error", "error": str(e)}
+            return False
+    
     def check_service_health(self, service_name: str, module_path: str):
-        """Vérifie rapidement la santé d'un service."""
+        """Vérifie rapidement la santé d'un service - COPIE EXACTE de heroku_app.py"""
         try:
             # Pour db_service, pas de main.py à vérifier - juste tester la connexion
             if service_name == "db_service":
@@ -300,10 +231,7 @@ class ServiceLoader:
             return False
 
 def create_app():
-    """Créer l'application FastAPI principale."""
-    
-    # Configuration environnement local
-    setup_local_environment()
+    """Créer l'application FastAPI principale - STRUCTURE EXACTE de heroku_app.py"""
     
     app = FastAPI(
         title="Harena Finance Platform - Local Dev",
@@ -324,11 +252,10 @@ def create_app():
 
     @app.on_event("startup")
     async def startup():
-        logger.info("🚀 Démarrage Harena Finance Platform - MODE DÉVELOPPEMENT")
+        logger.info("🚀 Démarrage Harena Finance Platform - LOCAL DEV")
         
         # Test DB critique
         try:
-            logger.info("🔍 Test de connexion base de données...")
             from db_service.session import engine
             from sqlalchemy import text
             with engine.connect() as conn:
@@ -336,8 +263,7 @@ def create_app():
             logger.info("✅ Base de données connectée")
         except Exception as e:
             logger.error(f"❌ DB critique: {e}")
-            logger.info("💡 Vérifiez que PostgreSQL est démarré et accessible")
-            # En mode dev, on continue quand même pour voir les autres erreurs
+            raise RuntimeError("Database connection failed")
         
         # Vérifier santé des services existants
         services_health = [
@@ -348,11 +274,7 @@ def create_app():
         ]
         
         for service_name, module_path in services_health:
-            try:
-                loader.check_service_health(service_name, module_path)
-            except Exception as e:
-                logger.warning(f"⚠️ {service_name}: {e}")
-                # Continue malgré les erreurs en mode dev
+            loader.check_service_health(service_name, module_path)
         
         # Charger les routers des services
         logger.info("📋 Chargement des routes des services...")
@@ -366,9 +288,9 @@ def create_app():
             loader.services_status["user_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/users"}
         except Exception as e:
             logger.error(f"❌ User Service: {e}")
-            loader.services_status["user_service"] = {"status": "error", "error": str(e)[:100] + "..."}
+            loader.services_status["user_service"] = {"status": "error", "error": str(e)}
 
-        # 2. Sync Service - modules principaux
+        # 2. Sync Service - modules principaux (EXACTEMENT comme heroku_app.py)
         sync_modules = [
             ("sync_service.api.endpoints.sync", "/api/v1/sync", "Synchronisation"),
             ("sync_service.api.endpoints.transactions", "/api/v1/transactions", "Transactions"),
@@ -391,7 +313,7 @@ def create_app():
                 sync_successful += 1
             except Exception as e:
                 logger.error(f"❌ {module_path}: {e}")
-                loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)[:100] + "..."}
+                loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)}
 
         # 3. Enrichment Service
         try:
@@ -402,9 +324,9 @@ def create_app():
             loader.services_status["enrichment_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/enrichment"}
         except Exception as e:
             logger.error(f"❌ Enrichment Service: {e}")
-            loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)[:100] + "..."}
+            loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)}
 
-        # 4. ✅ Search Service - AVEC NOUVELLE ARCHITECTURE SIMPLIFIÉE
+        # 4. ✅ Search Service - EXACTEMENT COMME HEROKU_APP.PY
         logger.info("🔍 Chargement et initialisation du search_service...")
         try:
             # D'abord initialiser les composants Elasticsearch
@@ -452,86 +374,54 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
-        # 5. ✅ CONVERSATION SERVICE - NOUVEAU avec Redis + TinyBERT
+        # 5. ✅ CONVERSATION SERVICE - EXACTEMENT COMME HEROKU_APP.PY
         logger.info("🤖 Chargement et initialisation du conversation_service...")
         try:
-            # D'abord initialiser les composants Redis + TinyBERT
+            # D'abord initialiser les composants DeepSeek
             conversation_init_success = await loader.initialize_conversation_service(app)
             
-            # Ensuite charger les routes avec gestion sécurisée des imports circulaires
+            # Ensuite charger les routes
             try:
-                # Import sécurisé avec fallback 
-                logger.info("📦 Tentative d'import des routes conversation_service...")
+                from conversation_service.api.routes import router as conversation_router
+                app.include_router(conversation_router, prefix="/api/v1/conversation")
+                routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
                 
-                # Tentative 1: Import direct
-                try:
-                    from conversation_service.api.routes import router as conversation_router
-                    router_imported = True
-                    import_method = "direct"
-                except Exception as e1:
-                    logger.warning(f"⚠️ Import direct échoué: {str(e1)[:100]}...")
-                    
-                    # Tentative 2: Import alternatif
-                    try:
-                        import conversation_service.api
-                        conversation_router = getattr(conversation_service.api, 'router', None)
-                        if conversation_router:
-                            router_imported = True
-                            import_method = "alternative"
-                        else:
-                            raise AttributeError("Pas de router trouvé")
-                    except Exception as e2:
-                        logger.warning(f"⚠️ Import alternatif échoué: {str(e2)[:100]}...")
-                        router_imported = False
-                        import_method = "failed"
-                
-                if router_imported:
-                    app.include_router(conversation_router, prefix="/api/v1/conversation")
-                    routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
-                    
-                    if conversation_init_success:
-                        logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation (AVEC initialisation - {import_method})")
-                        loader.services_status["conversation_service"] = {
-                            "status": "ok", 
-                            "routes": routes_count, 
-                            "prefix": "/api/v1/conversation",
-                            "initialized": True,
-                            "architecture": "redis_tinybert_classifier",
-                            "cache": "redis_multi_level",
-                            "model": "tiny_bert_multilingual",
-                            "import_method": import_method
-                        }
-                    else:
-                        logger.warning(f"⚠️ conversation_service: {routes_count} routes chargées SANS initialisation complète")
-                        loader.services_status["conversation_service"] = {
-                            "status": "degraded", 
-                            "routes": routes_count, 
-                            "prefix": "/api/v1/conversation",
-                            "initialized": False,
-                            "error": loader.conversation_service_error,
-                            "architecture": "redis_tinybert_classifier",
-                            "cache": "redis_multi_level",
-                            "model": "tiny_bert_multilingual",
-                            "import_method": import_method
-                        }
+                if conversation_init_success:
+                    logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation (AVEC initialisation)")
+                    loader.services_status["conversation_service"] = {
+                        "status": "ok", 
+                        "routes": routes_count, 
+                        "prefix": "/api/v1/conversation",
+                        "initialized": True,
+                        "architecture": "mvp_intent_classifier",
+                        "model": "deepseek-chat"
+                    }
                 else:
-                    raise ImportError("Toutes les tentatives d'import ont échoué")
+                    logger.warning(f"⚠️ conversation_service: {routes_count} routes chargées SANS initialisation")
+                    loader.services_status["conversation_service"] = {
+                        "status": "degraded", 
+                        "routes": routes_count, 
+                        "prefix": "/api/v1/conversation",
+                        "initialized": False,
+                        "error": loader.conversation_service_error,
+                        "architecture": "mvp_intent_classifier",
+                        "model": "deepseek-chat"
+                    }
                     
-            except Exception as e:
-                logger.error(f"❌ conversation_service: Impossible de charger les routes - {str(e)[:100]}...")
+            except ImportError as e:
+                logger.error(f"❌ conversation_service: Impossible de charger les routes - {str(e)}")
                 loader.services_status["conversation_service"] = {
                     "status": "error", 
-                    "error": f"Routes import failed: {str(e)[:100]}...",
-                    "architecture": "redis_tinybert_classifier",
-                    "initialized": conversation_init_success  # Au moins la partie init peut avoir marché
+                    "error": f"Routes import failed: {str(e)}",
+                    "architecture": "mvp_intent_classifier"
                 }
                     
         except Exception as e:
-            logger.error(f"❌ conversation_service: Erreur générale - {str(e)[:100]}...")
+            logger.error(f"❌ conversation_service: Erreur générale - {str(e)}")
             loader.services_status["conversation_service"] = {
                 "status": "error", 
-                "error": str(e)[:100] + "...",
-                "architecture": "redis_tinybert_classifier"
+                "error": str(e),
+                "architecture": "mvp_intent_classifier"
             }
 
         # Compter les services réussis
@@ -549,11 +439,11 @@ def create_app():
         if failed_services:
             logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
         
-        logger.info("🎉 Plateforme Harena complètement déployée avec Conversation Service Redis + TinyBERT!")
+        logger.info("🎉 Plateforme Harena complètement déployée - LOCAL DEV!")
 
     @app.get("/health")
     async def health():
-        """Health check global avec détails search_service et conversation_service."""
+        """Health check global - EXACTEMENT COMME HEROKU_APP.PY"""
         ok_services = [name for name, status in loader.services_status.items() 
                       if status.get("status") == "ok"]
         degraded_services = [name for name, status in loader.services_status.items() 
@@ -583,18 +473,17 @@ def create_app():
                 "initialized": conversation_status.get("initialized", False),
                 "error": conversation_status.get("error"),
                 "architecture": conversation_status.get("architecture"),
-                "cache": conversation_status.get("cache"),
                 "model": conversation_status.get("model")
             }
         }
 
     @app.get("/status")
     async def status():
-        """Statut détaillé."""
+        """Statut détaillé - EXACTEMENT COMME HEROKU_APP.PY"""
         return {
             "platform": "Harena Finance",
-            "environment": "development",
             "services": loader.services_status,
+            "environment": os.environ.get("ENVIRONMENT", "development"),
             "search_service_details": {
                 "initialized": loader.search_service_initialized,
                 "error": loader.search_service_error,
@@ -603,48 +492,31 @@ def create_app():
             "conversation_service_details": {
                 "initialized": loader.conversation_service_initialized,
                 "error": loader.conversation_service_error,
-                "architecture": "redis_tinybert_classifier",
-                "cache": "redis_multi_level",
-                "model": "tiny_bert_multilingual"
+                "architecture": "mvp_intent_classifier",
+                "model": "deepseek-chat"
             }
-        }
-
-    @app.get("/debug")
-    async def debug():
-        """Endpoint de debug détaillé pour développement."""
-        return {
-            "services": loader.services_status,
-            "environment_vars": {
-                "DATABASE_URL": "***" if os.environ.get("DATABASE_URL") else None,
-                "REDIS_URL": "***" if os.environ.get("REDIS_URL") else None,
-                "BONSAI_URL": "***" if os.environ.get("BONSAI_URL") else None,
-                "ELASTICSEARCH_URL": os.environ.get("ELASTICSEARCH_URL"),
-                "TINYBERT_MODEL_NAME": os.environ.get("TINYBERT_MODEL_NAME"),
-                "REDIS_CACHE_ENABLED": os.environ.get("REDIS_CACHE_ENABLED"),
-                "MIN_CONFIDENCE_THRESHOLD": os.environ.get("MIN_CONFIDENCE_THRESHOLD"),
-            },
-            "python_path": sys.path[:3],
-            "current_dir": str(current_dir)
         }
 
     @app.get("/")
     async def root():
-        """Page d'accueil."""
+        """Page d'accueil - VERSION LOCAL DEV"""
         return {
-            "message": "🏦 Harena Finance Platform - DÉVELOPPEMENT",
+            "message": "🏦 Harena Finance Platform - LOCAL DEVELOPMENT",
             "version": "1.0.0-dev",
             "services_available": [
                 "user_service - Gestion utilisateurs",
                 "sync_service - Synchronisation Bridge API", 
                 "enrichment_service - Enrichissement IA",
                 "search_service - Recherche lexicale (Architecture simplifiée)",
-                "conversation_service - Assistant IA avec Redis + TinyBERT"
+                "conversation_service - Assistant IA avec DeepSeek (MVP)"
+            ],
+            "services_coming_soon": [
+                "conversation_service v2 - Assistant IA avec AutoGen + équipes d'agents"
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
                 "/status": "Statut des services",
-                "/debug": "Informations de debug",
-                "/docs": "Documentation API Swagger",
+                "/docs": "Documentation interactive",
                 "/api/v1/users/*": "Gestion utilisateurs",
                 "/api/v1/sync/*": "Synchronisation",
                 "/api/v1/transactions/*": "Transactions",
@@ -652,14 +524,14 @@ def create_app():
                 "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/*": "Enrichissement IA",
                 "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
-                "/api/v1/conversation/*": "Assistant IA conversationnel (Redis + TinyBERT)"
+                "/api/v1/conversation/*": "Assistant IA conversationnel (DeepSeek MVP)"
             },
-            "development_tips": [
-                "Utilisez /debug pour voir les erreurs détaillées",
-                "Vérifiez /docs pour l'API interactive",
-                "Assurez-vous que PostgreSQL, Redis sont démarrés localement",
-                "Elasticsearch optionnel pour search_service"
-            ]
+            "development_mode": {
+                "hot_reload": True,
+                "debug_logs": True,
+                "local_services": ["PostgreSQL", "Redis", "Elasticsearch (optionnel)"],
+                "docs_url": "http://localhost:8000/docs"
+            }
         }
 
     return app
@@ -667,22 +539,17 @@ def create_app():
 # Créer l'app
 app = create_app()
 
-def run_dev_server():
-    """Lance le serveur de développement avec hot reload."""
+if __name__ == "__main__":
+    import uvicorn
     logger.info("🔥 Lancement du serveur de développement avec hot reload")
     logger.info("📡 Accès: http://localhost:8000")
     logger.info("📚 Docs: http://localhost:8000/docs")
-    logger.info("🔍 Debug: http://localhost:8000/debug")
+    logger.info("🔍 Status: http://localhost:8000/status")
     
-    import uvicorn
     uvicorn.run(
-        "local_app:app",
-        host="0.0.0.0",
+        "local_app:app", 
+        host="0.0.0.0", 
         port=8000,
         reload=True,
-        reload_dirs=[str(current_dir)],
         log_level="info"
     )
-
-if __name__ == "__main__":
-    run_dev_server()

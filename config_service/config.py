@@ -102,6 +102,27 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_TOP_P: float = float(os.environ.get("DEEPSEEK_TOP_P", "0.95"))
     DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "60"))
     
+    # Configuration DeepSeek par tâche - Conversation Service
+    DEEPSEEK_INTENT_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_INTENT_MAX_TOKENS", "100"))
+    DEEPSEEK_INTENT_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_INTENT_TEMPERATURE", "0.1"))
+    DEEPSEEK_INTENT_TIMEOUT: int = int(os.environ.get("DEEPSEEK_INTENT_TIMEOUT", "8"))
+    DEEPSEEK_INTENT_TOP_P: float = float(os.environ.get("DEEPSEEK_INTENT_TOP_P", "0.9"))
+    
+    DEEPSEEK_ENTITY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_ENTITY_MAX_TOKENS", "80"))
+    DEEPSEEK_ENTITY_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_ENTITY_TEMPERATURE", "0.05"))
+    DEEPSEEK_ENTITY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_ENTITY_TIMEOUT", "6"))
+    DEEPSEEK_ENTITY_TOP_P: float = float(os.environ.get("DEEPSEEK_ENTITY_TOP_P", "0.8"))
+    
+    DEEPSEEK_QUERY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_QUERY_MAX_TOKENS", "300"))
+    DEEPSEEK_QUERY_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_QUERY_TEMPERATURE", "0.2"))
+    DEEPSEEK_QUERY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_QUERY_TIMEOUT", "10"))
+    DEEPSEEK_QUERY_TOP_P: float = float(os.environ.get("DEEPSEEK_QUERY_TOP_P", "0.9"))
+    
+    DEEPSEEK_RESPONSE_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_RESPONSE_MAX_TOKENS", "500"))
+    DEEPSEEK_RESPONSE_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_RESPONSE_TEMPERATURE", "0.7"))
+    DEEPSEEK_RESPONSE_TIMEOUT: int = int(os.environ.get("DEEPSEEK_RESPONSE_TIMEOUT", "15"))
+    DEEPSEEK_RESPONSE_TOP_P: float = float(os.environ.get("DEEPSEEK_RESPONSE_TOP_P", "0.95"))
+    
     # ==========================================
     # CONFIGURATION OPENAI POUR LES EMBEDDINGS
     # ==========================================
@@ -115,12 +136,24 @@ class GlobalSettings(BaseSettings):
     COHERE_KEY: str = os.environ.get("COHERE_KEY", "")
     
     # ==========================================
+    # CONFIGURATION REDIS
+    # ==========================================
+    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    REDISCLOUD_URL: str = os.environ.get("REDISCLOUD_URL", "")  # Heroku Redis
+    REDIS_PASSWORD: Optional[str] = os.environ.get("REDIS_PASSWORD", None)
+    REDIS_DB: int = int(os.environ.get("REDIS_DB", "0"))
+    REDIS_MAX_CONNECTIONS: int = int(os.environ.get("REDIS_MAX_CONNECTIONS", "20"))
+    REDIS_RETRY_ON_TIMEOUT: bool = os.environ.get("REDIS_RETRY_ON_TIMEOUT", "true").lower() == "true"
+    REDIS_HEALTH_CHECK_INTERVAL: int = int(os.environ.get("REDIS_HEALTH_CHECK_INTERVAL", "30"))
+    
+    # ==========================================
     # CONFIGURATION DE PERFORMANCE ET CACHE
     # ==========================================
     BATCH_SIZE: int = int(os.environ.get("BATCH_SIZE", "32"))
     CACHE_TTL: int = int(os.environ.get("CACHE_TTL", "3600"))
     MEMORY_CACHE_TTL: int = int(os.environ.get("MEMORY_CACHE_TTL", "3600"))
     MEMORY_CACHE_MAX_SIZE: int = int(os.environ.get("MEMORY_CACHE_MAX_SIZE", "10000"))
+    MEMORY_CACHE_SIZE: int = int(os.environ.get("MEMORY_CACHE_SIZE", "2000"))
     
     # ==========================================
     # CONFIGURATION DE TAUX DE LIMITE
@@ -128,6 +161,8 @@ class GlobalSettings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = os.environ.get("RATE_LIMIT_ENABLED", "True").lower() == "true"
     RATE_LIMIT_PERIOD: int = int(os.environ.get("RATE_LIMIT_PERIOD", "60"))
     RATE_LIMIT_REQUESTS: int = int(os.environ.get("RATE_LIMIT_REQUESTS", "60"))
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(os.environ.get("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
+    RATE_LIMIT_BURST_SIZE: int = int(os.environ.get("RATE_LIMIT_BURST_SIZE", "10"))
     
     # ==========================================
     # PARAMÈTRES DE RECHERCHE PAR DÉFAUT
@@ -172,7 +207,10 @@ class GlobalSettings(BaseSettings):
     SEARCH_SERVICE_VERSION: str = os.environ.get("SEARCH_SERVICE_VERSION", "1.0.0")
     SEARCH_SERVICE_DEBUG: bool = os.environ.get("SEARCH_SERVICE_DEBUG", "false").lower() == "true"
     
-    # Timeouts des services externes - VARIABLES MANQUANTES AJOUTÉES
+    # Variables du search_service local qui manquaient
+    TEST_USER_ID: int = int(os.environ.get("TEST_USER_ID", "34"))
+    
+    # Timeouts des services externes
     ELASTICSEARCH_TIMEOUT: float = float(os.environ.get("ELASTICSEARCH_TIMEOUT", "30.0"))
     QDRANT_TIMEOUT: float = float(os.environ.get("QDRANT_TIMEOUT", "8.0"))
     OPENAI_TIMEOUT: float = float(os.environ.get("OPENAI_TIMEOUT", "10.0"))
@@ -189,34 +227,30 @@ class GlobalSettings(BaseSettings):
     MIN_SEMANTIC_SCORE: float = float(os.environ.get("MIN_SEMANTIC_SCORE", "0.5"))
     MAX_RESULTS_PER_ENGINE: int = int(os.environ.get("MAX_RESULTS_PER_ENGINE", "50"))
     
-    # ==========================================
-    # PARAMÈTRES SEARCH SERVICE PRINCIPAUX - VARIABLES MANQUANTES AJOUTÉES
-    # ==========================================
-    
-    # Limites de recherche principales - AJOUT VARIABLES MANQUANTES
+    # Limites de recherche principales
     MAX_SEARCH_RESULTS: int = int(os.environ.get("MAX_SEARCH_RESULTS", "1000"))
-    MAX_SEARCH_TIMEOUT: float = float(os.environ.get("MAX_SEARCH_TIMEOUT", "30.0"))  # VARIABLE MANQUANTE
-    MAX_SEARCH_LIMIT: int = int(os.environ.get("MAX_SEARCH_LIMIT", "100"))  # VARIABLE MANQUANTE
-    MAX_SEARCH_OFFSET: int = int(os.environ.get("MAX_SEARCH_OFFSET", "10000"))  # VARIABLE MANQUANTE CRITIQUE
+    MAX_SEARCH_TIMEOUT: float = float(os.environ.get("MAX_SEARCH_TIMEOUT", "30.0"))
+    MAX_SEARCH_LIMIT: int = int(os.environ.get("MAX_SEARCH_LIMIT", "100"))
+    MAX_SEARCH_OFFSET: int = int(os.environ.get("MAX_SEARCH_OFFSET", "10000"))
     
-    # Configuration timeouts spécialisés - VARIABLES MANQUANTES AJOUTÉES
-    DEFAULT_SEARCH_TIMEOUT: float = float(os.environ.get("DEFAULT_SEARCH_TIMEOUT", "15.0"))  # VARIABLE MANQUANTE CRITIQUE
+    # Configuration timeouts spécialisés
+    DEFAULT_SEARCH_TIMEOUT: float = float(os.environ.get("DEFAULT_SEARCH_TIMEOUT", "15.0"))
     QUICK_SEARCH_TIMEOUT: float = float(os.environ.get("QUICK_SEARCH_TIMEOUT", "3.0"))
     STANDARD_SEARCH_TIMEOUT: float = float(os.environ.get("STANDARD_SEARCH_TIMEOUT", "8.0"))
     COMPLEX_SEARCH_TIMEOUT: float = float(os.environ.get("COMPLEX_SEARCH_TIMEOUT", "15.0"))
     HEALTH_CHECK_TIMEOUT: float = float(os.environ.get("HEALTH_CHECK_TIMEOUT", "5.0"))
     
-    # Configuration limites de validation - VARIABLES MANQUANTES AJOUTÉES
-    MAX_QUERY_LENGTH: int = int(os.environ.get("MAX_QUERY_LENGTH", "1000"))  # VARIABLE MANQUANTE CRITIQUE
-    MAX_PREVIOUS_QUERIES: int = int(os.environ.get("MAX_PREVIOUS_QUERIES", "10"))  # VARIABLE MANQUANTE CRITIQUE
-    MAX_FILTER_VALUES: int = int(os.environ.get("MAX_FILTER_VALUES", "100"))  # VARIABLE MANQUANTE
-    MAX_FILTERS_PER_GROUP: int = int(os.environ.get("MAX_FILTERS_PER_GROUP", "50"))  # VARIABLE MANQUANTE
-    MAX_AGGREGATION_BUCKETS: int = int(os.environ.get("MAX_AGGREGATION_BUCKETS", "1000"))  # VARIABLE MANQUANTE
-    MAX_AGGREGATIONS: int = int(os.environ.get("MAX_AGGREGATIONS", "50"))  # VARIABLE MANQUANTE
-    MAX_BOOL_CLAUSES: int = int(os.environ.get("MAX_BOOL_CLAUSES", "100"))  # VARIABLE MANQUANTE
-    MAX_SEARCH_FIELDS: int = int(os.environ.get("MAX_SEARCH_FIELDS", "20"))  # VARIABLE MANQUANTE
+    # Configuration limites de validation
+    MAX_QUERY_LENGTH: int = int(os.environ.get("MAX_QUERY_LENGTH", "1000"))
+    MAX_PREVIOUS_QUERIES: int = int(os.environ.get("MAX_PREVIOUS_QUERIES", "10"))
+    MAX_FILTER_VALUES: int = int(os.environ.get("MAX_FILTER_VALUES", "100"))
+    MAX_FILTERS_PER_GROUP: int = int(os.environ.get("MAX_FILTERS_PER_GROUP", "50"))
+    MAX_AGGREGATION_BUCKETS: int = int(os.environ.get("MAX_AGGREGATION_BUCKETS", "1000"))
+    MAX_AGGREGATIONS: int = int(os.environ.get("MAX_AGGREGATIONS", "50"))
+    MAX_BOOL_CLAUSES: int = int(os.environ.get("MAX_BOOL_CLAUSES", "100"))
+    MAX_SEARCH_FIELDS: int = int(os.environ.get("MAX_SEARCH_FIELDS", "20"))
     
-    # Configuration champs autorisés - VARIABLES MANQUANTES AJOUTÉES  
+    # Configuration champs autorisés
     ALLOWED_SEARCH_FIELDS: List[str] = [
         "user_id", "transaction_id", "account_id", "amount", "amount_abs",
         "transaction_type", "operation_type", "currency_code", "date", "month_year",
@@ -227,7 +261,7 @@ class GlobalSettings(BaseSettings):
         "user_id", "account_id", "transaction_type", "operation_type", "currency_code",
         "category_name", "merchant_name", "amount", "amount_abs", "date", "month_year", "weekday"
     ]
-    SENSITIVE_FIELDS: List[str] = ["user_id", "account_id", "transaction_hash"]  # VARIABLE MANQUANTE
+    SENSITIVE_FIELDS: List[str] = ["user_id", "account_id", "transaction_hash"]
     
     DEFAULT_CACHE_SIZE: int = int(os.environ.get("DEFAULT_CACHE_SIZE", "1000"))
     DEFAULT_CACHE_TTL: int = int(os.environ.get("DEFAULT_CACHE_TTL", "300"))
@@ -243,7 +277,7 @@ class GlobalSettings(BaseSettings):
     }
     
     # ==========================================
-    # CONFIGURATION DES EMBEDDINGS - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION DES EMBEDDINGS
     # ==========================================
     EMBEDDING_DIMENSIONS: int = int(os.environ.get("EMBEDDING_DIMENSIONS", "1536"))
     EMBEDDING_BATCH_SIZE: int = int(os.environ.get("EMBEDDING_BATCH_SIZE", "100"))
@@ -257,7 +291,7 @@ class GlobalSettings(BaseSettings):
     DEFAULT_SEARCH_LIMIT: int = int(os.environ.get("DEFAULT_SEARCH_LIMIT", "20"))
     DEFAULT_LIMIT: int = int(os.environ.get("DEFAULT_LIMIT", "20"))
     
-    # Configuration des timeouts de recherche - VARIABLES MANQUANTES AJOUTÉES
+    # Configuration des timeouts de recherche
     SEARCH_TIMEOUT: float = float(os.environ.get("SEARCH_TIMEOUT", "15.0"))
     
     # Configuration des retry
@@ -273,7 +307,7 @@ class GlobalSettings(BaseSettings):
     PERFORMANCE_ALERTING: bool = os.environ.get("PERFORMANCE_ALERTING", "false").lower() == "true"
     
     # ==========================================
-    # CONFIGURATION RECHERCHE HYBRIDE ET OPTIMISATIONS - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION RECHERCHE HYBRIDE ET OPTIMISATIONS
     # ==========================================
     
     # Fallback et résilience
@@ -292,7 +326,7 @@ class GlobalSettings(BaseSettings):
     MIN_SCORE_THRESHOLD: float = float(os.environ.get("MIN_SCORE_THRESHOLD", "0.1"))
     
     # ==========================================
-    # CONFIGURATION RECHERCHE LEXICALE - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION RECHERCHE LEXICALE
     # ==========================================
     
     # Boost factors
@@ -319,7 +353,7 @@ class GlobalSettings(BaseSettings):
     LEXICAL_MAX_RESULTS: int = int(os.environ.get("LEXICAL_MAX_RESULTS", "50"))
     
     # ==========================================
-    # CONFIGURATION RECHERCHE SÉMANTIQUE - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION RECHERCHE SÉMANTIQUE
     # ==========================================
     
     # Seuils de similarité (noms principaux)
@@ -348,7 +382,7 @@ class GlobalSettings(BaseSettings):
     SEMANTIC_ENABLE_QUERY_EXPANSION: bool = os.environ.get("SEMANTIC_ENABLE_QUERY_EXPANSION", "false").lower() == "true"
     
     # ==========================================
-    # CONFIGURATION RECHERCHE HYBRIDE ET FUSION - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION RECHERCHE HYBRIDE ET FUSION
     # ==========================================
     
     # Stratégies de fusion
@@ -372,7 +406,7 @@ class GlobalSettings(BaseSettings):
     MAX_SAME_MERCHANT: int = int(os.environ.get("MAX_SAME_MERCHANT", "3"))
     
     # ==========================================
-    # CONFIGURATION ÉVALUATION DE QUALITÉ - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION ÉVALUATION DE QUALITÉ
     # ==========================================
     
     QUALITY_EXCELLENT_THRESHOLD: float = float(os.environ.get("QUALITY_EXCELLENT_THRESHOLD", "0.9"))
@@ -387,7 +421,7 @@ class GlobalSettings(BaseSettings):
     DIVERSITY_THRESHOLD: float = float(os.environ.get("DIVERSITY_THRESHOLD", "0.6"))
     
     # ==========================================
-    # CONFIGURATION CACHE ET OPTIMISATION - VARIABLES MANQUANTES AJOUTÉES
+    # CONFIGURATION CACHE ET OPTIMISATION
     # ==========================================
     
     # Cache d'analyse de requêtes
@@ -407,6 +441,74 @@ class GlobalSettings(BaseSettings):
     AUTO_QUERY_OPTIMIZATION: bool = os.environ.get("AUTO_QUERY_OPTIMIZATION", "true").lower() == "true"
     SUGGESTION_ENABLED: bool = os.environ.get("SUGGESTION_ENABLED", "true").lower() == "true"
     MAX_SUGGESTIONS: int = int(os.environ.get("MAX_SUGGESTIONS", "5"))
+    
+    # ==========================================
+    # CONFIGURATION CONVERSATION SERVICE
+    # ==========================================
+    
+    # Configuration service
+    CONVERSATION_SERVICE_HOST: str = os.environ.get("CONVERSATION_SERVICE_HOST", "0.0.0.0")
+    CONVERSATION_SERVICE_PORT: int = int(os.environ.get("CONVERSATION_SERVICE_PORT", "8001"))
+    CONVERSATION_SERVICE_DEBUG: bool = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
+    CONVERSATION_SERVICE_LOG_LEVEL: str = os.environ.get("CONVERSATION_SERVICE_LOG_LEVEL", "INFO")
+    
+    # Configuration Intent Classifier
+    MIN_CONFIDENCE_THRESHOLD: float = float(os.environ.get("MIN_CONFIDENCE_THRESHOLD", "0.7"))
+    CLASSIFICATION_CACHE_TTL: int = int(os.environ.get("CLASSIFICATION_CACHE_TTL", "300"))  # Legacy
+    CACHE_SIZE: int = int(os.environ.get("CACHE_SIZE", "1000"))  # Legacy
+    
+    # Configuration cache multi-niveaux Conversation Service
+    CACHE_TTL_INTENT: int = int(os.environ.get("CACHE_TTL_INTENT", "300"))
+    CACHE_TTL_ENTITY: int = int(os.environ.get("CACHE_TTL_ENTITY", "180"))
+    CACHE_TTL_QUERY: int = int(os.environ.get("CACHE_TTL_QUERY", "120"))
+    CACHE_TTL_RESPONSE: int = int(os.environ.get("CACHE_TTL_RESPONSE", "60"))
+    CACHE_TTL_SECONDS: int = int(os.environ.get("CACHE_TTL_SECONDS", "300"))
+    
+    # Cache L0 - Patterns pré-calculés
+    PRECOMPUTED_PATTERNS_ENABLED: bool = os.environ.get("PRECOMPUTED_PATTERNS_ENABLED", "true").lower() == "true"
+    PRECOMPUTED_PATTERNS_SIZE: int = int(os.environ.get("PRECOMPUTED_PATTERNS_SIZE", "100"))
+    
+    # Cache L2 - Redis distribué
+    REDIS_CACHE_ENABLED: bool = os.environ.get("REDIS_CACHE_ENABLED", "true").lower() == "true"
+    REDIS_CACHE_PREFIX: str = os.environ.get("REDIS_CACHE_PREFIX", "conversation_service")
+    
+    # Configuration performance
+    REQUEST_TIMEOUT: int = int(os.environ.get("REQUEST_TIMEOUT", "30"))
+    
+    # Optimisations pipeline asynchrone
+    ENABLE_ASYNC_PIPELINE: bool = os.environ.get("ENABLE_ASYNC_PIPELINE", "true").lower() == "true"
+    PIPELINE_TIMEOUT: int = int(os.environ.get("PIPELINE_TIMEOUT", "10"))
+    PARALLEL_PROCESSING_ENABLED: bool = os.environ.get("PARALLEL_PROCESSING_ENABLED", "true").lower() == "true"
+    
+    # Thread pools pour traitement asynchrone
+    THREAD_POOL_SIZE: int = int(os.environ.get("THREAD_POOL_SIZE", "10"))
+    MAX_CONCURRENT_REQUESTS: int = int(os.environ.get("MAX_CONCURRENT_REQUESTS", "100"))
+    MAX_CONCURRENT_QUERIES: int = int(os.environ.get("MAX_CONCURRENT_QUERIES", "10"))
+    
+    # Configuration monitoring avancé Conversation Service
+    ENABLE_METRICS: bool = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+    
+    # Métriques performance détaillées
+    PERFORMANCE_ALERT_THRESHOLD_MS: int = int(os.environ.get("PERFORMANCE_ALERT_THRESHOLD_MS", "2000"))
+    CACHE_HIT_RATE_ALERT_THRESHOLD: float = float(os.environ.get("CACHE_HIT_RATE_ALERT_THRESHOLD", "0.8"))
+    ERROR_RATE_ALERT_THRESHOLD: float = float(os.environ.get("ERROR_RATE_ALERT_THRESHOLD", "0.05"))
+    
+    # Configuration circuit breaker
+    CIRCUIT_BREAKER_ENABLED: bool = os.environ.get("CIRCUIT_BREAKER_ENABLED", "true").lower() == "true"
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = int(os.environ.get("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
+    CIRCUIT_BREAKER_RECOVERY_TIMEOUT: int = int(os.environ.get("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", "60"))
+    CIRCUIT_BREAKER_EXPECTED_EXCEPTION: str = os.environ.get("CIRCUIT_BREAKER_EXPECTED_EXCEPTION", "httpx.RequestError")
+    
+    # Configuration batch processing
+    BATCH_PROCESSING_ENABLED: bool = os.environ.get("BATCH_PROCESSING_ENABLED", "true").lower() == "true"
+    BATCH_TIMEOUT_MS: int = int(os.environ.get("BATCH_TIMEOUT_MS", "100"))
+    
+    # Variables manquantes des logs d'erreur
+    LEXICAL_CACHE_SIZE: int = int(os.environ.get("LEXICAL_CACHE_SIZE", "1000"))
+    QUERY_CACHE_SIZE: int = int(os.environ.get("QUERY_CACHE_SIZE", "1000"))
+    
+    # Variables de configuration manquantes pour compatibilité
+    ENABLE_CACHE: bool = os.environ.get("ENABLE_CACHE", "True").lower() == "true"
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod
@@ -754,6 +856,144 @@ class GlobalSettings(BaseSettings):
             "EMBEDDING_MAX_RETRIES": self.EMBEDDING_MAX_RETRIES
         }
     
+    def get_deepseek_config(self, task_type: str = "default") -> dict:
+        """Retourne la configuration DeepSeek optimisée par tâche"""
+        
+        configs = {
+            "intent": {
+                "api_key": self.DEEPSEEK_API_KEY,
+                "base_url": self.DEEPSEEK_BASE_URL,
+                "chat_model": self.DEEPSEEK_CHAT_MODEL,
+                "max_tokens": self.DEEPSEEK_INTENT_MAX_TOKENS,
+                "temperature": self.DEEPSEEK_INTENT_TEMPERATURE,
+                "top_p": self.DEEPSEEK_INTENT_TOP_P,
+                "timeout": self.DEEPSEEK_INTENT_TIMEOUT
+            },
+            "entity": {
+                "api_key": self.DEEPSEEK_API_KEY,
+                "base_url": self.DEEPSEEK_BASE_URL,
+                "chat_model": self.DEEPSEEK_CHAT_MODEL,
+                "max_tokens": self.DEEPSEEK_ENTITY_MAX_TOKENS,
+                "temperature": self.DEEPSEEK_ENTITY_TEMPERATURE,
+                "top_p": self.DEEPSEEK_ENTITY_TOP_P,
+                "timeout": self.DEEPSEEK_ENTITY_TIMEOUT
+            },
+            "query": {
+                "api_key": self.DEEPSEEK_API_KEY,
+                "base_url": self.DEEPSEEK_BASE_URL,
+                "chat_model": self.DEEPSEEK_CHAT_MODEL,
+                "max_tokens": self.DEEPSEEK_QUERY_MAX_TOKENS,
+                "temperature": self.DEEPSEEK_QUERY_TEMPERATURE,
+                "top_p": self.DEEPSEEK_QUERY_TOP_P,
+                "timeout": self.DEEPSEEK_QUERY_TIMEOUT
+            },
+            "response": {
+                "api_key": self.DEEPSEEK_API_KEY,
+                "base_url": self.DEEPSEEK_BASE_URL,
+                "chat_model": self.DEEPSEEK_CHAT_MODEL,
+                "max_tokens": self.DEEPSEEK_RESPONSE_MAX_TOKENS,
+                "temperature": self.DEEPSEEK_RESPONSE_TEMPERATURE,
+                "top_p": self.DEEPSEEK_RESPONSE_TOP_P,
+                "timeout": self.DEEPSEEK_RESPONSE_TIMEOUT
+            },
+            "default": {
+                "api_key": self.DEEPSEEK_API_KEY,
+                "base_url": self.DEEPSEEK_BASE_URL,
+                "chat_model": self.DEEPSEEK_CHAT_MODEL,
+                "reasoner_model": self.DEEPSEEK_REASONER_MODEL,
+                "max_tokens": self.DEEPSEEK_MAX_TOKENS,
+                "temperature": self.DEEPSEEK_TEMPERATURE,
+                "top_p": self.DEEPSEEK_TOP_P,
+                "timeout": self.DEEPSEEK_TIMEOUT
+            }
+        }
+        
+        return configs.get(task_type, configs["default"])
+    
+    def get_cache_config(self) -> dict:
+        """Retourne la configuration cache multi-niveaux"""
+        return {
+            # Redis configuration
+            "redis": {
+                "enabled": self.REDIS_CACHE_ENABLED,
+                "url": self.REDIS_URL,
+                "password": self.REDIS_PASSWORD,
+                "db": self.REDIS_DB,
+                "max_connections": self.REDIS_MAX_CONNECTIONS,
+                "retry_on_timeout": self.REDIS_RETRY_ON_TIMEOUT,
+                "prefix": self.REDIS_CACHE_PREFIX
+            },
+            # Memory cache L1
+            "memory": {
+                "size": self.MEMORY_CACHE_SIZE,
+                "ttl": self.MEMORY_CACHE_TTL
+            },
+            # Precomputed patterns L0
+            "precomputed": {
+                "enabled": self.PRECOMPUTED_PATTERNS_ENABLED,
+                "size": self.PRECOMPUTED_PATTERNS_SIZE
+            },
+            # TTL par tâche
+            "ttl": {
+                "intent": self.CACHE_TTL_INTENT,
+                "entity": self.CACHE_TTL_ENTITY,
+                "query": self.CACHE_TTL_QUERY,
+                "response": self.CACHE_TTL_RESPONSE
+            }
+        }
+    
+    def validate_configuration(self) -> dict:
+        """Valide la configuration et retourne les erreurs"""
+        errors = []
+        warnings = []
+        
+        # Validation DeepSeek
+        if not self.DEEPSEEK_API_KEY:
+            errors.append("DEEPSEEK_API_KEY est requis")
+        
+        if not self.DEEPSEEK_BASE_URL:
+            errors.append("DEEPSEEK_BASE_URL est requis")
+        
+        # Validation Redis (si activé)
+        if self.REDIS_CACHE_ENABLED:
+            if not self.REDIS_URL and not self.REDISCLOUD_URL:
+                errors.append("REDIS_URL ou REDISCLOUD_URL est requis quand REDIS_CACHE_ENABLED=true")
+        
+        # Validation thresholds
+        if self.MIN_CONFIDENCE_THRESHOLD < 0.0 or self.MIN_CONFIDENCE_THRESHOLD > 1.0:
+            errors.append("MIN_CONFIDENCE_THRESHOLD doit être entre 0.0 et 1.0")
+        
+        if self.MIN_CONFIDENCE_THRESHOLD < 0.5:
+            warnings.append("MIN_CONFIDENCE_THRESHOLD < 0.5 peut produire des résultats peu fiables")
+        
+        # Validation performance
+        if self.REQUEST_TIMEOUT < 5:
+            warnings.append("REQUEST_TIMEOUT < 5s peut causer des timeouts")
+        
+        if self.MEMORY_CACHE_SIZE < 100:
+            warnings.append("MEMORY_CACHE_SIZE < 100 peut réduire les performances")
+        
+        # Validation timeouts optimisés
+        if self.DEEPSEEK_INTENT_TIMEOUT > 10:
+            warnings.append("DEEPSEEK_INTENT_TIMEOUT > 10s est trop élevé pour l'optimisation")
+        
+        if self.DEEPSEEK_INTENT_MAX_TOKENS > 150:
+            warnings.append("DEEPSEEK_INTENT_MAX_TOKENS > 150 peut ralentir la classification")
+        
+        # Validation cache TTL
+        if self.CACHE_TTL_INTENT < 60:
+            warnings.append("CACHE_TTL_INTENT < 60s peut réduire l'efficacité du cache")
+        
+        # Validation rate limiting
+        if self.RATE_LIMIT_REQUESTS_PER_MINUTE < 10:
+            warnings.append("RATE_LIMIT_REQUESTS_PER_MINUTE très bas, peut impacter l'utilisabilité")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings
+        }
+    
     class Config:
         case_sensitive = True
         env_file = ".env"
@@ -774,6 +1014,13 @@ if not search_validation["valid"]:
 if search_validation["warnings"]:
     logger.warning(f"Avertissements configuration de recherche: {search_validation['warnings']}")
 
+# Validation automatique de la configuration générale
+config_validation = settings.validate_configuration()
+if not config_validation["valid"]:
+    logger.error(f"Configuration générale invalide: {config_validation['errors']}")
+if config_validation["warnings"]:
+    logger.warning(f"Avertissements configuration générale: {config_validation['warnings']}")
+
 # Log des constantes Search Service ajoutées
 search_constants = settings.get_search_service_constants()
 logger.info(f"Constantes Search Service disponibles: {len(search_constants)} paramètres")
@@ -786,3 +1033,22 @@ logger.debug(f"MAX_QUERY_LENGTH: {search_constants['MAX_QUERY_LENGTH']}")
 logger.debug(f"MAX_PREVIOUS_QUERIES: {search_constants['MAX_PREVIOUS_QUERIES']}")
 logger.debug(f"DEFAULT_CACHE_SIZE: {search_constants['DEFAULT_CACHE_SIZE']}")
 logger.debug(f"DEFAULT_CACHE_TTL: {search_constants['DEFAULT_CACHE_TTL']}")
+
+# Log informations importantes
+logger.info(f"Configuration Harena Finance Platform chargée - Mode: {settings.ENVIRONMENT}")
+logger.info(f"DeepSeek API: {'✅ Configuré' if settings.DEEPSEEK_API_KEY else '❌ Manquant'}")
+logger.info(f"Redis Cache: {'✅ Activé' if settings.REDIS_CACHE_ENABLED else '❌ Désactivé'}")
+logger.info(f"Search Service: {settings.SEARCH_SERVICE_NAME} v{settings.SEARCH_SERVICE_VERSION}")
+logger.info(f"Conversation Service: Port {settings.CONVERSATION_SERVICE_PORT}, Confidence: {settings.MIN_CONFIDENCE_THRESHOLD}")
+logger.info(f"Elasticsearch: {'✅ Configuré' if settings.BONSAI_URL else '❌ Manquant'}")
+logger.info(f"Database: {'✅ URL Configurée' if settings.DATABASE_URL else '❌ URL Manquante'}")
+logger.info(f"Bridge API: {'✅ Configuré' if settings.BRIDGE_CLIENT_ID else '❌ Manquant'}")
+
+# Avertissements de sécurité
+if settings.ENVIRONMENT == "production":
+    if settings.SECRET_KEY == secrets.token_urlsafe(32):
+        logger.warning("🔐 SECRET_KEY utilise une valeur par défaut - définir SECRET_KEY en production!")
+    if not settings.DEEPSEEK_API_KEY:
+        logger.warning("🤖 DEEPSEEK_API_KEY manquant - fonctionnalités IA désactivées")
+    if not settings.DATABASE_URL:
+        logger.warning("🗄️ DATABASE_URL manquant - base de données non configurée")

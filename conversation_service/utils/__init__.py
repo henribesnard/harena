@@ -476,7 +476,7 @@ async def simple_health_check() -> Dict[str, Any]:
 
 async def _check_redis_health() -> Dict[str, Any]:
     """Vérification santé Redis"""
-    from conversation_service.config.settings import settings
+    from config_service.config import settings
     
     redis_config = settings.get_cache_config()
     redis_required = redis_config["redis"]["enabled"]

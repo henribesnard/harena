@@ -1,16 +1,17 @@
 """
-Routes API pour le service d'enrichissement avec dual storage.
+Routes API pour le service d'enrichissement - Elasticsearch uniquement.
 
-Ce module définit UNIQUEMENT les endpoints pour l'enrichissement et le stockage
-vectoriel des transactions financières dans Qdrant ET Elasticsearch.
+Ce module définit UNIQUEMENT les endpoints pour l'enrichissement et l'indexation
+des transactions financières dans Elasticsearch.
 
-RESPONSABILITÉ: ÉCRITURE/STOCKAGE UNIQUEMENT
+RESPONSABILITÉ: ÉCRITURE/INDEXATION UNIQUEMENT
 - Enrichissement des transactions
-- Synchronisation dual storage
+- Synchronisation Elasticsearch
 - Gestion des données (CRUD)
-- Diagnostics de stockage
+- Diagnostics d'indexation
 
 SUPPRIMÉ: Endpoints de recherche (déplacés vers search_service)
+SUPPRIMÉ: Endpoints Qdrant et dual storage
 """
 import logging
 from typing import Dict, Any, List
@@ -26,60 +27,52 @@ from db_service.models.sync import RawTransaction
 from enrichment_service.models import (
     TransactionInput,
     BatchTransactionInput,
-    EnrichmentResult,
-    BatchEnrichmentResult
+    ElasticsearchEnrichmentResult,
+    BatchEnrichmentResult,
+    UserSyncResult,
+    ElasticsearchHealthStatus
 )
-from enrichment_service.core.processor import TransactionProcessor, DualStorageTransactionProcessor
-from enrichment_service.storage.qdrant import QdrantStorage
+from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Instances globales (initialisées dans main.py)
-qdrant_storage = None
 elasticsearch_client = None
-transaction_processor = None
-dual_processor = None
+elasticsearch_processor = None
 
-def get_processor() -> TransactionProcessor:
-    """Récupère l'instance du processeur de transactions legacy."""
-    global transaction_processor
-    if not transaction_processor:
-        global qdrant_storage
-        if not qdrant_storage:
-            qdrant_storage = QdrantStorage()
-        transaction_processor = TransactionProcessor(qdrant_storage)
-    return transaction_processor
-
-def get_dual_processor() -> DualStorageTransactionProcessor:
-    """Récupère l'instance du processeur dual storage."""
-    global dual_processor
-    if not dual_processor:
-        global qdrant_storage, elasticsearch_client
-        if not qdrant_storage:
-            qdrant_storage = QdrantStorage()
-        dual_processor = DualStorageTransactionProcessor(qdrant_storage, elasticsearch_client)
-    return dual_processor
+def get_elasticsearch_processor() -> ElasticsearchTransactionProcessor:
+    """Récupère l'instance du processeur Elasticsearch."""
+    global elasticsearch_processor
+    if not elasticsearch_processor:
+        global elasticsearch_client
+        if not elasticsearch_client:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Elasticsearch client not available"
+            )
+        elasticsearch_processor = ElasticsearchTransactionProcessor(elasticsearch_client)
+    return elasticsearch_processor
 
 # ==========================================
-# ENDPOINTS LEGACY (QDRANT UNIQUEMENT)
+# ENDPOINTS ELASTICSEARCH PRINCIPAUX
 # ==========================================
 
-@router.post("/enrich/transaction", response_model=EnrichmentResult)
-async def enrich_single_transaction(
+@router.post("/elasticsearch/process-transaction", response_model=ElasticsearchEnrichmentResult)
+async def process_single_transaction(
     transaction: TransactionInput,
     force_update: bool = Query(False, description="Force la mise à jour même si elle existe déjà"),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Enrichit et stocke une transaction individuelle (legacy - Qdrant uniquement).
+    Traite et indexe une transaction individuelle dans Elasticsearch.
     
     Args:
-        transaction: Données de la transaction à enrichir
-        force_update: Force la mise à jour
+        transaction: Données de la transaction à traiter
+        force_update: Force la mise à jour si elle existe déjà
         
     Returns:
-        EnrichmentResult: Résultat de l'enrichissement
+        ElasticsearchEnrichmentResult: Résultat du traitement
     """
     if transaction.user_id != current_user.id:
         raise HTTPException(
@@ -88,36 +81,36 @@ async def enrich_single_transaction(
         )
     
     try:
-        processor = get_processor()
-        result = await processor.process_transaction(transaction, force_update)
+        processor = get_elasticsearch_processor()
+        result = await processor.process_single_transaction(transaction, force_update)
         
         if result.status == "error":
-            logger.warning(f"Enrichissement échoué pour transaction {transaction.bridge_transaction_id}: {result.error_message}")
+            logger.warning(f"Traitement échoué pour transaction {transaction.bridge_transaction_id}: {result.error_message}")
         
         return result
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'enrichissement de la transaction: {e}")
+        logger.error(f"Erreur lors du traitement de la transaction: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to enrich transaction: {str(e)}"
+            detail=f"Failed to process transaction: {str(e)}"
         )
 
-@router.post("/enrich/batch", response_model=BatchEnrichmentResult)
-async def enrich_batch_transactions(
+@router.post("/elasticsearch/process-batch", response_model=BatchEnrichmentResult)
+async def process_batch_transactions(
     batch: BatchTransactionInput,
     force_update: bool = Query(False, description="Force la mise à jour même si elles existent déjà"),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Enrichit et stocke un lot de transactions (legacy - Qdrant uniquement).
+    Traite et indexe un lot de transactions dans Elasticsearch.
     
     Args:
-        batch: Lot de transactions à enrichir
+        batch: Lot de transactions à traiter
         force_update: Force la mise à jour
         
     Returns:
-        BatchEnrichmentResult: Résultat de l'enrichissement du lot
+        BatchEnrichmentResult: Résultat du traitement du lot
     """
     if batch.user_id != current_user.id:
         raise HTTPException(
@@ -134,41 +127,48 @@ async def enrich_batch_transactions(
             )
     
     try:
-        processor = get_processor()
-        result = await processor.process_batch(batch, force_update)
+        processor = get_elasticsearch_processor()
+        result = await processor.process_transactions_batch(batch, force_update)
         
-        logger.info(f"Lot traité (legacy): {result.successful}/{result.total_transactions} succès")
+        logger.info(f"Lot traité: {result.successful}/{result.total_transactions} succès")
         return result
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'enrichissement du lot: {e}")
+        logger.error(f"Erreur lors du traitement du lot: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to enrich batch: {str(e)}"
+            detail=f"Failed to process batch: {str(e)}"
         )
 
-@router.post("/sync/user/{user_id}", response_model=BatchEnrichmentResult)
-async def sync_user_transactions_legacy(
+@router.post("/elasticsearch/sync-user/{user_id}", response_model=UserSyncResult)
+async def sync_user_transactions(
     user_id: int,
+    force_refresh: bool = Query(False, description="Force la suppression et recréation de tous les documents"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Synchronise toutes les transactions d'un utilisateur depuis PostgreSQL vers Qdrant (legacy).
+    Synchronise toutes les transactions d'un utilisateur depuis PostgreSQL vers Elasticsearch.
     
-    DÉPRÉCIÉ: Utilisez /dual/sync-user pour le dual storage.
+    Cette méthode:
+    1. Lit les transactions depuis PostgreSQL
+    2. Structure les données pour Elasticsearch
+    3. Indexe en mode bulk pour optimiser les performances
     
     Args:
         user_id: ID de l'utilisateur à synchroniser
+        force_refresh: Force la suppression et recréation
         
     Returns:
-        BatchEnrichmentResult: Résultat de la synchronisation
+        UserSyncResult: Résultat de la synchronisation
     """
     if user_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions"
         )
+    
+    logger.info(f"🔄 Synchronisation Elasticsearch demandée pour user {user_id} (force_refresh: {force_refresh})")
     
     try:
         # Récupérer toutes les transactions de l'utilisateur depuis PostgreSQL
@@ -179,14 +179,15 @@ async def sync_user_transactions_legacy(
         
         if not raw_transactions:
             logger.info(f"Aucune transaction trouvée pour l'utilisateur {user_id}")
-            return BatchEnrichmentResult(
+            return UserSyncResult(
                 user_id=user_id,
                 total_transactions=0,
-                successful=0,
-                failed=0,
+                indexed=0,
+                updated=0,
+                errors=0,
                 processing_time=0.0,
-                results=[],
-                errors=[]
+                status="success",
+                error_details=[]
             )
         
         # Convertir en TransactionInput
@@ -211,30 +212,34 @@ async def sync_user_transactions_legacy(
             )
             transaction_inputs.append(tx_input)
         
-        logger.info(f"Synchronisation legacy de {len(transaction_inputs)} transactions pour l'utilisateur {user_id}")
+        logger.info(f"📊 Synchronisation de {len(transaction_inputs)} transactions pour l'utilisateur {user_id}")
         
-        # Synchroniser via le processeur legacy
-        processor = get_processor()
-        result = await processor.sync_user_transactions(user_id, transaction_inputs)
+        # Synchroniser via le processeur Elasticsearch
+        processor = get_elasticsearch_processor()
+        result = await processor.sync_user_transactions(
+            user_id=user_id,
+            transactions=transaction_inputs,
+            force_refresh=force_refresh
+        )
         
         return result
         
     except Exception as e:
-        logger.error(f"Erreur lors de la synchronisation legacy de l'utilisateur {user_id}: {e}")
+        logger.error(f"❌ Erreur lors de la synchronisation pour l'utilisateur {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to sync user transactions: {str(e)}"
         )
 
-@router.delete("/user/{user_id}")
-async def delete_user_data_legacy(
+@router.delete("/elasticsearch/user-data/{user_id}")
+async def delete_user_data(
     user_id: int,
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Supprime toutes les données vectorielles d'un utilisateur (legacy - Qdrant uniquement).
+    Supprime toutes les données d'un utilisateur d'Elasticsearch.
     
-    DÉPRÉCIÉ: Utilisez /dual/user-data/{user_id} pour le dual storage.
+    ATTENTION: Cette opération est irréversible!
     
     Args:
         user_id: ID de l'utilisateur
@@ -249,20 +254,22 @@ async def delete_user_data_legacy(
         )
     
     try:
-        processor = get_processor()
-        success = await processor.delete_user_data(user_id)
+        processor = get_elasticsearch_processor()
+        deletion_result = await processor.delete_user_data(user_id)
         
-        if success:
+        if deletion_result["status"] == "success":
             return {
                 "status": "success",
-                "message": f"All data deleted for user {user_id} (legacy - Qdrant only)",
+                "message": f"All data deleted for user {user_id}",
                 "user_id": user_id,
-                "storage": "qdrant_only"
+                "deleted_count": deletion_result["deleted_count"],
+                "storage": "elasticsearch",
+                "timestamp": deletion_result["timestamp"]
             }
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete user data"
+                detail=f"Failed to delete user data: {deletion_result.get('error', 'Unknown error')}"
             )
             
     except HTTPException:
@@ -275,201 +282,50 @@ async def delete_user_data_legacy(
         )
 
 # ==========================================
-# ENDPOINTS DUAL STORAGE (RECOMMANDÉS)
-# ==========================================
-
-@router.post("/dual/sync-user", response_model=BatchEnrichmentResult)
-async def sync_user_dual_storage(
-    user_id: int = Query(..., description="ID de l'utilisateur à synchroniser"),
-    force_refresh: bool = Query(False, description="Force la suppression et recréation des données"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Synchronise toutes les transactions d'un utilisateur dans Qdrant ET Elasticsearch.
-    
-    Cette méthode:
-    1. Lit les transactions depuis PostgreSQL
-    2. Génère les embeddings OpenAI
-    3. Stocke dans Qdrant (recherche sémantique)
-    4. Indexe dans Elasticsearch (recherche lexicale)
-    
-    RECOMMANDÉ: Utilisez cet endpoint pour tous les nouveaux déploiements.
-    """
-    if user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    
-    logger.info(f"🔄 Synchronisation dual storage demandée pour user {user_id} (force_refresh: {force_refresh})")
-    
-    try:
-        # Récupérer les transactions depuis PostgreSQL
-        raw_transactions = db.query(RawTransaction).filter(
-            RawTransaction.user_id == user_id,
-            RawTransaction.deleted == False
-        ).all()
-        
-        if not raw_transactions:
-            logger.warning(f"Aucune transaction trouvée pour l'utilisateur {user_id}")
-            return BatchEnrichmentResult(
-                user_id=user_id,
-                total_transactions=0,
-                successful=0,
-                failed=0,
-                processing_time=0.0,
-                results=[],
-                errors=["No transactions found in database"]
-            )
-        
-        # Convertir en TransactionInput
-        transaction_inputs = []
-        for raw_tx in raw_transactions:
-            tx_input = TransactionInput(
-                bridge_transaction_id=raw_tx.bridge_transaction_id,
-                user_id=raw_tx.user_id,
-                account_id=raw_tx.account_id,
-                clean_description=raw_tx.clean_description,
-                provider_description=raw_tx.provider_description,
-                amount=raw_tx.amount,
-                date=raw_tx.date,
-                booking_date=raw_tx.booking_date,
-                transaction_date=raw_tx.transaction_date,
-                value_date=raw_tx.value_date,
-                currency_code=raw_tx.currency_code,
-                category_id=raw_tx.category_id,
-                operation_type=raw_tx.operation_type,
-                deleted=raw_tx.deleted,
-                future=raw_tx.future
-            )
-            transaction_inputs.append(tx_input)
-        
-        logger.info(f"📊 Synchronisation dual de {len(transaction_inputs)} transactions pour l'utilisateur {user_id}")
-        
-        # Synchroniser via le processeur dual
-        dual_processor = get_dual_processor()
-        result = await dual_processor.sync_user_transactions(
-            user_id=user_id,
-            transactions=transaction_inputs,
-            force_refresh=force_refresh
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la synchronisation dual pour l'utilisateur {user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to sync user transactions: {str(e)}"
-        )
-
-@router.post("/dual/enrich-transaction", response_model=EnrichmentResult)
-async def enrich_transaction_dual_storage(
-    transaction: TransactionInput,
-    force_update: bool = Query(False, description="Force la mise à jour même si elle existe déjà"),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Enrichit et stocke une transaction dans Qdrant ET Elasticsearch.
-    
-    Utile pour traiter des transactions individuelles en temps réel.
-    
-    RECOMMANDÉ: Utilisez cet endpoint pour tous les nouveaux déploiements.
-    """
-    if transaction.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only enrich your own transactions"
-        )
-    
-    try:
-        dual_processor = get_dual_processor()
-        result = await dual_processor.process_single_transaction(
-            transaction=transaction,
-            force_update=force_update
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur enrichissement dual transaction {transaction.bridge_transaction_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to enrich transaction: {str(e)}"
-        )
-
-@router.delete("/dual/user-data/{user_id}")
-async def delete_user_dual_data(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Supprime toutes les données d'un utilisateur des deux systèmes de stockage.
-    
-    ATTENTION: Cette opération est irréversible!
-    
-    RECOMMANDÉ: Utilisez cet endpoint pour tous les nouveaux déploiements.
-    """
-    if user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    
-    try:
-        dual_processor = get_dual_processor()
-        
-        # Supprimer de Qdrant
-        qdrant_success = False
-        if dual_processor.qdrant_storage:
-            try:
-                qdrant_success = await dual_processor.qdrant_storage.delete_user_transactions(user_id)
-            except Exception as e:
-                logger.error(f"❌ Erreur suppression Qdrant user {user_id}: {e}")
-        
-        # Supprimer d'Elasticsearch
-        elasticsearch_success = False
-        if dual_processor.elasticsearch_client:
-            try:
-                elasticsearch_success = await dual_processor.elasticsearch_client.delete_user_transactions(user_id)
-            except Exception as e:
-                logger.error(f"❌ Erreur suppression Elasticsearch user {user_id}: {e}")
-        
-        return {
-            "user_id": user_id,
-            "deleted": qdrant_success and elasticsearch_success,
-            "details": {
-                "qdrant_deleted": qdrant_success,
-                "elasticsearch_deleted": elasticsearch_success
-            },
-            "storage": "dual_storage",
-            "message": "All data deleted successfully" if (qdrant_success and elasticsearch_success) else "Partial deletion"
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur suppression données user {user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete user data: {str(e)}"
-        )
-
-# ==========================================
 # ENDPOINTS DE DIAGNOSTIC ET MONITORING
 # ==========================================
 
-@router.get("/dual/sync-status/{user_id}")
-async def get_dual_sync_status(
+@router.get("/elasticsearch/health")
+async def elasticsearch_health():
+    """
+    Vérifie la santé du service d'enrichissement Elasticsearch.
+    
+    Retourne l'état d'Elasticsearch et du processeur.
+    """
+    try:
+        processor = get_elasticsearch_processor()
+        health_status = await processor.health_check()
+        
+        return ElasticsearchHealthStatus(
+            status=health_status["status"],
+            timestamp=health_status["timestamp"],
+            elasticsearch=health_status["elasticsearch"],
+            capabilities=health_status["capabilities"],
+            performance_metrics=health_status.get("performance_metrics")
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur health check: {e}")
+        return ElasticsearchHealthStatus(
+            status="error",
+            timestamp=datetime.now().isoformat(),
+            elasticsearch={"available": False, "error": str(e)},
+            capabilities={}
+        )
+
+@router.get("/elasticsearch/user-stats/{user_id}")
+async def get_user_statistics(
     user_id: int,
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Récupère le statut de synchronisation pour un utilisateur dans les deux systèmes.
+    Récupère les statistiques d'un utilisateur dans Elasticsearch.
     
-    Retourne:
-    - Nombre de documents dans Qdrant
-    - Nombre de documents dans Elasticsearch  
-    - Statut de cohérence entre les deux
+    Args:
+        user_id: ID de l'utilisateur
+        
+    Returns:
+        Dict: Statistiques de l'utilisateur
     """
     if user_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
@@ -478,82 +334,37 @@ async def get_dual_sync_status(
         )
     
     try:
-        dual_processor = get_dual_processor()
-        status_info = await dual_processor.get_sync_status(user_id)
-        return status_info
+        processor = get_elasticsearch_processor()
+        stats = await processor.get_user_stats(user_id)
         
+        if stats["status"] == "success":
+            return stats
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get user statistics: {stats.get('error', 'Unknown error')}"
+            )
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Erreur récupération statut sync user {user_id}: {e}")
+        logger.error(f"❌ Erreur récupération stats user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get sync status: {str(e)}"
+            detail=f"Failed to get user statistics: {str(e)}"
         )
 
-@router.get("/dual/health")
-async def dual_storage_health():
-    """
-    Vérifie la santé des deux systèmes de stockage.
-    
-    Retourne l'état de Qdrant et Elasticsearch.
-    """
-    try:
-        dual_processor = get_dual_processor()
-        
-        # Tester Qdrant
-        qdrant_healthy = False
-        qdrant_error = None
-        try:
-            if dual_processor.qdrant_storage:
-                qdrant_info = await dual_processor.qdrant_storage.get_collection_info()
-                qdrant_healthy = qdrant_info is not None
-        except Exception as e:
-            qdrant_error = str(e)
-        
-        # Tester Elasticsearch
-        elasticsearch_healthy = False
-        elasticsearch_error = None
-        try:
-            if dual_processor.elasticsearch_client:
-                elasticsearch_healthy = dual_processor.elasticsearch_client._initialized
-                if not elasticsearch_healthy:
-                    elasticsearch_error = "Client not initialized"
-        except Exception as e:
-            elasticsearch_error = str(e)
-        
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "overall_health": qdrant_healthy and elasticsearch_healthy,
-            "storage_systems": {
-                "qdrant": {
-                    "healthy": qdrant_healthy,
-                    "error": qdrant_error,
-                    "collection": dual_processor.qdrant_storage.collection_name if dual_processor.qdrant_storage else None
-                },
-                "elasticsearch": {
-                    "healthy": elasticsearch_healthy,
-                    "error": elasticsearch_error,
-                    "index": dual_processor.elasticsearch_client.index_name if dual_processor.elasticsearch_client else None
-                }
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur health check dual storage: {e}")
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "overall_health": False,
-            "error": str(e)
-        }
-
-@router.get("/legacy/collection-info")
-async def get_collection_info(
+@router.get("/elasticsearch/cluster-info")
+async def get_cluster_info(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Récupère les informations de la collection Qdrant (legacy).
+    Récupère les informations du cluster Elasticsearch.
     
-    DÉPRÉCIÉ: Informations disponibles via /dual/health.
     Réservé aux superusers pour diagnostics avancés.
+    
+    Returns:
+        Dict: Informations du cluster
     """
     if not current_user.is_superuser:
         raise HTTPException(
@@ -562,27 +373,168 @@ async def get_collection_info(
         )
     
     try:
-        processor = get_processor()
-        collection_info = await processor.qdrant_storage.get_collection_info()
+        global elasticsearch_client
+        if not elasticsearch_client:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Elasticsearch client not available"
+            )
         
-        if collection_info:
-            return {
-                "collection_name": collection_info.config.params,
-                "points_count": collection_info.points_count,
-                "status": collection_info.status,
-                "optimizer_status": collection_info.optimizer_status,
-                "vectors_count": collection_info.vectors_count,
-                "note": "DÉPRÉCIÉ - Utilisez /dual/health pour les informations générales"
-            }
-        else:
-            return {
-                "status": "Collection not found or not accessible",
-                "note": "DÉPRÉCIÉ - Utilisez /dual/health pour les informations générales"
-            }
-            
+        # Obtenir les infos du cluster
+        cluster_info = await elasticsearch_client.get_cluster_info()
+        
+        return {
+            "cluster_info": cluster_info,
+            "index_name": elasticsearch_client.index_name,
+            "client_initialized": elasticsearch_client._initialized,
+            "timestamp": datetime.now().isoformat(),
+            "service": "enrichment_service_elasticsearch"
+        }
+        
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des infos de collection: {e}")
+        logger.error(f"Erreur lors de la récupération des infos cluster: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get collection info: {str(e)}"
+            detail=f"Failed to get cluster info: {str(e)}"
+        )
+
+@router.get("/elasticsearch/index-mapping")
+async def get_index_mapping(
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Récupère le mapping de l'index Elasticsearch.
+    
+    Réservé aux superusers pour diagnostics avancés.
+    
+    Returns:
+        Dict: Mapping de l'index
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions - superuser required"
+        )
+    
+    try:
+        global elasticsearch_client
+        if not elasticsearch_client:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Elasticsearch client not available"
+            )
+        
+        # Récupérer le mapping
+        async with elasticsearch_client.session.get(
+            f"{elasticsearch_client.base_url}/{elasticsearch_client.index_name}/_mapping"
+        ) as response:
+            if response.status == 200:
+                mapping = await response.json()
+                return {
+                    "index_name": elasticsearch_client.index_name,
+                    "mapping": mapping,
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                raise HTTPException(
+                    status_code=response.status,
+                    detail=f"Failed to get mapping: {response.status}"
+                )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération du mapping: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get index mapping: {str(e)}"
+        )
+
+# ==========================================
+# ENDPOINTS UTILITAIRES
+# ==========================================
+
+@router.post("/elasticsearch/reindex-user/{user_id}")
+async def reindex_user_transactions(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Force la ré-indexation complète d'un utilisateur.
+    
+    Équivalent à sync-user avec force_refresh=True.
+    Utile pour corriger des problèmes d'indexation.
+    
+    Args:
+        user_id: ID de l'utilisateur à ré-indexer
+        
+    Returns:
+        UserSyncResult: Résultat de la ré-indexation
+    """
+    if user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    logger.info(f"🔄 Ré-indexation complète demandée pour user {user_id}")
+    
+    # Utiliser l'endpoint de sync avec force_refresh=True
+    return await sync_user_transactions(
+        user_id=user_id,
+        force_refresh=True,
+        current_user=current_user,
+        db=db
+    )
+
+@router.get("/elasticsearch/document-exists/{user_id}/{transaction_id}")
+async def check_document_exists(
+    user_id: int,
+    transaction_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Vérifie si un document existe dans Elasticsearch.
+    
+    Utile pour déboguer des problèmes d'indexation.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        transaction_id: ID de la transaction
+        
+    Returns:
+        Dict: Existence du document
+    """
+    if user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    try:
+        global elasticsearch_client
+        if not elasticsearch_client:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Elasticsearch client not available"
+            )
+        
+        document_id = f"user_{user_id}_tx_{transaction_id}"
+        exists = await elasticsearch_client.document_exists(document_id)
+        
+        return {
+            "user_id": user_id,
+            "transaction_id": transaction_id,
+            "document_id": document_id,
+            "exists": exists,
+            "index_name": elasticsearch_client.index_name,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur vérification existence document: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to check document existence: {str(e)}"
         )

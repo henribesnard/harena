@@ -331,16 +331,53 @@ def create_app():
                 logger.error(f"❌ {module_path}: {e}")
                 loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)}
 
-        # 3. Enrichment Service
+        # 3. ✅ ENRICHMENT SERVICE - VERSION ELASTICSEARCH UNIQUEMENT
+        logger.info("🔍 Chargement enrichment_service (Elasticsearch uniquement)...")
         try:
+            # Vérifier BONSAI_URL pour enrichment_service
+            bonsai_url = os.environ.get("BONSAI_URL")
+            if not bonsai_url:
+                logger.warning("⚠️ BONSAI_URL non configurée - enrichment_service sera en mode dégradé")
+                enrichment_elasticsearch_available = False
+            else:
+                logger.info(f"📡 BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
+                enrichment_elasticsearch_available = True
+            
+            # Charger les routes enrichment_service
             from enrichment_service.api.routes import router as enrichment_router
             app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
             routes_count = len(enrichment_router.routes) if hasattr(enrichment_router, 'routes') else 0
-            logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment")
-            loader.services_status["enrichment_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/enrichment"}
+            
+            if enrichment_elasticsearch_available:
+                logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment (Elasticsearch configuré)")
+                loader.services_status["enrichment_service"] = {
+                    "status": "ok", 
+                    "routes": routes_count, 
+                    "prefix": "/api/v1/enrichment",
+                    "architecture": "elasticsearch_only",
+                    "version": "2.0.0-elasticsearch",
+                    "elasticsearch_available": True
+                }
+            else:
+                logger.warning(f"⚠️ enrichment_service: {routes_count} routes chargées SANS Elasticsearch")
+                loader.services_status["enrichment_service"] = {
+                    "status": "degraded", 
+                    "routes": routes_count, 
+                    "prefix": "/api/v1/enrichment",
+                    "architecture": "elasticsearch_only",
+                    "version": "2.0.0-elasticsearch",
+                    "elasticsearch_available": False,
+                    "error": "BONSAI_URL not configured"
+                }
+                
         except Exception as e:
             logger.error(f"❌ Enrichment Service: {e}")
-            loader.services_status["enrichment_service"] = {"status": "error", "error": str(e)}
+            loader.services_status["enrichment_service"] = {
+                "status": "error", 
+                "error": str(e),
+                "architecture": "elasticsearch_only",
+                "version": "2.0.0-elasticsearch"
+            }
 
         # 4. ✅ Search Service - EXACTEMENT COMME HEROKU_APP.PY
         logger.info("🔍 Chargement et initialisation du search_service...")
@@ -494,9 +531,10 @@ def create_app():
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détails spéciaux pour search_service et conversation_service
+        # Détails spéciaux pour search_service, conversation_service et enrichment_service
         search_status = loader.services_status.get("search_service", {})
         conversation_status = loader.services_status.get("conversation_service", {})
+        enrichment_status = loader.services_status.get("enrichment_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -519,6 +557,13 @@ def create_app():
                 "error": conversation_status.get("error"),
                 "architecture": conversation_status.get("architecture"),
                 "model": conversation_status.get("model")
+            },
+            "enrichment_service": {
+                "status": enrichment_status.get("status"),
+                "architecture": enrichment_status.get("architecture"),
+                "version": enrichment_status.get("version"),
+                "elasticsearch_available": enrichment_status.get("elasticsearch_available", False),
+                "error": enrichment_status.get("error")
             }
         }
 
@@ -539,6 +584,16 @@ def create_app():
                 "error": loader.conversation_service_error,
                 "architecture": "mvp_intent_classifier",
                 "model": "deepseek-chat"
+            },
+            "enrichment_service_details": {
+                "architecture": "elasticsearch_only",
+                "version": "2.0.0-elasticsearch",
+                "features": [
+                    "Transaction structuring",
+                    "Elasticsearch indexing",
+                    "Batch processing",
+                    "User sync operations"
+                ]
             }
         }
 
@@ -551,7 +606,7 @@ def create_app():
             "services_available": [
                 "user_service - Gestion utilisateurs",
                 "sync_service - Synchronisation Bridge API", 
-                "enrichment_service - Enrichissement IA",
+                "enrichment_service - Enrichissement Elasticsearch (v2.0)",
                 "search_service - Recherche lexicale (Architecture simplifiée)",
                 "conversation_service - Assistant IA avec DeepSeek (MVP)"
             ],
@@ -567,15 +622,27 @@ def create_app():
                 "/api/v1/transactions/*": "Transactions",
                 "/api/v1/accounts/*": "Comptes",
                 "/api/v1/categories/*": "Catégories",
-                "/api/v1/enrichment/*": "Enrichissement IA",
+                "/api/v1/enrichment/elasticsearch/*": "Enrichissement Elasticsearch (v2.0)",
                 "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
                 "/api/v1/conversation/*": "Assistant IA conversationnel (DeepSeek MVP)"
             },
             "development_mode": {
                 "hot_reload": True,
                 "debug_logs": True,
-                "local_services": ["PostgreSQL", "Redis", "Elasticsearch (optionnel)"],
+                "local_services": ["PostgreSQL", "Redis", "Elasticsearch (requis pour enrichment + search)"],
                 "docs_url": "http://localhost:8000/docs"
+            },
+            "architecture_updates": {
+                "enrichment_service": {
+                    "version": "2.0.0-elasticsearch",
+                    "changes": [
+                        "Suppression complète de Qdrant et embeddings",
+                        "Architecture Elasticsearch uniquement",
+                        "Nouveaux endpoints: /api/v1/enrichment/elasticsearch/*",
+                        "Performance optimisée pour l'indexation bulk",
+                        "Simplification drastique du code"
+                    ]
+                }
             }
         }
 

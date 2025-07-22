@@ -1,10 +1,10 @@
 """
-Modèles de données pour le service d'enrichissement.
+Modèles de données pour le service d'enrichissement - Elasticsearch uniquement.
 
 Ce module définit les structures de données utilisées pour l'enrichissement
-et le stockage vectoriel des transactions financières.
+et l'indexation des transactions financières dans Elasticsearch.
 """
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
@@ -33,12 +33,13 @@ class BatchTransactionInput(BaseModel):
     user_id: int
     transactions: List[TransactionInput]
 
-class EnrichmentResult(BaseModel):
-    """Résultat d'un enrichissement de transaction."""
+class ElasticsearchEnrichmentResult(BaseModel):
+    """Résultat d'un enrichissement de transaction pour Elasticsearch."""
     transaction_id: int
     user_id: int
     searchable_text: str
-    vector_id: str
+    document_id: str  # Format: user_{user_id}_tx_{transaction_id}
+    indexed: bool
     metadata: Dict[str, Any]
     processing_time: float
     status: str = "success"
@@ -51,28 +52,23 @@ class BatchEnrichmentResult(BaseModel):
     successful: int
     failed: int
     processing_time: float
-    results: List[EnrichmentResult]
+    results: List[ElasticsearchEnrichmentResult]
     errors: List[str] = []
 
-# Modèles pour le stockage vectoriel
-@dataclass
-class VectorizedTransaction:
-    """Structure pour une transaction vectorisée prête pour Qdrant."""
-    id: str  # Format: user_{user_id}_tx_{transaction_id}
-    vector: List[float]
-    payload: Dict[str, Any]
-    
-    def to_qdrant_point(self) -> Dict[str, Any]:
-        """Convertit en format point Qdrant."""
-        return {
-            "id": self.id,
-            "vector": self.vector,
-            "payload": self.payload
-        }
+class UserSyncResult(BaseModel):
+    """Résultat de synchronisation utilisateur."""
+    user_id: int
+    total_transactions: int
+    indexed: int
+    updated: int
+    errors: int
+    processing_time: float
+    status: str = "success"
+    error_details: List[str] = []
 
 @dataclass 
 class StructuredTransaction:
-    """Transaction structurée pour la recherche."""
+    """Transaction structurée pour l'indexation Elasticsearch."""
     # Identifiants
     transaction_id: int
     user_id: int
@@ -116,7 +112,7 @@ class StructuredTransaction:
         month_year = tx.date.strftime('%Y-%m')
         weekday = tx.date.strftime('%A')
         
-        # Création du texte recherchable
+        # Création du texte recherchable optimisé pour Elasticsearch
         searchable_parts = [
             f"Description: {primary_desc}",
             f"Montant: {abs(tx.amount):.2f} {tx.currency_code or 'EUR'}",
@@ -152,15 +148,15 @@ class StructuredTransaction:
             is_deleted=tx.deleted
         )
     
-    def to_qdrant_payload(self) -> Dict[str, Any]:
-        """Convertit en payload pour Qdrant (métadonnées + texte)."""
+    def to_elasticsearch_document(self) -> Dict[str, Any]:
+        """Convertit en document Elasticsearch."""
         return {
             # Identifiants
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
             "account_id": self.account_id,
             
-            # Contenu
+            # Contenu recherchable
             "searchable_text": self.searchable_text,
             "primary_description": self.primary_description,
             
@@ -170,8 +166,9 @@ class StructuredTransaction:
             "transaction_type": self.transaction_type,
             "currency_code": self.currency_code,
             
-            # Dates (stockées en string pour les filtres)
-            "date": self.date_str,
+            # Dates (optimisées pour les requêtes Elasticsearch)
+            "date": self.date.isoformat(),
+            "date_str": self.date_str,
             "month_year": self.month_year,
             "weekday": self.weekday,
             "timestamp": self.date.timestamp(),
@@ -184,26 +181,21 @@ class StructuredTransaction:
             "is_future": self.is_future,
             "is_deleted": self.is_deleted,
             
-            # Métadonnées de traitement
-            "created_at": datetime.now().isoformat(),
-            "version": "1.0"
+            # Métadonnées d'indexation
+            "indexed_at": datetime.now().isoformat(),
+            "version": "2.0-elasticsearch"
         }
+    
+    def get_document_id(self) -> str:
+        """Génère l'ID du document Elasticsearch."""
+        return f"user_{self.user_id}_tx_{self.transaction_id}"
 
-# Modèles pour les réponses de recherche
-class SearchResult(BaseModel):
-    """Résultat d'une recherche vectorielle."""
-    transaction_id: int
-    user_id: int
-    score: float
-    primary_description: str
-    amount: float
-    date: str
-    transaction_type: str
-    metadata: Dict[str, Any]
-
-class SearchResponse(BaseModel):
-    """Réponse complète d'une recherche."""
-    query: str
-    results: List[SearchResult]
-    total_found: int
-    processing_time: float
+class ElasticsearchHealthStatus(BaseModel):
+    """Statut de santé du service Elasticsearch."""
+    service: str = "enrichment_service_elasticsearch"
+    version: str = "2.0.0"
+    status: str
+    timestamp: str
+    elasticsearch: Dict[str, Any]
+    capabilities: Dict[str, bool]
+    performance_metrics: Optional[Dict[str, Any]] = None

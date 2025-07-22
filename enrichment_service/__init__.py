@@ -1,20 +1,21 @@
 """
-Service d'enrichissement et de stockage vectoriel pour Harena.
+Service d'enrichissement et d'indexation pour Harena - Elasticsearch uniquement.
 
 Ce service est responsable de la structuration des données financières
-et de leur stockage dans la base de données vectorielle Qdrant.
+et de leur indexation dans Elasticsearch pour des recherches lexicales optimisées.
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0-elasticsearch"
 __all__ = ["__version__"]
 
 # ============================================================
 # enrichment_service/api/__init__.py
 
 """
-Module API pour le service d'enrichissement.
+Module API pour le service d'enrichissement Elasticsearch.
 
-Contient les routes et endpoints REST pour l'enrichissement des transactions.
+Contient les routes et endpoints REST pour l'enrichissement et l'indexation
+des transactions dans Elasticsearch.
 """
 
 __all__ = []
@@ -25,8 +26,8 @@ __all__ = []
 """
 Module core contenant la logique métier de l'enrichissement.
 
-Inclut le traitement des transactions, la génération d'embeddings
-et la structuration des données.
+Inclut le traitement des transactions et la structuration des données
+pour l'indexation Elasticsearch.
 """
 
 __all__ = []
@@ -35,10 +36,10 @@ __all__ = []
 # enrichment_service/storage/__init__.py
 
 """
-Module de stockage pour les bases de données vectorielles.
+Module de stockage pour Elasticsearch.
 
-Fournit les interfaces pour interagir avec Qdrant et autres
-systèmes de stockage vectoriel.
+Fournit l'interface pour interagir avec Elasticsearch
+pour l'indexation et la gestion des documents.
 """
 
 __all__ = []

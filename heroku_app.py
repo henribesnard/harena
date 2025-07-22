@@ -109,7 +109,7 @@ class ServiceLoader:
             logger.info(f"🔑 DEEPSEEK_API_KEY configurée: {deepseek_key[:20]}...")
             
             # Import et initialisation du conversation service
-            from conversation_service.config import settings
+            from config_service.config import settings
             from conversation_service.clients import deepseek_client
             from conversation_service.agents import intent_classifier
             

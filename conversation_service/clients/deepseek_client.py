@@ -655,6 +655,72 @@ class DeepSeekClient:
 
 
 # ==========================================
+# INSTANCE GLOBALE POUR COMPATIBILITÉ
+# ==========================================
+
+# Instance globale réutilisable
+_global_deepseek_client: Optional[DeepSeekClient] = None
+
+async def get_global_client() -> DeepSeekClient:
+    """Récupère ou crée l'instance globale du client DeepSeek"""
+    global _global_deepseek_client
+    
+    if _global_deepseek_client is None:
+        _global_deepseek_client = DeepSeekClient()
+        await _global_deepseek_client.initialize()
+    
+    return _global_deepseek_client
+
+async def shutdown_global_client():
+    """Arrêt de l'instance globale"""
+    global _global_deepseek_client
+    
+    if _global_deepseek_client:
+        await _global_deepseek_client.shutdown()
+        _global_deepseek_client = None
+
+# ==========================================
+# FONCTION DE COMPATIBILITÉ POUR L'INITIALISATION
+# ==========================================
+
+async def health_check() -> Dict[str, Any]:
+    """
+    Fonction de compatibilité pour l'initialisation du service
+    
+    Cette fonction est appelée par le système d'initialisation pour vérifier
+    la santé du service DeepSeek avant le démarrage complet.
+    
+    Returns:
+        Dict contenant le status de santé et le temps de réponse
+    """
+    try:
+        start_time = time.time()
+        
+        # Récupération ou création de l'instance globale
+        client = await get_global_client()
+        
+        # Récupération du status de santé
+        health_status = await client.get_health_status()
+        
+        # Calcul du temps de réponse
+        response_time = time.time() - start_time
+        
+        # Format de réponse attendu par l'initialisation
+        return {
+            "status": "healthy" if health_status["healthy"] else "unhealthy",
+            "response_time": round(response_time, 2),
+            "details": health_status
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du health check DeepSeek: {e}")
+        return {
+            "status": "unhealthy",
+            "response_time": 0.0,
+            "error": str(e)
+        }
+
+# ==========================================
 # HELPERS ET UTILITAIRES
 # ==========================================
 

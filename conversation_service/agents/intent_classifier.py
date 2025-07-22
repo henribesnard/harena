@@ -342,16 +342,17 @@ class IntentClassifier:
         }
     
     def _create_fallback_result(self, query: str, user_id: str, error: str) -> IntentResult:
-        """Création résultat fallback en cas d'erreur"""
+        """✅ Création résultat fallback en cas d'erreur - VERSION CORRIGÉE"""
         from conversation_service.intent_detection.models import IntentConfidence
         
         # Analyse basique pour fallback intelligent
         fallback_intent = self._analyze_fallback_intent(query)
         
+        # ✅ Correction : seulement des floats dans factors, pas de string
         fallback_confidence = IntentConfidence(
             score=0.5,
             reasoning=f"Fallback agent - Erreur: {error}",
-            factors={"fallback": True, "error": error}
+            factors={"fallback_score": 0.5}  # ✅ Seulement des floats dans factors
         )
         
         return IntentResult(

@@ -421,43 +421,50 @@ def create_app():
                 "version": "2.0.0-elasticsearch"
             }
 
-        # 4. ✅ Search Service - EXACTEMENT COMME HEROKU_APP.PY
+        # 4. ✅ Search Service - PATTERN STANDARDISÉ
         logger.info("🔍 Chargement et initialisation du search_service...")
         try:
             # D'abord initialiser les composants Elasticsearch
             search_init_success = await loader.initialize_search_service(app)
             
-            # Ensuite charger les routes
-            try:
-                from search_service.api.routes import router as search_router
-                app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-                routes_count = len(search_router.routes) if hasattr(search_router, 'routes') else 0
+            # Ensuite charger les routes avec la méthode standardisée
+            if search_init_success:
+                router_success = loader.load_service_router(
+                    app, 
+                    "search_service", 
+                    "search_service.api.routes", 
+                    "/api/v1/search"
+                )
                 
-                if search_init_success:
-                    logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search (AVEC initialisation)")
-                    loader.services_status["search_service"] = {
-                        "status": "ok", 
-                        "routes": routes_count, 
-                        "prefix": "/api/v1/search",
-                        "initialized": True,
-                        "architecture": "simplified_unified"
-                    }
+                if router_success:
+                    # ✅ Initialiser le moteur dans les routes (pattern search_service)
+                    try:
+                        from search_service.api import initialize_search_engine
+                        elasticsearch_client = getattr(app.state, 'elasticsearch_client', None)
+                        if elasticsearch_client:
+                            initialize_search_engine(elasticsearch_client)
+                            logger.info("✅ Search engine initialisé dans les routes")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur initialisation search engine dans routes: {e}")
+                    
+                    loader.services_status["search_service"]["initialized"] = True
+                    loader.services_status["search_service"]["architecture"] = "simplified_unified"
+                    logger.info("✅ search_service: Complètement initialisé")
                 else:
-                    logger.warning(f"⚠️ search_service: {routes_count} routes chargées SANS initialisation")
+                    logger.error("❌ search_service: Initialisation OK mais router non chargé")
                     loader.services_status["search_service"] = {
                         "status": "degraded", 
-                        "routes": routes_count, 
+                        "routes": 0, 
                         "prefix": "/api/v1/search",
-                        "initialized": False,
-                        "error": loader.search_service_error,
+                        "initialized": True,
+                        "error": "Router loading failed",
                         "architecture": "simplified_unified"
                     }
-                    
-            except ImportError as e:
-                logger.error(f"❌ search_service: Impossible de charger les routes - {str(e)}")
+            else:
+                logger.error("❌ search_service: Initialisation des composants échouée")
                 loader.services_status["search_service"] = {
                     "status": "error", 
-                    "error": f"Routes import failed: {str(e)}",
+                    "error": loader.search_service_error,
                     "architecture": "simplified_unified"
                 }
                     
@@ -469,77 +476,62 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
-        # 5. ✅ CONVERSATION SERVICE - VERSION CORRIGÉE
+        # 5. ✅ CONVERSATION SERVICE - PATTERN STANDARDISÉ (identique à search_service)
         logger.info("🤖 Chargement et initialisation du conversation_service...")
         try:
-            # D'abord initialiser les composants DeepSeek
+            # Étape 1: Initialiser les composants (comme search_service)
             conversation_init_success = await loader.initialize_conversation_service(app)
             
-            # Ensuite charger les routes avec gestion des imports circulaires
-            try:
-                # ✅ Import sécurisé avec gestion d'erreurs détaillée
-                logger.info("📦 Tentative d'import des routes conversation_service...")
+            # Étape 2: Charger le router avec la méthode standardisée
+            if conversation_init_success:
+                # Utiliser load_service_router comme les autres services
+                router_success = loader.load_service_router(
+                    app, 
+                    "conversation_service", 
+                    "conversation_service.api.routes", 
+                    "/api/v1/conversation"
+                )
                 
-                # Tentative 1: Import direct
-                try:
-                    from conversation_service.api.routes import router as conversation_router
-                    router_imported = True
-                    import_method = "direct"
-                except Exception as e1:
-                    logger.warning(f"⚠️ Import direct échoué: {str(e1)[:100]}...")
-                    
-                    # Tentative 2: Import alternatif
+                if router_success:
+                    # ✅ ÉTAPE 3: Initialiser l'intent engine dans les routes (pattern search_service)
                     try:
-                        import conversation_service.api
-                        conversation_router = getattr(conversation_service.api, 'router', None)
-                        if conversation_router:
-                            router_imported = True
-                            import_method = "alternative"
+                        from conversation_service.api import initialize_intent_engine
+                        
+                        # Récupérer l'intent classifier initialisé dans app.state
+                        intent_classifier = getattr(app.state, 'intent_classifier', None)
+                        if intent_classifier:
+                            # Initialiser l'engine dans les routes avec le classifier
+                            initialize_intent_engine(intent_classifier)
+                            logger.info("✅ Intent engine initialisé dans les routes")
                         else:
-                            raise AttributeError("Pas de router trouvé")
-                    except Exception as e2:
-                        logger.warning(f"⚠️ Import alternatif échoué: {str(e2)[:100]}...")
-                        router_imported = False
-                        import_method = "failed"
-                
-                if router_imported:
-                    app.include_router(conversation_router, prefix="/api/v1/conversation")
-                    routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
+                            logger.warning("⚠️ Intent classifier non trouvé dans app.state")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur initialisation intent engine dans routes: {e}")
                     
-                    if conversation_init_success:
-                        logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation (AVEC initialisation - {import_method})")
-                        loader.services_status["conversation_service"] = {
-                            "status": "ok", 
-                            "routes": routes_count, 
-                            "prefix": "/api/v1/conversation",
-                            "initialized": True,
-                            "architecture": "mvp_intent_classifier",
-                            "model": "deepseek-chat",
-                            "import_method": import_method
-                        }
-                    else:
-                        logger.warning(f"⚠️ conversation_service: {routes_count} routes chargées SANS initialisation complète")
-                        loader.services_status["conversation_service"] = {
-                            "status": "degraded", 
-                            "routes": routes_count, 
-                            "prefix": "/api/v1/conversation",
-                            "initialized": False,
-                            "error": loader.conversation_service_error,
-                            "architecture": "mvp_intent_classifier",
-                            "model": "deepseek-chat",
-                            "import_method": import_method
-                        }
+                    # Marquer comme complètement initialisé
+                    loader.services_status["conversation_service"]["initialized"] = True
+                    loader.services_status["conversation_service"]["architecture"] = "mvp_intent_classifier"
+                    loader.services_status["conversation_service"]["model"] = "deepseek-chat"
+                    logger.info("✅ conversation_service: Complètement initialisé avec routes")
                 else:
-                    raise ImportError("Toutes les tentatives d'import ont échoué")
-                    
-            except Exception as e:
-                logger.error(f"❌ conversation_service: Impossible de charger les routes - {str(e)}")
+                    logger.error("❌ conversation_service: Initialisation OK mais router non chargé")
+                    loader.services_status["conversation_service"] = {
+                        "status": "degraded", 
+                        "routes": 0, 
+                        "prefix": "/api/v1/conversation",
+                        "initialized": True,
+                        "error": "Router loading failed",
+                        "architecture": "mvp_intent_classifier",
+                        "model": "deepseek-chat"
+                    }
+            else:
+                logger.error("❌ conversation_service: Initialisation des composants échouée")
                 loader.services_status["conversation_service"] = {
                     "status": "error", 
-                    "error": f"Routes import failed: {str(e)}",
+                    "error": loader.conversation_service_error,
                     "architecture": "mvp_intent_classifier"
                 }
-                    
+                        
         except Exception as e:
             logger.error(f"❌ conversation_service: Erreur générale - {str(e)}")
             loader.services_status["conversation_service"] = {
@@ -684,6 +676,16 @@ def create_app():
                         "Nouveaux endpoints: /api/v1/enrichment/elasticsearch/*",
                         "Performance optimisée pour l'indexation bulk",
                         "Simplification drastique du code"
+                    ]
+                },
+                "conversation_service": {
+                    "version": "1.0.0-mvp",
+                    "changes": [
+                        "Pattern standardisé identique à search_service",
+                        "Initialisation via app.state + initialize_intent_engine()",
+                        "Routes compatibles FastAPI docs",
+                        "Gestion d'erreurs robuste avec fallbacks",
+                        "Métriques intégrées"
                     ]
                 }
             }

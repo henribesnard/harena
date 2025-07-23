@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 import time
+import os
 from typing import Dict, Any, Optional
 from contextvars import ContextVar
 from datetime import datetime
@@ -147,7 +148,7 @@ def setup_logging():
     """Configuration logging structuré selon environnement"""
     
     # Niveau logging depuis configuration
-    log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    log_level = getattr(logging, getattr(settings, 'LOG_LEVEL', 'INFO').upper(), logging.INFO)
     
     # Nettoyage handlers existants
     root_logger = logging.getLogger()
@@ -157,8 +158,11 @@ def setup_logging():
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
     
-    # Formatter selon environnement
-    if settings.DEBUG:
+    # ✅ Formatter selon environnement - VERSION CORRIGÉE
+    # Utiliser variable d'environnement directement au lieu de settings.DEBUG
+    debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
+    
+    if debug_mode:
         # Développement : format lisible
         formatter = DevelopmentFormatter()
     else:
@@ -179,7 +183,7 @@ def setup_logging():
     # Logger conversation service plus verbeux
     logging.getLogger("conversation_service").setLevel(log_level)
     
-    print(f"📋 Logging configuré - Niveau: {settings.LOG_LEVEL}, Mode: {'DEV' if settings.DEBUG else 'PROD'}")
+    print(f"📋 Logging configuré - Niveau: {getattr(settings, 'LOG_LEVEL', 'INFO')}, Mode: {'DEV' if debug_mode else 'PROD'}")
 
 # ==========================================
 # HELPERS LOGGING SPÉCIALISÉS
@@ -195,6 +199,8 @@ def log_intent_detection(
     user_id: str = None,
     request_id: str = None,
     error: str = None,
+    message_preview: str = None,
+    message: str = None,
     **kwargs
 ):
     """
@@ -210,6 +216,8 @@ def log_intent_detection(
         user_id: ID utilisateur
         request_id: ID requête
         error: Message erreur
+        message_preview: Aperçu message utilisateur
+        message: Message complet utilisateur
         **kwargs: Métadonnées supplémentaires
     """
     logger = logging.getLogger("conversation_service.intent_detection")
@@ -237,6 +245,10 @@ def log_intent_detection(
         log_data["request_id"] = request_id
     if error:
         log_data["error"] = error
+    if message_preview:
+        log_data["message_preview"] = message_preview
+    if message:
+        log_data["message"] = message[:100]  # Tronquer pour éviter logs trop longs
     
     # Métadonnées supplémentaires
     log_data.update(kwargs)
@@ -632,12 +644,11 @@ def debug_log_context():
 
 def log_system_resources():
     """Log ressources système pour debug"""
-    import psutil
-    import os
-    
-    logger = logging.getLogger("conversation_service.system")
-    
     try:
+        import psutil
+        
+        logger = logging.getLogger("conversation_service.system")
+        
         memory_info = psutil.virtual_memory()
         disk_info = psutil.disk_usage('/')
         
@@ -652,7 +663,11 @@ def log_system_resources():
                 "load_average": os.getloadavg() if hasattr(os, 'getloadavg') else None
             }
         )
+    except ImportError:
+        logger = logging.getLogger("conversation_service.system")
+        logger.warning("psutil not available - cannot collect system resources")
     except Exception as e:
+        logger = logging.getLogger("conversation_service.system")
         logger.warning(f"Could not collect system resources: {e}")
 
 # ==========================================

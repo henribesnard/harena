@@ -7,6 +7,7 @@ middleware basique, health checks et gestion lifecycle.
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -63,11 +64,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         await record_intent_performance("startup", 0, "system", success=True)
         
         logger.info("✅ Conversation Service initialisé avec succès")
-        logger.info(f"🔧 Mode: {'DEBUG' if settings.DEBUG else 'PRODUCTION'}")
-        logger.info(f"🌐 Port: {settings.PORT}")
-        logger.info(f"⏱️ Timeout: {settings.REQUEST_TIMEOUT}s")
-        logger.info(f"🎯 Confidence: {settings.MIN_CONFIDENCE_THRESHOLD}")
-        logger.info(f"💾 Cache Redis: {'Activé' if settings.REDIS_CACHE_ENABLED else 'Désactivé'}")
+        
+        # ✅ Utiliser les variables d'environnement directement au lieu de settings.DEBUG
+        debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
+        port = getattr(settings, "CONVERSATION_SERVICE_PORT", 8001)
+        timeout = getattr(settings, "REQUEST_TIMEOUT", 30)
+        confidence = getattr(settings, "MIN_CONFIDENCE_THRESHOLD", 0.7)
+        redis_enabled = getattr(settings, "REDIS_CACHE_ENABLED", True)
+        
+        logger.info(f"🔧 Mode: {'DEBUG' if debug_mode else 'PRODUCTION'}")
+        logger.info(f"🌐 Port: {port}")
+        logger.info(f"⏱️ Timeout: {timeout}s")
+        logger.info(f"🎯 Confidence: {confidence}")
+        logger.info(f"💾 Cache Redis: {'Activé' if redis_enabled else 'Désactivé'}")
         
     except Exception as e:
         logger.error(f"❌ Erreur initialisation: {e}")
@@ -94,12 +103,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     except Exception as e:
         logger.error(f"❌ Erreur arrêt: {e}")
 
-# Configuration FastAPI avec lifespan
+# ✅ Configuration FastAPI avec gestion des attributs manquants
+try:
+    # Essayer d'utiliser les attributs standards
+    api_title = getattr(settings, "API_TITLE", "Conversation Service")
+    api_version = getattr(settings, "API_VERSION", "1.0.0")
+    api_description = getattr(settings, "API_DESCRIPTION", "Service de conversation avec IA")
+    debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
+except AttributeError as e:
+    # Fallback avec valeurs par défaut
+    logger.warning(f"⚠️ Attribut manquant dans settings: {e}")
+    api_title = "Conversation Service"
+    api_version = "1.0.0"
+    api_description = "Service de conversation avec IA"
+    debug_mode = False
+
 app = FastAPI(
-    title=settings.API_TITLE,
-    version=settings.API_VERSION,
-    description=settings.API_DESCRIPTION,
-    debug=settings.DEBUG,
+    title=api_title,
+    version=api_version,
+    description=api_description,
+    debug=debug_mode,
     lifespan=lifespan
 )
 
@@ -108,7 +131,7 @@ app = FastAPI(
 # ==========================================
 
 # CORS pour développement
-if settings.DEBUG:
+if debug_mode:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -120,7 +143,7 @@ if settings.DEBUG:
 # Security middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"] if settings.DEBUG else ["localhost", "127.0.0.1"]
+    allowed_hosts=["*"] if debug_mode else ["localhost", "127.0.0.1"]
 )
 
 # ==========================================
@@ -169,9 +192,9 @@ async def liveness_check():
 async def root():
     """Endpoint racine avec informations service"""
     return {
-        "service": settings.API_TITLE,
-        "version": settings.API_VERSION,
-        "description": settings.API_DESCRIPTION,
+        "service": api_title,
+        "version": api_version,
+        "description": api_description,
         "status": "running",
         "endpoints": {
             "chat": "/api/v1/chat",
@@ -185,7 +208,10 @@ async def root():
 # ==========================================
 
 def get_intent_engine() -> IntentDetectionEngine:
-    """Retourne l'instance globale Intent Detection Engine"""
+    """
+    Retourne l'instance globale Intent Detection Engine
+    ✅ Version corrigée sans référence à settings.DEBUG
+    """
     if intent_engine is None:
         raise RuntimeError("Intent Detection Engine not initialized")
     return intent_engine
@@ -196,14 +222,27 @@ __all__ = ["app", "get_intent_engine"]
 if __name__ == "__main__":
     import uvicorn
     
+    # ✅ Configuration avec gestion d'erreurs pour les attributs manquants
+    try:
+        host = getattr(settings, "HOST", "localhost")
+        port = getattr(settings, "CONVERSATION_SERVICE_PORT", 8001)
+        log_level = getattr(settings, "CONVERSATION_SERVICE_LOG_LEVEL", "INFO")
+        debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
+    except AttributeError as e:
+        logger.warning(f"⚠️ Configuration par défaut utilisée: {e}")
+        host = "localhost"
+        port = 8001
+        log_level = "INFO"
+        debug_mode = False
+    
     # Configuration optimisée pour production
     uvicorn.run(
         "conversation_service.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        log_level=settings.LOG_LEVEL.lower(),
-        access_log=settings.DEBUG,
-        reload=settings.DEBUG,
+        host=host,
+        port=port,
+        log_level=log_level.lower(),
+        access_log=debug_mode,
+        reload=debug_mode,
         workers=1,  # Single worker pour développement
         loop="asyncio"
     )

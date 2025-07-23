@@ -331,32 +331,73 @@ def create_app():
                 logger.error(f"❌ {module_path}: {e}")
                 loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)}
 
-        # 3. ✅ ENRICHMENT SERVICE - VERSION ELASTICSEARCH UNIQUEMENT
-        logger.info("🔍 Chargement enrichment_service (Elasticsearch uniquement)...")
+        # 3. ✅ ENRICHMENT SERVICE - VERSION ELASTICSEARCH UNIQUEMENT AVEC INITIALISATION
+        logger.info("🔍 Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
         try:
             # Vérifier BONSAI_URL pour enrichment_service
             bonsai_url = os.environ.get("BONSAI_URL")
             if not bonsai_url:
                 logger.warning("⚠️ BONSAI_URL non configurée - enrichment_service sera en mode dégradé")
                 enrichment_elasticsearch_available = False
+                enrichment_init_success = False
             else:
                 logger.info(f"📡 BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
                 enrichment_elasticsearch_available = True
+                
+                # Initialiser les composants enrichment_service
+                try:
+                    logger.info("🔍 Initialisation des composants enrichment_service...")
+                    from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
+                    from enrichment_service.core.processor import ElasticsearchTransactionProcessor
+                    
+                    # Créer et initialiser le client Elasticsearch pour enrichment
+                    enrichment_elasticsearch_client = ElasticsearchClient()
+                    await enrichment_elasticsearch_client.initialize()
+                    logger.info("✅ Enrichment Elasticsearch client initialisé")
+                    
+                    # Créer le processeur
+                    enrichment_processor = ElasticsearchTransactionProcessor(enrichment_elasticsearch_client)
+                    logger.info("✅ Enrichment processor créé")
+                    
+                    # Injecter dans les routes enrichment_service
+                    import enrichment_service.api.routes as enrichment_routes
+                    enrichment_routes.elasticsearch_client = enrichment_elasticsearch_client
+                    enrichment_routes.elasticsearch_processor = enrichment_processor
+                    logger.info("✅ Instances injectées dans enrichment_service routes")
+                    
+                    enrichment_init_success = True
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erreur initialisation composants enrichment: {e}")
+                    enrichment_init_success = False
             
             # Charger les routes enrichment_service
             from enrichment_service.api.routes import router as enrichment_router
             app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
             routes_count = len(enrichment_router.routes) if hasattr(enrichment_router, 'routes') else 0
             
-            if enrichment_elasticsearch_available:
-                logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment (Elasticsearch configuré)")
+            if enrichment_elasticsearch_available and enrichment_init_success:
+                logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment (AVEC initialisation)")
                 loader.services_status["enrichment_service"] = {
                     "status": "ok", 
                     "routes": routes_count, 
                     "prefix": "/api/v1/enrichment",
                     "architecture": "elasticsearch_only",
                     "version": "2.0.0-elasticsearch",
-                    "elasticsearch_available": True
+                    "elasticsearch_available": True,
+                    "initialized": True
+                }
+            elif enrichment_elasticsearch_available and not enrichment_init_success:
+                logger.warning(f"⚠️ enrichment_service: {routes_count} routes chargées SANS initialisation complète")
+                loader.services_status["enrichment_service"] = {
+                    "status": "degraded", 
+                    "routes": routes_count, 
+                    "prefix": "/api/v1/enrichment",
+                    "architecture": "elasticsearch_only",
+                    "version": "2.0.0-elasticsearch",
+                    "elasticsearch_available": True,
+                    "initialized": False,
+                    "error": "Initialization failed"
                 }
             else:
                 logger.warning(f"⚠️ enrichment_service: {routes_count} routes chargées SANS Elasticsearch")
@@ -367,6 +408,7 @@ def create_app():
                     "architecture": "elasticsearch_only",
                     "version": "2.0.0-elasticsearch",
                     "elasticsearch_available": False,
+                    "initialized": False,
                     "error": "BONSAI_URL not configured"
                 }
                 
@@ -563,6 +605,7 @@ def create_app():
                 "architecture": enrichment_status.get("architecture"),
                 "version": enrichment_status.get("version"),
                 "elasticsearch_available": enrichment_status.get("elasticsearch_available", False),
+                "initialized": enrichment_status.get("initialized", False),
                 "error": enrichment_status.get("error")
             }
         }

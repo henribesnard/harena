@@ -389,6 +389,350 @@ class ElasticsearchClient:
             logger.error(f"❌ Exception comptage user {user_id}: {e}")
             return 0
     
+    async def document_exists(self, document_id: str) -> bool:
+        """
+        Vérifie si un document existe dans l'index.
+        
+        Args:
+            document_id: ID du document à vérifier
+            
+        Returns:
+            bool: True si le document existe
+        """
+        if not self._initialized:
+            return False
+        
+        try:
+            async with self.session.head(
+                f"{self.base_url}/{self.index_name}/_doc/{document_id}"
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur vérification existence document {document_id}: {e}")
+            return False
+    
+    async def index_document(self, document_id: str, document: Dict[str, Any]) -> bool:
+        """
+        Indexe un document unique dans Elasticsearch.
+        
+        Args:
+            document_id: ID du document
+            document: Données du document
+            
+        Returns:
+            bool: True si l'indexation a réussi
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        try:
+            async with self.session.put(
+                f"{self.base_url}/{self.index_name}/_doc/{document_id}",
+                json=document
+            ) as response:
+                if response.status in [200, 201]:
+                    logger.debug(f"📝 Document {document_id} indexé avec succès")
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur indexation {document_id}: {response.status} - {error_text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception lors de l'indexation {document_id}: {e}")
+            return False
+    
+    async def bulk_index_documents(self, documents_to_index: List[Dict], force_update: bool = False) -> Dict[str, Any]:
+        """
+        Indexe un lot de documents dans Elasticsearch (format adapté au nouveau processor).
+        
+        Args:
+            documents_to_index: Liste de dicts avec 'id', 'document', 'transaction_id'
+            force_update: Force la mise à jour même si les documents existent
+            
+        Returns:
+            Dict: Résumé de l'indexation avec format adapté
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        if not documents_to_index:
+            return {"indexed": 0, "errors": 0, "total": 0, "responses": []}
+        
+        # Préparer le bulk request
+        bulk_body = []
+        
+        for item in documents_to_index:
+            doc_id = item["id"]
+            document = item["document"]
+            
+            # Action header
+            bulk_body.append(json.dumps({
+                "index": {
+                    "_index": self.index_name,
+                    "_id": doc_id
+                }
+            }))
+            
+            # Document data
+            bulk_body.append(json.dumps(document))
+        
+        # Joindre avec des nouvelles lignes (format bulk)
+        bulk_data = "\n".join(bulk_body) + "\n"
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/{self.index_name}/_bulk",
+                data=bulk_data,
+                headers={"Content-Type": "application/x-ndjson"}
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    # Analyser les résultats et créer la réponse adaptée
+                    indexed_count = 0
+                    error_count = 0
+                    responses = []
+                    
+                    for i, item in enumerate(result.get("items", [])):
+                        if "index" in item:
+                            if item["index"].get("status") in [200, 201]:
+                                indexed_count += 1
+                                responses.append({
+                                    "success": True,
+                                    "transaction_id": documents_to_index[i].get("transaction_id"),
+                                    "document_id": item["index"]["_id"]
+                                })
+                            else:
+                                error_count += 1
+                                error_msg = item["index"].get("error", {}).get("reason", "Unknown error")
+                                responses.append({
+                                    "success": False,
+                                    "transaction_id": documents_to_index[i].get("transaction_id"),
+                                    "error": error_msg
+                                })
+                                logger.error(f"❌ Erreur bulk item: {item['index']}")
+                    
+                    summary = {
+                        "indexed": indexed_count,
+                        "errors": error_count,
+                        "total": len(documents_to_index),
+                        "responses": responses
+                    }
+                    
+                    logger.info(f"📦 Bulk indexation: {summary['indexed']}/{summary['total']} succès")
+                    return summary
+                    
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur bulk request: {response.status} - {error_text}")
+                    
+                    # Retourner des erreurs pour tous les documents
+                    responses = [
+                        {
+                            "success": False,
+                            "transaction_id": item.get("transaction_id"),
+                            "error": f"Bulk request failed: {response.status}"
+                        }
+                        for item in documents_to_index
+                    ]
+                    
+                    return {
+                        "indexed": 0, 
+                        "errors": len(documents_to_index), 
+                        "total": len(documents_to_index),
+                        "responses": responses
+                    }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception bulk indexation: {e}")
+            
+            # Retourner des erreurs pour tous les documents
+            responses = [
+                {
+                    "success": False,
+                    "transaction_id": item.get("transaction_id"),
+                    "error": f"Exception: {str(e)}"
+                }
+                for item in documents_to_index
+            ]
+            
+            return {
+                "indexed": 0, 
+                "errors": len(documents_to_index), 
+                "total": len(documents_to_index),
+                "responses": responses
+            }
+    
+    async def delete_user_transactions(self, user_id: int) -> int:
+        """
+        Supprime toutes les transactions d'un utilisateur et retourne le nombre supprimé.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            int: Nombre de documents supprimés
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        try:
+            # Requête de suppression par user_id
+            delete_query = {
+                "query": {
+                    "term": {
+                        "user_id": user_id
+                    }
+                }
+            }
+            
+            async with self.session.post(
+                f"{self.base_url}/{self.index_name}/_delete_by_query",
+                json=delete_query
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    deleted_count = result.get("deleted", 0)
+                    logger.info(f"🗑️ {deleted_count} transactions supprimées pour user {user_id}")
+                    return deleted_count
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur suppression user {user_id}: {response.status} - {error_text}")
+                    return 0
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception suppression user {user_id}: {e}")
+            return 0
+    
+    async def get_user_statistics(self, user_id: int) -> Dict[str, Any]:
+        """
+        Récupère les statistiques d'un utilisateur dans Elasticsearch.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            Dict: Statistiques de l'utilisateur
+        """
+        if not self._initialized:
+            return {"error": "Client not initialized"}
+        
+        try:
+            # Requête de statistiques
+            stats_query = {
+                "query": {
+                    "term": {
+                        "user_id": user_id
+                    }
+                },
+                "aggs": {
+                    "total_transactions": {
+                        "value_count": {
+                            "field": "transaction_id"
+                        }
+                    },
+                    "total_amount": {
+                        "sum": {
+                            "field": "amount"
+                        }
+                    },
+                    "average_amount": {
+                        "avg": {
+                            "field": "amount"
+                        }
+                    },
+                    "transaction_types": {
+                        "terms": {
+                            "field": "transaction_type"
+                        }
+                    },
+                    "date_range": {
+                        "date_range": {
+                            "field": "date",
+                            "ranges": [
+                                {"key": "last_30_days", "from": "now-30d"},
+                                {"key": "last_90_days", "from": "now-90d"}
+                            ]
+                        }
+                    }
+                }
+            }
+            
+            async with self.session.post(
+                f"{self.base_url}/{self.index_name}/_search",
+                json=stats_query
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    aggregations = result.get("aggregations", {})
+                    
+                    return {
+                        "user_id": user_id,
+                        "total_transactions": aggregations.get("total_transactions", {}).get("value", 0),
+                        "total_amount": aggregations.get("total_amount", {}).get("value", 0),
+                        "average_amount": aggregations.get("average_amount", {}).get("value", 0),
+                        "transaction_types": [
+                            {"type": bucket["key"], "count": bucket["doc_count"]}
+                            for bucket in aggregations.get("transaction_types", {}).get("buckets", [])
+                        ],
+                        "date_ranges": {
+                            bucket["key"]: bucket["doc_count"]
+                            for bucket in aggregations.get("date_range", {}).get("buckets", [])
+                        }
+                    }
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur stats user {user_id}: {response.status} - {error_text}")
+                    return {"error": f"Query failed: {response.status}"}
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception stats user {user_id}: {e}")
+            return {"error": str(e)}
+    
+    async def health_check(self) -> bool:
+        """
+        Vérifie la santé de la connexion Elasticsearch.
+        
+        Returns:
+            bool: True si Elasticsearch est accessible
+        """
+        if not self._initialized:
+            return False
+        
+        try:
+            async with self.session.get(
+                f"{self.base_url}/_cluster/health"
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"❌ Health check failed: {e}")
+            return False
+    
+    async def get_cluster_info(self) -> Dict[str, Any]:
+        """
+        Récupère les informations du cluster Elasticsearch.
+        
+        Returns:
+            Dict: Informations du cluster
+        """
+        if not self._initialized:
+            return {"error": "Client not initialized"}
+        
+        try:
+            async with self.session.get(self.base_url) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"error": f"Request failed: {response.status}"}
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur cluster info: {e}")
+            return {"error": str(e)}
+        
     async def close(self):
         """Ferme la session HTTP."""
         if self.session:

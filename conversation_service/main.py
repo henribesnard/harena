@@ -1,13 +1,16 @@
 """
-🚀 Point d'entrée principal - FastAPI avec Intent Detection Engine
+🚀 Point d'entrée principal - FastAPI avec Pattern Matcher L0 Phase 1
 
-Configuration application FastAPI avec initialisation Intent Detection Engine,
-middleware basique, health checks et gestion lifecycle.
+Configuration application FastAPI ultra-simplifiée avec SEULEMENT Pattern Matcher L0
+pour performances <10ms sur 85%+ des requêtes financières.
+
+Version Phase 1 : L0 Pattern Matching seulement
 """
 
 import asyncio
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -15,107 +18,144 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from config_service.config import settings
-from conversation_service.intent_detection.engine import IntentDetectionEngine
-from conversation_service.utils.logging import setup_logging
-from conversation_service.utils import record_intent_performance
-from conversation_service.api.routes import router
+# Imports Phase 1 - Pattern Matcher seulement
+from conversation_service.intent_detection.pattern_matcher import PatternMatcher, validate_l0_phase1_performance
+from conversation_service.models.conversation_models import ServiceHealth, L0PerformanceMetrics
+from conversation_service.utils.logging import setup_logging, log_intent_detection
 
 # Configuration logging structuré
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Instance globale Intent Detection Engine
-intent_engine: IntentDetectionEngine = None
+# Instance globale Pattern Matcher L0
+pattern_matcher: PatternMatcher = None
+_service_initialized = False
+_service_start_time = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
-    """Gestion lifecycle (startup/shutdown) avec initialisation services"""
+    """Gestion lifecycle Phase 1 - Pattern Matcher L0 seulement"""
+    
+    global pattern_matcher, _service_initialized, _service_start_time
     
     # ==========================================
-    # STARTUP - Initialisation services
+    # STARTUP - Initialisation Pattern Matcher L0
     # ==========================================
-    logger.info("🚀 Démarrage Conversation Service...")
+    logger.info("🚀 Démarrage Conversation Service - PHASE 1 (L0 Pattern Matching)")
+    _service_start_time = asyncio.get_event_loop().time()
     
     try:
-        # Initialisation Intent Detection Engine
-        logger.info("⚙️ Initialisation Intent Detection Engine...")
-        global intent_engine
-        intent_engine = IntentDetectionEngine()
-        await intent_engine.initialize()
+        # ===== ÉTAPE 1: Pattern Matcher L0 =====
+        logger.info("⚡ Initialisation Pattern Matcher L0...")
+        pattern_matcher = PatternMatcher(cache_manager=None)  # Pas de cache externe en Phase 1
+        await pattern_matcher.initialize()
+        logger.info("✅ Pattern Matcher L0 initialisé")
         
-        # Validation configuration au démarrage
-        validation_result = settings.validate_configuration()
-        if not validation_result["valid"]:
-            logger.error(f"❌ Configuration invalide: {validation_result['errors']}")
-            raise RuntimeError(f"Configuration invalide: {validation_result['errors']}")
+        # ===== ÉTAPE 2: Liaison avec routes =====
+        logger.info("🔗 Liaison Pattern Matcher avec les routes...")
+        from conversation_service.api.routes import initialize_pattern_matcher
+        initialize_pattern_matcher(pattern_matcher)
+        logger.info("✅ Pattern Matcher lié aux routes avec succès")
         
-        if validation_result["warnings"]:
-            logger.warning(f"⚠️ Avertissements configuration: {validation_result['warnings']}")
+        # ===== ÉTAPE 3: Validation liaison =====
+        logger.info("🧪 Validation liaison pattern_matcher↔routes...")
+        from conversation_service.api.routes import get_pattern_matcher_direct
         
-        # Test santé services critiques
-        from conversation_service.utils import simple_health_check
-        health_status = await simple_health_check()
-        if not health_status.get("healthy", False):
-            logger.error(f"❌ Services critiques indisponibles: {health_status}")
-            # Note: On continue quand même pour permettre le démarrage en mode dégradé
+        try:
+            linked_matcher = get_pattern_matcher_direct()
+            if linked_matcher is None:
+                raise RuntimeError("Pattern Matcher non accessible dans routes")
+                
+            # Test fonctionnel ultra-rapide L0
+            test_match = await linked_matcher.match_intent("solde", "startup_test")
+            if test_match:
+                logger.info(f"✅ Test L0 réussi - Pattern: {test_match.pattern_name}, Confiance: {test_match.confidence:.2f}")
+            else:
+                logger.warning("⚠️ Test L0 sans match - Patterns peuvent nécessiter optimisation")
+                
+        except Exception as validation_error:
+            logger.error(f"❌ Validation liaison échouée: {validation_error}")
+            raise
         
-        # Métriques de démarrage
-        await record_intent_performance("startup", 0, "system", success=True)
+        # ===== ÉTAPE 4: Validation performance Phase 1 =====
+        logger.info("🎯 Validation performance Phase 1...")
+        try:
+            validation_results = await validate_l0_phase1_performance(pattern_matcher)
+            
+            if validation_results["overall_status"] == "READY_FOR_L1":
+                logger.info("🎉 Performance Phase 1 validée - Prêt pour L1")
+            else:
+                logger.warning(f"⚠️ Performance Phase 1 nécessite optimisation: {validation_results['recommendations']}")
+                # Continue quand même en mode dégradé
+        except Exception as validation_error:
+            logger.warning(f"⚠️ Validation performance échouée: {validation_error}")
         
-        logger.info("✅ Conversation Service initialisé avec succès")
+        # ===== FINALISATION =====
+        _service_initialized = True
+        app.state.pattern_matcher = pattern_matcher
+        app.state.service_initialized = True
+        app.state.service_phase = "L0_PATTERN_MATCHING"
         
-        # ✅ Utiliser les variables d'environnement directement au lieu de settings.DEBUG
+        # Log métriques de démarrage
+        log_intent_detection(
+            "service_startup_complete",
+            level="L0_PATTERN",
+            message=f"Service Phase 1 démarré avec {pattern_matcher.patterns.pattern_count} patterns"
+        )
+        
+        # Informations de configuration Phase 1
         debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
-        port = getattr(settings, "CONVERSATION_SERVICE_PORT", 8001)
-        timeout = getattr(settings, "REQUEST_TIMEOUT", 30)
-        confidence = getattr(settings, "MIN_CONFIDENCE_THRESHOLD", 0.7)
-        redis_enabled = getattr(settings, "REDIS_CACHE_ENABLED", True)
         
+        logger.info(f"🔧 Phase: L0_PATTERN_MATCHING")
         logger.info(f"🔧 Mode: {'DEBUG' if debug_mode else 'PRODUCTION'}")
-        logger.info(f"🌐 Port: {port}")
-        logger.info(f"⏱️ Timeout: {timeout}s")
-        logger.info(f"🎯 Confidence: {confidence}")
-        logger.info(f"💾 Cache Redis: {'Activé' if redis_enabled else 'Désactivé'}")
+        logger.info(f"📊 Patterns chargés: {pattern_matcher.patterns.pattern_count}")
+        logger.info("🎉 Conversation Service Phase 1 complètement initialisé!")
         
-    except Exception as e:
-        logger.error(f"❌ Erreur initialisation: {e}")
+        yield  # Application running
+        
+    except Exception as startup_error:
+        logger.error(f"❌ Erreur initialisation Phase 1: {startup_error}")
+        _service_initialized = False
         raise
-    
-    yield  # Application running
     
     # ==========================================  
     # SHUTDOWN - Nettoyage ressources
     # ==========================================
-    logger.info("🛑 Arrêt Conversation Service...")
+    logger.info("🛑 Arrêt Conversation Service Phase 1...")
     
     try:
-        # Arrêt Intent Detection Engine
-        if intent_engine:
-            await intent_engine.shutdown()
-            logger.info("✅ Intent Detection Engine arrêté")
+        # Arrêt Pattern Matcher
+        if pattern_matcher:
+            try:
+                await pattern_matcher.shutdown()
+                logger.info("✅ Pattern Matcher L0 arrêté")
+            except Exception as shutdown_error:
+                logger.warning(f"⚠️ Erreur arrêt pattern matcher: {shutdown_error}")
         
-        # Métriques de fermeture
-        await record_intent_performance("shutdown", 0, "system", success=True)
+        # Log métriques finales
+        if pattern_matcher:
+            final_status = pattern_matcher.get_status()
+            logger.info(f"📊 Métriques finales Phase 1:")
+            logger.info(f"   - Requêtes traitées: {final_status['total_requests']}")
+            logger.info(f"   - Taux succès L0: {final_status['success_rate']:.1%}")
+            logger.info(f"   - Latence moyenne: {final_status['avg_latency_ms']:.1f}ms")
         
-        logger.info("✅ Conversation Service arrêté proprement")
+        logger.info("✅ Conversation Service Phase 1 arrêté proprement")
         
-    except Exception as e:
-        logger.error(f"❌ Erreur arrêt: {e}")
+    except Exception as shutdown_error:
+        logger.error(f"❌ Erreur arrêt: {shutdown_error}")
 
-# ✅ Configuration FastAPI avec gestion des attributs manquants
+# ===== Configuration FastAPI Phase 1 =====
 try:
-    # Essayer d'utiliser les attributs standards
-    api_title = getattr(settings, "API_TITLE", "Conversation Service")
-    api_version = getattr(settings, "API_VERSION", "1.0.0")
-    api_description = getattr(settings, "API_DESCRIPTION", "Service de conversation avec IA")
+    api_title = "Conversation Service - Phase 1"
+    api_version = "1.0.0-phase1"
+    api_description = "Service de conversation financière - Phase 1 : L0 Pattern Matching (<10ms)"
     debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
-except AttributeError as e:
-    # Fallback avec valeurs par défaut
-    logger.warning(f"⚠️ Attribut manquant dans settings: {e}")
-    api_title = "Conversation Service"
-    api_version = "1.0.0"
-    api_description = "Service de conversation avec IA"
+except Exception as config_error:
+    logger.warning(f"⚠️ Configuration par défaut utilisée: {config_error}")
+    api_title = "Conversation Service - Phase 1"
+    api_version = "1.0.0-phase1"
+    api_description = "Service de conversation financière - Phase 1"
     debug_mode = False
 
 app = FastAPI(
@@ -150,92 +190,165 @@ app.add_middleware(
 # ROUTES REGISTRATION
 # ==========================================
 
-# Routes principales
-app.include_router(router, prefix="/api/v1")
+# Import et registration des routes Phase 1
+from conversation_service.api.routes import router
+app.include_router(router, prefix="/api/v1", tags=["conversation-phase1"])
 
 # ==========================================
-# HEALTH CHECKS GLOBAUX
+# HEALTH CHECKS PHASE 1
 # ==========================================
 
 @app.get("/health")
 async def global_health_check():
-    """Health check global service + dépendances"""
+    """Health check global Phase 1 - Pattern Matcher L0"""
     try:
-        from conversation_service.utils import simple_health_check
-        health_status = await simple_health_check()
+        if not _service_initialized:
+            raise HTTPException(status_code=503, detail="Service Phase 1 initializing")
         
-        # Ajout informations Intent Detection Engine
-        if intent_engine:
-            engine_health = await intent_engine.get_health_status()
-            health_status.update({"intent_engine": engine_health})
+        if not pattern_matcher:
+            raise HTTPException(status_code=503, detail="Pattern Matcher L0 unavailable")
+        
+        # Test fonctionnel rapide L0
+        health_status = {
+            "status": "healthy",
+            "service": "conversation_service",
+            "phase": "L0_PATTERN_MATCHING",
+            "version": "1.0.0-phase1",
+            "timestamp": int(asyncio.get_event_loop().time()),
+            "uptime_seconds": int(asyncio.get_event_loop().time() - _service_start_time) if _service_start_time else 0
+        }
+        
+        # Test Pattern Matcher avec timeout
+        try:
+            test_match = await asyncio.wait_for(
+                pattern_matcher.match_intent("solde", "health_check"),
+                timeout=0.1  # Très rapide pour L0
+            )
+            
+            if test_match:
+                health_status["pattern_matcher"] = {
+                    "status": "functional",
+                    "test_pattern": test_match.pattern_name,
+                    "test_confidence": test_match.confidence
+                }
+            else:
+                health_status["pattern_matcher"] = {
+                    "status": "functional_no_match",
+                    "message": "No pattern matched test query"
+                }
+                
+        except asyncio.TimeoutError:
+            health_status["pattern_matcher"] = {"status": "timeout"}
+            health_status["status"] = "degraded"
+        except Exception as test_error:
+            health_status["pattern_matcher"] = {"status": "error", "error": str(test_error)[:50]}
+            health_status["status"] = "degraded"
+        
+        # Métriques L0
+        try:
+            l0_status = pattern_matcher.get_status()
+            health_status["l0_metrics"] = {
+                "patterns_loaded": l0_status["patterns_loaded"],
+                "total_requests": l0_status["total_requests"],
+                "success_rate": l0_status["success_rate"],
+                "avg_latency_ms": l0_status["avg_latency_ms"],
+                "targets_met": l0_status["targets_met"]
+            }
+        except Exception as metrics_error:
+            health_status["l0_metrics"] = {"error": str(metrics_error)[:50]}
         
         return health_status
         
-    except Exception as e:
-        logger.error(f"❌ Erreur health check: {e}")
-        raise HTTPException(status_code=503, detail=f"Health check failed: {e}")
+    except HTTPException:
+        raise
+    except Exception as health_error:
+        logger.error(f"❌ Health check error: {health_error}")
+        raise HTTPException(status_code=503, detail=f"Health check failed: {str(health_error)}")
 
 @app.get("/health/ready")
 async def readiness_check():
-    """Readiness check pour déploiement"""
-    if not intent_engine:
-        raise HTTPException(status_code=503, detail="Intent Detection Engine not initialized")
+    """Readiness check Phase 1"""
+    if not _service_initialized:
+        raise HTTPException(status_code=503, detail="Service Phase 1 not ready")
     
-    return {"status": "ready", "timestamp": asyncio.get_event_loop().time()}
+    if not pattern_matcher:
+        raise HTTPException(status_code=503, detail="Pattern Matcher L0 not ready")
+    
+    return {
+        "status": "ready",
+        "phase": "L0_PATTERN_MATCHING",
+        "timestamp": int(asyncio.get_event_loop().time())
+    }
 
 @app.get("/health/live")
 async def liveness_check():
-    """Liveness check basique"""
-    return {"status": "alive", "service": "conversation_service"}
+    """Liveness check ultra-basique"""
+    return {
+        "status": "alive",
+        "service": "conversation_service",
+        "phase": "L0_PATTERN_MATCHING"
+    }
 
 @app.get("/")
 async def root():
-    """Endpoint racine avec informations service"""
+    """Endpoint racine Phase 1"""
     return {
         "service": api_title,
         "version": api_version,
         "description": api_description,
-        "status": "running",
+        "phase": "L0_PATTERN_MATCHING",
+        "status": "running" if _service_initialized else "initializing",
+        "patterns_loaded": pattern_matcher.patterns.pattern_count if pattern_matcher else 0,
         "endpoints": {
             "chat": "/api/v1/chat",
             "health": "/health",
+            "metrics": "/api/v1/metrics",
             "docs": "/docs"
+        },
+        "targets": {
+            "latency_ms": "<10",
+            "success_rate": ">85%",
+            "l0_usage": ">80%"
         }
     }
 
 # ==========================================
-# FONCTION HELPER POUR ACCÈS À L'ENGINE
+# FONCTIONS D'ACCÈS GLOBAL PHASE 1
 # ==========================================
 
-def get_intent_engine() -> IntentDetectionEngine:
-    """
-    Retourne l'instance globale Intent Detection Engine
-    ✅ Version corrigée sans référence à settings.DEBUG
-    """
-    if intent_engine is None:
-        raise RuntimeError("Intent Detection Engine not initialized")
-    return intent_engine
+def get_pattern_matcher() -> PatternMatcher:
+    """Retourne l'instance globale Pattern Matcher L0"""
+    if pattern_matcher is None:
+        raise RuntimeError("Pattern Matcher L0 not initialized")
+    return pattern_matcher
 
-# Export pour utilisation dans les routes
-__all__ = ["app", "get_intent_engine"]
+def is_service_ready() -> bool:
+    """Vérifie si le service Phase 1 est complètement initialisé"""
+    return _service_initialized and pattern_matcher is not None
+
+def get_service_phase() -> str:
+    """Retourne la phase actuelle du service"""
+    return "L0_PATTERN_MATCHING"
+
+# Export pour utilisation dans les routes et local_app.py
+__all__ = ["app", "get_pattern_matcher", "is_service_ready", "get_service_phase"]
+
+# ==========================================
+# MAIN POUR DÉVELOPPEMENT LOCAL
+# ==========================================
 
 if __name__ == "__main__":
     import uvicorn
     
-    # ✅ Configuration avec gestion d'erreurs pour les attributs manquants
-    try:
-        host = getattr(settings, "HOST", "localhost")
-        port = getattr(settings, "CONVERSATION_SERVICE_PORT", 8001)
-        log_level = getattr(settings, "CONVERSATION_SERVICE_LOG_LEVEL", "INFO")
-        debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
-    except AttributeError as e:
-        logger.warning(f"⚠️ Configuration par défaut utilisée: {e}")
-        host = "localhost"
-        port = 8001
-        log_level = "INFO"
-        debug_mode = False
+    # Configuration serveur Phase 1
+    host = "localhost"
+    port = 8001
+    log_level = "INFO"
+    debug_mode = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
     
-    # Configuration optimisée pour production
+    logger.info(f"🚀 Démarrage serveur Phase 1 sur {host}:{port}")
+    
+    # Configuration uvicorn optimisée Phase 1
     uvicorn.run(
         "conversation_service.main:app",
         host=host,
@@ -243,6 +356,8 @@ if __name__ == "__main__":
         log_level=log_level.lower(),
         access_log=debug_mode,
         reload=debug_mode,
-        workers=1,  # Single worker pour développement
-        loop="asyncio"
+        workers=1,  # Single worker
+        loop="asyncio",
+        timeout_keep_alive=30,
+        timeout_graceful_shutdown=5
     )

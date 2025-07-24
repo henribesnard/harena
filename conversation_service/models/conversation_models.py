@@ -4,6 +4,12 @@
 Modèles de données avec évitement des imports circulaires,
 validation robuste et sérialization optimisée.
 Focus Phase 1 : Détails précis pour pattern matching L0.
+
+✅ CORRECTIONS APPLIQUÉES:
+- ServiceHealth flexible avec champs optionnels
+- L0PerformanceMetrics utilisable directement
+- Helpers optimisés pour usage réel
+- Validation cohérente avec les routes
 """
 
 from typing import Optional, Dict, Any, List, Union
@@ -375,20 +381,30 @@ class L0PerformanceMetrics(BaseModel):
             }
         }
 
+# ✅ SERVICEHEALTH CORRIGÉ - Flexible pour tous les cas d'usage
 class ServiceHealth(BaseModel):
-    """État de santé du service - Phase 1"""
+    """État de santé du service - Phase 1 (CORRIGÉ pour flexibilité)"""
     status: str = Field(..., description="healthy, degraded, unhealthy")
-    service_name: str = "conversation_service"
-    version: str = "1.0.0-phase1"
-    phase: str = "L0_PATTERN_MATCHING"
-    uptime_seconds: Optional[int] = None
-    dependencies: Dict[str, str] = Field(default_factory=dict)
-    l0_performance: Optional[L0PerformanceMetrics] = None
-    last_check: int = Field(default_factory=lambda: int(time.time()))
-    warnings: List[str] = Field(default_factory=list)
-    errors: List[str] = Field(default_factory=list)
+    phase: str = Field(..., description="Phase actuelle du service")
+    timestamp: int = Field(default_factory=lambda: int(time.time()))
+    latency_ms: float = Field(..., description="Latence du health check")
     
-    # ✅ MÉTRIQUES PHASE 1 SPÉCIALISÉES
+    # ✅ CHAMPS OPTIONNELS pour flexibilité totale
+    service_name: Optional[str] = Field("conversation_service", description="Nom du service")
+    version: Optional[str] = Field("1.0.0-phase1", description="Version du service")
+    uptime_seconds: Optional[int] = Field(None, description="Temps de fonctionnement")
+    
+    # ✅ Métriques pattern matcher (optionnel)
+    pattern_matcher: Optional[Dict[str, Any]] = Field(None, description="État du pattern matcher")
+    l0_performance: Optional[Dict[str, Any]] = Field(None, description="Métriques L0")
+    targets_status: Optional[Dict[str, Any]] = Field(None, description="Status des targets")
+    
+    # ✅ Gestion erreurs (optionnel)
+    error: Optional[str] = Field(None, description="Message d'erreur si applicable")
+    warnings: Optional[List[str]] = Field(None, description="Avertissements")
+    dependencies: Optional[Dict[str, str]] = Field(None, description="État des dépendances")
+    
+    # ✅ MÉTRIQUES PHASE 1 SPÉCIALISÉES (optionnel)
     pattern_matcher_status: Optional[str] = Field(None, description="État du pattern matcher")
     patterns_loaded: Optional[int] = Field(None, description="Nombre de patterns chargés")
     cache_status: Optional[str] = Field(None, description="État du cache")
@@ -397,18 +413,31 @@ class ServiceHealth(BaseModel):
         json_schema_extra = {
             "example": {
                 "status": "healthy",
+                "phase": "L0_PATTERN_MATCHING",
+                "timestamp": 1721850000,
+                "latency_ms": 45.2,
                 "service_name": "conversation_service",
                 "version": "1.0.0-phase1",
-                "phase": "L0_PATTERN_MATCHING",
-                "pattern_matcher_status": "loaded",
-                "patterns_loaded": 65,
-                "cache_status": "available",
-                "dependencies": {
-                    "cache_local": "healthy"
+                "pattern_matcher": {
+                    "status": "functional",
+                    "patterns_loaded": 60,
+                    "cache_size": 156
                 },
-                "last_check": 1640995200,
-                "warnings": [],
-                "errors": []
+                "l0_performance": {
+                    "total_requests": 1000,
+                    "success_rate": 0.856,
+                    "avg_latency_ms": 8.5,
+                    "usage_percent": 85.6,
+                    "cache_hit_rate": 0.234
+                },
+                "targets_status": {
+                    "latency_target": "< 10ms",
+                    "latency_met": True,
+                    "success_target": "> 85%",
+                    "success_met": True,
+                    "usage_target": "> 80%",
+                    "usage_met": True
+                }
             }
         }
 
@@ -447,7 +476,7 @@ class ConversationError(BaseModel):
         }
 
 # ==========================================
-# HELPER FUNCTIONS PHASE 1
+# HELPER FUNCTIONS PHASE 1 - CORRIGÉES
 # ==========================================
 
 def create_l0_error_response(
@@ -457,7 +486,7 @@ def create_l0_error_response(
     processing_time_ms: float = 0.0,
     pattern_analysis: Dict[str, Any] = None
 ) -> ChatResponse:
-    """Helper pour créer une réponse d'erreur L0"""
+    """✅ Helper pour créer une réponse d'erreur L0"""
     return ChatResponse(
         request_id=request_id,
         intent="UNKNOWN",
@@ -488,7 +517,7 @@ def create_l0_success_response(
     suggested_actions: List[str] = None,
     confidence_reasoning: str = None
 ) -> ChatResponse:
-    """Helper spécialisé pour réponses L0 avec détails pattern"""
+    """✅ Helper spécialisé pour réponses L0 avec détails pattern"""
     
     # Construction confidence détaillé
     confidence_details = ConfidenceScore(
@@ -538,7 +567,7 @@ def create_system_error_response(
     error: Exception,
     processing_time_ms: float = 0.0
 ) -> ChatResponse:
-    """Helper pour créer réponse erreur système"""
+    """✅ Helper pour créer réponse erreur système"""
     return ChatResponse(
         request_id=request_id,
         intent="SYSTEM_ERROR",
@@ -561,7 +590,7 @@ def create_system_error_response(
 # ==========================================
 
 def validate_l0_targets(metrics: L0PerformanceMetrics) -> Dict[str, bool]:
-    """Validation des targets Phase 1"""
+    """✅ Validation des targets Phase 1"""
     return {
         "latency_target_met": metrics.avg_l0_latency_ms < 10.0,  # <10ms
         "usage_target_met": metrics.target_l0_usage_percent >= 80.0,  # >80%
@@ -570,7 +599,7 @@ def validate_l0_targets(metrics: L0PerformanceMetrics) -> Dict[str, bool]:
     }
 
 def get_pattern_recommendations(metrics: L0PerformanceMetrics) -> List[str]:
-    """Recommandations d'amélioration patterns"""
+    """✅ Recommandations d'amélioration patterns"""
     recommendations = []
     
     if metrics.avg_l0_latency_ms > 10.0:
@@ -583,6 +612,49 @@ def get_pattern_recommendations(metrics: L0PerformanceMetrics) -> List[str]:
         recommendations.append("Améliorer stratégie de cache")
     
     return recommendations
+
+# ==========================================
+# HELPERS POUR CONVERSION COMPATIBILITÉ ROUTES
+# ==========================================
+
+def convert_l0_metrics_to_dict(metrics: L0PerformanceMetrics) -> Dict[str, Any]:
+    """✅ Convertit L0PerformanceMetrics en dict pour compatibilité routes"""
+    return {
+        "total_requests": metrics.total_requests,
+        "successful_requests": metrics.l0_successful_requests,
+        "failed_requests": metrics.l0_failed_requests,
+        "success_rate": round(metrics.l0_success_rate, 3),
+        "avg_latency_ms": round(metrics.avg_l0_latency_ms, 2),
+        "usage_percent": round(metrics.target_l0_usage_percent, 1),
+        "pattern_usage": metrics.pattern_usage,
+        "pattern_success_rate": metrics.pattern_success_rate,
+        "pattern_avg_latency": metrics.pattern_avg_latency,
+        "cache_hit_rate": round(metrics.cache_hit_rate, 3),
+        "cache_miss_rate": round(metrics.cache_miss_rate, 3),
+        "avg_cache_lookup_ms": round(metrics.avg_cache_lookup_ms, 2),
+        "confidence_distribution": metrics.confidence_distribution,
+        "timestamp": metrics.timestamp
+    }
+
+def create_health_response(
+    status: str,
+    latency_ms: float,
+    pattern_matcher_info: Dict[str, Any] = None,
+    l0_performance_info: Dict[str, Any] = None,
+    targets_info: Dict[str, Any] = None,
+    error: str = None
+) -> ServiceHealth:
+    """✅ Helper pour créer ServiceHealth de manière cohérente"""
+    return ServiceHealth(
+        status=status,
+        phase="L0_PATTERN_MATCHING",
+        timestamp=int(time.time()),
+        latency_ms=round(latency_ms, 2),
+        pattern_matcher=pattern_matcher_info,
+        l0_performance=l0_performance_info,
+        targets_status=targets_info,
+        error=error
+    )
 
 # ==========================================
 # EXPORTS
@@ -598,9 +670,15 @@ __all__ = [
     # Modèles spécialisés
     "FinancialEntity", "PatternMatch", "L0PerformanceMetrics", "ServiceHealth",
     
+    # Modèles d'erreur
+    "ConversationError",
+    
     # Helpers
     "create_l0_success_response", "create_l0_error_response", "create_system_error_response",
     
     # Validation
-    "validate_l0_targets", "get_pattern_recommendations"
+    "validate_l0_targets", "get_pattern_recommendations",
+    
+    # ✅ NOUVEAUX HELPERS COMPATIBILITÉ
+    "convert_l0_metrics_to_dict", "create_health_response"
 ]

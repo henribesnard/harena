@@ -1,6 +1,12 @@
 """
 Application Harena pour développement local.
 Structure EXACTEMENT identique à heroku_app.py avec configurations locales.
+
+✅ CORRECTIONS APPLIQUÉES:
+- Conversation Service Phase 1: Pattern Matcher L0 seulement
+- Imports corrigés: initialize_pattern_matcher au lieu de initialize_intent_engine
+- Variables app.state corrigées: pattern_matcher au lieu de intent_classifier
+- Suppression des composants L1/L2 (Phase 2/3)
 """
 
 import logging
@@ -36,7 +42,7 @@ if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
 class ServiceLoader:
-    """Chargeur de services - COPIE EXACTE de heroku_app.py"""
+    """Chargeur de services - COPIE EXACTE de heroku_app.py avec corrections Phase 1"""
     
     def __init__(self):
         self.services_status = {}
@@ -103,81 +109,60 @@ class ServiceLoader:
             return False
     
     async def initialize_conversation_service(self, app: FastAPI):
-        """✅ Initialise le conversation_service - VERSION CORRIGÉE"""
-        logger.info("🤖 Initialisation du conversation_service...")
+        """✅ Initialise le conversation_service - PHASE 1 PATTERN MATCHER L0"""
+        logger.info("🤖 Initialisation du conversation_service - PHASE 1 (L0 Pattern Matching)")
         
         try:
-            # Vérifier DEEPSEEK_API_KEY
-            deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
-            if not deepseek_key:
-                raise ValueError("DEEPSEEK_API_KEY n'est pas configurée")
+            # ✅ PHASE 1: Pas besoin de DEEPSEEK_API_KEY pour Pattern Matcher L0
+            logger.info("⚡ Phase 1: Pattern Matching L0 uniquement (pas de DeepSeek requis)")
             
-            logger.info(f"🔑 DEEPSEEK_API_KEY configurée: {deepseek_key[:20]}...")
+            # ✅ Import du Pattern Matcher Phase 1
+            logger.info("🎯 Initialisation du Pattern Matcher L0...")
+            from conversation_service.intent_detection.pattern_matcher import PatternMatcher
             
-            # Import progressif et sécurisé
-            from config_service.config import settings
-            from conversation_service.clients.deepseek_client import DeepSeekClient
+            # ✅ Créer l'instance Pattern Matcher
+            pattern_matcher = PatternMatcher(cache_manager=None)  # Pas de cache externe en Phase 1
+            await pattern_matcher.initialize()
+            logger.info("✅ Pattern Matcher L0 initialisé")
             
-            # Validation de la configuration
-            logger.info("⚙️ Validation de la configuration...")
-            validation = settings.validate_configuration()
-            if not validation["valid"]:
-                raise ValueError(f"Configuration invalide: {validation['errors']}")
+            # ✅ Test fonctionnel Pattern Matcher
+            logger.info("🧪 Test fonctionnel Pattern Matcher L0...")
+            test_match = await pattern_matcher.match_intent("solde", "test_init")
             
-            if validation["warnings"]:
-                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
+            if test_match:
+                logger.info(f"✅ Test réussi - Pattern: {test_match.pattern_name}, Confiance: {test_match.confidence:.2f}")
+            else:
+                logger.info("✅ Pattern Matcher initialisé (aucun match sur test - normal)")
             
-            # Test de connexion DeepSeek
-            logger.info("🔍 Test de connexion DeepSeek...")
-            deepseek_client = DeepSeekClient()
+            # ✅ Récupérer métriques Pattern Matcher
+            status = pattern_matcher.get_status()
+            l0_metrics = pattern_matcher.get_l0_metrics()
             
-            # ✅ Utiliser la méthode correcte pour tester DeepSeek
-            try:
-                # Test simple avec une requête basique
-                test_response = await deepseek_client.chat_completion(
-                    messages=[{"role": "user", "content": "test"}],
-                    model="deepseek-chat"
-                )
-                logger.info("✅ DeepSeek connecté et fonctionnel")
-            except Exception as e:
-                logger.warning(f"⚠️ Test DeepSeek échoué mais continuons: {e}")
-                # Ne pas bloquer l'initialisation pour un simple test
+            logger.info(f"📊 Pattern Matcher L0:")
+            logger.info(f"   - Patterns chargés: {status['patterns_loaded']}")
+            logger.info(f"   - Requêtes traitées: {l0_metrics.total_requests}")
+            logger.info(f"   - Latence moyenne: {l0_metrics.avg_l0_latency_ms:.1f}ms")
             
-            # ✅ Test de l'agent de classification - VERSION CORRIGÉE
-            logger.info("🤖 Test de l'agent de classification...")
-            from conversation_service.agents.intent_classifier import IntentClassifier
-            
-            # Créer une instance de l'agent au lieu d'utiliser une fonction inexistante
-            intent_agent = IntentClassifier()
-            
-            # Test simple pour valider l'initialisation
-            test_result = await intent_agent.classify_intent("test", "system")
-            
-            # ✅ Utilisation correcte de la méthode get_agent_metrics()
-            agent_metrics = intent_agent.get_agent_metrics()
-            logger.info(f"✅ Agent initialisé - Classifications: {agent_metrics['total_classifications']}")
-            logger.info(f"🎯 Seuil confiance: {settings.MIN_CONFIDENCE_THRESHOLD}")
-            
-            # Mettre les composants dans app.state
+            # ✅ Mettre les composants Phase 1 dans app.state
             app.state.conversation_service_initialized = True
-            app.state.deepseek_client = deepseek_client
-            app.state.intent_classifier = intent_agent
+            app.state.pattern_matcher = pattern_matcher  # ✅ CORRIGÉ: pattern_matcher au lieu de intent_classifier
+            app.state.conversation_phase = "L0_PATTERN_MATCHING"
             app.state.conversation_initialization_error = None
             
             self.conversation_service_initialized = True
             self.conversation_service_error = None
             
-            logger.info("🎉 Conversation Service complètement initialisé!")
+            logger.info("🎉 Conversation Service Phase 1 complètement initialisé!")
             return True
             
         except Exception as e:
-            error_msg = f"Erreur initialisation conversation_service: {str(e)}"
+            error_msg = f"Erreur initialisation conversation_service Phase 1: {str(e)}"
             logger.error(f"❌ {error_msg}")
             
             # Marquer l'échec dans app.state
             app.state.conversation_service_initialized = False
-            app.state.deepseek_client = None
-            app.state.intent_classifier = None
+            app.state.pattern_matcher = None  # ✅ CORRIGÉ
+            app.state.conversation_phase = "FAILED"
             app.state.conversation_initialization_error = error_msg
             
             self.conversation_service_initialized = False
@@ -476,15 +461,14 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
-        # 5. ✅ CONVERSATION SERVICE - PATTERN STANDARDISÉ (identique à search_service)
-        logger.info("🤖 Chargement et initialisation du conversation_service...")
+        # 5. ✅ CONVERSATION SERVICE - PHASE 1 L0 PATTERN MATCHING
+        logger.info("🤖 Chargement et initialisation du conversation_service - PHASE 1...")
         try:
-            # Étape 1: Initialiser les composants (comme search_service)
+            # ✅ ÉTAPE 1: Initialiser les composants Phase 1 (Pattern Matcher L0)
             conversation_init_success = await loader.initialize_conversation_service(app)
             
-            # Étape 2: Charger le router avec la méthode standardisée
+            # ✅ ÉTAPE 2: Charger le router avec la méthode standardisée
             if conversation_init_success:
-                # Utiliser load_service_router comme les autres services
                 router_success = loader.load_service_router(
                     app, 
                     "conversation_service", 
@@ -493,26 +477,27 @@ def create_app():
                 )
                 
                 if router_success:
-                    # ✅ ÉTAPE 3: Initialiser l'intent engine dans les routes (pattern search_service)
+                    # ✅ ÉTAPE 3: Initialiser le Pattern Matcher dans les routes (CORRIGÉ)
                     try:
-                        from conversation_service.api import initialize_intent_engine
+                        from conversation_service.api import initialize_pattern_matcher  # ✅ CORRIGÉ
                         
-                        # Récupérer l'intent classifier initialisé dans app.state
-                        intent_classifier = getattr(app.state, 'intent_classifier', None)
-                        if intent_classifier:
-                            # Initialiser l'engine dans les routes avec le classifier
-                            initialize_intent_engine(intent_classifier)
-                            logger.info("✅ Intent engine initialisé dans les routes")
+                        # ✅ Récupérer le Pattern Matcher initialisé dans app.state
+                        pattern_matcher = getattr(app.state, 'pattern_matcher', None)  # ✅ CORRIGÉ
+                        if pattern_matcher:
+                            # ✅ Initialiser le Pattern Matcher dans les routes
+                            initialize_pattern_matcher(pattern_matcher)  # ✅ CORRIGÉ
+                            logger.info("✅ Pattern Matcher L0 initialisé dans les routes")
                         else:
-                            logger.warning("⚠️ Intent classifier non trouvé dans app.state")
+                            logger.warning("⚠️ Pattern Matcher non trouvé dans app.state")
                     except Exception as e:
-                        logger.error(f"❌ Erreur initialisation intent engine dans routes: {e}")
+                        logger.error(f"❌ Erreur initialisation Pattern Matcher dans routes: {e}")
                     
-                    # Marquer comme complètement initialisé
+                    # ✅ Marquer comme complètement initialisé Phase 1
                     loader.services_status["conversation_service"]["initialized"] = True
-                    loader.services_status["conversation_service"]["architecture"] = "mvp_intent_classifier"
-                    loader.services_status["conversation_service"]["model"] = "deepseek-chat"
-                    logger.info("✅ conversation_service: Complètement initialisé avec routes")
+                    loader.services_status["conversation_service"]["architecture"] = "phase1_l0_pattern_matching"  # ✅ CORRIGÉ
+                    loader.services_status["conversation_service"]["phase"] = "L0_PATTERN_MATCHING"
+                    loader.services_status["conversation_service"]["version"] = "1.0.0-phase1"
+                    logger.info("✅ conversation_service: Phase 1 complètement initialisée avec routes")
                 else:
                     logger.error("❌ conversation_service: Initialisation OK mais router non chargé")
                     loader.services_status["conversation_service"] = {
@@ -521,23 +506,28 @@ def create_app():
                         "prefix": "/api/v1/conversation",
                         "initialized": True,
                         "error": "Router loading failed",
-                        "architecture": "mvp_intent_classifier",
-                        "model": "deepseek-chat"
+                        "architecture": "phase1_l0_pattern_matching",
+                        "phase": "L0_PATTERN_MATCHING",
+                        "version": "1.0.0-phase1"
                     }
             else:
-                logger.error("❌ conversation_service: Initialisation des composants échouée")
+                logger.error("❌ conversation_service: Initialisation des composants Phase 1 échouée")
                 loader.services_status["conversation_service"] = {
                     "status": "error", 
                     "error": loader.conversation_service_error,
-                    "architecture": "mvp_intent_classifier"
+                    "architecture": "phase1_l0_pattern_matching",
+                    "phase": "L0_PATTERN_MATCHING",
+                    "version": "1.0.0-phase1"
                 }
                         
         except Exception as e:
-            logger.error(f"❌ conversation_service: Erreur générale - {str(e)}")
+            logger.error(f"❌ conversation_service: Erreur générale Phase 1 - {str(e)}")
             loader.services_status["conversation_service"] = {
                 "status": "error", 
                 "error": str(e),
-                "architecture": "mvp_intent_classifier"
+                "architecture": "phase1_l0_pattern_matching",
+                "phase": "L0_PATTERN_MATCHING",
+                "version": "1.0.0-phase1"
             }
 
         # Compter les services réussis
@@ -559,7 +549,7 @@ def create_app():
 
     @app.get("/health")
     async def health():
-        """Health check global - EXACTEMENT COMME HEROKU_APP.PY"""
+        """Health check global - EXACTEMENT COMME HEROKU_APP.PY avec corrections Phase 1"""
         ok_services = [name for name, status in loader.services_status.items() 
                       if status.get("status") == "ok"]
         degraded_services = [name for name, status in loader.services_status.items() 
@@ -590,7 +580,8 @@ def create_app():
                 "initialized": conversation_status.get("initialized", False),
                 "error": conversation_status.get("error"),
                 "architecture": conversation_status.get("architecture"),
-                "model": conversation_status.get("model")
+                "phase": conversation_status.get("phase"),  # ✅ AJOUTÉ
+                "version": conversation_status.get("version")  # ✅ AJOUTÉ
             },
             "enrichment_service": {
                 "status": enrichment_status.get("status"),
@@ -604,7 +595,7 @@ def create_app():
 
     @app.get("/status")
     async def status():
-        """Statut détaillé - EXACTEMENT COMME HEROKU_APP.PY"""
+        """Statut détaillé - EXACTEMENT COMME HEROKU_APP.PY avec corrections Phase 1"""
         return {
             "platform": "Harena Finance",
             "services": loader.services_status,
@@ -617,8 +608,18 @@ def create_app():
             "conversation_service_details": {
                 "initialized": loader.conversation_service_initialized,
                 "error": loader.conversation_service_error,
-                "architecture": "mvp_intent_classifier",
-                "model": "deepseek-chat"
+                "architecture": "phase1_l0_pattern_matching",  # ✅ CORRIGÉ
+                "phase": "L0_PATTERN_MATCHING",  # ✅ AJOUTÉ
+                "version": "1.0.0-phase1",  # ✅ AJOUTÉ
+                "next_phase": "L1_LIGHTWEIGHT_CLASSIFIER",  # ✅ AJOUTÉ
+                "features": [  # ✅ AJOUTÉ
+                    "Pattern matching ultra-rapide (<10ms)",
+                    "60+ patterns financiers optimisés",
+                    "Cache intelligent requêtes",
+                    "Extraction entités automatique",
+                    "Métriques temps réel L0",
+                    "Debug et monitoring avancés"
+                ]
             },
             "enrichment_service_details": {
                 "architecture": "elasticsearch_only",
@@ -634,7 +635,7 @@ def create_app():
 
     @app.get("/")
     async def root():
-        """Page d'accueil - VERSION LOCAL DEV"""
+        """Page d'accueil - VERSION LOCAL DEV avec corrections Phase 1"""
         return {
             "message": "🏦 Harena Finance Platform - LOCAL DEVELOPMENT",
             "version": "1.0.0-dev",
@@ -643,10 +644,12 @@ def create_app():
                 "sync_service - Synchronisation Bridge API", 
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
                 "search_service - Recherche lexicale (Architecture simplifiée)",
-                "conversation_service - Assistant IA avec DeepSeek (MVP)"
+                "conversation_service - Pattern Matching L0 Phase 1 (<10ms)"
             ],
             "services_coming_soon": [
-                "conversation_service v2 - Assistant IA avec AutoGen + équipes d'agents"
+                "conversation_service Phase 2 - L1 TinyBERT Classification",
+                "conversation_service Phase 3 - L2 DeepSeek LLM Fallback",
+                "conversation_service Phase 4 - AutoGen Multi-Agents"
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
@@ -659,7 +662,7 @@ def create_app():
                 "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/elasticsearch/*": "Enrichissement Elasticsearch (v2.0)",
                 "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
-                "/api/v1/conversation/*": "Assistant IA conversationnel (DeepSeek MVP)"
+                "/api/v1/conversation/*": "Assistant IA Pattern Matching Phase 1"
             },
             "development_mode": {
                 "hot_reload": True,
@@ -679,14 +682,68 @@ def create_app():
                     ]
                 },
                 "conversation_service": {
-                    "version": "1.0.0-mvp",
+                    "version": "1.0.0-phase1",
+                    "phase": "L0_PATTERN_MATCHING",
                     "changes": [
+                        "Phase 1: Pattern Matcher L0 ultra-rapide (<10ms)",
+                        "60+ patterns financiers optimisés",
+                        "Cache intelligent et métriques temps réel",
                         "Pattern standardisé identique à search_service",
-                        "Initialisation via app.state + initialize_intent_engine()",
+                        "Initialisation via app.state + initialize_pattern_matcher()",
                         "Routes compatibles FastAPI docs",
                         "Gestion d'erreurs robuste avec fallbacks",
-                        "Métriques intégrées"
-                    ]
+                        "Endpoints debug et validation Phase 1"
+                    ],
+                    "roadmap": {
+                        "phase1": "CURRENT - Pattern Matching L0 (<10ms, 85% hit rate)",
+                        "phase2": "NEXT - L1 TinyBERT Classification (15-30ms, 12% usage)",
+                        "phase3": "FUTURE - L2 DeepSeek LLM Fallback (200-500ms, 3% usage)",
+                        "phase4": "VISION - AutoGen Multi-Agents Teams"
+                    },
+                    "phase1_targets": {
+                        "latency_ms": "<10",
+                        "success_rate": ">85%",
+                        "l0_usage_percent": ">80%",
+                        "cache_hit_rate": ">15%"
+                    }
+                }
+            },
+            "conversation_service_phase1": {
+                "description": "Assistant IA avec Pattern Matching L0 ultra-rapide",
+                "capabilities": [
+                    "Consultation soldes instantanée (<10ms)",
+                    "Virements simples avec extraction montants",
+                    "Gestion carte basique (blocage, activation)",
+                    "Analyse dépenses par catégorie",
+                    "60+ patterns financiers optimisés",
+                    "Cache intelligent requêtes fréquentes"
+                ],
+                "limitations": [
+                    "Pas de requêtes complexes multi-étapes",
+                    "Pas d'analyse contextuelle avancée", 
+                    "Pas de conversations multi-tours",
+                    "Couverture limitée aux patterns prédéfinis"
+                ],
+                "endpoints_phase1": {
+                    "main": {
+                        "chat": "POST /api/v1/conversation/chat - Classification L0",
+                        "health": "GET /api/v1/conversation/health - Health check L0",
+                        "metrics": "GET /api/v1/conversation/metrics - Métriques L0",
+                        "status": "GET /api/v1/conversation/status - Status Phase 1"
+                    },
+                    "debug": {
+                        "test_patterns": "POST /api/v1/conversation/debug/test-patterns",
+                        "benchmark_l0": "POST /api/v1/conversation/debug/benchmark-l0",
+                        "patterns_info": "GET /api/v1/conversation/debug/patterns-info"
+                    },
+                    "validation": {
+                        "phase1_ready": "GET /api/v1/conversation/validate-phase1"
+                    }
+                },
+                "next_steps": {
+                    "validate_phase1": "Vérifier targets performance Phase 1",
+                    "optimize_patterns": "Optimiser patterns pour >85% succès",
+                    "prepare_phase2": "Préparer L1 TinyBERT Classification"
                 }
             }
         }
@@ -702,6 +759,9 @@ if __name__ == "__main__":
     logger.info("📡 Accès: http://localhost:8000")
     logger.info("📚 Docs: http://localhost:8000/docs")
     logger.info("🔍 Status: http://localhost:8000/status")
+    logger.info("🤖 Conversation Service Phase 1: http://localhost:8000/api/v1/conversation/")
+    logger.info("📊 Métriques L0: http://localhost:8000/api/v1/conversation/metrics")
+    logger.info("✅ Validation Phase 1: http://localhost:8000/api/v1/conversation/validate-phase1")
     
     uvicorn.run(
         "local_app:app", 

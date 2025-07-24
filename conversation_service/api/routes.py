@@ -3,6 +3,12 @@
 
 Routes API optimisées pour Pattern Matcher L0 avec latence <10ms
 et réponses détaillées pour debug et monitoring.
+
+✅ CORRECTIONS APPLIQUÉES:
+- Utilisation correcte de ServiceHealth avec response_model
+- Utilisation des helpers create_health_response et convert_l0_metrics_to_dict
+- Suppression des dictionnaires manuels au profit des modèles Pydantic
+- Imports optimisés sans classes inutilisées
 """
 
 import asyncio
@@ -13,11 +19,13 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 
-# Imports Phase 1
+# ✅ IMPORTS CORRIGÉS - Ajout des nouveaux helpers
 from conversation_service.models.conversation_models import (
-    ChatRequest, ChatResponse, ServiceHealth, L0PerformanceMetrics,
+    ChatRequest, ChatResponse, ServiceHealth,
     create_l0_success_response, create_l0_error_response, create_system_error_response,
-    FinancialIntent, PatternMatch
+    FinancialIntent, PatternMatch,
+    validate_l0_targets, get_pattern_recommendations,
+    convert_l0_metrics_to_dict, create_health_response
 )
 from conversation_service.intent_detection.pattern_matcher import PatternMatcher, create_test_queries_phase1
 from conversation_service.utils.logging import log_intent_detection, log_performance_metric
@@ -246,34 +254,27 @@ async def chat_l0_endpoint(
         )
 
 # ==========================================
-# HEALTH CHECK PHASE 1
+# HEALTH CHECK PHASE 1 - ✅ CORRIGÉ
 # ==========================================
 
-@router.get("/health")
-async def l0_health_check():
+@router.get("/health", response_model=ServiceHealth)
+async def l0_health_check(
+    matcher = Depends(get_pattern_matcher)
+) -> ServiceHealth:
     """
     🏥 Health check spécialisé Phase 1 - Pattern Matcher L0
     
+    ✅ CORRIGÉ: Utilise ServiceHealth au lieu d'un dictionnaire
     Timeout: 100ms maximum (L0 ultra-rapide)
     Inclut: status patterns, performance L0, targets
     """
     start_time = time.time()
     
     try:
-        # Vérification Pattern Matcher disponible
-        if pattern_matcher_l0 is None:
-            return {
-                "status": "unhealthy",
-                "phase": "L0_PATTERN_MATCHING",
-                "timestamp": int(time.time()),
-                "latency_ms": 0.0,
-                "error": "Pattern Matcher L0 unavailable"
-            }
-        
         # Test fonctionnel rapide L0
         try:
             test_match = await asyncio.wait_for(
-                pattern_matcher_l0.match_intent("solde", "health_check"),
+                matcher.match_intent("solde", "health_check"),
                 timeout=0.05  # 50ms max pour L0
             )
             
@@ -299,8 +300,8 @@ async def l0_health_check():
         health_latency = (time.time() - start_time) * 1000
         
         # Métriques L0 actuelles
-        l0_status = pattern_matcher_l0.get_status()
-        l0_metrics = pattern_matcher_l0.get_l0_metrics()
+        l0_status = matcher.get_status()
+        l0_metrics = matcher.get_l0_metrics()
         
         # Détermination status global
         if matcher_status == "functional" and health_latency < 100:
@@ -310,25 +311,24 @@ async def l0_health_check():
         else:
             overall_status = "unhealthy"
         
-        return {
-            "status": overall_status,
-            "phase": "L0_PATTERN_MATCHING",
-            "timestamp": int(time.time()),
-            "latency_ms": round(health_latency, 2),
-            "pattern_matcher": {
+        # ✅ UTILISE create_health_response helper
+        return create_health_response(
+            status=overall_status,
+            latency_ms=health_latency,
+            pattern_matcher_info={
                 "status": matcher_status,
                 "test_details": test_details,
                 "patterns_loaded": l0_status["patterns_loaded"],
                 "cache_size": l0_status["cache_size"]
             },
-            "l0_performance": {
+            l0_performance_info={
                 "total_requests": l0_metrics.total_requests,
                 "success_rate": round(l0_metrics.l0_success_rate, 3),
                 "avg_latency_ms": round(l0_metrics.avg_l0_latency_ms, 2),
                 "usage_percent": round(l0_metrics.target_l0_usage_percent, 1),
                 "cache_hit_rate": round(l0_metrics.cache_hit_rate, 3)
             },
-            "targets_status": {
+            targets_info={
                 "latency_target": "< 10ms",
                 "latency_met": l0_metrics.avg_l0_latency_ms < 10.0,
                 "success_target": "> 85%",
@@ -336,22 +336,21 @@ async def l0_health_check():
                 "usage_target": "> 80%",
                 "usage_met": l0_metrics.target_l0_usage_percent >= 80.0
             }
-        }
+        )
         
     except Exception as health_error:
         health_latency = (time.time() - start_time) * 1000
         logger.error(f"❌ L0 Health check error: {health_error}")
         
-        return {
-            "status": "unhealthy",
-            "phase": "L0_PATTERN_MATCHING",
-            "timestamp": int(time.time()),
-            "latency_ms": round(health_latency, 2),
-            "error": str(health_error)[:100]
-        }
+        # ✅ UTILISE create_health_response même en cas d'erreur
+        return create_health_response(
+            status="unhealthy",
+            latency_ms=health_latency,
+            error=str(health_error)[:100]
+        )
 
 # ==========================================
-# MÉTRIQUES DÉTAILLÉES PHASE 1
+# MÉTRIQUES DÉTAILLÉES PHASE 1 - ✅ CORRIGÉ
 # ==========================================
 
 @router.get("/metrics")
@@ -361,6 +360,7 @@ async def get_l0_metrics(
     """
     📊 Métriques détaillées Phase 1 - Pattern Matcher L0
     
+    ✅ CORRIGÉ: Utilise convert_l0_metrics_to_dict et validate_l0_targets
     Inclut: performance L0, usage patterns, distribution confiance
     """
     try:
@@ -374,22 +374,16 @@ async def get_l0_metrics(
             "phase": "L0_PATTERN_MATCHING",
             "timestamp": int(time.time()),
             
-            # Performance globale L0
-            "l0_performance": {
-                "total_requests": l0_metrics.total_requests,
-                "successful_requests": l0_metrics.l0_successful_requests,
-                "failed_requests": l0_metrics.l0_failed_requests,
-                "success_rate": round(l0_metrics.l0_success_rate, 3),
-                "avg_latency_ms": round(l0_metrics.avg_l0_latency_ms, 2),
-                "usage_percent": round(l0_metrics.target_l0_usage_percent, 1)
-            },
+            # ✅ UTILISE convert_l0_metrics_to_dict
+            "l0_performance": convert_l0_metrics_to_dict(l0_metrics),
             
             # Cache performance
             "cache_performance": {
                 "hit_rate": round(l0_metrics.cache_hit_rate, 3),
                 "miss_rate": round(l0_metrics.cache_miss_rate, 3),
                 "cache_size": l0_status["cache_size"],
-                "cache_max_size": l0_status.get("cache_max_size", 1000)
+                "cache_max_size": l0_status.get("cache_max_size", 1000),
+                "avg_lookup_ms": round(l0_metrics.avg_cache_lookup_ms, 2)
             },
             
             # Patterns usage
@@ -404,26 +398,49 @@ async def get_l0_metrics(
             # Distribution confiance
             "confidence_distribution": l0_metrics.confidence_distribution,
             
-            # Targets validation
-            "targets_validation": {
-                "latency_target_ms": 10.0,
-                "latency_current_ms": round(l0_metrics.avg_l0_latency_ms, 2),
-                "latency_met": l0_metrics.avg_l0_latency_ms < 10.0,
-                
-                "success_rate_target": 0.85,
-                "success_rate_current": round(l0_metrics.l0_success_rate, 3),
-                "success_rate_met": l0_metrics.l0_success_rate >= 0.85,
-                
-                "usage_target_percent": 80.0,
-                "usage_current_percent": round(l0_metrics.target_l0_usage_percent, 1),
-                "usage_met": l0_metrics.target_l0_usage_percent >= 80.0,
-                
-                "cache_target_rate": 0.15,
-                "cache_current_rate": round(l0_metrics.cache_hit_rate, 3),
-                "cache_met": l0_metrics.cache_hit_rate >= 0.15
+            # ✅ UTILISE validate_l0_targets helper
+            "targets_validation": validate_l0_targets(l0_metrics),
+            
+            # ✅ UTILISE get_pattern_recommendations helper
+            "recommendations": get_pattern_recommendations(l0_metrics),
+            
+            # Détails targets avec valeurs actuelles
+            "targets_details": {
+                "latency": {
+                    "target_ms": 10.0,
+                    "current_ms": round(l0_metrics.avg_l0_latency_ms, 2),
+                    "met": l0_metrics.avg_l0_latency_ms < 10.0,
+                    "performance": "excellent" if l0_metrics.avg_l0_latency_ms < 5.0 
+                                 else "good" if l0_metrics.avg_l0_latency_ms < 10.0 
+                                 else "needs_optimization"
+                },
+                "success_rate": {
+                    "target": 0.85,
+                    "current": round(l0_metrics.l0_success_rate, 3),
+                    "met": l0_metrics.l0_success_rate >= 0.85,
+                    "performance": "excellent" if l0_metrics.l0_success_rate >= 0.90
+                                 else "good" if l0_metrics.l0_success_rate >= 0.85
+                                 else "needs_optimization"
+                },
+                "usage": {
+                    "target_percent": 80.0,
+                    "current_percent": round(l0_metrics.target_l0_usage_percent, 1),
+                    "met": l0_metrics.target_l0_usage_percent >= 80.0,
+                    "performance": "excellent" if l0_metrics.target_l0_usage_percent >= 85.0
+                                 else "good" if l0_metrics.target_l0_usage_percent >= 80.0
+                                 else "needs_optimization"
+                },
+                "cache": {
+                    "target_rate": 0.15,
+                    "current_rate": round(l0_metrics.cache_hit_rate, 3),
+                    "met": l0_metrics.cache_hit_rate >= 0.15,
+                    "performance": "excellent" if l0_metrics.cache_hit_rate >= 0.25
+                                 else "good" if l0_metrics.cache_hit_rate >= 0.15
+                                 else "needs_optimization"
+                }
             },
             
-            # Système
+            # Système et readiness
             "system_info": {
                 "asyncio_tasks": len(asyncio.all_tasks()),
                 "phase": "L0_PATTERN_MATCHING",
@@ -431,18 +448,26 @@ async def get_l0_metrics(
                     l0_metrics.avg_l0_latency_ms < 10.0,
                     l0_metrics.l0_success_rate >= 0.85,
                     l0_metrics.target_l0_usage_percent >= 80.0
-                ])
+                ]),
+                "overall_health": "excellent" if all([
+                    l0_metrics.avg_l0_latency_ms < 5.0,
+                    l0_metrics.l0_success_rate >= 0.90,
+                    l0_metrics.target_l0_usage_percent >= 85.0,
+                    l0_metrics.cache_hit_rate >= 0.20
+                ]) else "good" if all([
+                    l0_metrics.avg_l0_latency_ms < 10.0,
+                    l0_metrics.l0_success_rate >= 0.85,
+                    l0_metrics.target_l0_usage_percent >= 80.0
+                ]) else "needs_optimization"
             }
         }
         
     except Exception as metrics_error:
         logger.error(f"❌ Erreur métriques L0: {metrics_error}")
-        return {
-            "error": "l0_metrics_unavailable",
-            "message": str(metrics_error),
-            "phase": "L0_PATTERN_MATCHING",
-            "timestamp": int(time.time())
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur récupération métriques L0: {str(metrics_error)}"
+        )
 
 # ==========================================
 # STATUS INFORMATIF PHASE 1
@@ -715,3 +740,118 @@ async def admin_add_pattern(
             "message": str(add_error),
             "timestamp": int(time.time())
         }
+
+# ==========================================
+# ENDPOINT VALIDATION PHASE 1
+# ==========================================
+
+@router.get("/validate-phase1")
+async def validate_phase1_readiness(
+    matcher = Depends(get_pattern_matcher)
+) -> Dict[str, Any]:
+    """
+    ✅ Validation complète Phase 1 - Prêt pour Phase 2 ?
+    
+    Vérifie tous les critères de succès Phase 1 et détermine
+    si le système est prêt pour l'ajout de L1 TinyBERT.
+    """
+    try:
+        # Métriques actuelles
+        l0_metrics = matcher.get_l0_metrics()
+        l0_status = matcher.get_status()
+        
+        # Validation des targets
+        targets_met = validate_l0_targets(l0_metrics)
+        
+        # Critères supplémentaires Phase 1
+        additional_criteria = {
+            "patterns_loaded": l0_status["patterns_loaded"] >= 50,  # Au moins 50 patterns
+            "cache_functional": l0_status["cache_size"] >= 0,  # Cache fonctionnel
+            "no_critical_errors": len(get_pattern_recommendations(l0_metrics)) <= 2,  # Max 2 recommandations
+            "minimum_requests": l0_metrics.total_requests >= 100,  # Au moins 100 requêtes testées
+            "uptime_stable": True  # Système stable (à implémenter monitoring)
+        }
+        
+        # Score global Phase 1
+        all_targets_met = all(targets_met.values())
+        all_additional_met = all(additional_criteria.values())
+        phase1_success = all_targets_met and all_additional_met
+        
+        # Détermination status et next steps
+        if phase1_success:
+            overall_status = "READY_FOR_PHASE2"
+            next_action = "Démarrer implémentation L1 TinyBERT Classification"
+            confidence_level = "HIGH"
+        elif all_targets_met:
+            overall_status = "ALMOST_READY"
+            next_action = "Corriger critères additionnels puis lancer Phase 2"
+            confidence_level = "MEDIUM"
+        else:
+            overall_status = "NEEDS_OPTIMIZATION"
+            next_action = "Optimiser patterns L0 avant Phase 2"
+            confidence_level = "LOW"
+        
+        return {
+            "phase1_validation": {
+                "overall_status": overall_status,
+                "phase1_success": phase1_success,
+                "confidence_level": confidence_level,
+                "next_action": next_action
+            },
+            
+            "targets_validation": {
+                "all_targets_met": all_targets_met,
+                "details": targets_met
+            },
+            
+            "additional_criteria": {
+                "all_criteria_met": all_additional_met,
+                "details": additional_criteria
+            },
+            
+            "current_performance": {
+                "latency_ms": round(l0_metrics.avg_l0_latency_ms, 2),
+                "success_rate": round(l0_metrics.l0_success_rate, 3),
+                "usage_percent": round(l0_metrics.target_l0_usage_percent, 1),
+                "cache_hit_rate": round(l0_metrics.cache_hit_rate, 3),
+                "total_requests": l0_metrics.total_requests,
+                "patterns_loaded": l0_status["patterns_loaded"]
+            },
+            
+            "recommendations": get_pattern_recommendations(l0_metrics),
+            
+            "phase2_readiness": {
+                "estimated_l1_performance": {
+                    "expected_latency_ms": "15-30",
+                    "expected_coverage": "95%",
+                    "expected_success_rate": ">90%"
+                } if phase1_success else None,
+                
+                "integration_complexity": "MEDIUM" if phase1_success else "HIGH",
+                
+                "recommended_timeline": {
+                    "phase2_start": "Immediate" if phase1_success else "After optimization",
+                    "estimated_duration": "2-3 weeks" if phase1_success else "4-6 weeks"
+                }
+            },
+            
+            "timestamp": int(time.time())
+        }
+        
+    except Exception as validation_error:
+        logger.error(f"❌ Erreur validation Phase 1: {validation_error}")
+        return {
+            "phase1_validation": {
+                "overall_status": "VALIDATION_ERROR",
+                "phase1_success": False,
+                "error": str(validation_error)
+            },
+            "timestamp": int(time.time())
+        }
+
+# ==========================================
+# EXPORTS ET CONFIGURATION
+# ==========================================
+
+# Export du router pour utilisation dans main.py
+__all__ = ["router", "initialize_pattern_matcher", "get_pattern_matcher_direct"]

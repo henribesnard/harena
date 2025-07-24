@@ -1,11 +1,10 @@
 """
-⚡ Niveau L0 - Pattern Matcher ultra-rapide - PHASE 1
+⚡ Niveau L0 - Pattern Matcher ultra-rapide - PHASE 1 - VERSION CORRIGÉE
 
 Reconnaissance patterns financiers fréquents avec regex pré-compilés
 pour objectif performance <10ms sur 85% des requêtes.
 
-Version Phase 1 : Focus sur ~60 patterns essentiels avec cache intelligent
-et intégration directe aux nouveaux modèles Pydantic.
+Version corrigée: Fix problèmes validation ConfidenceScore et entités
 """
 
 import re
@@ -18,7 +17,8 @@ from dataclasses import dataclass
 # Import des nouveaux modèles Phase 1
 from conversation_service.models.conversation_models import (
     FinancialIntent, PatternType, PatternMatch, FinancialEntity,
-    L0PerformanceMetrics, create_l0_success_response, create_l0_error_response
+    L0PerformanceMetrics, create_l0_success_response, create_l0_error_response,
+    ConfidenceLevel, ChatResponse, ProcessingMetadata, ConfidenceScore
 )
 from conversation_service.utils.logging import log_intent_detection, log_performance_metric
 
@@ -91,9 +91,8 @@ class FinancialPatterns:
         logger.info(f"✅ {compiled_count} patterns financiers Phase 1 compilés")
     
     def _get_balance_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns BALANCE_CHECK - 15 patterns"""
+        """Patterns BALANCE_CHECK - 10 patterns"""
         return [
-            # Patterns directs haute confiance
             {
                 "name": "direct_balance",
                 "regex": r"^solde$",
@@ -169,9 +168,8 @@ class FinancialPatterns:
         ]
     
     def _get_transfer_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns TRANSFER - 12 patterns"""
+        """Patterns TRANSFER - 9 patterns"""
         return [
-            # Virements avec montants
             {
                 "name": "transfer_amount",
                 "regex": r"(?:faire\s+un\s+)?virement\s+(?:de\s+)?(\d+(?:[,\.]\d{1,2})?)\s*(?:euros?|€|eur)",
@@ -204,7 +202,6 @@ class FinancialPatterns:
                 "entities": ["amount", "currency"],
                 "priority": 1
             },
-            # Virements génériques
             {
                 "name": "generic_transfer",
                 "regex": r"(?:faire\s+un\s+)?(?:virement|transfert)(?:\s+bancaire)?",
@@ -226,7 +223,6 @@ class FinancialPatterns:
                 "type": PatternType.ACTION_VERB,
                 "priority": 2
             },
-            # Virements avec bénéficiaires
             {
                 "name": "transfer_to_person",
                 "regex": r"(?:virement|virer|transférer|envoyer)\s+(?:vers|à|pour)\s+([a-zA-ZÀ-ÿ\s]{2,20})",
@@ -246,7 +242,7 @@ class FinancialPatterns:
         ]
     
     def _get_expense_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns EXPENSE_ANALYSIS - 10 patterns"""
+        """Patterns EXPENSE_ANALYSIS - 7 patterns"""
         return [
             {
                 "name": "expenses_category",
@@ -306,7 +302,7 @@ class FinancialPatterns:
         ]
     
     def _get_card_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns CARD_MANAGEMENT - 8 patterns"""
+        """Patterns CARD_MANAGEMENT - 6 patterns"""
         return [
             {
                 "name": "block_card",
@@ -358,7 +354,7 @@ class FinancialPatterns:
         ]
     
     def _get_greeting_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns GREETING - 5 patterns"""
+        """Patterns GREETING - 3 patterns"""
         return [
             {
                 "name": "simple_greeting",
@@ -384,7 +380,7 @@ class FinancialPatterns:
         ]
     
     def _get_help_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns HELP - 5 patterns"""
+        """Patterns HELP - 4 patterns"""
         return [
             {
                 "name": "help_request",
@@ -417,7 +413,7 @@ class FinancialPatterns:
         ]
     
     def _get_goodbye_patterns(self) -> List[Dict[str, Any]]:
-        """Patterns GOODBYE - 3 patterns"""
+        """Patterns GOODBYE - 2 patterns"""
         return [
             {
                 "name": "goodbye",
@@ -500,6 +496,7 @@ class FinancialPatterns:
                     if group and group.strip():
                         entity_type = self._determine_entity_type(group, extractable_entities, i)
                         if entity_type:
+                            # Construction entité avec champs obligatoires
                             entity = FinancialEntity(
                                 type=entity_type,
                                 value=group.strip(),
@@ -508,6 +505,10 @@ class FinancialPatterns:
                                 extraction_method="regex_group",
                                 normalized_value=self._normalize_entity_value(entity_type, group)
                             )
+                            # Ajout champs optionnels si montant
+                            if entity_type == "amount":
+                                entity.currency = "EUR"
+                            
                             entities.append(entity)
             
             # Extraction entités spéciales (montants, dates, etc.)
@@ -1251,6 +1252,85 @@ class PatternMatcher:
             return False
     
     # ==========================================
+    # CONVERSION EN ENTITÉS CORRECTES 
+    # ==========================================
+    
+    def convert_pattern_match_to_entities(self, pattern_match: PatternMatch) -> Dict[str, Any]:
+        """
+        Convertit PatternMatch en format entities attendu par ChatResponse
+        
+        Args:
+            pattern_match: Match de pattern trouvé
+            
+        Returns:
+            Dict[str, Any]: Entités formatées pour ChatResponse
+        """
+        entities = {}
+        
+        if pattern_match.entities:
+            for entity in pattern_match.entities:
+                # Groupement par type d'entité
+                entity_type = entity.type
+                entity_data = {
+                    "value": entity.value,
+                    "confidence": entity.confidence,
+                    "position": entity.position,
+                    "normalized_value": entity.normalized_value
+                }
+                
+                # Ajout de champs spécialisés selon le type
+                if hasattr(entity, 'currency') and entity.currency:
+                    entity_data["currency"] = entity.currency
+                
+                if hasattr(entity, 'extraction_method') and entity.extraction_method:
+                    entity_data["extraction_method"] = entity.extraction_method
+                
+                # Si plusieurs entités du même type, on fait une liste
+                if entity_type in entities:
+                    if not isinstance(entities[entity_type], list):
+                        entities[entity_type] = [entities[entity_type]]
+                    entities[entity_type].append(entity_data)
+                else:
+                    entities[entity_type] = entity_data
+        
+        return entities
+    
+    def determine_intent_from_pattern(self, pattern_match: PatternMatch) -> str:
+        """
+        Détermine l'intention financière à partir du pattern match
+        
+        Args:
+            pattern_match: Match de pattern trouvé
+            
+        Returns:
+            str: Intention financière correspondante
+        """
+        # Recherche de l'intention dans les métadonnées
+        for metadata in self.patterns.pattern_metadata.values():
+            if metadata["name"] == pattern_match.pattern_name:
+                return metadata["intent"].value
+        
+        # Fallback basé sur le nom du pattern
+        pattern_name = pattern_match.pattern_name.lower()
+        
+        if "balance" in pattern_name or "solde" in pattern_name:
+            return FinancialIntent.BALANCE_CHECK.value
+        elif "transfer" in pattern_name or "virement" in pattern_name or "wire" in pattern_name:
+            return FinancialIntent.TRANSFER.value
+        elif "expense" in pattern_name or "depense" in pattern_name:
+            return FinancialIntent.EXPENSE_ANALYSIS.value
+        elif "card" in pattern_name or "carte" in pattern_name:
+            return FinancialIntent.CARD_MANAGEMENT.value
+        elif "greeting" in pattern_name or "bonjour" in pattern_name:
+            return FinancialIntent.GREETING.value
+        elif "help" in pattern_name or "aide" in pattern_name:
+            return FinancialIntent.HELP.value
+        elif "goodbye" in pattern_name or "au_revoir" in pattern_name:
+            return FinancialIntent.GOODBYE.value
+        
+        return FinancialIntent.UNKNOWN.value
+    
+    # ==========================================
     # CLEANUP ET SHUTDOWN
     # ==========================================
     
@@ -1362,12 +1442,476 @@ def create_test_queries_phase1() -> List[str]:
     ]
 
 # ==========================================
+# FACTORY POUR CRÉATION RAPIDE
+# ==========================================
+
+def create_pattern_matcher_l0() -> PatternMatcher:
+    """
+    Factory pour créer rapidement un Pattern Matcher L0 configuré
+    
+    Returns:
+        PatternMatcher: Instance configurée et prête à l'emploi
+    """
+    logger.info("🏭 Création Pattern Matcher L0 via factory...")
+    
+    # Création instance
+    matcher = PatternMatcher()
+    
+    logger.info(f"✅ Pattern Matcher L0 créé - {matcher.patterns.pattern_count} patterns disponibles")
+    return matcher
+
+async def initialize_pattern_matcher_l0() -> PatternMatcher:
+    """
+    Initialise complètement un Pattern Matcher L0 avec préchargement
+    
+    Returns:
+        PatternMatcher: Instance initialisée et opérationnelle
+    """
+    logger.info("🚀 Initialisation complète Pattern Matcher L0...")
+    
+    # Création et initialisation
+    matcher = create_pattern_matcher_l0()
+    await matcher.initialize()
+    
+    # Test de fonctionnement
+    test_result = await matcher.test_pattern("solde", "BALANCE_CHECK")
+    if test_result.get("best_match"):
+        logger.info("✅ Pattern Matcher L0 opérationnel - Test basique réussi")
+    else:
+        logger.warning("⚠️ Pattern Matcher L0 - Test basique échoué")
+    
+    return matcher
+
+# ==========================================
+# HELPERS POUR INTÉGRATION AVEC CHAT
+# ==========================================
+
+def create_chat_response_from_pattern_match(
+    request_id: str,
+    pattern_match: PatternMatch,
+    user_message: str,
+    processing_time_ms: float,
+    cache_hit: bool = False
+) -> ChatResponse:
+    """
+    Crée une ChatResponse complète à partir d'un PatternMatch
+    
+    Args:
+        request_id: ID de la requête
+        pattern_match: Match trouvé par le pattern matcher
+        user_message: Message original de l'utilisateur
+        processing_time_ms: Temps de traitement
+        cache_hit: Si le résultat vient du cache
+        
+    Returns:
+        ChatResponse: Réponse formatée pour l'API
+    """
+    # Détermination de l'intention
+    intent = determine_intent_from_pattern_match(pattern_match)
+    
+    # Conversion des entités
+    entities = convert_pattern_entities(pattern_match.entities)
+    
+    # Construction du message de réponse
+    response_message = generate_response_message(intent, entities, user_message)
+    
+    # Actions suggérées
+    suggested_actions = generate_suggested_actions(intent, entities)
+    
+    # Score de confiance avec niveau automatique
+    confidence_score = ConfidenceScore(
+        score=pattern_match.confidence,
+        level=_determine_confidence_level(pattern_match.confidence),
+        reasoning=f"Pattern '{pattern_match.pattern_name}' matched with {pattern_match.confidence:.1%} confidence",
+        base_score=pattern_match.confidence,
+        adjustments={}
+    )
+    
+    # Métadonnées de traitement
+    metadata = ProcessingMetadata(
+        request_id=request_id,
+        level_used="L0_PATTERN",
+        processing_time_ms=processing_time_ms,
+        cache_hit=cache_hit,
+        engine_latency_ms=processing_time_ms,
+        pattern_matched=pattern_match.pattern_name,
+        pattern_type=pattern_match.pattern_type.value,
+        confidence_reasoning=confidence_score.reasoning,
+        matched_text=pattern_match.matched_text,
+        matched_position=pattern_match.position,
+        entities_extracted=len(pattern_match.entities),
+        pattern_confidence_base=pattern_match.confidence,
+        text_normalization_applied=True,
+        timestamp=int(time.time())
+    )
+    
+    # Analyse du pattern pour debug
+    pattern_analysis = {
+        "pattern_name": pattern_match.pattern_name,
+        "pattern_type": pattern_match.pattern_type.value,
+        "matched_text": pattern_match.matched_text,
+        "match_position": pattern_match.position,
+        "entities_found": len(pattern_match.entities),
+        "confidence_level": confidence_score.level.value
+    }
+    
+    return ChatResponse(
+        request_id=request_id,
+        intent=intent,
+        confidence=pattern_match.confidence,
+        entities=entities,
+        message=response_message,
+        suggested_actions=suggested_actions,
+        success=True,
+        confidence_details=confidence_score,
+        pattern_analysis=pattern_analysis,
+        processing_metadata=metadata
+    )
+
+def determine_intent_from_pattern_match(pattern_match: PatternMatch) -> str:
+    """Détermine l'intention à partir du nom du pattern"""
+    pattern_name = pattern_match.pattern_name.lower()
+    
+    # Mapping direct basé sur le nom
+    intent_mapping = {
+        'balance': FinancialIntent.BALANCE_CHECK,
+        'solde': FinancialIntent.BALANCE_CHECK,
+        'transfer': FinancialIntent.TRANSFER,
+        'virement': FinancialIntent.TRANSFER,
+        'wire': FinancialIntent.TRANSFER,
+        'expense': FinancialIntent.EXPENSE_ANALYSIS,
+        'depense': FinancialIntent.EXPENSE_ANALYSIS,
+        'card': FinancialIntent.CARD_MANAGEMENT,
+        'carte': FinancialIntent.CARD_MANAGEMENT,
+        'greeting': FinancialIntent.GREETING,
+        'bonjour': FinancialIntent.GREETING,
+        'help': FinancialIntent.HELP,
+        'aide': FinancialIntent.HELP,
+        'goodbye': FinancialIntent.GOODBYE,
+        'au_revoir': FinancialIntent.GOODBYE
+    }
+    
+    for keyword, intent in intent_mapping.items():
+        if keyword in pattern_name:
+            return intent.value
+    
+    return FinancialIntent.UNKNOWN.value
+
+def convert_pattern_entities(entities: List[FinancialEntity]) -> Dict[str, Any]:
+    """Convertit les entités FinancialEntity en format Dict"""
+    result = {}
+    
+    for entity in entities:
+        entity_data = {
+            "value": entity.value,
+            "confidence": entity.confidence,
+            "position": entity.position,
+            "normalized_value": entity.normalized_value,
+            "extraction_method": entity.extraction_method
+        }
+        
+        # Ajout champs optionnels
+        if hasattr(entity, 'currency') and entity.currency:
+            entity_data["currency"] = entity.currency
+        
+        # Gestion entités multiples du même type
+        if entity.type in result:
+            if not isinstance(result[entity.type], list):
+                result[entity.type] = [result[entity.type]]
+            result[entity.type].append(entity_data)
+        else:
+            result[entity.type] = entity_data
+    
+    return result
+
+def generate_response_message(intent: str, entities: Dict[str, Any], user_message: str) -> str:
+    """Génère un message de réponse approprié selon l'intention"""
+    
+    messages = {
+        FinancialIntent.BALANCE_CHECK.value: "Je vais consulter votre solde pour vous.",
+        FinancialIntent.TRANSFER.value: "Je vais préparer votre virement.",
+        FinancialIntent.EXPENSE_ANALYSIS.value: "Je vais analyser vos dépenses.",
+        FinancialIntent.CARD_MANAGEMENT.value: "Je vais traiter votre demande concernant votre carte.",
+        FinancialIntent.GREETING.value: "Bonjour ! Comment puis-je vous aider avec vos finances aujourd'hui ?",
+        FinancialIntent.HELP.value: "Je suis là pour vous aider ! Que souhaitez-vous faire ?",
+        FinancialIntent.GOODBYE.value: "Au revoir ! N'hésitez pas à revenir si vous avez besoin d'aide."
+    }
+    
+    base_message = messages.get(intent, "Je vais traiter votre demande.")
+    
+    # Personnalisation selon les entités
+    if intent == FinancialIntent.TRANSFER.value and "amount" in entities:
+        amount_info = entities["amount"]
+        if isinstance(amount_info, dict):
+            amount = amount_info.get("normalized_value", amount_info.get("value"))
+            currency = amount_info.get("currency", "EUR")
+            base_message = f"Je vais préparer un virement de {amount} {currency}."
+    
+    elif intent == FinancialIntent.EXPENSE_ANALYSIS.value and "category" in entities:
+        category_info = entities["category"]
+        category = category_info.get("value", "général") if isinstance(category_info, dict) else category_info
+        base_message = f"Je vais analyser vos dépenses en {category}."
+    
+    return base_message
+
+def generate_suggested_actions(intent: str, entities: Dict[str, Any]) -> List[str]:
+    """Génère des actions suggérées selon l'intention"""
+    
+    actions_map = {
+        FinancialIntent.BALANCE_CHECK.value: [
+            "Consulter le détail des comptes",
+            "Voir l'historique des transactions",
+            "Afficher les mouvements récents"
+        ],
+        FinancialIntent.TRANSFER.value: [
+            "Confirmer le virement",
+            "Choisir le compte de débit",
+            "Modifier le montant"
+        ],
+        FinancialIntent.EXPENSE_ANALYSIS.value: [
+            "Voir le détail par catégorie",
+            "Comparer avec le mois précédent",
+            "Définir un budget"
+        ],
+        FinancialIntent.CARD_MANAGEMENT.value: [
+            "Voir les paramètres de la carte",
+            "Consulter les dernières transactions",
+            "Modifier les limites"
+        ],
+        FinancialIntent.GREETING.value: [
+            "Consulter mon solde",
+            "Voir mes dépenses",
+            "Faire un virement"
+        ],
+        FinancialIntent.HELP.value: [
+            "Voir les fonctionnalités disponibles",
+            "Consulter le guide d'utilisation",
+            "Contacter le support"
+        ]
+    }
+    
+    return actions_map.get(intent, ["Continuer", "Retour au menu principal"])
+
+def _determine_confidence_level(score: float) -> ConfidenceLevel:
+    """Détermine le niveau de confiance selon le score"""
+    if score >= 0.9:
+        return ConfidenceLevel.VERY_HIGH
+    elif score >= 0.8:
+        return ConfidenceLevel.HIGH
+    elif score >= 0.6:
+        return ConfidenceLevel.MEDIUM
+    elif score >= 0.4:
+        return ConfidenceLevel.LOW
+    else:
+        return ConfidenceLevel.VERY_LOW
+
+# ==========================================
+# DIAGNOSTICS ET HEALTH CHECK
+# ==========================================
+
+async def run_pattern_matcher_diagnostics(matcher: PatternMatcher) -> Dict[str, Any]:
+    """
+    Exécute des diagnostics complets sur le Pattern Matcher
+    
+    Args:
+        matcher: Instance PatternMatcher à diagnostiquer
+        
+    Returns:
+        Dict[str, Any]: Rapport de diagnostic complet
+    """
+    logger.info("🔍 Diagnostics Pattern Matcher L0...")
+    
+    start_time = time.time()
+    diagnostic_results = {
+        "timestamp": int(time.time()),
+        "pattern_matcher_status": "unknown",
+        "tests_results": {},
+        "performance_analysis": {},
+        "recommendations": [],
+        "overall_health": "unknown"
+    }
+    
+    try:
+        # 1. Test de base
+        test_queries = ["solde", "virement", "bonjour", "aide"]
+        basic_tests = {}
+        
+        for query in test_queries:
+            try:
+                result = await matcher.test_pattern(query)
+                basic_tests[query] = {
+                    "success": bool(result.get("best_match")),
+                    "latency_ms": result.get("performance", {}).get("latency_ms", 0),
+                    "confidence": result.get("best_match", {}).get("confidence", 0) if result.get("best_match") else 0
+                }
+            except Exception as e:
+                basic_tests[query] = {
+                    "success": False,
+                    "error": str(e)
+                }
+        
+        diagnostic_results["tests_results"]["basic_patterns"] = basic_tests
+        
+        # 2. Performance benchmark
+        try:
+            benchmark = await matcher.benchmark_l0_performance()
+            diagnostic_results["performance_analysis"] = {
+                "avg_latency_ms": benchmark["summary"]["avg_latency_ms"],
+                "success_rate": benchmark["summary"]["success_rate"],
+                "targets_met": benchmark["targets_analysis"],
+                "performance_distribution": benchmark["performance_distribution"]
+            }
+        except Exception as e:
+            diagnostic_results["performance_analysis"] = {"error": str(e)}
+        
+        # 3. Statut général
+        try:
+            status = matcher.get_status()
+            diagnostic_results["pattern_matcher_status"] = status
+        except Exception as e:
+            diagnostic_results["pattern_matcher_status"] = {"error": str(e)}
+        
+        # 4. Analyse métriques
+        try:
+            metrics = matcher.get_l0_metrics()
+            diagnostic_results["metrics_analysis"] = {
+                "total_requests": metrics.total_requests,
+                "cache_performance": {
+                    "hit_rate": metrics.cache_hit_rate,
+                    "size": len(matcher._pattern_cache)
+                },
+                "pattern_usage": dict(list(metrics.pattern_usage.items())[:5])  # Top 5
+            }
+        except Exception as e:
+            diagnostic_results["metrics_analysis"] = {"error": str(e)}
+        
+        # 5. Génération recommandations
+        diagnostic_results["recommendations"] = _generate_diagnostic_recommendations(diagnostic_results)
+        
+        # 6. Health score global
+        diagnostic_results["overall_health"] = _calculate_overall_health(diagnostic_results)
+        
+        total_time = (time.time() - start_time) * 1000
+        diagnostic_results["diagnostic_duration_ms"] = round(total_time, 2)
+        
+        logger.info(f"🔍 Diagnostics terminés en {total_time:.1f}ms - Health: {diagnostic_results['overall_health']}")
+        
+    except Exception as e:
+        diagnostic_results["fatal_error"] = str(e)
+        diagnostic_results["overall_health"] = "critical"
+        logger.error(f"❌ Erreur fatale diagnostics: {e}")
+    
+    return diagnostic_results
+
+def _generate_diagnostic_recommendations(diagnostic_results: Dict[str, Any]) -> List[str]:
+    """Génère des recommandations basées sur les diagnostics"""
+    recommendations = []
+    
+    # Performance
+    perf = diagnostic_results.get("performance_analysis", {})
+    if perf.get("avg_latency_ms", 0) > 10:
+        recommendations.append("Optimiser les patterns les plus lents")
+    
+    if perf.get("success_rate", 0) < 0.85:
+        recommendations.append("Ajouter des patterns pour améliorer le taux de succès")
+    
+    # Cache
+    metrics = diagnostic_results.get("metrics_analysis", {})
+    cache_perf = metrics.get("cache_performance", {})
+    if cache_perf.get("hit_rate", 0) < 0.15:
+        recommendations.append("Améliorer la stratégie de cache")
+    
+    # Tests de base
+    basic_tests = diagnostic_results.get("tests_results", {}).get("basic_patterns", {})
+    failed_tests = [q for q, r in basic_tests.items() if not r.get("success", False)]
+    if failed_tests:
+        recommendations.append(f"Vérifier les patterns de base: {', '.join(failed_tests)}")
+    
+    # Patterns inutilisés
+    total_patterns = diagnostic_results.get("pattern_matcher_status", {}).get("patterns_loaded", 0)
+    used_patterns = len(metrics.get("pattern_usage", {}))
+    if total_patterns > 0 and used_patterns / total_patterns < 0.5:
+        recommendations.append("Réviser les patterns inutilisés")
+    
+    return recommendations if recommendations else ["Système optimal - aucune recommandation"]
+
+def _calculate_overall_health(diagnostic_results: Dict[str, Any]) -> str:
+    """Calcule le score de santé global"""
+    
+    if diagnostic_results.get("fatal_error"):
+        return "critical"
+    
+    health_score = 0
+    max_score = 0
+    
+    # Test des patterns de base (40%)
+    basic_tests = diagnostic_results.get("tests_results", {}).get("basic_patterns", {})
+    if basic_tests:
+        successful_tests = sum(1 for r in basic_tests.values() if r.get("success", False))
+        health_score += (successful_tests / len(basic_tests)) * 40
+    max_score += 40
+    
+    # Performance (30%)
+    perf = diagnostic_results.get("performance_analysis", {})
+    if "error" not in perf:
+        if perf.get("avg_latency_ms", 999) < 10:
+            health_score += 15
+        if perf.get("success_rate", 0) >= 0.85:
+            health_score += 15
+    max_score += 30
+    
+    # Métriques générales (30%)
+    status = diagnostic_results.get("pattern_matcher_status", {})
+    if "error" not in status:
+        if status.get("patterns_loaded", 0) > 0:
+            health_score += 10
+        if status.get("total_requests", 0) > 0:
+            health_score += 10
+        targets_met = status.get("targets_met", {})
+        if targets_met.get("latency", False):
+            health_score += 5
+        if targets_met.get("success_rate", False):
+            health_score += 5
+    max_score += 30
+    
+    if max_score == 0:
+        return "unknown"
+    
+    health_percentage = health_score / max_score
+    
+    if health_percentage >= 0.9:
+        return "excellent"
+    elif health_percentage >= 0.75:
+        return "good"
+    elif health_percentage >= 0.5:
+        return "degraded"
+    else:
+        return "poor"
+
+# ==========================================
 # EXPORTS PHASE 1
 # ==========================================
 
 __all__ = [
+    # Classes principales
     "PatternMatcher",
     "FinancialPatterns", 
+    
+    # Fonctions de validation
     "validate_l0_phase1_performance",
-    "create_test_queries_phase1"
+    "create_test_queries_phase1",
+    
+    # Factory et initialisation
+    "create_pattern_matcher_l0",
+    "initialize_pattern_matcher_l0",
+    
+    # Helpers intégration
+    "create_chat_response_from_pattern_match",
+    "determine_intent_from_pattern_match",
+    "convert_pattern_entities",
+    "generate_response_message",
+    "generate_suggested_actions",
+    
+    # Diagnostics
+    "run_pattern_matcher_diagnostics"
 ]

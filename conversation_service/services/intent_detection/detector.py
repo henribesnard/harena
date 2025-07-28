@@ -76,13 +76,16 @@ class OptimizedIntentService:
                 else:
                     self.logger.warning(f"⚠️ DeepSeek connexion échouée: {test_result.get('error')}")
                     
+            except ServiceUnavailableError as e:
+                self.logger.error(f"🚨 Service DeepSeek indisponible: {e}")
+                self.deepseek_client = None
             except Exception as e:
                 self.logger.warning(f"⚠️ DeepSeek fallback indisponible: {e}")
                 self.deepseek_client = None
         else:
             self.logger.info("DeepSeek fallback désactivé par configuration")
     
-    async def detect_intent(self, request: IntentRequest) -> Dict[str, Any]:
+    async def detect_intent(self, request: IntentRequest) -> IntentResponse:
         """
         Pipeline de détection optimisé (logique principale du fichier original)
         
@@ -91,122 +94,155 @@ class OptimizedIntentService:
             
         Returns:
             Dict avec résultat détection complète
+            
+        Raises:
+            IntentDetectionError: Si la détection échoue complètement
         """
         start_time = time.time()
         
-        # Cache ultra-rapide (logique exacte fichier original)
-        cache_key = request.query.lower().strip()
-        if cache_key in self.cache and request.enable_cache:
-            cached = self.cache[cache_key].copy()
-            cached["processing_time_ms"] = (time.time() - start_time) * 1000
-            cached["method_used"] = "cache"
-            cached["cached"] = True
-            return cached
-        
-        # Préprocessing
         try:
-            preprocessed = self.text_cleaner.preprocess_query(request.query)
-            clean_query = preprocessed["normalized_query"]
-            query_hints = self.text_cleaner.extract_intent_hints(preprocessed)
-        except Exception as e:
-            self.logger.warning(f"Erreur préprocessing: {e}")
-            clean_query = request.query.strip().lower()
-            query_hints = {}
-        
-        # 1. RÈGLES INTELLIGENTES (ultra-rapide - 95% des cas)
-        rule_intent, rule_confidence, rule_entities = self.rule_engine.detect_intent(clean_query)
-        
-        # 2. Décision fallback (logique exacte fichier original)
-        final_intent = rule_intent
-        final_confidence = rule_confidence  
-        final_entities = rule_entities
-        method_used = "rules"
-        cost = 0.0
-        
-        # Fallback DeepSeek seulement si vraiment nécessaire
-        should_use_deepseek = (
-            request.use_deepseek_fallback and
-            config.service.enable_deepseek_fallback and
-            self.deepseek_client is not None and
-            rule_confidence < config.performance.deepseek_threshold and
-            rule_intent == IntentType.UNKNOWN
-        )
-        
-        if should_use_deepseek:
-            self.logger.info(f"🔄 Fallback DeepSeek (confiance règles: {rule_confidence:.3f})")
+            # Cache ultra-rapide (logique exacte fichier original)
+            cache_key = request.query.lower().strip()
+            if cache_key in self.cache and request.enable_cache:
+                cached = self.cache[cache_key].copy()
+                cached["processing_time_ms"] = (time.time() - start_time) * 1000
+                cached["method_used"] = "cache"
+                cached["cached"] = True
+                return cached
+            
+            # Préprocessing avec gestion d'erreurs robuste
             try:
-                ds_result = await self._deepseek_fallback(request.query)
-                ds_intent, ds_confidence, ds_entities, ds_cost = ds_result
-                
-                if ds_confidence > rule_confidence:
-                    final_intent = IntentType(ds_intent) if ds_intent in [e.value for e in IntentType] else IntentType.UNKNOWN
-                    final_confidence = ds_confidence
-                    final_entities = {**rule_entities, **ds_entities}  # Merge entities
-                    method_used = "deepseek_fallback"
-                    cost = ds_cost
-                    self.metrics.deepseek_fallback += 1
-                else:
-                    method_used = "rules_vs_deepseek"
-                    self.metrics.rule_based_success += 1
-                    
+                preprocessed = self.text_cleaner.preprocess_query(request.query)
+                clean_query = preprocessed["normalized_query"]
+                query_hints = self.text_cleaner.extract_intent_hints(preprocessed)
             except Exception as e:
-                self.logger.error(f"Erreur fallback DeepSeek: {e}")
-                # Continuer avec résultat règles
-                self.metrics.rule_based_success += 1
-        else:
-            self.metrics.rule_based_success += 1
-        
-        # 3. Enrichissement entités si nécessaire
-        if final_confidence > 0.5 and not final_entities:
+                self.logger.warning(f"Erreur préprocessing: {e}")
+                clean_query = request.query.strip().lower()
+                query_hints = {}
+            
+            # 1. RÈGLES INTELLIGENTES (ultra-rapide - 95% des cas)
             try:
-                entity_result = self.entity_extractor.extract_entities(
-                    clean_query, 
-                    intent_context=final_intent,
-                    validate_entities=True
+                rule_intent, rule_confidence, rule_entities = self.rule_engine.detect_intent(clean_query)
+            except Exception as e:
+                self.logger.error(f"Erreur règles de détection: {e}")
+                raise IntentDetectionError(
+                    f"Échec détection par règles: {str(e)}",
+                    query=request.query,
+                    attempted_methods=[DetectionMethod.RULES]
                 )
-                additional_entities = entity_result.get("entities", {})
-                final_entities.update(additional_entities)
-                
+            
+            # 2. Décision fallback (logique exacte fichier original)
+            final_intent = rule_intent
+            final_confidence = rule_confidence  
+            final_entities = rule_entities
+            method_used = DetectionMethod.RULES
+            cost = 0.0
+            
+            # Fallback DeepSeek seulement si vraiment nécessaire
+            should_use_deepseek = (
+                request.use_deepseek_fallback and
+                config.service.enable_deepseek_fallback and
+                self.deepseek_client is not None and
+                rule_confidence < config.performance.deepseek_threshold and
+                rule_intent == IntentType.UNKNOWN
+            )
+            
+            if should_use_deepseek:
+                self.logger.info(f"🔄 Fallback DeepSeek (confiance règles: {rule_confidence:.3f})")
+                try:
+                    ds_result = await self._deepseek_fallback(request.query)
+                    ds_intent, ds_confidence, ds_entities, ds_cost = ds_result
+                    
+                    if ds_confidence > rule_confidence:
+                        final_intent = IntentType(ds_intent) if ds_intent in [e.value for e in IntentType] else IntentType.UNKNOWN
+                        final_confidence = ds_confidence
+                        final_entities = {**rule_entities, **ds_entities}  # Merge entities
+                        method_used = DetectionMethod.LLM_FALLBACK
+                        cost = ds_cost
+                        self.metrics.deepseek_fallback += 1
+                    else:
+                        method_used = DetectionMethod.HYBRID
+                        self.metrics.rule_based_success += 1
+                        
+                except ServiceUnavailableError as e:
+                    self.logger.error(f"Service DeepSeek indisponible: {e}")
+                    # Continuer avec résultat règles
+                    self.metrics.rule_based_success += 1
+                except Exception as e:
+                    self.logger.error(f"Erreur fallback DeepSeek: {e}")
+                    # Continuer avec résultat règles
+                    self.metrics.rule_based_success += 1
+            else:
+                self.metrics.rule_based_success += 1
+            
+            # 3. Enrichissement entités si nécessaire
+            if final_confidence > 0.5 and not final_entities:
+                try:
+                    entity_result = self.entity_extractor.extract_entities(
+                        clean_query, 
+                        intent_context=final_intent,
+                        validate_entities=True
+                    )
+                    additional_entities = entity_result.get("entities", {})
+                    final_entities.update(additional_entities)
+                    
+                except Exception as e:
+                    self.logger.warning(f"Erreur enrichissement entités: {e}")
+            
+            # 4. Génération suggestions
+            try:
+                suggestions = self.rule_engine.get_suggestions(final_intent, final_entities)
             except Exception as e:
-                self.logger.warning(f"Erreur enrichissement entités: {e}")
-        
-        # 4. Génération suggestions
-        suggestions = self.rule_engine.get_suggestions(final_intent, final_entities)
-        
-        processing_time = (time.time() - start_time) * 1000
-        
-        # Résultat final (structure exacte fichier original)
-        result = {
-            "intent": final_intent.value,
-            "intent_code": self.rule_engine.get_intent_to_search_code(final_intent),
-            "confidence": final_confidence,
-            "processing_time_ms": processing_time,
-            "method_used": method_used,
-            "query": request.query,
-            "entities": final_entities,
-            "suggestions": suggestions,
-            "cost_estimate": cost,
-            "cached": False
-        }
-        
-        # Cache si confiance élevée (logique fichier original)
-        if (final_confidence >= config.performance.cache_threshold and 
-            len(self.cache) < self.cache_max_size and 
-            request.enable_cache):
-            cache_result = result.copy()
-            cache_result.pop("processing_time_ms")
-            cache_result.pop("cached")
-            self.cache[cache_key] = cache_result
-        
-        # Métriques (exactement comme fichier original)
-        self.metrics.total_requests += 1
-        self.metrics.total_cost += cost
-        self.metrics.avg_latency = (
-            (self.metrics.avg_latency * (self.metrics.total_requests - 1) + processing_time) / 
-            self.metrics.total_requests
-        )
-        
-        return result
+                self.logger.warning(f"Erreur génération suggestions: {e}")
+                suggestions = []
+            
+            processing_time = (time.time() - start_time) * 1000
+            
+            # Résultat final (structure exacte fichier original)
+            result = {
+                "intent": final_intent.value,
+                "intent_code": self.rule_engine.get_intent_to_search_code(final_intent),
+                "confidence": final_confidence,
+                "processing_time_ms": processing_time,
+                "method_used": method_used.value,
+                "query": request.query,
+                "entities": final_entities,
+                "suggestions": suggestions,
+                "cost_estimate": cost,
+                "cached": False
+            }
+            
+            # Cache si confiance élevée (logique fichier original)
+            if (final_confidence >= config.performance.cache_threshold and 
+                len(self.cache) < self.cache_max_size and 
+                request.enable_cache):
+                cache_result = result.copy()
+                cache_result.pop("processing_time_ms")
+                cache_result.pop("cached")
+                self.cache[cache_key] = cache_result
+            
+            # Métriques (exactement comme fichier original)
+            self.metrics.total_requests += 1
+            self.metrics.total_cost += cost
+            self.metrics.avg_latency = (
+                (self.metrics.avg_latency * (self.metrics.total_requests - 1) + processing_time) / 
+                self.metrics.total_requests
+            )
+            
+            # Validation et création de la réponse typée
+            return IntentResponse(**result)
+            
+        except IntentDetectionError:
+            # Re-raise les erreurs spécifiques
+            raise
+        except Exception as e:
+            # Gestion des erreurs inattendues
+            self.logger.error(f"Erreur inattendue détection intention: {e}", exc_info=True)
+            raise IntentDetectionError(
+                f"Erreur système lors de la détection: {str(e)}",
+                query=request.query,
+                attempted_methods=[DetectionMethod.RULES, DetectionMethod.LLM_FALLBACK]
+            )
     
     async def _deepseek_fallback(self, query: str) -> Tuple[str, float, Dict[str, Any], float]:
         """
@@ -214,9 +250,15 @@ class OptimizedIntentService:
         
         Returns:
             (intent, confidence, entities, cost)
+            
+        Raises:
+            ServiceUnavailableError: Si le service DeepSeek est indisponible
         """
         if not self.deepseek_client:
-            return "UNKNOWN", 0.0, {}, 0.0
+            raise ServiceUnavailableError(
+                "Client DeepSeek non initialisé",
+                service_name="deepseek"
+            )
         
         try:
             response = await self.deepseek_client.classify_intent(query)
@@ -230,7 +272,12 @@ class OptimizedIntentService:
             
         except Exception as e:
             self.logger.error(f"Erreur DeepSeek: {e}")
-            return "UNKNOWN", 0.0, {}, 0.0
+            # Transform generic error to specific service error
+            raise ServiceUnavailableError(
+                f"Service DeepSeek temporairement indisponible: {str(e)}",
+                service_name="deepseek",
+                retry_after=60
+            )
     
     def get_metrics(self) -> Dict[str, Any]:
         """
@@ -275,13 +322,19 @@ class OptimizedIntentService:
         queries: List[str], 
         user_id: Optional[str] = None,
         use_deepseek_fallback: bool = True
-    ) -> List[Dict[str, Any]]:
-        """Traitement batch de requêtes"""
+    ) -> List[IntentResponse]:
+        """
+        Traitement batch de requêtes avec gestion d'erreurs robuste
+        
+        Raises:
+            IntentDetectionError: Si le batch échoue complètement
+        """
         if not queries:
             return []
         
         self.logger.info(f"Début batch détection: {len(queries)} requêtes")
         results = []
+        errors_count = 0
         
         for query in queries:
             try:
@@ -293,21 +346,50 @@ class OptimizedIntentService:
                 result = await self.detect_intent(request)
                 results.append(result)
                 
+            except IntentDetectionError as e:
+                self.logger.error(f"Erreur détection spécifique query '{query}': {e}")
+                errors_count += 1
+                # Créer une réponse d'erreur typée
+                error_response = IntentResponse(
+                    intent=IntentType.UNKNOWN,
+                    intent_code="UNKNOWN",
+                    confidence=0.0,
+                    processing_time_ms=0.0,
+                    method_used="error",
+                    query=query,
+                    entities={},
+                    suggestions=[],
+                    cost_estimate=0.0,
+                    error=str(e),
+                    error_type="IntentDetectionError"
+                )
+                results.append(error_response)
+                
             except Exception as e:
-                self.logger.error(f"Erreur traitement query '{query}': {e}")
-                error_result = {
-                    "intent": "UNKNOWN",
-                    "intent_code": "UNKNOWN",
-                    "confidence": 0.0,
-                    "processing_time_ms": 0.0,
-                    "method_used": "error",
-                    "query": query,
-                    "entities": {},
-                    "suggestions": [],
-                    "cost_estimate": 0.0,
-                    "error": str(e)
-                }
-                results.append(error_result)
+                self.logger.error(f"Erreur inattendue query '{query}': {e}")
+                errors_count += 1
+                # Créer une réponse d'erreur système typée
+                error_response = IntentResponse(
+                    intent=IntentType.UNKNOWN,
+                    intent_code="UNKNOWN",
+                    confidence=0.0,
+                    processing_time_ms=0.0,
+                    method_used="error",
+                    query=query,
+                    entities={},
+                    suggestions=[],
+                    cost_estimate=0.0,
+                    error=str(e),
+                    error_type="SystemError"
+                )
+                results.append(error_response)
+        
+        # Si trop d'erreurs, lever une exception générale
+        if errors_count > len(queries) * 0.5:  # Plus de 50% d'erreurs
+            raise IntentDetectionError(
+                f"Batch processing échoué: {errors_count}/{len(queries)} erreurs",
+                attempted_methods=[DetectionMethod.BATCH]
+            )
         
         return results
     
@@ -328,7 +410,9 @@ class OptimizedIntentService:
         }
     
     async def health_check(self) -> Dict[str, Any]:
-        """Vérification santé complète du service"""
+        """
+        Vérification santé complète du service avec gestion d'erreurs
+        """
         health_status = {
             "status": "healthy",
             "components": {
@@ -352,6 +436,8 @@ class OptimizedIntentService:
             try:
                 test_result = await self.deepseek_client.test_connection()
                 health_status["components"]["deepseek_client"] = test_result["status"]
+            except ServiceUnavailableError as e:
+                health_status["components"]["deepseek_client"] = f"unavailable: {e.message}"
             except Exception as e:
                 health_status["components"]["deepseek_client"] = f"error: {str(e)}"
         
@@ -383,19 +469,43 @@ class OptimizedIntentService:
 _intent_service_instance = None
 
 async def get_intent_service() -> OptimizedIntentService:
-    """Factory function async pour récupérer instance service singleton"""
+    """
+    Factory function async pour récupérer instance service singleton
+    
+    Raises:
+        ServiceUnavailableError: Si l'initialisation échoue
+    """
     global _intent_service_instance
     if _intent_service_instance is None:
-        _intent_service_instance = OptimizedIntentService()
-        await _intent_service_instance.initialize()
+        try:
+            _intent_service_instance = OptimizedIntentService()
+            await _intent_service_instance.initialize()
+        except Exception as e:
+            logger.error(f"Erreur initialisation service: {e}")
+            raise ServiceUnavailableError(
+                f"Impossible d'initialiser le service de détection: {str(e)}",
+                service_name="intent_detection"
+            )
     return _intent_service_instance
 
 
 def get_intent_service_sync() -> OptimizedIntentService:
-    """Factory function synchrone pour récupérer instance service"""
+    """
+    Factory function synchrone pour récupérer instance service
+    
+    Raises:
+        ServiceUnavailableError: Si l'instance n'est pas disponible
+    """
     global _intent_service_instance
     if _intent_service_instance is None:
-        _intent_service_instance = OptimizedIntentService()
+        try:
+            _intent_service_instance = OptimizedIntentService()
+        except Exception as e:
+            logger.error(f"Erreur création service: {e}")
+            raise ServiceUnavailableError(
+                f"Impossible de créer le service de détection: {str(e)}",
+                service_name="intent_detection"
+            )
     return _intent_service_instance
 
 

@@ -2,7 +2,7 @@
 🔍 Pattern Matcher - Extraction d'entités par regex
 
 Service d'extraction d'entités financières via patterns regex optimisés.
-Réutilise la logique éprouvée du fichier original avec amélirations modulaires.
+Réutilise la logique éprouvée du fichier original avec améliations modulaires.
 """
 
 import re
@@ -165,10 +165,22 @@ class FinancialPatternMatcher:
         
         # Compilation des patterns pour performance
         self._compiled_patterns: Dict[EntityType, List[Tuple[Pattern, EntityPattern]]] = {}
-        self._compile_all_patterns()
+        try:
+            self._compile_all_patterns()
+        except PatternCompilationError as e:
+            self.logger.error(f"Erreur compilation patterns: {e}")
+            raise EntityExtractionError(
+                f"Impossible d'initialiser le matcher: {str(e)}",
+                extraction_method="pattern_compilation"
+            )
     
     def _compile_all_patterns(self):
-        """Compile tous les patterns regex pour optimiser performance"""
+        """
+        Compile tous les patterns regex pour optimiser performance
+        
+        Raises:
+            PatternCompilationError: Si compilation d'un pattern échoue
+        """
         for entity_type, patterns in self._entity_patterns.items():
             compiled_patterns = []
             
@@ -201,27 +213,49 @@ class FinancialPatternMatcher:
             
         Returns:
             Dict avec entités extraites et métadonnées
+            
+        Raises:
+            EntityExtractionError: Si l'extraction échoue complètement
         """
         if not text:
-            return {}
+            return {"entities": {}, "metadata": {}}
+        
+        if not isinstance(text, str):
+            raise EntityExtractionError(
+                f"Le texte doit être une chaîne, reçu: {type(text)}",
+                extraction_method="input_validation"
+            )
         
         if target_entities is None:
             target_entities = list(EntityType)
+        
+        # Validation des types d'entités demandés
+        invalid_types = [et for et in target_entities if et not in EntityType]
+        if invalid_types:
+            raise EntityExtractionError(
+                f"Types d'entités invalides: {invalid_types}",
+                extraction_method="input_validation"
+            )
         
         extracted_entities = {}
         extraction_metadata = {
             "confidence_scores": {},
             "extraction_methods": {},
-            "multiple_matches": {}
+            "multiple_matches": {},
+            "extraction_errors": {}
         }
+        
+        successful_extractions = 0
         
         for entity_type in target_entities:
             if entity_type not in self._compiled_patterns:
+                self.logger.warning(f"Type d'entité non supporté: {entity_type}")
                 continue
             
             try:
                 entity_results = self._extract_single_entity_type(text, entity_type)
                 if entity_results:
+                    successful_extractions += 1
                     for entity_key, entity_data in entity_results.items():
                         extracted_entities[entity_key] = entity_data["value"]
                         extraction_metadata["confidence_scores"][entity_key] = entity_data["confidence"]
@@ -231,8 +265,18 @@ class FinancialPatternMatcher:
                             extraction_metadata["multiple_matches"][entity_key] = True
                             
             except Exception as e:
-                self.logger.warning(f"Erreur extraction {entity_type}: {e}")
+                error_msg = f"Erreur extraction {entity_type}: {e}"
+                self.logger.warning(error_msg)
+                extraction_metadata["extraction_errors"][entity_type.value] = str(e)
                 continue
+        
+        # Si aucune extraction n'a réussi et qu'on a des erreurs, lever une exception
+        if successful_extractions == 0 and extraction_metadata["extraction_errors"]:
+            raise EntityExtractionError(
+                f"Échec complet extraction d'entités: {extraction_metadata['extraction_errors']}",
+                extraction_method="pattern_matching",
+                context={"text_length": len(text), "target_entities": [et.value for et in target_entities]}
+            )
         
         result = {
             "entities": extracted_entities,
@@ -247,60 +291,100 @@ class FinancialPatternMatcher:
         text: str, 
         entity_type: EntityType
     ) -> Dict[str, Dict[str, Any]]:
-        """Extrait toutes les entités d'un type donné"""
+        """
+        Extrait toutes les entités d'un type donné
+        
+        Raises:
+            EntityExtractionError: Si l'extraction de ce type spécifique échoue
+        """
         results = {}
         patterns = self._compiled_patterns.get(entity_type, [])
         
+        if not patterns:
+            raise EntityExtractionError(
+                f"Aucun pattern configuré pour le type: {entity_type}",
+                extraction_method="pattern_matching",
+                entity_type=entity_type
+            )
+        
+        extraction_errors = []
+        
         for compiled_pattern, pattern_config in patterns:
-            matches = list(compiled_pattern.finditer(text))
-            
-            for match in matches:
-                try:
-                    # Extraction valeur selon type pattern
-                    if pattern_config.default_value:
-                        raw_value = pattern_config.default_value
-                    else:
-                        # Prendre premier groupe capturé ou match complet
-                        raw_value = match.group(1) if match.groups() else match.group()
-                    
-                    # Normalisation si spécifiée
-                    if pattern_config.normalizer:
-                        normalized_value = pattern_config.normalizer(raw_value, match)
-                    else:
-                        normalized_value = raw_value.strip()
-                    
-                    # Validation si spécifiée
-                    if pattern_config.validator:
-                        if not pattern_config.validator(normalized_value):
-                            continue
-                    
-                    # Calcul confiance basé sur qualité match
-                    confidence = self._calculate_match_confidence(
-                        match, pattern_config, text
-                    )
-                    
-                    # Clé unique pour cette entité
-                    entity_key = entity_type.value
-                    
-                    # Gestion entités multiples du même type
-                    if entity_key in results:
-                        # Garder meilleure confiance ou créer liste
-                        if confidence > results[entity_key]["confidence"]:
+            try:
+                matches = list(compiled_pattern.finditer(text))
+                
+                for match in matches:
+                    try:
+                        # Extraction valeur selon type pattern
+                        if pattern_config.default_value:
+                            raw_value = pattern_config.default_value
+                        else:
+                            # Prendre premier groupe capturé ou match complet
+                            raw_value = match.group(1) if match.groups() else match.group()
+                        
+                        # Normalisation si spécifiée
+                        if pattern_config.normalizer:
+                            try:
+                                normalized_value = pattern_config.normalizer(raw_value, match)
+                            except Exception as e:
+                                self.logger.warning(f"Erreur normalisation {entity_type}: {e}")
+                                normalized_value = raw_value.strip()
+                        else:
+                            normalized_value = raw_value.strip()
+                        
+                        # Validation si spécifiée
+                        if pattern_config.validator:
+                            try:
+                                if not pattern_config.validator(normalized_value):
+                                    continue
+                            except Exception as e:
+                                self.logger.warning(f"Erreur validation {entity_type}: {e}")
+                                continue
+                        
+                        # Calcul confiance basé sur qualité match
+                        confidence = self._calculate_match_confidence(
+                            match, pattern_config, text
+                        )
+                        
+                        # Clé unique pour cette entité
+                        entity_key = entity_type.value
+                        
+                        # Gestion entités multiples du même type
+                        if entity_key in results:
+                            # Garder meilleure confiance ou créer liste
+                            if confidence > results[entity_key]["confidence"]:
+                                results[entity_key] = {
+                                    "value": normalized_value,
+                                    "confidence": confidence,
+                                    "multiple_matches": True
+                                }
+                        else:
                             results[entity_key] = {
                                 "value": normalized_value,
                                 "confidence": confidence,
-                                "multiple_matches": True
+                                "multiple_matches": False
                             }
-                    else:
-                        results[entity_key] = {
-                            "value": normalized_value,
-                            "confidence": confidence,
-                            "multiple_matches": False
-                        }
+                            
+                    except Exception as e:
+                        error_msg = f"Erreur traitement match {entity_type}: {e}"
+                        self.logger.warning(error_msg)
+                        extraction_errors.append(error_msg)
+                        continue
                         
-                except Exception as e:
-                    self.logger.warning(f"Erreur traitement match {entity_type}: {e}")
-                    continue
+            except Exception as e:
+                error_msg = f"Erreur pattern {pattern_config.pattern}: {e}"
+                self.logger.warning(error_msg)
+                extraction_errors.append(error_msg)
+                continue
+        
+        # Si tous les patterns ont échoué, lever une exception
+        if not results and extraction_errors:
+            raise EntityExtractionError(
+                f"Tous les patterns ont échoué pour {entity_type}: {extraction_errors}",
+                extraction_method="pattern_matching",
+                entity_type=entity_type,
+                context={"text": text[:100], "errors": extraction_errors}
+            )
         
         return results
     
@@ -337,14 +421,32 @@ class FinancialPatternMatcher:
     
     # Normaliseurs spécialisés par type d'entité
     def _normalize_amount(self, value: str, match: re.Match) -> str:
-        """Normalise les montants détectés"""
-        # Conversion format français -> format standard
-        normalized = value.replace(',', '.')
+        """
+        Normalise les montants détectés
+        
+        Raises:
+            EntityExtractionError: Si la normalisation échoue
+        """
         try:
+            # Conversion format français -> format standard
+            normalized = value.replace(',', '.')
             float_value = float(normalized)
+            
+            # Validation montant raisonnable
+            if float_value < 0:
+                raise EntityExtractionError(
+                    f"Montant négatif détecté: {float_value}",
+                    extraction_method="amount_normalization"
+                )
+            if float_value > 1000000:
+                self.logger.warning(f"Montant très élevé détecté: {float_value}")
+            
             return str(float_value)
-        except ValueError:
-            return value
+        except ValueError as e:
+            raise EntityExtractionError(
+                f"Impossible de normaliser le montant '{value}': {e}",
+                extraction_method="amount_normalization"
+            )
     
     def _normalize_account_type(self, value: str, match: re.Match) -> str:
         """Normalise les types de comptes"""
@@ -410,12 +512,27 @@ class FinancialPatternMatcher:
         return card_map.get(value.lower().replace(' ', ' '), value.lower())
     
     def _normalize_date(self, value: str, match: re.Match) -> str:
-        """Normalise les dates au format standard"""
-        if match.groups() and len(match.groups()) == 3:
-            day, month, year = match.groups()
-            # Format ISO: YYYY-MM-DD
-            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-        return value
+        """
+        Normalise les dates au format standard
+        
+        Raises:
+            EntityExtractionError: Si le format de date est invalide
+        """
+        try:
+            if match.groups() and len(match.groups()) == 3:
+                day, month, year = match.groups()
+                # Format ISO: YYYY-MM-DD
+                return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+            else:
+                raise EntityExtractionError(
+                    f"Format de date invalide: {value}",
+                    extraction_method="date_normalization"
+                )
+        except Exception as e:
+            raise EntityExtractionError(
+                f"Erreur normalisation date '{value}': {e}",
+                extraction_method="date_normalization"
+            )
     
     # Validateurs spécialisés
     def _validate_date(self, date_str: str) -> bool:
@@ -460,17 +577,31 @@ class FinancialPatternMatcher:
             
         Returns:
             Première entité trouvée ou None
+            
+        Raises:
+            EntityExtractionError: Si l'extraction échoue
         """
-        results = self.extract_entities(text, [entity_type])
-        entities = results.get("entities", {})
-        
-        if entity_type.value in entities:
-            return {
-                "value": entities[entity_type.value],
-                "confidence": results["metadata"]["confidence_scores"].get(entity_type.value, 0.0)
-            }
-        
-        return None
+        try:
+            results = self.extract_entities(text, [entity_type])
+            entities = results.get("entities", {})
+            
+            if entity_type.value in entities:
+                return {
+                    "value": entities[entity_type.value],
+                    "confidence": results["metadata"]["confidence_scores"].get(entity_type.value, 0.0)
+                }
+            
+            return None
+            
+        except EntityExtractionError:
+            # Re-raise les erreurs spécifiques
+            raise
+        except Exception as e:
+            raise EntityExtractionError(
+                f"Erreur extraction entité {entity_type}: {e}",
+                extraction_method="single_entity_extraction",
+                entity_type=entity_type
+            )
     
     def get_supported_entity_types(self) -> List[EntityType]:
         """Retourne la liste des types d'entités supportés"""
@@ -551,59 +682,114 @@ class FinancialPatternMatcher:
 _pattern_matcher_instance = None
 
 def get_pattern_matcher() -> FinancialPatternMatcher:
-    """Factory function pour récupérer instance PatternMatcher singleton"""
+    """
+    Factory function pour récupérer instance PatternMatcher singleton
+    
+    Raises:
+        EntityExtractionError: Si l'initialisation échoue
+    """
     global _pattern_matcher_instance
     if _pattern_matcher_instance is None:
-        _pattern_matcher_instance = FinancialPatternMatcher()
+        try:
+            _pattern_matcher_instance = FinancialPatternMatcher()
+        except Exception as e:
+            logger.error(f"Erreur initialisation PatternMatcher: {e}")
+            raise EntityExtractionError(
+                f"Impossible d'initialiser le PatternMatcher: {str(e)}",
+                extraction_method="initialization"
+            )
     return _pattern_matcher_instance
 
 
 # Fonctions utilitaires d'extraction rapide
 def extract_amounts(text: str) -> List[float]:
-    """Extraction rapide des montants d'un texte"""
-    matcher = get_pattern_matcher()
-    result = matcher.extract_entities(text, [EntityType.AMOUNT])
+    """
+    Extraction rapide des montants d'un texte
     
-    amounts = []
-    entities = result.get("entities", {})
-    
-    if EntityType.AMOUNT.value in entities:
-        try:
-            amount_value = float(entities[EntityType.AMOUNT.value])
-            amounts.append(amount_value)
-        except ValueError:
-            pass
-    
-    return amounts
+    Raises:
+        EntityExtractionError: Si l'extraction échoue
+    """
+    try:
+        matcher = get_pattern_matcher()
+        result = matcher.extract_entities(text, [EntityType.AMOUNT])
+        
+        amounts = []
+        entities = result.get("entities", {})
+        
+        if EntityType.AMOUNT.value in entities:
+            try:
+                amount_value = float(entities[EntityType.AMOUNT.value])
+                amounts.append(amount_value)
+            except ValueError as e:
+                raise EntityExtractionError(
+                    f"Erreur conversion montant: {e}",
+                    extraction_method="amount_extraction"
+                )
+        
+        return amounts
+        
+    except EntityExtractionError:
+        raise
+    except Exception as e:
+        raise EntityExtractionError(
+            f"Erreur extraction montants: {e}",
+            extraction_method="amount_extraction"
+        )
 
 
 def extract_categories(text: str) -> List[str]:
-    """Extraction rapide des catégories d'un texte"""
-    matcher = get_pattern_matcher()
-    result = matcher.extract_entities(text, [EntityType.CATEGORY])
+    """
+    Extraction rapide des catégories d'un texte
     
-    categories = []
-    entities = result.get("entities", {})
-    
-    if EntityType.CATEGORY.value in entities:
-        categories.append(entities[EntityType.CATEGORY.value])
-    
-    return categories
+    Raises:
+        EntityExtractionError: Si l'extraction échoue
+    """
+    try:
+        matcher = get_pattern_matcher()
+        result = matcher.extract_entities(text, [EntityType.CATEGORY])
+        
+        categories = []
+        entities = result.get("entities", {})
+        
+        if EntityType.CATEGORY.value in entities:
+            categories.append(entities[EntityType.CATEGORY.value])
+        
+        return categories
+        
+    except EntityExtractionError:
+        raise
+    except Exception as e:
+        raise EntityExtractionError(
+            f"Erreur extraction catégories: {e}",
+            extraction_method="category_extraction"
+        )
 
 
 def has_financial_entities(text: str) -> bool:
-    """Vérifie rapidement si texte contient entités financières"""
-    financial_entity_types = [
-        EntityType.AMOUNT, 
-        EntityType.ACCOUNT_TYPE, 
-        EntityType.CATEGORY,
-        EntityType.CARD_TYPE
-    ]
+    """
+    Vérifie rapidement si texte contient entités financières
     
-    matcher = get_pattern_matcher()
-    result = matcher.extract_entities(text, financial_entity_types)
-    
-    return bool(result.get("entities", {}))
+    Returns:
+        bool: True si entités financières détectées
+        
+    Note: Cette fonction ne lève pas d'exception pour permettre un usage simple
+    """
+    try:
+        financial_entity_types = [
+            EntityType.AMOUNT, 
+            EntityType.ACCOUNT_TYPE, 
+            EntityType.CATEGORY,
+            EntityType.CARD_TYPE
+        ]
+        
+        matcher = get_pattern_matcher()
+        result = matcher.extract_entities(text, financial_entity_types)
+        
+        return bool(result.get("entities", {}))
+        
+    except Exception as e:
+        logger.warning(f"Erreur vérification entités financières: {e}")
+        return False
 
 
 # Exports publics

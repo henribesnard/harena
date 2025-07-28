@@ -3,11 +3,12 @@
 
 Modèles de requêtes et réponses pour l'API de détection d'intention.
 Basés sur le code fonctionnel existant avec extensions modulaires.
+Version Pydantic V2 avec field_validator et model_validator.
 """
 
 import time
 from typing import Dict, List, Optional, Any, Union
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from .enums import IntentType, EntityType, DetectionMethod, ConfidenceLevel
 
 
@@ -41,15 +42,17 @@ class IntentRequest(BaseModel):
         description="Contexte conversationnel optionnel"
     )
     
-    @validator('query')
-    def validate_query(cls, v):
+    @field_validator('query')
+    @classmethod
+    def validate_query(cls, v: str) -> str:
         """Validation et nettoyage basique de la requête"""
         if not v or not v.strip():
             raise ValueError("Query ne peut pas être vide")
         return v.strip()
     
-    @validator('user_id')
-    def validate_user_id(cls, v):
+    @field_validator('user_id')
+    @classmethod
+    def validate_user_id(cls, v: Optional[Union[str, int]]) -> Optional[Union[str, int]]:
         """Validation user_id"""
         if v is not None:
             if isinstance(v, str) and not v.strip():
@@ -91,12 +94,12 @@ class IntentResponse(BaseModel):
     )
     cached: bool = Field(default=False, description="Résultat provient du cache")
     
-    @root_validator
-    def set_confidence_level(cls, values):
+    @model_validator(mode='after')
+    def set_confidence_level(self) -> 'IntentResponse':
         """Calcule automatiquement le niveau de confiance"""
-        confidence = values.get('confidence', 0.0)
-        values['confidence_level'] = ConfidenceLevel.from_score(confidence)
-        return values
+        if self.confidence_level is None:
+            self.confidence_level = ConfidenceLevel.from_score(self.confidence)
+        return self
 
 
 class EntityExtractionRequest(BaseModel):
@@ -123,6 +126,10 @@ class EntityExtractionResponse(BaseModel):
     )
     processing_time_ms: float = Field(..., description="Temps traitement")
     method_used: str = Field(default="pattern_matching", description="Méthode extraction")
+    extraction_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Métadonnées détaillées d'extraction"
+    )
 
 
 class BatchIntentRequest(BaseModel):
@@ -130,8 +137,8 @@ class BatchIntentRequest(BaseModel):
     
     queries: List[str] = Field(
         ..., 
-        min_items=1, 
-        max_items=100,
+        min_length=1, 
+        max_length=100,
         description="Liste des requêtes à traiter"
     )
     user_id: Optional[Union[str, int]] = None
@@ -142,20 +149,23 @@ class BatchIntentRequest(BaseModel):
         description="Traitement parallèle des requêtes"
     )
     
-    @validator('queries')
-    def validate_queries(cls, v):
+    @field_validator('queries')
+    @classmethod
+    def validate_queries(cls, v: List[str]) -> List[str]:
         """Validation des requêtes batch"""
         if not v:
             raise ValueError("Liste de requêtes ne peut pas être vide")
         
         # Validation de chaque requête
+        validated_queries = []
         for i, query in enumerate(v):
             if not query or not query.strip():
                 raise ValueError(f"Requête {i} ne peut pas être vide")
             if len(query) > 500:
                 raise ValueError(f"Requête {i} trop longue (max 500 caractères)")
+            validated_queries.append(query.strip())
         
-        return [q.strip() for q in v]
+        return validated_queries
 
 
 class BatchIntentResponse(BaseModel):
@@ -278,24 +288,175 @@ class RequestMetadata(BaseModel):
     entities_count: int = Field(default=0)
 
 
+# Modèles avancés pour API enrichie
+class DetailedIntentResponse(IntentResponse):
+    """Réponse enrichie avec détails de traitement"""
+    
+    processing_details: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Détails du processus de détection"
+    )
+    rule_matches: List[str] = Field(
+        default_factory=list,
+        description="Règles qui ont matché"
+    )
+    fallback_used: bool = Field(
+        default=False,
+        description="Fallback LLM utilisé"
+    )
+    entity_extraction_details: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Détails extraction d'entités"
+    )
+
+
+class ConversationContext(BaseModel):
+    """Contexte conversationnel pour requêtes multi-tours"""
+    
+    conversation_id: str = Field(..., description="ID unique conversation")
+    previous_intents: List[IntentType] = Field(
+        default_factory=list,
+        description="Intentions précédentes dans la conversation"
+    )
+    user_preferences: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Préférences utilisateur"
+    )
+    session_entities: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Entités persistantes dans la session"
+    )
+    turn_number: int = Field(default=1, description="Numéro du tour de parole")
+
+
+class IntentWithContext(IntentRequest):
+    """Requête d'intention avec contexte conversationnel"""
+    
+    conversation_context: Optional[ConversationContext] = Field(
+        None,
+        description="Contexte conversationnel"
+    )
+    
+    @model_validator(mode='after')
+    def validate_context_consistency(self) -> 'IntentWithContext':
+        """Valide la cohérence du contexte conversationnel"""
+        if self.conversation_context and self.context:
+            # Merge des contextes si les deux sont présents
+            if 'conversation_id' not in self.context:
+                self.context['conversation_id'] = self.conversation_context.conversation_id
+        return self
+
+
+class BulkProcessingRequest(BaseModel):
+    """Requête de traitement en masse avec options avancées"""
+    
+    requests: List[Union[IntentRequest, IntentWithContext]] = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Requêtes à traiter en masse"
+    )
+    processing_options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Options de traitement"
+    )
+    priority: int = Field(
+        default=0,
+        ge=-10,
+        le=10,
+        description="Priorité de traitement (-10 à 10)"
+    )
+    
+    @field_validator('requests')
+    @classmethod
+    def validate_bulk_requests(cls, v: List[Union[IntentRequest, IntentWithContext]]) -> List[Union[IntentRequest, IntentWithContext]]:
+        """Validation des requêtes bulk"""
+        if not v:
+            raise ValueError("Liste de requêtes ne peut pas être vide")
+        
+        # Vérification de diversité pour éviter spam
+        unique_queries = set()
+        for req in v:
+            if req.query in unique_queries:
+                raise ValueError(f"Requête dupliquée détectée: {req.query}")
+            unique_queries.add(req.query)
+        
+        return v
+
+
+class ServiceHealthCheck(BaseModel):
+    """Check de santé avancé du service"""
+    
+    overall_status: str = Field(..., description="Statut global")
+    components: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Statut détaillé des composants"
+    )
+    performance_metrics: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Métriques de performance temps réel"
+    )
+    last_check_timestamp: float = Field(
+        default_factory=time.time,
+        description="Timestamp du dernier check"
+    )
+    alerts: List[str] = Field(
+        default_factory=list,
+        description="Alertes actives"
+    )
+    
+    @model_validator(mode='after')
+    def determine_overall_status(self) -> 'ServiceHealthCheck':
+        """Détermine le statut global basé sur les composants"""
+        if not self.components:
+            self.overall_status = "unknown"
+            return self
+        
+        critical_failures = []
+        warnings = []
+        
+        for component, status_info in self.components.items():
+            status = status_info.get("status", "unknown")
+            if status in ["error", "failed", "critical"]:
+                critical_failures.append(component)
+            elif status in ["warning", "degraded"]:
+                warnings.append(component)
+        
+        if critical_failures:
+            self.overall_status = "unhealthy"
+            self.alerts.extend([f"Component {comp} is critical" for comp in critical_failures])
+        elif warnings:
+            self.overall_status = "degraded"
+            self.alerts.extend([f"Component {comp} has warnings" for comp in warnings])
+        else:
+            self.overall_status = "healthy"
+        
+        return self
+
+
 # Exports publics
 __all__ = [
     # Modèles de requête principaux
     "IntentRequest",
     "EntityExtractionRequest", 
     "BatchIntentRequest",
+    "IntentWithContext",
+    "BulkProcessingRequest",
     
     # Modèles de réponse principaux
     "IntentResponse",
     "EntityExtractionResponse",
     "BatchIntentResponse",
+    "DetailedIntentResponse",
     "HealthResponse",
     "MetricsResponse",
     "ErrorResponse",
+    "ServiceHealthCheck",
     
     # Modèles utilitaires
     "IntentSuggestion",
     "IntentClassificationResult",
     "CacheEntry",
-    "RequestMetadata"
+    "RequestMetadata",
+    "ConversationContext"
 ]

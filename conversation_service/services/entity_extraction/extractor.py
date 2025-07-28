@@ -42,9 +42,16 @@ class EntityExtractor:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
-        # Services sous-jacents
-        self.pattern_matcher = get_pattern_matcher()
-        self.text_cleaner = get_text_cleaner()
+        # Services sous-jacents avec gestion d'erreurs
+        try:
+            self.pattern_matcher: FinancialPatternMatcher = get_pattern_matcher()
+            self.text_cleaner = get_text_cleaner()
+        except Exception as e:
+            self.logger.error(f"Erreur initialisation EntityExtractor: {e}")
+            raise EntityExtractionError(
+                f"Impossible d'initialiser l'extracteur d'entités: {str(e)}",
+                extraction_method="initialization"
+            )
         
         # Configuration extraction par intention
         self.intent_entity_config = {
@@ -77,6 +84,50 @@ class EntityExtractor:
             "validation_failures": 0
         }
     
+    def extract_entities_from_request(
+        self, 
+        request: EntityExtractionRequest
+    ) -> EntityExtractionResponse:
+        """
+        API d'extraction utilisant les modèles Pydantic
+        
+        Args:
+            request: Requête d'extraction typée
+            
+        Returns:
+            Réponse d'extraction typée
+            
+        Raises:
+            EntityExtractionError: Si l'extraction échoue
+        """
+        try:
+            # Extraction avec la méthode interne
+            result = self.extract_entities(
+                text=request.query,
+                intent_context=request.intent_context,
+                target_entities=request.expected_entities,
+                validate_entities=True
+            )
+            
+            # Conversion vers le modèle de réponse
+            return EntityExtractionResponse(
+                entities=result["entities"],
+                confidence_per_entity=result.get("confidence_per_entity", {}),
+                processing_time_ms=result.get("metadata", {}).get("processing_time_ms", 0.0), 
+                method_used="multi_method_extraction",
+                extraction_metadata=result.get("metadata", {})
+            )
+            
+        except EntityExtractionError:
+            # Re-raise les erreurs spécifiques
+            raise
+        except Exception as e:
+            raise EntityExtractionError(
+                f"Erreur extraction via API: {str(e)}",
+                extraction_method="api_extraction",
+                context={"query": request.query}
+            )
+    
     def extract_entities(
         self, 
         text: str, 
@@ -95,13 +146,22 @@ class EntityExtractor:
             
         Returns:
             Dict avec entités extraites et métadonnées
+            
+        Raises:
+            EntityExtractionError: Si l'extraction échoue complètement
         """
         if not text:
-            return {"entities": {}, "metadata": {}}
+            return {"entities": {}, "metadata": {}, "confidence_per_entity": {}}
+        
+        if not isinstance(text, str):
+            raise EntityExtractionError(
+                f"Le texte doit être une chaîne, reçu: {type(text)}",
+                extraction_method="input_validation"
+            )
         
         self._metrics["total_extractions"] += 1
         
-        # Préprocessing du texte
+        # Préprocessing du texte avec gestion d'erreurs
         try:
             preprocessed = self.text_cleaner.preprocess_query(text)
             clean_text = preprocessed["normalized_query"]
@@ -113,9 +173,18 @@ class EntityExtractor:
         if target_entities is None:
             target_entities = self._get_target_entities_for_intent(intent_context)
         
+        # Validation des types d'entités
+        invalid_types = [et for et in target_entities if et not in EntityType]
+        if invalid_types:
+            raise EntityExtractionError(
+                f"Types d'entités invalides: {invalid_types}",
+                extraction_method="input_validation"
+            )
+        
         # Extraction multi-méthodes
         extraction_results = {}
         confidence_scores = {}
+        extraction_errors = []
         
         # Méthode 1: Pattern matching (principal)
         try:
@@ -129,8 +198,12 @@ class EntityExtractor:
                 pattern_results.get("metadata", {}).get("confidence_scores", {}),
                 "pattern_matching"
             )
+        except EntityExtractionError as e:
+            self.logger.error(f"Erreur pattern matching: {e}")
+            extraction_errors.append(f"Pattern matching: {str(e)}")
         except Exception as e:
-            self.logger.warning(f"Erreur pattern matching: {e}")
+            self.logger.warning(f"Erreur pattern matching inattendue: {e}")
+            extraction_errors.append(f"Pattern matching: {str(e)}")
         
         # Méthode 2: Extraction contextuelle (enrichissement)
         try:
@@ -146,17 +219,34 @@ class EntityExtractor:
             )
         except Exception as e:
             self.logger.warning(f"Erreur extraction contextuelle: {e}")
+            extraction_errors.append(f"Contextual: {str(e)}")
+        
+        # Vérification si extraction a échoué complètement
+        if not extraction_results and extraction_errors:
+            raise EntityExtractionError(
+                f"Échec complet de l'extraction: {extraction_errors}",
+                extraction_method="multi_method_extraction",
+                context={"text_length": len(text), "target_entities": [et.value for et in target_entities]}
+            )
         
         # Validation et normalisation
         if validate_entities and extraction_results:
-            extraction_results, confidence_scores = self._validate_and_normalize_entities(
-                extraction_results, confidence_scores, intent_context
-            )
+            try:
+                extraction_results, confidence_scores = self._validate_and_normalize_entities(
+                    extraction_results, confidence_scores, intent_context
+                )
+            except Exception as e:
+                self.logger.warning(f"Erreur validation entités: {e}")
+                # Continuer avec les résultats non validés
         
         # Génération métadonnées
         metadata = self._generate_extraction_metadata(
             extraction_results, confidence_scores, target_entities, intent_context
         )
+        
+        # Ajout des erreurs aux métadonnées
+        if extraction_errors:
+            metadata["extraction_errors"] = extraction_errors
         
         # Mise à jour métriques
         self._update_extraction_metrics(extraction_results, confidence_scores)
@@ -317,15 +407,22 @@ class EntityExtractor:
         confidence_scores: Dict[str, float],
         intent_context: Optional[IntentType]
     ) -> Tuple[Dict[str, Any], Dict[str, float]]:
-        """Valide et normalise les entités extraites"""
+        """
+        Valide et normalise les entités extraites
+        
+        Raises:
+            EntityExtractionError: Si la validation échoue massivement
+        """
         validated_entities = {}
         validated_confidence = {}
+        validation_errors = []
         
         for entity_key, entity_value in entities.items():
             try:
                 # Détermination type d'entité
                 entity_type = self._get_entity_type_from_key(entity_key)
                 if not entity_type:
+                    validation_errors.append(f"Type d'entité inconnu: {entity_key}")
                     continue
                 
                 # Validation spécialisée
@@ -338,11 +435,21 @@ class EntityExtractor:
                     validated_confidence[entity_key] = confidence_scores.get(entity_key, 0.5)
                 else:
                     self._metrics["validation_failures"] += 1
+                    validation_errors.append(f"Validation échouée {entity_key}: {entity_value}")
                     self.logger.debug(f"Validation failed for {entity_key}: {entity_value}")
                     
             except Exception as e:
+                validation_errors.append(f"Erreur validation {entity_key}: {str(e)}")
                 self.logger.warning(f"Erreur validation entité {entity_key}: {e}")
                 continue
+        
+        # Si toutes les validations ont échoué, lever une exception
+        if entities and not validated_entities and validation_errors:
+            raise EntityExtractionError(
+                f"Échec complet de validation: {validation_errors}",
+                extraction_method="validation",
+                context={"original_entities": list(entities.keys())}
+            )
         
         return validated_entities, validated_confidence
     
@@ -480,27 +587,43 @@ class EntityExtractor:
         entity_type: EntityType,
         intent_context: Optional[IntentType] = None
     ) -> Optional[Dict[str, Any]]:
-        """Extraction d'un seul type d'entité (optimisé)"""
-        result = self.extract_entities(
-            text=text,
-            intent_context=intent_context,
-            target_entities=[entity_type],
-            validate_entities=True
-        )
+        """
+        Extraction d'un seul type d'entité (optimisé)
         
-        entities = result.get("entities", {})
-        confidence_scores = result.get("confidence_per_entity", {})
-        
-        entity_key = entity_type.value
-        if entity_key in entities:
-            return {
-                "value": entities[entity_key],
-                "confidence": confidence_scores.get(entity_key, 0.0),
-                "entity_type": entity_type,
-                "metadata": result.get("metadata", {})
-            }
-        
-        return None
+        Raises:
+            EntityExtractionError: Si l'extraction échoue
+        """
+        try:
+            result = self.extract_entities(
+                text=text,
+                intent_context=intent_context,
+                target_entities=[entity_type],
+                validate_entities=True
+            )
+            
+            entities = result.get("entities", {})
+            confidence_scores = result.get("confidence_per_entity", {})
+            
+            entity_key = entity_type.value
+            if entity_key in entities:
+                return {
+                    "value": entities[entity_key],
+                    "confidence": confidence_scores.get(entity_key, 0.0),
+                    "entity_type": entity_type,
+                    "metadata": result.get("metadata", {})
+                }
+            
+            return None
+            
+        except EntityExtractionError:
+            # Re-raise les erreurs spécifiques
+            raise
+        except Exception as e:
+            raise EntityExtractionError(
+                f"Erreur extraction entité unique {entity_type}: {e}",
+                extraction_method="single_entity_extraction",
+                entity_type=entity_type
+            )
     
     def get_extraction_metrics(self) -> Dict[str, Any]:
         """Retourne métriques détaillées d'extraction"""
@@ -539,26 +662,90 @@ class EntityExtractor:
 _entity_extractor_instance = None
 
 def get_entity_extractor() -> EntityExtractor:
-    """Factory function pour récupérer instance EntityExtractor singleton"""
+    """
+    Factory function pour récupérer instance EntityExtractor singleton
+    
+    Raises:
+        EntityExtractionError: Si l'initialisation échoue
+    """
     global _entity_extractor_instance
     if _entity_extractor_instance is None:
-        _entity_extractor_instance = EntityExtractor()
+        try:
+            _entity_extractor_instance = EntityExtractor()
+        except Exception as e:
+            logger.error(f"Erreur initialisation EntityExtractor: {e}")
+            raise EntityExtractionError(
+                f"Impossible d'initialiser l'extracteur d'entités: {str(e)}",
+                extraction_method="initialization"
+            )
     return _entity_extractor_instance
 
 
 # Fonctions utilitaires d'extraction rapide
 def quick_extract_amount(text: str) -> Optional[float]:
-    """Extraction rapide d'un montant"""
-    extractor = get_entity_extractor()
-    result = extractor.extract_single_entity_type(text, EntityType.AMOUNT)
-    return result["value"] if result else None
+    """
+    Extraction rapide d'un montant
+    
+    Raises:
+        EntityExtractionError: Si l'extraction échoue
+    """
+    try:
+        extractor = get_entity_extractor()
+        result = extractor.extract_single_entity_type(text, EntityType.AMOUNT)
+        return result["value"] if result else None
+    except EntityExtractionError:
+        raise
+    except Exception as e:
+        raise EntityExtractionError(
+            f"Erreur extraction rapide montant: {e}",
+            extraction_method="quick_extraction"
+        )
 
 
 def quick_extract_category(text: str) -> Optional[str]:
-    """Extraction rapide d'une catégorie"""
-    extractor = get_entity_extractor()
-    result = extractor.extract_single_entity_type(text, EntityType.CATEGORY)
-    return result["value"] if result else None
+    """
+    Extraction rapide d'une catégorie
+    
+    Raises:
+        EntityExtractionError: Si l'extraction échoue
+    """
+    try:
+        extractor = get_entity_extractor()
+        result = extractor.extract_single_entity_type(text, EntityType.CATEGORY)
+        return result["value"] if result else None
+    except EntityExtractionError:
+        raise
+    except Exception as e:
+        raise EntityExtractionError(
+            f"Erreur extraction rapide catégorie: {e}",
+            extraction_method="quick_extraction"
+        )
+
+
+# Fonction API principale utilisant les modèles Pydantic
+def extract_entities_api(request: EntityExtractionRequest) -> EntityExtractionResponse:
+    """
+    Point d'entrée API pour extraction d'entités
+    
+    Args:
+        request: Requête d'extraction typée
+        
+    Returns:
+        Réponse d'extraction typée
+        
+    Raises:
+        EntityExtractionError: Si l'extraction échoue
+    """
+    try:
+        extractor = get_entity_extractor()
+        return extractor.extract_entities_from_request(request)
+    except EntityExtractionError:
+        raise
+    except Exception as e:
+        raise EntityExtractionError(
+            f"Erreur API extraction d'entités: {e}",
+            extraction_method="api_extraction"
+        )
 
 
 # Exports publics
@@ -567,5 +754,6 @@ __all__ = [
     "EntityExtractionResult",
     "get_entity_extractor",
     "quick_extract_amount",
-    "quick_extract_category"
+    "quick_extract_category",
+    "extract_entities_api"
 ]

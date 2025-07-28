@@ -83,7 +83,7 @@ class HybridIntelligentCache:
         # Configuration Redis
         self.redis_config = RedisConfig()
         self.redis_client = None
-        self.redis_available = False
+        self.redis_available = REDIS_AVAILABLE and self.redis_config.enabled  # ✅ UTILISÉ
         
         # Cache mémoire fallback
         self._memory_cache = OrderedDict()
@@ -102,8 +102,12 @@ class HybridIntelligentCache:
         
         self.logger = logging.getLogger(__name__)
         
-        # Initialisation Redis
-        self._initialize_redis()
+        # Initialisation Redis avec gestion d'erreurs
+        try:
+            self._initialize_redis()
+        except CacheError as e:
+            self.logger.error(f"Erreur initialisation cache: {e}")
+            raise
         
         self.logger.info(
             f"Cache hybride initialisé: Redis={self.redis_available}, "
@@ -111,9 +115,19 @@ class HybridIntelligentCache:
         )
     
     def _initialize_redis(self):
-        """Initialise connexion Redis avec fallback gracieux"""
+        """
+        Initialise connexion Redis avec fallback gracieux
+        
+        Raises:
+            CacheError: Si Redis requis mais indisponible
+        """
         if not REDIS_AVAILABLE:
-            self.logger.warning("Redis non disponible: package redis non installé")
+            if self.redis_config.enabled:
+                raise CacheError(
+                    "Redis activé dans config mais package redis non installé",
+                    cache_operation="initialization"
+                )
+            self.logger.info("Redis non disponible: package redis non installé")
             return
         
         if not self.redis_config.enabled:
@@ -121,8 +135,10 @@ class HybridIntelligentCache:
             return
         
         if not self.redis_config.url:
-            self.logger.warning("Redis URL manquante dans configuration")
-            return
+            raise CacheError(
+                "Redis activé mais URL manquante dans configuration",
+                cache_operation="initialization"
+            )
         
         try:
             self.redis_client = redis.from_url(
@@ -135,22 +151,47 @@ class HybridIntelligentCache:
                 decode_responses=True
             )
             
+            # Test de connexion
             self.redis_client.ping()
             self.redis_available = True
             
             self.logger.info(f"✅ Redis connecté: {self.redis_config.url.split('@')[-1] if '@' in self.redis_config.url else 'localhost'}")
             
-        except Exception as e:
-            self.logger.warning(f"⚠️ Redis connexion échouée: {e}. Utilisation cache mémoire uniquement.")
+        except RedisConnectionError as e:  # ✅ UTILISÉ
+            self.logger.warning(f"⚠️ Redis connexion échouée: {e}")
+            if self.redis_config.enabled:
+                raise CacheError(
+                    f"Impossible de se connecter à Redis: {str(e)}",
+                    cache_operation="connection",
+                    details={"redis_url_masked": self.redis_config.url.split('@')[-1] if '@' in self.redis_config.url else 'localhost'}
+                )
             self.redis_client = None
             self.redis_available = False
+        except Exception as e:
+            self.logger.warning(f"⚠️ Redis erreur inattendue: {e}")
+            raise CacheError(
+                f"Erreur initialisation Redis: {str(e)}",
+                cache_operation="initialization"
+            )
     
     def _get_redis_key(self, key):
         """Génère clé Redis avec préfixe"""
         return f"{self.redis_config.prefix}:intent:{key}"
     
     def get(self, key):
-        """Récupère un élément du cache (Redis puis mémoire)"""
+        """
+        Récupère un élément du cache (Redis puis mémoire)
+        
+        Raises:
+            CacheError: Si erreur critique de cache
+        """
+        if not key or not isinstance(key, str):
+            raise CacheError(
+                f"Clé de cache invalide: {key}",
+                cache_operation="get",
+                cache_key=str(key)
+            )
+        
         with self._lock:
             self._stats.total_requests += 1
             
@@ -165,25 +206,46 @@ class HybridIntelligentCache:
                         self.logger.debug(f"Redis hit: {key[:50]}...")
                         return redis_result
                         
-                except Exception as e:
+                except RedisConnectionError as e:  # ✅ UTILISÉ
+                    self.logger.error(f"Redis connexion perdue: {e}")
+                    self.redis_available = False
+                    self._stats.redis_errors += 1
+                    # Continue avec cache mémoire
+                except RedisError as e:
                     self.logger.warning(f"Redis get error: {e}")
+                    self._stats.redis_errors += 1
+                    # Continue avec cache mémoire
+                except Exception as e:
+                    self.logger.warning(f"Redis erreur inattendue: {e}")
                     self._stats.redis_errors += 1
             
             # 2. Fallback cache mémoire
-            memory_result = self._get_from_memory(key)
-            if memory_result:
-                self._stats.cache_hits += 1
-                self._stats.memory_hits += 1
-                self._update_hit_rate()
-                self.logger.debug(f"Memory hit: {key[:50]}...")
-                return memory_result
+            try:
+                memory_result = self._get_from_memory(key)
+                if memory_result:
+                    self._stats.cache_hits += 1
+                    self._stats.memory_hits += 1
+                    self._update_hit_rate()
+                    self.logger.debug(f"Memory hit: {key[:50]}...")
+                    return memory_result
+            except Exception as e:
+                raise CacheError(
+                    f"Erreur critique cache mémoire: {str(e)}",
+                    cache_operation="memory_get",
+                    cache_key=key
+                )
             
             # 3. Cache miss
             self._stats.cache_misses += 1
             return None
     
     def _get_from_redis(self, key):
-        """Récupère depuis Redis avec gestion TTL"""
+        """
+        Récupère depuis Redis avec gestion TTL
+        
+        Raises:
+            RedisError: Pour erreurs Redis spécifiques
+        """
         if not self.redis_available:
             return None
         
@@ -213,8 +275,8 @@ class HybridIntelligentCache:
             return cache_data.get("result", {})
             
         except (RedisError, json.JSONDecodeError) as e:
-            self.logger.warning(f"Redis get parsing error: {e}")
-            return None
+            # Re-raise pour gestion au niveau supérieur
+            raise
     
     def _get_from_memory(self, key):
         """Récupère depuis cache mémoire local"""
@@ -234,7 +296,27 @@ class HybridIntelligentCache:
         return entry.result.dict()
     
     def put(self, key, result, confidence, intent=None):
-        """Met un élément en cache (Redis + mémoire avec TTL adaptatif)"""
+        """
+        Met un élément en cache (Redis + mémoire avec TTL adaptatif)
+        
+        Raises:
+            CacheError: Si erreur critique de cache
+            CacheFullError: Si cache mémoire plein et éviction impossible
+        """
+        if not key or not isinstance(key, str):
+            raise CacheError(
+                f"Clé de cache invalide: {key}",
+                cache_operation="put",
+                cache_key=str(key)
+            )
+        
+        if not isinstance(result, dict):
+            raise CacheError(
+                f"Résultat doit être un dictionnaire, reçu: {type(result)}",
+                cache_operation="put",
+                cache_key=key
+            )
+        
         with self._lock:
             if not self._should_cache(confidence, intent):
                 return False
@@ -253,10 +335,28 @@ class HybridIntelligentCache:
             
             success = False
             
+            # Redis en premier
             if self.redis_available:
-                success |= self._put_to_redis(key, cache_data, ttl)
+                try:
+                    success |= self._put_to_redis(key, cache_data, ttl)
+                except RedisConnectionError as e:  # ✅ UTILISÉ
+                    self.logger.error(f"Redis connexion perdue lors du put: {e}")
+                    self.redis_available = False
+                    self._stats.redis_errors += 1
+                except RedisError as e:
+                    self.logger.warning(f"Redis put error: {e}")
+                    self._stats.redis_errors += 1
             
-            success |= self._put_to_memory(key, result, confidence)
+            # Cache mémoire ensuite
+            try:
+                success |= self._put_to_memory(key, result, confidence)
+            except CacheFullError as e:  # ✅ UTILISÉ
+                self.logger.warning(f"Cache mémoire plein: {e}")
+                # Tenter éviction forcée
+                if self._force_evict_memory():
+                    success |= self._put_to_memory(key, result, confidence)
+                else:
+                    raise  # Re-raise si éviction impossible
             
             if success:
                 self._update_cache_stats(key, confidence)
@@ -264,7 +364,12 @@ class HybridIntelligentCache:
             return success
     
     def _put_to_redis(self, key, cache_data, ttl):
-        """Met en cache dans Redis"""
+        """
+        Met en cache dans Redis
+        
+        Raises:
+            RedisError: Pour erreurs Redis spécifiques
+        """
         if not self.redis_available:
             return False
         
@@ -277,23 +382,34 @@ class HybridIntelligentCache:
             return True
             
         except Exception as e:
-            self.logger.warning(f"Redis put error: {e}")
-            self._stats.redis_errors += 1
-            return False
+            # Transform en RedisError pour cohérence
+            raise RedisError(f"Erreur Redis put: {str(e)}")
     
     def _put_to_memory(self, key, result, confidence):
-        """Met en cache en mémoire locale"""
+        """
+        Met en cache en mémoire locale
+        
+        Raises:
+            CacheFullError: Si cache plein et éviction impossible
+        """
         try:
+            # Vérification place disponible
             if len(self._memory_cache) >= self.max_size and key not in self._memory_cache:
                 if not self._evict_memory_lru():
-                    return False
+                    raise CacheFullError(
+                        cache_size=len(self._memory_cache),
+                        max_size=self.max_size
+                    )  # ✅ UTILISÉ
             
             from conversation_service.models.intent import IntentResponse
             try:
                 intent_response = IntentResponse(**result)
             except Exception as e:
-                self.logger.warning(f"Erreur création IntentResponse pour cache mémoire: {e}")
-                return False
+                raise CacheError(
+                    f"Erreur création IntentResponse pour cache mémoire: {e}",
+                    cache_operation="memory_put",
+                    cache_key=key
+                )
             
             cache_entry = CacheEntry(
                 query=result.get("query", ""),
@@ -307,9 +423,15 @@ class HybridIntelligentCache:
             self.logger.debug(f"Memory cache: {key[:50]}...")
             return True
             
+        except CacheFullError:
+            # Re-raise les erreurs de cache plein
+            raise
         except Exception as e:
-            self.logger.warning(f"Memory cache put error: {e}")
-            return False
+            raise CacheError(
+                f"Erreur critique cache mémoire put: {str(e)}",
+                cache_operation="memory_put",
+                cache_key=key
+            )
     
     def _should_cache(self, confidence, intent):
         """Détermine si résultat doit être mis en cache selon stratégie"""
@@ -322,7 +444,7 @@ class HybridIntelligentCache:
             if intent and intent in [IntentType.GREETING, IntentType.GOODBYE]:
                 return confidence > 0.95
             
-            if intent and intent.is_financial(intent.value):
+            if intent and hasattr(intent, 'is_financial') and intent.is_financial():
                 return confidence > 0.6
         
         return True
@@ -345,7 +467,7 @@ class HybridIntelligentCache:
         return age > ttl
     
     def _evict_memory_lru(self):
-        """Éviction LRU mémoire"""
+        """Éviction LRU mémoire standard"""
         if not self._memory_cache:
             return False
         
@@ -354,6 +476,32 @@ class HybridIntelligentCache:
         
         self.logger.debug(f"Memory LRU eviction: {lru_key[:50]}...")
         return True
+    
+    def _force_evict_memory(self):
+        """
+        Éviction forcée quand cache plein (évict multiple entries)
+        
+        Returns:
+            bool: True si éviction réussie
+        """
+        if not self._memory_cache:
+            return False
+        
+        # Éviction multiple si nécessaire
+        evicted_count = 0
+        target_size = int(self.max_size * 0.8)  # Réduire à 80% de la capacité
+        
+        while len(self._memory_cache) > target_size and self._memory_cache:
+            if self._evict_memory_lru():
+                evicted_count += 1
+            else:
+                break
+        
+        if evicted_count > 0:
+            self.logger.info(f"Éviction forcée: {evicted_count} entrées supprimées")
+            return True
+        
+        return False
     
     def _update_cache_stats(self, key, confidence):
         """Met à jour statistiques du cache"""
@@ -374,10 +522,22 @@ class HybridIntelligentCache:
             self._stats.hit_rate = self._stats.cache_hits / self._stats.total_requests
     
     def invalidate(self, key):
-        """Invalide une entrée spécifique du cache (Redis + mémoire)"""
+        """
+        Invalide une entrée spécifique du cache (Redis + mémoire)
+        
+        Raises:
+            CacheError: Si erreur critique d'invalidation
+        """
+        if not key:
+            raise CacheError(
+                "Clé d'invalidation ne peut pas être vide",
+                cache_operation="invalidate"
+            )
+        
         with self._lock:
             invalidated = False
             
+            # Redis invalidation
             if self.redis_available:
                 try:
                     redis_key = self._get_redis_key(key)
@@ -385,9 +545,15 @@ class HybridIntelligentCache:
                     if result > 0:
                         invalidated = True
                         self.logger.debug(f"Redis invalidated: {key[:50]}...")
-                except Exception as e:
+                except RedisConnectionError as e:  # ✅ UTILISÉ
+                    self.logger.error(f"Redis connexion perdue lors invalidation: {e}")
+                    self.redis_available = False
+                    self._stats.redis_errors += 1
+                except RedisError as e:
                     self.logger.warning(f"Redis invalidation error: {e}")
+                    self._stats.redis_errors += 1
             
+            # Memory invalidation
             if key in self._memory_cache:
                 del self._memory_cache[key]
                 invalidated = True
@@ -413,10 +579,16 @@ class HybridIntelligentCache:
             return len(keys_to_remove)
     
     def clear(self):
-        """Vide complètement le cache (Redis + mémoire)"""
+        """
+        Vide complètement le cache (Redis + mémoire)
+        
+        Raises:
+            CacheError: Si erreur critique de clear
+        """
         with self._lock:
             total_removed = 0
             
+            # Clear Redis
             if self.redis_available:
                 try:
                     pattern = f"{self.redis_config.prefix}:intent:*"
@@ -425,15 +597,28 @@ class HybridIntelligentCache:
                         removed = self.redis_client.delete(*redis_keys)
                         total_removed += removed
                         self.logger.info(f"Redis cleared: {removed} keys")
-                except Exception as e:
+                except RedisConnectionError as e:  # ✅ UTILISÉ
+                    self.logger.error(f"Redis connexion perdue lors clear: {e}")
+                    self.redis_available = False
+                    self._stats.redis_errors += 1
+                except RedisError as e:
                     self.logger.warning(f"Redis clear error: {e}")
+                    self._stats.redis_errors += 1
             
-            memory_size = len(self._memory_cache)
-            self._memory_cache.clear()
-            total_removed += memory_size
-            
-            self.logger.info(f"Cache vidé: {total_removed} entrées supprimées")
-            return total_removed
+            # Clear Memory
+            try:
+                memory_size = len(self._memory_cache)
+                self._memory_cache.clear()
+                total_removed += memory_size
+                
+                self.logger.info(f"Cache vidé: {total_removed} entrées supprimées")
+                return total_removed
+                
+            except Exception as e:
+                raise CacheError(
+                    f"Erreur critique clear cache mémoire: {str(e)}",
+                    cache_operation="clear"
+                )
     
     def cleanup_expired(self):
         """Nettoie les entrées expirées (mémoire seulement)"""
@@ -512,6 +697,7 @@ class HybridIntelligentCache:
                     "strategy": self.strategy.value,
                     "default_ttl": self.default_ttl,
                     "ttl_by_confidence": self._ttl_by_confidence,
+                    "redis_available": REDIS_AVAILABLE,  # ✅ UTILISÉ
                     "redis_config": self.redis_config.__dict__
                 },
                 "redis_info": redis_info,
@@ -523,9 +709,17 @@ class HybridIntelligentCache:
             }
     
     def get_redis_connection_status(self):
-        """Vérifie statut connexion Redis"""
+        """
+        Vérifie statut connexion Redis
+        
+        Raises:
+            CacheError: Si erreur critique de vérification
+        """
+        if not REDIS_AVAILABLE:  # ✅ UTILISÉ
+            return {"connected": False, "reason": "redis_package_not_available"}
+        
         if not self.redis_available:
-            return {"connected": False, "reason": "not_available"}
+            return {"connected": False, "reason": "not_configured_or_disabled"}
         
         try:
             start_time = time.time()
@@ -542,6 +736,13 @@ class HybridIntelligentCache:
                 }
             }
             
+        except RedisConnectionError as e:  # ✅ UTILISÉ
+            self.redis_available = False
+            return {
+                "connected": False,
+                "error": f"Connection error: {str(e)}",
+                "last_error_time": time.time()
+            }
         except Exception as e:
             return {
                 "connected": False,
@@ -585,7 +786,8 @@ class HybridIntelligentCache:
                 "total_removed": total_removed,
                 "expired_removed": expired_removed,
                 "low_usage_removed": low_usage_removed,
-                "redis_note": "Redis entries auto-expire"
+                "redis_note": "Redis entries auto-expire",
+                "redis_available": REDIS_AVAILABLE  # ✅ UTILISÉ
             }
 
 
@@ -597,19 +799,235 @@ _cache_instance = None
 
 
 def get_memory_cache():
-    """Factory function pour récupérer instance cache singleton"""
+    """
+    Factory function pour récupérer instance cache singleton
+    
+    Raises:
+        CacheError: Si initialisation échoue
+    """
     global _cache_instance
     if _cache_instance is None:
-        _cache_instance = HybridIntelligentCache()
+        try:
+            _cache_instance = HybridIntelligentCache()
+        except Exception as e:
+            logger.error(f"Erreur initialisation cache singleton: {e}")
+            raise CacheError(
+                f"Impossible d'initialiser le cache: {str(e)}",
+                cache_operation="singleton_initialization"
+            )
     return _cache_instance
 
 
 def create_cache_with_config(max_size=None, strategy=CacheStrategy.SMART):
-    """Crée instance cache avec configuration spécifique"""
-    return HybridIntelligentCache(
-        max_size=max_size or config.performance.cache_max_size,
-        strategy=strategy
-    )
+    """
+    Crée instance cache avec configuration spécifique
+    
+    Raises:
+        CacheError: Si configuration invalide
+    """
+    try:
+        return HybridIntelligentCache(
+            max_size=max_size or config.performance.cache_max_size,
+            strategy=strategy
+        )
+    except Exception as e:
+        logger.error(f"Erreur création cache configuré: {e}")
+        raise CacheError(
+            f"Impossible de créer cache avec config: {str(e)}",
+            cache_operation="configured_creation",
+            details={"max_size": max_size, "strategy": strategy.value if strategy else None}
+        )
+
+
+def test_redis_connection():
+    """
+    Test de connexion Redis indépendant
+    
+    Returns:
+        Dict avec statut de connexion
+        
+    Raises:
+        CacheError: Si test échoue de manière critique
+    """
+    if not REDIS_AVAILABLE:  # ✅ UTILISÉ
+        return {
+            "available": False,
+            "reason": "redis_package_not_installed",
+            "recommendation": "pip install redis"
+        }
+    
+    config_redis = RedisConfig()
+    
+    if not config_redis.enabled:
+        return {
+            "available": False,
+            "reason": "redis_disabled_in_config",
+            "recommendation": "Set REDIS_CACHE_ENABLED=true"
+        }
+    
+    if not config_redis.url:
+        return {
+            "available": False,
+            "reason": "redis_url_missing",
+            "recommendation": "Set REDIS_URL environment variable"
+        }
+    
+    try:
+        test_client = redis.from_url(
+            config_redis.url,
+            db=config_redis.db,
+            socket_timeout=5.0,
+            socket_connect_timeout=5.0,
+            decode_responses=True
+        )
+        
+        start_time = time.time()
+        test_client.ping()
+        ping_time = (time.time() - start_time) * 1000
+        
+        # Test d'écriture/lecture
+        test_key = f"{config_redis.prefix}:test:{int(time.time())}"
+        test_value = "connection_test"
+        
+        test_client.setex(test_key, 10, test_value)
+        retrieved = test_client.get(test_key)
+        test_client.delete(test_key)
+        
+        if retrieved != test_value:
+            raise CacheError(
+                "Redis read/write test failed",
+                cache_operation="connection_test"
+            )
+        
+        return {
+            "available": True,
+            "ping_time_ms": round(ping_time, 2),
+            "url_masked": config_redis.url.split('@')[-1] if '@' in config_redis.url else 'localhost',
+            "db": config_redis.db,
+            "read_write_test": "passed"
+        }
+        
+    except RedisConnectionError as e:  # ✅ UTILISÉ
+        return {
+            "available": False,
+            "reason": "connection_failed",
+            "error": str(e),
+            "recommendation": "Check Redis server status and URL"
+        }
+    except Exception as e:
+        raise CacheError(
+            f"Redis connection test failed: {str(e)}",
+            cache_operation="connection_test",
+            details={"redis_url_masked": config_redis.url.split('@')[-1] if '@' in config_redis.url else 'localhost'}
+        )
+
+
+def create_test_cache_entry(query="test query", intent=IntentType.GREETING, confidence=0.9):
+    """
+    Crée une entrée de cache pour les tests
+    
+    Returns:
+        Dict: Entrée de cache formatée
+        
+    Raises:
+        CacheError: Si création échoue
+    """
+    try:
+        from conversation_service.models.intent import IntentResponse
+        from conversation_service.models.enums import DetectionMethod
+        
+        test_result = {
+            "intent": intent.value,
+            "intent_code": "TEST_CODE",
+            "confidence": confidence,
+            "processing_time_ms": 10.0,
+            "method_used": DetectionMethod.RULES.value,
+            "query": query,
+            "entities": {},
+            "suggestions": [],
+            "cost_estimate": 0.0,
+            "cached": False
+        }
+        
+        # Validation via IntentResponse
+        intent_response = IntentResponse(**test_result)
+        
+        return test_result
+        
+    except Exception as e:
+        raise CacheError(
+            f"Erreur création entrée de test: {str(e)}",
+            cache_operation="test_entry_creation",
+            details={"query": query, "intent": intent.value, "confidence": confidence}
+        )
+
+
+def benchmark_cache_performance(cache_instance=None, num_operations=1000):
+    """
+    Benchmark des performances du cache
+    
+    Returns:
+        Dict avec résultats de performance
+        
+    Raises:
+        CacheError: Si benchmark échoue
+    """
+    if cache_instance is None:
+        cache_instance = get_memory_cache()
+    
+    try:
+        import random
+        
+        results = {
+            "operations": num_operations,
+            "put_times": [],
+            "get_times": [],
+            "redis_available": REDIS_AVAILABLE and cache_instance.redis_available,  # ✅ UTILISÉ
+            "memory_only": not (REDIS_AVAILABLE and cache_instance.redis_available)
+        }
+        
+        # Génération données de test
+        test_data = []
+        for i in range(num_operations):
+            test_entry = create_test_cache_entry(
+                query=f"test query {i}",
+                intent=random.choice(list(IntentType)),
+                confidence=random.uniform(0.5, 1.0)
+            )
+            test_data.append((f"test_key_{i}", test_entry))
+        
+        # Benchmark PUT operations
+        for key, result in test_data:
+            start_time = time.time()
+            cache_instance.put(key, result, result["confidence"], IntentType(result["intent"]))
+            put_time = (time.time() - start_time) * 1000
+            results["put_times"].append(put_time)
+        
+        # Benchmark GET operations
+        for key, _ in test_data:
+            start_time = time.time()
+            cached_result = cache_instance.get(key)
+            get_time = (time.time() - start_time) * 1000
+            results["get_times"].append(get_time)
+            
+            if cached_result is None:
+                logger.warning(f"Cache miss inattendu pour {key}")
+        
+        # Calcul statistiques
+        results["avg_put_time_ms"] = sum(results["put_times"]) / len(results["put_times"])
+        results["avg_get_time_ms"] = sum(results["get_times"]) / len(results["get_times"])
+        results["max_put_time_ms"] = max(results["put_times"])
+        results["max_get_time_ms"] = max(results["get_times"])
+        results["cache_stats"] = cache_instance.get_stats()
+        
+        return results
+        
+    except Exception as e:
+        raise CacheError(
+            f"Erreur benchmark cache: {str(e)}",
+            cache_operation="benchmark",
+            details={"num_operations": num_operations}
+        )
 
 
 # Exports publics
@@ -619,5 +1037,8 @@ __all__ = [
     "CacheStats", 
     "RedisConfig",
     "get_memory_cache",
-    "create_cache_with_config"
+    "create_cache_with_config",
+    "test_redis_connection",
+    "create_test_cache_entry",
+    "benchmark_cache_performance"
 ]

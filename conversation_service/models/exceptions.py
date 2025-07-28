@@ -47,6 +47,8 @@ class IntentDetectionError(ConversationServiceError):
         message: str,
         query: str = "",
         attempted_methods: Optional[List[DetectionMethod]] = None,
+        intent_context: Optional[IntentType] = None,
+        expected_intent: Optional[IntentType] = None,
         **kwargs
     ):
         super().__init__(
@@ -56,9 +58,13 @@ class IntentDetectionError(ConversationServiceError):
         )
         self.query = query
         self.attempted_methods = attempted_methods or []
+        self.intent_context = intent_context
+        self.expected_intent = expected_intent
         self.context.update({
             "query": query,
-            "attempted_methods": [str(m) for m in self.attempted_methods]
+            "attempted_methods": [str(m) for m in self.attempted_methods],
+            "intent_context": intent_context.value if intent_context else None,
+            "expected_intent": expected_intent.value if expected_intent else None
         })
 
 
@@ -70,18 +76,22 @@ class RuleEngineError(IntentDetectionError):
         message: str,
         pattern_error: Optional[str] = None,
         failed_patterns: Optional[List[str]] = None,
+        intent_type: Optional[IntentType] = None,
         **kwargs
     ):
         super().__init__(
             message,
             error_code="RULE_ENGINE_ERROR",
+            intent_context=intent_type,
             **kwargs
         )
         self.pattern_error = pattern_error
         self.failed_patterns = failed_patterns or []
+        self.intent_type = intent_type
         self.details.update({
             "pattern_error": pattern_error,
-            "failed_patterns": failed_patterns
+            "failed_patterns": failed_patterns,
+            "intent_type": intent_type.value if intent_type else None
         })
 
 
@@ -94,6 +104,9 @@ class EntityExtractionError(ConversationServiceError):
         query: str = "",
         target_entities: Optional[List[str]] = None,
         partial_entities: Optional[Dict[str, Any]] = None,
+        extraction_method: str = "unknown",
+        entity_type: Optional[str] = None,
+        intent_context: Optional[IntentType] = None,
         **kwargs
     ):
         super().__init__(
@@ -104,10 +117,16 @@ class EntityExtractionError(ConversationServiceError):
         self.query = query
         self.target_entities = target_entities or []
         self.partial_entities = partial_entities or {}
+        self.extraction_method = extraction_method
+        self.entity_type = entity_type
+        self.intent_context = intent_context
         self.context.update({
             "query": query,
             "target_entities": target_entities,
-            "partial_entities": partial_entities
+            "partial_entities": partial_entities,
+            "extraction_method": extraction_method,
+            "entity_type": entity_type,
+            "intent_context": intent_context.value if intent_context else None
         })
 
 
@@ -120,6 +139,8 @@ class LLMFallbackError(ConversationServiceError):
         llm_provider: str = "deepseek",
         api_error: Optional[str] = None,
         status_code: Optional[int] = None,
+        original_intent: Optional[IntentType] = None,
+        fallback_attempt_count: int = 1,
         **kwargs
     ):
         super().__init__(
@@ -130,10 +151,14 @@ class LLMFallbackError(ConversationServiceError):
         self.llm_provider = llm_provider
         self.api_error = api_error
         self.status_code = status_code
+        self.original_intent = original_intent
+        self.fallback_attempt_count = fallback_attempt_count
         self.details.update({
             "llm_provider": llm_provider,
             "api_error": api_error,
-            "status_code": status_code
+            "status_code": status_code,
+            "original_intent": original_intent.value if original_intent else None,
+            "fallback_attempt_count": fallback_attempt_count
         })
 
 
@@ -146,6 +171,7 @@ class ConfidenceError(ConversationServiceError):
         confidence_score: Optional[float] = None,
         threshold: Optional[float] = None,
         method: Optional[DetectionMethod] = None,
+        detected_intent: Optional[IntentType] = None,
         **kwargs
     ):
         super().__init__(
@@ -156,10 +182,12 @@ class ConfidenceError(ConversationServiceError):
         self.confidence_score = confidence_score
         self.threshold = threshold
         self.method = method
+        self.detected_intent = detected_intent
         self.details.update({
             "confidence_score": confidence_score,
             "threshold": threshold,
-            "method": str(method) if method else None
+            "method": str(method) if method else None,
+            "detected_intent": detected_intent.value if detected_intent else None
         })
 
 
@@ -291,8 +319,9 @@ class UnsupportedIntentError(ConversationServiceError):
     def __init__(
         self,
         message: str,
-        unsupported_intent: Optional[str] = None,
-        supported_intents: Optional[List[str]] = None,
+        unsupported_intent: Optional[IntentType] = None,
+        supported_intents: Optional[List[IntentType]] = None,
+        suggested_intent: Optional[IntentType] = None,
         **kwargs
     ):
         super().__init__(
@@ -303,9 +332,11 @@ class UnsupportedIntentError(ConversationServiceError):
         )
         self.unsupported_intent = unsupported_intent
         self.supported_intents = supported_intents or []
+        self.suggested_intent = suggested_intent
         self.details.update({
-            "unsupported_intent": unsupported_intent,
-            "supported_intents": supported_intents
+            "unsupported_intent": unsupported_intent.value if unsupported_intent else None,
+            "supported_intents": [intent.value for intent in self.supported_intents],
+            "suggested_intent": suggested_intent.value if suggested_intent else None
         })
 
 
@@ -313,11 +344,18 @@ class UnsupportedIntentError(ConversationServiceError):
 class PatternCompilationError(RuleEngineError):
     """Erreur de compilation des patterns regex"""
     
-    def __init__(self, pattern: str, regex_error: str, **kwargs):
+    def __init__(
+        self, 
+        pattern: str, 
+        regex_error: str, 
+        intent_type: Optional[IntentType] = None,
+        **kwargs
+    ):
         super().__init__(
             f"Erreur compilation pattern: {pattern}",
             pattern_error=regex_error,
             failed_patterns=[pattern],
+            intent_type=intent_type,
             **kwargs
         )
         self.pattern = pattern
@@ -327,12 +365,19 @@ class PatternCompilationError(RuleEngineError):
 class DeepSeekAPIError(LLMFallbackError):
     """Erreur spécifique API DeepSeek"""
     
-    def __init__(self, api_message: str, status_code: int = 500, **kwargs):
+    def __init__(
+        self, 
+        api_message: str, 
+        status_code: int = 500, 
+        original_intent: Optional[IntentType] = None,
+        **kwargs
+    ):
         super().__init__(
             f"Erreur API DeepSeek: {api_message}",
             llm_provider="deepseek",
             api_error=api_message,
             status_code=status_code,
+            original_intent=original_intent,
             **kwargs
         )
 
@@ -354,8 +399,58 @@ class CacheFullError(CacheError):
         })
 
 
+class IntentMismatchError(ConversationServiceError):
+    """Erreur de correspondance d'intention"""
+    
+    def __init__(
+        self,
+        message: str,
+        expected_intent: IntentType,
+        detected_intent: IntentType,
+        confidence_score: float,
+        **kwargs
+    ):
+        super().__init__(
+            message,
+            error_code="INTENT_MISMATCH",
+            severity=ErrorSeverity.WARNING,
+            **kwargs
+        )
+        self.expected_intent = expected_intent
+        self.detected_intent = detected_intent
+        self.confidence_score = confidence_score
+        self.details.update({
+            "expected_intent": expected_intent.value,
+            "detected_intent": detected_intent.value,
+            "confidence_score": confidence_score,
+            "intent_distance": self._calculate_intent_distance(expected_intent, detected_intent)
+        })
+    
+    def _calculate_intent_distance(self, intent1: IntentType, intent2: IntentType) -> str:
+        """Calcule une distance conceptuelle entre les intentions"""
+        # Groupes d'intentions similaires
+        search_group = {IntentType.SEARCH_BY_CATEGORY, IntentType.SEARCH_BY_DATE, IntentType.SEARCH_BY_MERCHANT}
+        analysis_group = {IntentType.BUDGET_ANALYSIS, IntentType.ACCOUNT_BALANCE}
+        action_group = {IntentType.TRANSFER, IntentType.CARD_MANAGEMENT}
+        
+        if intent1 == intent2:
+            return "identical"
+        elif (intent1 in search_group and intent2 in search_group):
+            return "similar_search"
+        elif (intent1 in analysis_group and intent2 in analysis_group):
+            return "similar_analysis"
+        elif (intent1 in action_group and intent2 in action_group):
+            return "similar_action"
+        else:
+            return "different_category"
+
+
 # Fonctions utilitaires de gestion d'erreurs
-def handle_llm_error(exception: Exception, query: str = "") -> LLMFallbackError:
+def handle_llm_error(
+    exception: Exception, 
+    query: str = "",
+    original_intent: Optional[IntentType] = None
+) -> LLMFallbackError:
     """Convertit exception LLM générique en LLMFallbackError"""
     if hasattr(exception, 'status_code'):
         status_code = getattr(exception, 'status_code')
@@ -366,6 +461,7 @@ def handle_llm_error(exception: Exception, query: str = "") -> LLMFallbackError:
         message=f"Erreur LLM: {str(exception)}",
         api_error=str(exception),
         status_code=status_code,
+        original_intent=original_intent,
         context={"original_query": query}
     )
 
@@ -376,6 +472,38 @@ def handle_validation_error(exception: Exception, field: str = "") -> Validation
         message=f"Erreur validation: {str(exception)}",
         field_name=field,
         context={"original_exception": str(exception)}
+    )
+
+
+def handle_intent_detection_error(
+    exception: Exception,
+    query: str,
+    intent_context: Optional[IntentType] = None,
+    attempted_methods: Optional[List[DetectionMethod]] = None
+) -> IntentDetectionError:
+    """Convertit exception générique en IntentDetectionError avec contexte"""
+    return IntentDetectionError(
+        message=f"Erreur détection intention: {str(exception)}",
+        query=query,
+        intent_context=intent_context,
+        attempted_methods=attempted_methods or [],
+        context={"original_exception": str(exception)}
+    )
+
+
+def create_intent_mismatch_error(
+    expected: IntentType,
+    detected: IntentType, 
+    confidence: float,
+    query: str = ""
+) -> IntentMismatchError:
+    """Crée une erreur de non-correspondance d'intention"""
+    return IntentMismatchError(
+        message=f"Intention attendue '{expected.value}' mais détectée '{detected.value}' (confiance: {confidence:.3f})",
+        expected_intent=expected,
+        detected_intent=detected,
+        confidence_score=confidence,
+        context={"query": query}
     )
 
 
@@ -396,6 +524,7 @@ __all__ = [
     "ServiceUnavailableError",
     "TimeoutError",
     "UnsupportedIntentError",
+    "IntentMismatchError",
     
     # Exceptions spécialisées
     "PatternCompilationError",
@@ -404,5 +533,7 @@ __all__ = [
     
     # Fonctions utilitaires
     "handle_llm_error",
-    "handle_validation_error"
+    "handle_validation_error",
+    "handle_intent_detection_error",
+    "create_intent_mismatch_error"
 ]

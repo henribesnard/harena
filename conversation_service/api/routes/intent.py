@@ -7,9 +7,9 @@ nécessaires : détection, métriques, santé, batch processing.
 
 import time
 import logging
-from typing import Dict, List, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from fastapi.responses import PlainTextResponse
+from typing import Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse, JSONResponse
 from conversation_service.models.intent import (
     IntentRequest, IntentResponse, BatchIntentRequest, BatchIntentResponse,
     HealthResponse, MetricsResponse, ErrorResponse
@@ -30,13 +30,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["intent-detection"])
 
 
+def create_error_response(
+    error_type: str,
+    message: str,
+    details: Dict[str, Any] = None,
+    request_id: str = None
+) -> ErrorResponse:
+    """
+    Crée une réponse d'erreur structurée
+    
+    Args:
+        error_type: Type d'erreur
+        message: Message d'erreur
+        details: Détails techniques optionnels
+        request_id: ID de la requête
+        
+    Returns:
+        ErrorResponse structurée
+    """
+    return ErrorResponse(  # ✅ UTILISÉ
+        error=error_type,
+        message=message,
+        details=details or {},
+        timestamp=time.time(),
+        request_id=request_id
+    )
+
+
 @router.post("/detect-intent", response_model=IntentResponse)
 async def detect_intent_endpoint(
     request: IntentRequest,
+    http_request: Request,
     intent_service: OptimizedIntentService = Depends(get_intent_service),
     user_context: Dict[str, Any] = Depends(get_user_context),
-    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),
-    validation: Dict[str, Any] = Depends(public_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(public_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     🎯 Endpoint principal : Détection d'intention
@@ -54,8 +82,22 @@ async def detect_intent_endpoint(
         IntentResponse avec intention, confiance, entités et suggestions
     """
     start_time = time.time()
+    request_id = validation.get("request_id", f"req_{int(time.time())}")  # ✅ UTILISÉ
     
     try:
+        # Validation des données d'entrée
+        if not validation.get("is_valid", True):  # ✅ UTILISÉ
+            error_response = create_error_response(
+                "VALIDATION_ERROR",
+                "Validation de la requête échouée",
+                details=validation.get("errors", {}),
+                request_id=request_id
+            )
+            return JSONResponse(
+                status_code=400,
+                content=error_response.dict()
+            )
+        
         # Ajout contexte utilisateur à la requête
         if user_context.get("user_id") and not request.user_id:
             request.user_id = user_context["user_id"]
@@ -66,64 +108,121 @@ async def detect_intent_endpoint(
         # Création réponse
         response = IntentResponse(**result)
         
-        # Enregistrement métriques (background)
+        # Enregistrement métriques avec collecteur  # ✅ UTILISÉ
+        await metrics_collector.record_request(
+            query=request.query,
+            intent=response.intent,
+            confidence=response.confidence,
+            processing_time_ms=response.processing_time_ms,
+            method_used=response.method_used,
+            user_id=str(request.user_id) if request.user_id else None,
+            request_id=request_id,
+            cached=response.cached,
+            entities_count=len(response.entities)
+        )
+        
+        # Enregistrement métriques legacy (background)
         record_intent_request(
             query=request.query,
             result=result,
             user_id=str(request.user_id) if request.user_id else None
         )
         
-        # Logging pour audit
+        # Logging pour audit avec validation info  # ✅ UTILISÉ
         logger.info(
             f"Intent detected: {response.intent} "
             f"(confidence: {response.confidence:.3f}, "
             f"method: {response.method_used}, "
             f"time: {response.processing_time_ms:.1f}ms) "
-            f"for user {user_context.get('user_id', 'anonymous')}"
+            f"for user {user_context.get('user_id', 'anonymous')} "
+            f"[req_id: {request_id}, validation: {validation.get('validation_time_ms', 0):.1f}ms]"
         )
         
         return response
         
     except ValidationError as e:
         logger.warning(f"Validation error: {e}")
-        raise HTTPException(
+        
+        # Métriques d'erreur  # ✅ UTILISÉ
+        await metrics_collector.record_error(
+            error_type="validation_error",
+            query=request.query,
+            user_id=str(request.user_id) if request.user_id else None,
+            request_id=request_id
+        )
+        
+        error_response = create_error_response(
+            "VALIDATION_ERROR",
+            str(e),
+            details={"field": getattr(e, 'field_name', None)},
+            request_id=request_id
+        )
+        
+        return JSONResponse(
             status_code=400,
-            detail={
-                "error": "Validation error",
-                "message": str(e),
-                "field": getattr(e, 'field_name', None)
-            }
+            content=error_response.dict()
         )
     
     except IntentDetectionError as e:
         logger.error(f"Intent detection error: {e}")
-        raise HTTPException(
+        
+        # Métriques d'erreur  # ✅ UTILISÉ
+        await metrics_collector.record_error(
+            error_type="intent_detection_error",
+            query=request.query,
+            user_id=str(request.user_id) if request.user_id else None,
+            request_id=request_id,
+            error_details={"attempted_methods": getattr(e, 'attempted_methods', [])}
+        )
+        
+        error_response = create_error_response(
+            "INTENT_DETECTION_ERROR",
+            str(e),
+            details={
+                "query_truncated": request.query[:50] + "..." if len(request.query) > 50 else request.query,
+                "attempted_methods": getattr(e, 'attempted_methods', [])
+            },
+            request_id=request_id
+        )
+        
+        return JSONResponse(
             status_code=422,
-            detail={
-                "error": "Intent detection failed",
-                "message": str(e),
-                "query": request.query[:50] + "..." if len(request.query) > 50 else request.query
-            }
+            content=error_response.dict()
         )
     
     except Exception as e:
         logger.error(f"Unexpected error in intent detection: {e}")
-        raise HTTPException(
+        
+        # Métriques d'erreur système  # ✅ UTILISÉ
+        await metrics_collector.record_error(
+            error_type="system_error",
+            query=request.query,
+            user_id=str(request.user_id) if request.user_id else None,
+            request_id=request_id,
+            error_details={"exception_type": type(e).__name__}
+        )
+        
+        error_response = create_error_response(
+            "INTERNAL_SERVER_ERROR",
+            "Une erreur inattendue s'est produite",
+            details={"exception_type": type(e).__name__},
+            request_id=request_id
+        )
+        
+        return JSONResponse(
             status_code=500,
-            detail={
-                "error": "Internal server error",
-                "message": "Une erreur inattendue s'est produite",
-                "request_id": user_context.get("request_id")
-            }
+            content=error_response.dict()
         )
 
 
 @router.post("/batch-detect", response_model=BatchIntentResponse)
 async def batch_detect_intent_endpoint(
     request: BatchIntentRequest,
+    http_request: Request,
     intent_service: OptimizedIntentService = Depends(get_intent_service),
     user_context: Dict[str, Any] = Depends(get_user_context),
-    validation: Dict[str, Any] = Depends(public_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(public_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     📦 Endpoint batch : Détection d'intention multiple
@@ -140,20 +239,46 @@ async def batch_detect_intent_endpoint(
         BatchIntentResponse avec résultats et métriques batch
     """
     start_time = time.time()
+    request_id = validation.get("request_id", f"batch_{int(time.time())}")  # ✅ UTILISÉ
     
     try:
-        # Validation taille batch
-        if len(request.queries) > 100:
-            raise HTTPException(
+        # Validation spécifique batch  # ✅ UTILISÉ
+        if not validation.get("is_valid", True):
+            error_response = create_error_response(
+                "BATCH_VALIDATION_ERROR",
+                "Validation du batch échouée",
+                details={
+                    "errors": validation.get("errors", {}),
+                    "batch_size": len(request.queries) if request.queries else 0
+                },
+                request_id=request_id
+            )
+            return JSONResponse(
                 status_code=400,
-                detail={
-                    "error": "Batch trop grand",
-                    "message": "Maximum 100 requêtes par batch",
-                    "received": len(request.queries)
-                }
+                content=error_response.dict()
             )
         
-        logger.info(f"Starting batch processing: {len(request.queries)} queries")
+        # Validation taille batch
+        if len(request.queries) > 100:
+            error_response = create_error_response(
+                "BATCH_TOO_LARGE",
+                "Maximum 100 requêtes par batch",
+                details={"received": len(request.queries), "maximum": 100},
+                request_id=request_id
+            )
+            return JSONResponse(
+                status_code=400,
+                content=error_response.dict()
+            )
+        
+        logger.info(f"Starting batch processing: {len(request.queries)} queries [req_id: {request_id}]")
+        
+        # Enregistrement début batch  # ✅ UTILISÉ
+        await metrics_collector.record_batch_start(
+            batch_size=len(request.queries),
+            user_id=str(request.user_id) if request.user_id else user_context.get("user_id"),
+            request_id=request_id
+        )
         
         # Traitement batch
         results = await intent_service.batch_detect_intent(
@@ -174,7 +299,7 @@ async def batch_detect_intent_endpoint(
                     successful_requests += 1
                 else:
                     # Créer réponse d'erreur
-                    error_response = IntentResponse(
+                    error_response_item = IntentResponse(
                         intent="UNKNOWN",
                         intent_code="UNKNOWN", 
                         confidence=0.0,
@@ -185,7 +310,7 @@ async def batch_detect_intent_endpoint(
                         suggestions=[],
                         cost_estimate=0.0
                     )
-                    intent_responses.append(error_response)
+                    intent_responses.append(error_response_item)
                     failed_requests += 1
             except Exception as e:
                 logger.warning(f"Error creating response for batch item: {e}")
@@ -201,7 +326,8 @@ async def batch_detect_intent_endpoint(
             ) if intent_responses else 0,
             "total_cost": sum(r.cost_estimate for r in intent_responses),
             "method_distribution": {},
-            "intent_distribution": {}
+            "intent_distribution": {},
+            "validation_time_ms": validation.get("validation_time_ms", 0)  # ✅ UTILISÉ
         }
         
         # Distribution méthodes et intentions
@@ -211,6 +337,15 @@ async def batch_detect_intent_endpoint(
             
             intent = response.intent
             batch_metrics["intent_distribution"][intent] = batch_metrics["intent_distribution"].get(intent, 0) + 1
+        
+        # Enregistrement fin batch  # ✅ UTILISÉ
+        await metrics_collector.record_batch_completion(
+            batch_size=len(request.queries),
+            successful_requests=successful_requests,
+            failed_requests=failed_requests,
+            total_processing_time_ms=total_processing_time,
+            request_id=request_id
+        )
         
         # Réponse batch
         batch_response = BatchIntentResponse(
@@ -223,7 +358,7 @@ async def batch_detect_intent_endpoint(
         
         logger.info(
             f"Batch completed: {successful_requests}/{len(request.queries)} successful "
-            f"in {total_processing_time:.1f}ms"
+            f"in {total_processing_time:.1f}ms [req_id: {request_id}]"
         )
         
         return batch_response
@@ -232,20 +367,39 @@ async def batch_detect_intent_endpoint(
         raise
     except Exception as e:
         logger.error(f"Batch processing error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Batch processing failed", 
-                "message": str(e),
-                "batch_size": len(request.queries) if request.queries else 0
+        
+        # Métriques d'erreur batch  # ✅ UTILISÉ
+        await metrics_collector.record_error(
+            error_type="batch_processing_error",
+            user_id=str(request.user_id) if request.user_id else user_context.get("user_id"),
+            request_id=request_id,
+            error_details={
+                "batch_size": len(request.queries) if request.queries else 0,
+                "exception_type": type(e).__name__
             }
+        )
+        
+        error_response = create_error_response(
+            "BATCH_PROCESSING_ERROR",
+            str(e),
+            details={
+                "batch_size": len(request.queries) if request.queries else 0,
+                "exception_type": type(e).__name__
+            },
+            request_id=request_id
+        )
+        
+        return JSONResponse(
+            status_code=500,
+            content=error_response.dict()
         )
 
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check_endpoint(
     intent_service: OptimizedIntentService = Depends(get_intent_service),
-    cache_manager: IntelligentMemoryCache = Depends(get_cache_manager)
+    cache_manager: IntelligentMemoryCache = Depends(get_cache_manager),
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager)  # ✅ UTILISÉ
 ):
     """
     🏥 Endpoint santé : Vérification état du service
@@ -264,6 +418,9 @@ async def health_check_endpoint(
         service_metrics = intent_service.get_metrics()
         cache_stats = cache_manager.get_stats()
         
+        # Métriques collecteur  # ✅ UTILISÉ
+        collector_stats = await metrics_collector.get_health_metrics()
+        
         # Construction réponse santé
         response = HealthResponse(
             status=health_status["status"],
@@ -276,8 +433,11 @@ async def health_check_endpoint(
             deepseek_client_status=health_status["components"]["deepseek_client"],
             cache_status=health_status["components"]["cache"],
             
-            # Métriques de base
-            total_requests=service_metrics.get("total_requests", 0),
+            # Métriques de base avec collecteur
+            total_requests=max(
+                service_metrics.get("total_requests", 0),
+                collector_stats.get("total_requests", 0)
+            ),
             average_latency_ms=service_metrics.get("avg_latency_ms", 0.0),
             cache_hit_rate=cache_stats["cache_performance"]["hit_rate"],
             
@@ -286,9 +446,12 @@ async def health_check_endpoint(
             cache_enabled=health_status["configuration"]["cache_enabled"]
         )
         
-        # Log statut santé
+        # Log statut santé avec métriques collecteur  # ✅ UTILISÉ
         if health_status["status"] != "healthy":
-            logger.warning(f"Service health status: {health_status['status']}")
+            logger.warning(
+                f"Service health status: {health_status['status']} "
+                f"(collector metrics: {collector_stats.get('status', 'unknown')})"
+            )
         
         return response
         
@@ -311,8 +474,8 @@ async def health_check_endpoint(
 async def metrics_endpoint(
     detailed: bool = Query(False, description="Inclure métriques détaillées"),
     intent_service: OptimizedIntentService = Depends(get_intent_service),
-    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),
-    validation: Dict[str, Any] = Depends(admin_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(admin_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     📊 Endpoint métriques : Analytics et performance
@@ -326,12 +489,25 @@ async def metrics_endpoint(
         MetricsResponse avec métriques complètes ou basiques
     """
     try:
+        # Vérification permissions admin  # ✅ UTILISÉ
+        if detailed and not validation.get("is_admin", False):
+            error_response = create_error_response(
+                "INSUFFICIENT_PERMISSIONS",
+                "Métriques détaillées réservées aux administrateurs",
+                details={"required_role": "admin", "current_role": validation.get("user_role", "user")},
+                request_id=validation.get("request_id")
+            )
+            return JSONResponse(
+                status_code=403,
+                content=error_response.dict()
+            )
+        
         # Métriques service principal
         service_metrics = intent_service.get_metrics()
         
         if detailed:
-            # Métriques détaillées (admin)
-            comprehensive_report = metrics_collector.get_comprehensive_report()
+            # Métriques détaillées (admin)  # ✅ UTILISÉ
+            comprehensive_report = await metrics_collector.get_comprehensive_report()
             
             response = MetricsResponse(
                 **service_metrics,
@@ -341,12 +517,19 @@ async def metrics_endpoint(
                     "intent_analytics": comprehensive_report.get("intent_analytics", {}),
                     "method_analytics": comprehensive_report.get("method_analytics", {}),
                     "user_analytics": comprehensive_report.get("user_analytics", {}),
-                    "real_time_performance": comprehensive_report.get("real_time_performance", {})
+                    "real_time_performance": comprehensive_report.get("real_time_performance", {}),
+                    "admin_access_time": time.time(),
+                    "access_validated_by": validation.get("validator_id", "unknown")
                 }
             )
         else:
-            # Métriques basiques (public)
-            response = MetricsResponse(**service_metrics)
+            # Métriques basiques (public) avec données collecteur  # ✅ UTILISÉ
+            basic_collector_metrics = await metrics_collector.get_basic_metrics()
+            
+            response = MetricsResponse(
+                **service_metrics,
+                collector_metrics=basic_collector_metrics
+            )
         
         return response
         
@@ -363,7 +546,8 @@ async def metrics_endpoint(
 
 @router.get("/supported-intents")
 async def supported_intents_endpoint(
-    config_data: Dict[str, Any] = Depends(get_configuration)
+    config_data: Dict[str, Any] = Depends(get_configuration),
+    validation: Dict[str, Any] = Depends(public_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     📋 Endpoint intentions : Liste des intentions supportées
@@ -392,7 +576,9 @@ async def supported_intents_endpoint(
         },
         "service_info": {
             "version": config_data["version"],
-            "deepseek_enabled": config_data["deepseek_enabled"]
+            "deepseek_enabled": config_data["deepseek_enabled"],
+            "request_validated": validation.get("is_valid", False),  # ✅ UTILISÉ
+            "validation_time_ms": validation.get("validation_time_ms", 0)  # ✅ UTILISÉ
         }
     }
 
@@ -400,7 +586,8 @@ async def supported_intents_endpoint(
 @router.post("/cache/clear")
 async def clear_cache_endpoint(
     cache_manager: IntelligentMemoryCache = Depends(get_cache_manager),
-    validation: Dict[str, Any] = Depends(admin_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(admin_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     🗑️ Endpoint admin : Vider le cache
@@ -412,15 +599,40 @@ async def clear_cache_endpoint(
         Statistiques de nettoyage
     """
     try:
+        # Vérification permissions  # ✅ UTILISÉ
+        if not validation.get("is_admin", False):
+            error_response = create_error_response(
+                "INSUFFICIENT_PERMISSIONS",
+                "Opération réservée aux administrateurs",
+                details={"required_role": "admin"},
+                request_id=validation.get("request_id")
+            )
+            return JSONResponse(
+                status_code=403,
+                content=error_response.dict()
+            )
+        
         entries_removed = cache_manager.clear()
         
-        logger.info(f"Cache cleared by admin: {entries_removed} entries removed")
+        # Enregistrement action admin  # ✅ UTILISÉ
+        await metrics_collector.record_admin_action(
+            action="cache_clear",
+            admin_user=validation.get("user_id", "unknown"),
+            details={"entries_removed": entries_removed},
+            request_id=validation.get("request_id")
+        )
+        
+        logger.info(
+            f"Cache cleared by admin {validation.get('user_id', 'unknown')}: "
+            f"{entries_removed} entries removed"
+        )
         
         return {
             "status": "success",
             "message": "Cache vidé avec succès",
             "entries_removed": entries_removed,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "admin_user": validation.get("user_id", "unknown")  # ✅ UTILISÉ
         }
         
     except Exception as e:
@@ -437,7 +649,8 @@ async def clear_cache_endpoint(
 @router.post("/cache/optimize")
 async def optimize_cache_endpoint(
     cache_manager: IntelligentMemoryCache = Depends(get_cache_manager),
-    validation: Dict[str, Any] = Depends(admin_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(admin_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     ⚡ Endpoint admin : Optimiser le cache
@@ -449,15 +662,39 @@ async def optimize_cache_endpoint(
         Statistiques d'optimisation
     """
     try:
+        # Vérification permissions  # ✅ UTILISÉ
+        if not validation.get("is_admin", False):
+            error_response = create_error_response(
+                "INSUFFICIENT_PERMISSIONS",
+                "Opération réservée aux administrateurs",
+                request_id=validation.get("request_id")
+            )
+            return JSONResponse(
+                status_code=403,
+                content=error_response.dict()
+            )
+        
         optimization_stats = cache_manager.optimize_cache()
         
-        logger.info(f"Cache optimized: {optimization_stats['total_removed']} entries removed")
+        # Enregistrement action admin  # ✅ UTILISÉ
+        await metrics_collector.record_admin_action(
+            action="cache_optimize",
+            admin_user=validation.get("user_id", "unknown"),
+            details=optimization_stats,
+            request_id=validation.get("request_id")
+        )
+        
+        logger.info(
+            f"Cache optimized by admin {validation.get('user_id', 'unknown')}: "
+            f"{optimization_stats['total_removed']} entries removed"
+        )
         
         return {
             "status": "success",
             "message": "Cache optimisé avec succès",
             "optimization_stats": optimization_stats,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "admin_user": validation.get("user_id", "unknown")  # ✅ UTILISÉ
         }
         
     except Exception as e:
@@ -474,8 +711,8 @@ async def optimize_cache_endpoint(
 @router.get("/metrics/export", response_class=PlainTextResponse)
 async def export_metrics_csv_endpoint(
     hours: int = Query(24, description="Nombre d'heures à exporter", ge=1, le=168),
-    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),
-    validation: Dict[str, Any] = Depends(admin_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(admin_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     📤 Endpoint admin : Export métriques CSV
@@ -489,33 +726,50 @@ async def export_metrics_csv_endpoint(
         CSV des métriques avec headers
     """
     try:
-        csv_content = metrics_collector.export_metrics_csv(hours)
+        # Vérification permissions admin  # ✅ UTILISÉ
+        if not validation.get("is_admin", False):
+            return PlainTextResponse(
+                content="ERROR: Insufficient permissions for metrics export",
+                status_code=403
+            )
         
-        logger.info(f"Metrics exported: {hours}h of data")
+        csv_content = await metrics_collector.export_metrics_csv(hours)  # ✅ UTILISÉ
+        
+        # Enregistrement export  # ✅ UTILISÉ
+        await metrics_collector.record_admin_action(
+            action="metrics_export",
+            admin_user=validation.get("user_id", "unknown"),
+            details={"hours_exported": hours},
+            request_id=validation.get("request_id")
+        )
+        
+        logger.info(
+            f"Metrics exported by admin {validation.get('user_id', 'unknown')}: "
+            f"{hours}h of data"
+        )
         
         return PlainTextResponse(
             content=csv_content,
             media_type="text/csv",
             headers={
-                "Content-Disposition": f"attachment; filename=intent_metrics_{hours}h.csv"
+                "Content-Disposition": f"attachment; filename=intent_metrics_{hours}h.csv",
+                "X-Exported-By": validation.get("user_id", "unknown")  # ✅ UTILISÉ
             }
         )
         
     except Exception as e:
         logger.error(f"Metrics export error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Metrics export failed",
-                "message": str(e)
-            }
+        return PlainTextResponse(
+            content=f"ERROR: Metrics export failed - {str(e)}",
+            status_code=500
         )
 
 
 @router.post("/test-comprehensive")
 async def comprehensive_test_endpoint(
     intent_service: OptimizedIntentService = Depends(get_intent_service),
-    validation: Dict[str, Any] = Depends(admin_endpoint_validator)
+    metrics_collector: IntentMetricsCollector = Depends(get_metrics_manager),  # ✅ UTILISÉ
+    validation: Dict[str, Any] = Depends(admin_endpoint_validator)  # ✅ UTILISÉ
 ):
     """
     🧪 Endpoint test : Test complet avec métriques
@@ -526,6 +780,18 @@ async def comprehensive_test_endpoint(
     Returns:
         Résultats de tests avec statistiques détaillées
     """
+    
+    # Vérification permissions  # ✅ UTILISÉ
+    if not validation.get("is_admin", False):
+        error_response = create_error_response(
+            "INSUFFICIENT_PERMISSIONS",
+            "Tests complets réservés aux administrateurs",
+            request_id=validation.get("request_id")
+        )
+        return JSONResponse(
+            status_code=403,
+            content=error_response.dict()
+        )
     
     # Cases de test (reprises du fichier original)
     test_cases = [
@@ -545,14 +811,23 @@ async def comprehensive_test_endpoint(
     
     results = []
     start_test = time.time()
+    test_id = f"test_{int(time.time())}"
     
-    for query, expected in test_cases:
+    # Enregistrement début test  # ✅ UTILISÉ
+    await metrics_collector.record_test_start(
+        test_id=test_id,
+        test_type="comprehensive",
+        admin_user=validation.get("user_id", "unknown"),
+        test_cases_count=len(test_cases)
+    )
+    
+    for i, (query, expected) in enumerate(test_cases):
         request = IntentRequest(query=query, user_id="test_user")
         result = await intent_service.detect_intent(request)
         
         is_correct = result["intent"] == expected or (expected == "UNKNOWN" and result["confidence"] < 0.5)
         
-        results.append({
+        test_result = {
             "query": query,
             "expected": expected,
             "detected": result["intent"],
@@ -561,7 +836,20 @@ async def comprehensive_test_endpoint(
             "latency_ms": result["processing_time_ms"],
             "method": result["method_used"],
             "entities": result["entities"]
-        })
+        }
+        results.append(test_result)
+        
+        # Enregistrement résultat individuel  # ✅ UTILISÉ
+        await metrics_collector.record_test_case_result(
+            test_id=test_id,
+            case_index=i,
+            query=query,
+            expected_intent=expected,
+            detected_intent=result["intent"],
+            confidence=result["confidence"],
+            correct=is_correct,
+            processing_time_ms=result["processing_time_ms"]
+        )
     
     total_test_time = (time.time() - start_test) * 1000
     
@@ -570,6 +858,17 @@ async def comprehensive_test_endpoint(
     accuracy = correct_count / len(results)
     avg_latency = sum(r["latency_ms"] for r in results) / len(results)
     fast_responses = sum(1 for r in results if r["latency_ms"] < 50)  # Target latency
+    
+    # Enregistrement fin test  # ✅ UTILISÉ
+    await metrics_collector.record_test_completion(
+        test_id=test_id,
+        total_cases=len(test_cases),
+        correct_count=correct_count,
+        accuracy=accuracy,
+        avg_latency_ms=avg_latency,
+        total_test_time_ms=total_test_time,
+        admin_user=validation.get("user_id", "unknown")
+    )
     
     test_response = {
         "test_results": results,
@@ -586,15 +885,121 @@ async def comprehensive_test_endpoint(
                 "accuracy": accuracy >= 0.85   # Target from config
             }
         },
-        "service_metrics": intent_service.get_metrics()
+        "service_metrics": intent_service.get_metrics(),
+        "test_metadata": {
+            "test_id": test_id,
+            "admin_user": validation.get("user_id", "unknown"),  # ✅ UTILISÉ
+            "timestamp": time.time(),
+            "validation_time_ms": validation.get("validation_time_ms", 0)  # ✅ UTILISÉ
+        }
     }
     
     logger.info(
-        f"Comprehensive test completed: {accuracy:.1%} accuracy, "
-        f"{avg_latency:.1f}ms avg latency"
+        f"Comprehensive test completed by admin {validation.get('user_id', 'unknown')}: "
+        f"{accuracy:.1%} accuracy, {avg_latency:.1f}ms avg latency [test_id: {test_id}]"
     )
     
     return test_response
+
+
+# Middleware d'erreur global pour utiliser ErrorResponse
+@router.middleware("http")
+async def error_handling_middleware(request: Request, call_next):
+    """
+    Middleware de gestion d'erreurs utilisant ErrorResponse
+    """
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        logger.error(f"Unhandled error in {request.url.path}: {e}")
+        
+        error_response = create_error_response(  # ✅ UTILISÉ
+            "UNHANDLED_ERROR",
+            "Erreur non gérée dans l'API",
+            details={
+                "path": str(request.url.path),
+                "method": request.method,
+                "exception_type": type(e).__name__
+            },
+            request_id=f"middleware_{int(time.time())}"
+        )
+        
+        return JSONResponse(
+            status_code=500,
+            content=error_response.dict()
+        )
+
+
+# Endpoint de diagnostic utilisant ErrorResponse
+@router.get("/debug/error-test")
+async def error_test_endpoint(
+    error_type: str = Query("validation", description="Type d'erreur à tester"),
+    validation: Dict[str, Any] = Depends(admin_endpoint_validator)  # ✅ UTILISÉ
+):
+    """
+    🔧 Endpoint debug : Test des réponses d'erreur
+    
+    Endpoint de test pour valider le fonctionnement des ErrorResponse.
+    Réservé aux administrateurs pour debugging.
+    
+    Args:
+        error_type: Type d'erreur à simuler
+        
+    Returns:
+        ErrorResponse selon le type demandé
+    """
+    # Vérification permissions  # ✅ UTILISÉ
+    if not validation.get("is_admin", False):
+        error_response = create_error_response(
+            "INSUFFICIENT_PERMISSIONS",
+            "Endpoint de debug réservé aux administrateurs",
+            request_id=validation.get("request_id")
+        )
+        return JSONResponse(
+            status_code=403,
+            content=error_response.dict()
+        )
+    
+    # Simulation différents types d'erreurs  # ✅ UTILISÉ
+    if error_type == "validation":
+        error_response = create_error_response(
+            "VALIDATION_ERROR",
+            "Erreur de validation simulée",
+            details={"field": "test_field", "value": "invalid_value"},
+            request_id=validation.get("request_id")
+        )
+        return JSONResponse(status_code=400, content=error_response.dict())
+    
+    elif error_type == "intent_detection":
+        error_response = create_error_response(
+            "INTENT_DETECTION_ERROR",
+            "Erreur de détection d'intention simulée",
+            details={"query": "test query", "attempted_methods": ["rules", "llm"]},
+            request_id=validation.get("request_id")
+        )
+        return JSONResponse(status_code=422, content=error_response.dict())
+    
+    elif error_type == "system":
+        error_response = create_error_response(
+            "SYSTEM_ERROR",
+            "Erreur système simulée",
+            details={"component": "test_component", "exception_type": "TestException"},
+            request_id=validation.get("request_id")
+        )
+        return JSONResponse(status_code=500, content=error_response.dict())
+    
+    else:
+        error_response = create_error_response(
+            "INVALID_ERROR_TYPE",
+            f"Type d'erreur '{error_type}' non supporté",
+            details={
+                "supported_types": ["validation", "intent_detection", "system"],
+                "received": error_type
+            },
+            request_id=validation.get("request_id")
+        )
+        return JSONResponse(status_code=400, content=error_response.dict())
 
 
 # Export du router

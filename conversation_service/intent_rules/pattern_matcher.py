@@ -609,38 +609,39 @@ class PatternMatcher:
         return matches
     
     def _get_exact_values_for_entity(self, entity_type: str) -> Dict[str, Any]:
-        """Récupère les valeurs exactes pour un type d'entité depuis la configuration"""
-        # Accès aux valeurs exact_values depuis la configuration JSON
+        """FIX: Récupère les valeurs exactes pour un type d'entité depuis la configuration"""
         try:
-            entity_config = self.rule_loader.rule_loader._load_entity_patterns()
-            # Cette méthode nécessiterait d'exposer les valeurs exactes
-            # Pour l'instant, on utilise un mapping hardcodé
+            # FIX: Accès direct aux patterns d'entités du rule_loader
+            entity_patterns = self.rule_loader.get_entity_patterns(entity_type)
+            if not entity_patterns:
+                return {}
             
-            exact_mappings = {
+            # Récupération des exact_values depuis le premier pattern (ils partagent la même config)
+            if entity_patterns and hasattr(entity_patterns[0], 'exact_values'):
+                return entity_patterns[0].exact_values or {}
+            
+            # Fallback: hardcodé pour certains types courants
+            hardcoded_values = {
                 "amount": {
                     "cent euros": {"value": 100.0, "currency": "EUR"},
                     "cinquante euros": {"value": 50.0, "currency": "EUR"},
-                    "vingt euros": {"value": 20.0, "currency": "EUR"}
+                    "vingt euros": {"value": 20.0, "currency": "EUR"},
+                    "dix euros": {"value": 10.0, "currency": "EUR"}
                 },
                 "period": {
-                    "ce mois": "current_month",
-                    "mois dernier": "last_month",
-                    "cette semaine": "current_week",
-                    "semaine dernière": "last_week"
-                },
-                "category": {
-                    "restaurant": "restaurant",
-                    "courses": "alimentation",
-                    "transport": "transport"
+                    "ce mois": {"type": "current_month", "start_date": "2025-07-01", "end_date": "2025-07-31"},
+                    "mois dernier": {"type": "last_month", "start_date": "2025-06-01", "end_date": "2025-06-30"},
+                    "cette semaine": {"type": "current_week"},
+                    "semaine dernière": {"type": "last_week"}
                 },
                 "merchant": {
-                    "amazon": "AMAZON",
-                    "netflix": "NETFLIX",
-                    "carrefour": "CARREFOUR"
+                    "amazon": {"merchant": "AMAZON", "display_name": "AMAZON", "category": "shopping"},
+                    "netflix": {"merchant": "NETFLIX", "display_name": "NETFLIX", "category": "loisirs"},
+                    "carrefour": {"merchant": "CARREFOUR", "display_name": "CARREFOUR", "category": "alimentation"}
                 }
             }
             
-            return exact_mappings.get(entity_type, {})
+            return hardcoded_values.get(entity_type, {})
             
         except Exception as e:
             logger.warning(f"Could not load exact values for {entity_type}: {e}")

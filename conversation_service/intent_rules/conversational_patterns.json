@@ -1,514 +1,373 @@
 {
-    "version": "1.0",
-    "last_updated": "2025-01-30",
-    "description": "Patterns d'extraction et normalisation des entités financières",
-    "entity_types": {
-      "amount": {
-        "description": "Montants monétaires et valeurs numériques",
-        "priority": 1,
-        "patterns": [
-          {
-            "regex": "\\b(\\d+(?:[,.]\\d+)?)\\s*(?:euros?|€|EUR)\\b",
-            "case_sensitive": false,
-            "extract_group": 1,
-            "normalize": "float",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(\\d+)\\s*(?:€|EUR)\\b",
-            "case_sensitive": false,
-            "extract_group": 1,
-            "normalize": "float",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(\\d+(?:[,.]\\d+)?)\\s*(?:dollars?|\\$|USD)\\b",
-            "case_sensitive": false,
-            "extract_group": 1,
-            "normalize": "float",
-            "currency": "USD",
-            "weight": 0.9
-          },
-          {
-            "regex": "\\b(\\d+(?:[,.]\\d+)?)\\s*(?:livres?|£|GBP)\\b",
-            "case_sensitive": false,
-            "extract_group": 1,
-            "normalize": "float", 
-            "currency": "GBP",
-            "weight": 0.9
-          }
-        ],
-        "exact_values": {
-          "cent euros": {"value": 100.0, "currency": "EUR"},
-          "mille euros": {"value": 1000.0, "currency": "EUR"},
-          "cinquante euros": {"value": 50.0, "currency": "EUR"},
-          "vingt euros": {"value": 20.0, "currency": "EUR"},
-          "dix euros": {"value": 10.0, "currency": "EUR"},
-          "cinq euros": {"value": 5.0, "currency": "EUR"}
+  "version": "1.0",
+  "last_updated": "2025-01-30",
+  "description": "Patterns de détection d'intentions conversationnelles et utilitaires",
+  "intents": {
+    "GREETING": {
+      "description": "Salutations et accueil utilisateur",
+      "intent_category": "CONVERSATIONAL",
+      "confidence": 0.98,
+      "priority": 1,
+      "patterns": [
+        {
+          "regex": "^\\s*(bonjour|salut|hello|hi|hey|bonsoir|bonne\\s+nuit)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 1.0
         },
-        "operators": {
-          "plus de": "gt",
-          "supérieur à": "gt", 
-          "au-dessus de": "gt",
-          "moins de": "lt",
-          "inférieur à": "lt",
-          "en dessous de": "lt",
-          "exactement": "eq",
-          "égal à": "eq",
-          "entre": "range"
-        }
-      },
-  
-      "period": {
-        "description": "Périodes temporelles et dates",
-        "priority": 2,
-        "patterns": [
-          {
-            "regex": "\\b(ce\\s+mois|mois\\s+en\\s+cours|mois\\s+actuel)\\b",
-            "case_sensitive": false,
-            "extract_group": 0,
-            "normalize": "current_month",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(mois\\s+dernier|dernier\\s+mois|mois\\s+précédent)\\b",
-            "case_sensitive": false,
-            "extract_group": 0,
-            "normalize": "last_month",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(cette\\s+semaine|semaine\\s+en\\s+cours|semaine\\s+actuelle)\\b",
-            "case_sensitive": false,
-            "extract_group": 0,
-            "normalize": "current_week",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(semaine\\s+dernière|dernière\\s+semaine|semaine\\s+précédente)\\b",
-            "case_sensitive": false,
-            "extract_group": 0,
-            "normalize": "last_week",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\\b",
-            "case_sensitive": false,
-            "extract_group": 0,
-            "normalize": "month_name",
-            "weight": 0.9
-          },
-          {
-            "regex": "\\b(hier|avant-hier)\\b",
-            "case_sensitive": false,
-            "extract_group": 0,
-            "normalize": "relative_day",
-            "weight": 0.8
-          },
-          {
-            "regex": "\\b(\\d{4})\\b",
-            "case_sensitive": false,
-            "extract_group": 1,
-            "normalize": "year",
-            "weight": 0.7
-          },
-          {
-            "regex": "\\b(\\d{1,2})/(\\d{1,2})/(\\d{4})\\b",
-            "case_sensitive": false,
-            "extract_groups": [1, 2, 3],
-            "normalize": "date_format",
-            "weight": 0.95
-          }
-        ],
-        "exact_values": {
-          "ce mois": "current_month",
-          "mois dernier": "last_month", 
-          "cette semaine": "current_week",
-          "semaine dernière": "last_week",
-          "aujourd'hui": "today",
-          "hier": "yesterday",
-          "avant-hier": "day_before_yesterday",
-          "cette année": "current_year",
-          "année dernière": "last_year"
+        {
+          "regex": "\\b(bonjour|salut|hello|hi|hey|bonsoir)\\s+(assistant|bot|toi)\\b",
+          "case_sensitive": false,
+          "weight": 0.95
         },
-        "month_mappings": {
-          "janvier": {"month": 1, "name": "janvier"},
-          "février": {"month": 2, "name": "février"},
-          "mars": {"month": 3, "name": "mars"},
-          "avril": {"month": 4, "name": "avril"},
-          "mai": {"month": 5, "name": "mai"},
-          "juin": {"month": 6, "name": "juin"},
-          "juillet": {"month": 7, "name": "juillet"},
-          "août": {"month": 8, "name": "août"},
-          "septembre": {"month": 9, "name": "septembre"},
-          "octobre": {"month": 10, "name": "octobre"},
-          "novembre": {"month": 11, "name": "novembre"},
-          "décembre": {"month": 12, "name": "décembre"}
+        {
+          "regex": "^\\s*(coucou|yo)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 0.9
         }
-      },
-  
-      "category": {
-        "description": "Catégories de dépenses et types de transactions",
-        "priority": 3,
-        "patterns": [
-          {
-            "regex": "\\b(restaurant|resto|repas|dîner|déjeuner|manger|restauration)\\b",
-            "case_sensitive": false,
-            "normalize": "restaurant",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(courses|alimentation|supermarché|épicerie|nourriture|alimentaire)\\b",
-            "case_sensitive": false,
-            "normalize": "alimentation",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(transport|essence|carburant|taxi|métro|bus|train|voiture)\\b",
-            "case_sensitive": false,
-            "normalize": "transport",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(santé|pharmacie|médecin|dentiste|hôpital|clinique|médicaments?)\\b",
-            "case_sensitive": false,
-            "normalize": "santé",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(shopping|vêtements?|habits?|chaussures?|mode|textile)\\b",
-            "case_sensitive": false,
-            "normalize": "shopping",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(loisirs?|cinéma|sport|gym|divertissement|spectacle)\\b",
-            "case_sensitive": false,
-            "normalize": "loisirs",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(logement|loyer|charges|électricité|gaz|eau)\\b",
-            "case_sensitive": false,
-            "normalize": "logement",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(éducation|école|formation|livre|fournitures?)\\b",
-            "case_sensitive": false,
-            "normalize": "éducation",
-            "weight": 1.0
-          }
-        ],
-        "exact_values": {
-          "restaurant": "restaurant",
-          "resto": "restaurant",
-          "repas": "restaurant",
-          "restauration": "restaurant",
-          "courses": "alimentation",
-          "supermarché": "alimentation",
-          "alimentation": "alimentation",
-          "épicerie": "alimentation",
-          "transport": "transport",
-          "essence": "transport",
-          "carburant": "transport",
-          "taxi": "transport",
-          "santé": "santé",
-          "pharmacie": "santé",
-          "médecin": "santé",
-          "shopping": "shopping",
-          "vêtements": "shopping",
-          "mode": "shopping",
-          "loisirs": "loisirs",
-          "cinéma": "loisirs",
-          "sport": "loisirs",
-          "logement": "logement",
-          "loyer": "logement"
-        },
-        "category_hierarchy": {
-          "restaurant": {
-            "parent": "alimentation_sortie",
-            "subcategories": ["fast_food", "restaurant_traditionnel", "livraison"]
-          },
-          "alimentation": {
-            "parent": "dépenses_courantes",
-            "subcategories": ["supermarché", "marché", "bio"]
-          },
-          "transport": {
-            "parent": "dépenses_courantes", 
-            "subcategories": ["carburant", "transport_public", "taxi_uber"]
-          },
-          "santé": {
-            "parent": "dépenses_essentielles",
-            "subcategories": ["pharmacie", "médecin", "dentiste", "optique"]
-          },
-          "shopping": {
-            "parent": "dépenses_plaisir",
-            "subcategories": ["vêtements", "chaussures", "accessoires"]
-          },
-          "loisirs": {
-            "parent": "dépenses_plaisir",
-            "subcategories": ["sport", "cinéma", "sorties", "hobbies"]
-          }
-        }
-      },
-  
-      "merchant": {
-        "description": "Noms de marchands et enseignes",
-        "priority": 4,
-        "patterns": [
-          {
-            "regex": "\\b(amazon)\\b",
-            "case_sensitive": false,
-            "normalize": "AMAZON",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(netflix)\\b",
-            "case_sensitive": false,
-            "normalize": "NETFLIX",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(carrefour)\\b",
-            "case_sensitive": false,
-            "normalize": "CARREFOUR",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(uber)\\b",
-            "case_sensitive": false,
-            "normalize": "UBER",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(sncf)\\b",
-            "case_sensitive": false,
-            "normalize": "SNCF",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(mcdo|mcdonald|mcdonald's)\\b",
-            "case_sensitive": false,
-            "normalize": "MCDONALD'S",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(spotify)\\b",
-            "case_sensitive": false,
-            "normalize": "SPOTIFY",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(apple)\\b",
-            "case_sensitive": false,
-            "normalize": "APPLE",
-            "weight": 0.9
-          },
-          {
-            "regex": "\\b(google)\\b",
-            "case_sensitive": false,
-            "normalize": "GOOGLE",
-            "weight": 0.9
-          }
-        ],
-        "exact_values": {
-          "amazon": "AMAZON",
-          "netflix": "NETFLIX",
-          "carrefour": "CARREFOUR",
-          "leclerc": "LECLERC",
-          "uber": "UBER",
-          "sncf": "SNCF",
-          "mcdo": "MCDONALD'S",
-          "mcdonald": "MCDONALD'S",
-          "spotify": "SPOTIFY",
-          "apple": "APPLE",
-          "google": "GOOGLE",
-          "microsoft": "MICROSOFT",
-          "paypal": "PAYPAL"
-        },
-        "merchant_categories": {
-          "AMAZON": "shopping",
-          "NETFLIX": "loisirs",
-          "SPOTIFY": "loisirs",
-          "CARREFOUR": "alimentation",
-          "LECLERC": "alimentation",
-          "UBER": "transport",
-          "SNCF": "transport",
-          "MCDONALD'S": "restaurant",
-          "APPLE": "technologie",
-          "GOOGLE": "technologie"
-        }
-      },
-  
-      "operation_type": {
-        "description": "Types d'opérations bancaires",
-        "priority": 5,
-        "patterns": [
-          {
-            "regex": "\\b(carte|paiement\\s+carte|cb|carte\\s+bleue|card)\\b",
-            "case_sensitive": false,
-            "normalize": "card",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(virement|virements?|transfer)\\b",
-            "case_sensitive": false,
-            "normalize": "transfer",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(prélèvement|prélèvements?|direct\\s+debit)\\b",
-            "case_sensitive": false,
-            "normalize": "direct_debit",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(chèque|chèques?|check)\\b",
-            "case_sensitive": false,
-            "normalize": "check",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(retrait|retraits?|distributeur|dab|withdrawal)\\b",
-            "case_sensitive": false,
-            "normalize": "withdrawal",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(dépôt|dépôts?|versement|deposit)\\b",
-            "case_sensitive": false,
-            "normalize": "deposit",
-            "weight": 1.0
-          }
-        ],
-        "exact_values": {
-          "carte": "card",
-          "cb": "card",
-          "carte bleue": "card",
-          "paiement carte": "card",
-          "virement": "transfer",
-          "virements": "transfer",
-          "prélèvement": "direct_debit",
-          "prélèvements": "direct_debit",
-          "chèque": "check",
-          "chèques": "check",
-          "retrait": "withdrawal",
-          "retraits": "withdrawal",
-          "distributeur": "withdrawal",
-          "dab": "withdrawal",
-          "dépôt": "deposit",
-          "versement": "deposit"
-        },
-        "operation_descriptions": {
-          "card": "Paiement par carte bancaire",
-          "transfer": "Virement bancaire",
-          "direct_debit": "Prélèvement automatique",
-          "check": "Paiement par chèque",
-          "withdrawal": "Retrait d'espèces",
-          "deposit": "Dépôt ou versement"
-        }
-      },
-  
-      "transaction_type": {
-        "description": "Type de transaction (débit/crédit)",
-        "priority": 6,
-        "patterns": [
-          {
-            "regex": "\\b(dépense|dépenses?|sortie|sorties?|débit)\\b",
-            "case_sensitive": false,
-            "normalize": "debit",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(recette|recettes?|entrée|entrées?|crédit|revenus?)\\b",
-            "case_sensitive": false,
-            "normalize": "credit", 
-            "weight": 1.0
-          }
-        ],
-        "exact_values": {
-          "dépense": "debit",
-          "dépenses": "debit",
-          "sortie": "debit",
-          "sorties": "debit",
-          "débit": "debit",
-          "recette": "credit",
-          "recettes": "credit",
-          "entrée": "credit",
-          "entrées": "credit",
-          "crédit": "credit",
-          "revenus": "credit"
-        }
-      },
-  
-      "currency": {
-        "description": "Devises et codes monétaires",
-        "priority": 7,
-        "patterns": [
-          {
-            "regex": "\\b(euros?|€|EUR)\\b",
-            "case_sensitive": false,
-            "normalize": "EUR",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(dollars?|\\$|USD)\\b",
-            "case_sensitive": false,
-            "normalize": "USD",
-            "weight": 1.0
-          },
-          {
-            "regex": "\\b(livres?|£|GBP)\\b",
-            "case_sensitive": false,
-            "normalize": "GBP",
-            "weight": 1.0
-          }
-        ],
-        "exact_values": {
-          "euro": "EUR",
-          "euros": "EUR",
-          "€": "EUR",
-          "EUR": "EUR",
-          "dollar": "USD",
-          "dollars": "USD",
-          "$": "USD",
-          "USD": "USD",
-          "livre": "GBP",
-          "livres": "GBP",
-          "£": "GBP",
-          "GBP": "GBP"
-        },
-        "default_currency": "EUR"
-      }
-    },
-  
-    "global_settings": {
-      "extraction_priorities": [
-        "amount",
-        "period", 
-        "category",
-        "merchant",
-        "operation_type",
-        "transaction_type",
-        "currency"
       ],
-      "normalization_rules": {
-        "case_sensitive": false,
-        "remove_accents": false,
-        "trim_whitespace": true,
-        "standardize_separators": true
-      },
-      "confidence_thresholds": {
-        "high_confidence": 0.9,
-        "medium_confidence": 0.7,
-        "low_confidence": 0.5
-      },
-      "entity_validation": {
-        "validate_amounts": true,
-        "validate_dates": true,
-        "validate_merchants": false,
-        "validate_categories": true
-      }
+      "exact_matches": [
+        "bonjour",
+        "salut", 
+        "hello",
+        "hi",
+        "hey",
+        "bonsoir",
+        "bonne nuit",
+        "coucou",
+        "yo"
+      ],
+      "response_type": "greeting",
+      "no_search_needed": true,
+      "suggested_responses": [
+        "Bonjour ! Comment puis-je vous aider avec vos finances aujourd'hui ?",
+        "Salut ! Que souhaitez-vous savoir sur vos transactions ?",
+        "Hello ! Je peux vous aider à analyser vos dépenses ou rechercher des transactions."
+      ],
+      "suggested_followup": [
+        "Voir mes dernières transactions",
+        "Analyser mes dépenses du mois",
+        "Aide sur les fonctionnalités"
+      ],
+      "examples": [
+        "bonjour",
+        "salut comment ça va",
+        "hello assistant",
+        "bonsoir"
+      ]
+    },
+
+    "HELP": {
+      "description": "Demande d'aide et explication fonctionnalités",
+      "intent_category": "CONVERSATIONAL", 
+      "confidence": 0.95,
+      "priority": 1,
+      "patterns": [
+        {
+          "regex": "^\\s*(aide|help)\\s*[!?]*\\s*$",
+          "case_sensitive": false,
+          "weight": 1.0
+        },
+        {
+          "regex": "\\b(j'ai\\s+besoin\\s+d')?aide\\b",
+          "case_sensitive": false,
+          "weight": 0.95
+        },
+        {
+          "regex": "\\b(comment|expliquer|montrer)\\s+(ça\\s+marche|faire|utiliser)\\b",
+          "case_sensitive": false,
+          "weight": 0.9
+        },
+        {
+          "regex": "\\b(peux.*m'aider|pouvez.*m'aider|m'aider)\\b",
+          "case_sensitive": false,
+          "weight": 0.85
+        },
+        {
+          "regex": "\\b(que\\s+peux-tu\\s+faire|quelles\\s+fonctionnalités|capacités)\\b",
+          "case_sensitive": false,
+          "weight": 0.8
+        }
+      ],
+      "exact_matches": [
+        "aide",
+        "help",
+        "j'ai besoin d'aide",
+        "comment ça marche",
+        "peux-tu m'aider",
+        "que peux-tu faire",
+        "fonctionnalités",
+        "guide"
+      ],
+      "response_type": "help",
+      "no_search_needed": true,
+      "help_categories": [
+        {
+          "category": "Recherche de transactions",
+          "examples": [
+            "\"mes restaurants\" - Rechercher par catégorie",
+            "\"Amazon\" - Rechercher par marchand", 
+            "\"plus de 50 euros\" - Rechercher par montant",
+            "\"ce mois\" - Rechercher par période"
+          ]
+        },
+        {
+          "category": "Analyse des dépenses",
+          "examples": [
+            "\"combien j'ai dépensé\" - Total des dépenses",
+            "\"évolution mensuelle\" - Tendances temporelles",
+            "\"nombre d'opérations\" - Comptage transactions"
+          ]
+        },
+        {
+          "category": "Exemples de requêtes",
+          "examples": [
+            "\"mes achats Netflix ce mois\"",
+            "\"dépenses restaurant janvier\"", 
+            "\"transactions plus de 100 euros\"",
+            "\"combien j'ai dépensé en transport\""
+          ]
+        }
+      ],
+      "examples": [
+        "aide",
+        "j'ai besoin d'aide",
+        "comment ça marche",
+        "que peux-tu faire",
+        "peux-tu m'aider"
+      ]
+    },
+
+    "GOODBYE": {
+      "description": "Au revoir et fin de conversation",
+      "intent_category": "CONVERSATIONAL",
+      "confidence": 0.98,
+      "priority": 1,
+      "patterns": [
+        {
+          "regex": "^\\s*(au\\s+revoir|bye|goodbye|à\\s+bientôt)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 1.0
+        },
+        {
+          "regex": "\\b(merci.*(?:au\\s+revoir|bye)|au\\s+revoir.*merci)\\b",
+          "case_sensitive": false,
+          "weight": 0.95
+        },
+        {
+          "regex": "^\\s*(tchao|ciao|à\\s+plus)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 0.9
+        },
+        {
+          "regex": "^\\s*(bonne\\s+journée|bonne\\s+soirée)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 0.85
+        }
+      ],
+      "exact_matches": [
+        "au revoir",
+        "bye",
+        "goodbye", 
+        "à bientôt",
+        "merci et au revoir",
+        "tchao",
+        "ciao",
+        "à plus",
+        "bonne journée",
+        "bonne soirée"
+      ],
+      "response_type": "goodbye",
+      "no_search_needed": true,
+      "suggested_responses": [
+        "Au revoir ! N'hésitez pas à revenir pour analyser vos finances.",
+        "À bientôt ! J'espère vous avoir aidé avec vos transactions.",
+        "Bonne journée ! Je reste disponible pour vos questions financières."
+      ],
+      "examples": [
+        "au revoir",
+        "bye",
+        "à bientôt",
+        "merci et au revoir",
+        "bonne journée"
+      ]
+    },
+
+    "ACCOUNT_BALANCE": {
+      "description": "Vérification solde et état du compte",
+      "intent_category": "CONVERSATIONAL",
+      "confidence": 0.95,
+      "priority": 1,
+      "patterns": [
+        {
+          "regex": "\\b(solde|balance)\\b",
+          "case_sensitive": false,
+          "weight": 1.0
+        },
+        {
+          "regex": "\\b(mon\\s+solde|quel.*solde|combien.*compte)\\b",
+          "case_sensitive": false,
+          "weight": 0.95
+        },
+        {
+          "regex": "\\b(argent\\s+disponible|disponible\\s+sur|montant\\s+compte)\\b",
+          "case_sensitive": false,
+          "weight": 0.9
+        },
+        {
+          "regex": "\\b(suis.*découvert|en\\s+découvert|négatif|rouge)\\b",
+          "case_sensitive": false,
+          "weight": 0.95
+        },
+        {
+          "regex": "\\b(état\\s+compte|situation\\s+compte)\\b",
+          "case_sensitive": false,
+          "weight": 0.85
+        }
+      ],
+      "exact_matches": [
+        "mon solde",
+        "solde",
+        "balance",
+        "quel est mon solde",
+        "combien j'ai",
+        "suis-je en découvert",
+        "découvert",
+        "argent disponible",
+        "état du compte"
+      ],
+      "response_type": "external_service_needed",
+      "no_search_needed": true,
+      "external_service": "account_service",
+      "suggested_responses": [
+        "Pour consulter votre solde, je dois vous rediriger vers le service de compte.",
+        "La vérification du solde nécessite une authentification via votre espace client.",
+        "Cette information nécessite un accès sécurisé à votre compte bancaire."
+      ],
+      "suggested_followup": [
+        "Voir mes dernières transactions",
+        "Analyser mes dépenses récentes",
+        "Rechercher des dépenses spécifiques"
+      ],
+      "examples": [
+        "mon solde",
+        "quel est mon solde s'il te plaît",
+        "combien j'ai sur mon compte",
+        "suis-je en découvert",
+        "argent disponible"
+      ]
+    },
+
+    "GRATITUDE": {
+      "description": "Remerciements utilisateur",
+      "intent_category": "CONVERSATIONAL",
+      "confidence": 0.90,
+      "priority": 2,
+      "patterns": [
+        {
+          "regex": "^\\s*(merci|thanks|thx)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 1.0
+        },
+        {
+          "regex": "\\b(merci\\s+beaucoup|merci\\s+bien|grand\\s+merci)\\b",
+          "case_sensitive": false,
+          "weight": 0.95
+        },
+        {
+          "regex": "\\b(c'est\\s+parfait|parfait|génial|super)\\s*[!.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 0.8
+        }
+      ],
+      "exact_matches": [
+        "merci",
+        "thanks",
+        "thx",
+        "merci beaucoup",
+        "merci bien",
+        "parfait",
+        "génial",
+        "super"
+      ],
+      "response_type": "gratitude",
+      "no_search_needed": true,
+      "suggested_responses": [
+        "De rien ! Je suis là pour vous aider avec vos finances.",
+        "Avec plaisir ! N'hésitez pas si vous avez d'autres questions.",
+        "Ravi de vous avoir aidé ! Que puis-je faire d'autre pour vous ?"
+      ],
+      "suggested_followup": [
+        "Autre recherche de transactions",
+        "Analyse différente",
+        "Questions sur les fonctionnalités"
+      ],
+      "examples": [
+        "merci",
+        "merci beaucoup",
+        "parfait merci",
+        "super"
+      ]
+    },
+
+    "UNCLEAR_REQUEST": {
+      "description": "Requête peu claire ou ambiguë",
+      "intent_category": "CONVERSATIONAL", 
+      "confidence": 0.60,
+      "priority": 10,
+      "patterns": [
+        {
+          "regex": "^\\s*(euh|hmm|ben|alors)\\s*[.]*\\s*$",
+          "case_sensitive": false,
+          "weight": 0.7
+        },
+        {
+          "regex": "^\\s*(quoi|hein|comment)\\s*[?]*\\s*$",
+          "case_sensitive": false,
+          "weight": 0.6
+        }
+      ],
+      "exact_matches": [
+        "euh",
+        "hmm",
+        "quoi",
+        "hein",
+        "comment"
+      ],
+      "response_type": "clarification",
+      "no_search_needed": true,
+      "suggested_responses": [
+        "Je n'ai pas bien compris votre demande. Pouvez-vous reformuler ?",
+        "Pouvez-vous être plus précis ? Je peux vous aider à rechercher des transactions ou analyser vos dépenses.",
+        "Que souhaitez-vous faire exactement ? Rechercher des transactions, analyser un budget ?"
+      ],
+      "suggested_followup": [
+        "Exemples de recherches possibles",
+        "Aide sur les fonctionnalités",
+        "Guide d'utilisation"
+      ],
+      "examples": [
+        "euh...",
+        "hmm",
+        "quoi ?"
+      ]
+    }
+  },
+
+  "global_settings": {
+    "conversation_context": {
+      "maintain_history": true,
+      "max_turns": 10,
+      "context_timeout_minutes": 30
+    },
+    "fallback_behavior": {
+      "confidence_threshold": 0.7,
+      "use_ai_fallback": true,
+      "suggest_alternatives": true
+    },
+    "response_personalization": {
+      "use_user_name": false,
+      "adapt_formality": true,
+      "remember_preferences": true
     }
   }
+}

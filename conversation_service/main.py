@@ -1,8 +1,8 @@
 """
 🚀 Point d'Entrée Principal - Service Détection d'Intention
 
-Application FastAPI complète reprenant la logique éprouvée du fichier original
-avec architecture modulaire et optimisations production.
+Application FastAPI complète avec architecture modulaire et préfixes d'endpoints
+uniformisés sous /api/v1 pour une cohérence maximale.
 
 Démarrage: uvicorn conversation_service.main:app --reload --port 8001
 """
@@ -12,7 +12,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -264,6 +264,8 @@ async def not_found_handler(request: Request, exc):
                 "/api/v1/detect-intent",
                 "/api/v1/health", 
                 "/api/v1/metrics",
+                "/api/v1/status",
+                "/api/v1/version",
                 "/docs"
             ],
             "request_id": getattr(request.state, "request_id", "unknown")
@@ -272,61 +274,38 @@ async def not_found_handler(request: Request, exc):
 
 
 # =====================================
-# ROUTES PRINCIPALES
+# ROUTER API STANDARDISÉ
 # =====================================
 
-# Inclusion du router principal
-app.include_router(intent_router)
+# Création du router pour les endpoints système avec préfixe /api/v1
+system_router = APIRouter(prefix="/api/v1", tags=["system"])
 
 
-# Routes racine et statut
-@app.get("/")
-async def root():
-    """Endpoint racine avec informations service"""
+@system_router.get("/status")
+async def api_status():
+    """Endpoint statut système avec préfixe API standardisé"""
     return {
+        "status": "ok", 
+        "timestamp": time.time(),
         "service": config.service.service_name,
-        "version": config.service.version,
-        "description": config.service.description,
-        "status": "operational",
-        "endpoints": {
-            "health": "/api/v1/health",
-            "detect_intent": "/api/v1/detect-intent",
-            "metrics": "/api/v1/metrics",
-            "documentation": "/docs"
-        },
-        "features": {
-            "rule_based_detection": True,
-            "deepseek_fallback": config.service.enable_deepseek_fallback,
-            "redis_cache": True,
-            "batch_processing": config.service.enable_batch_processing,
-            "metrics_collection": config.service.enable_metrics_collection
-        }
+        "version": config.service.version
     }
 
 
-@app.get("/status")
-async def status():
-    """Endpoint statut rapide pour load balancers"""
-    return {"status": "ok", "timestamp": time.time()}
-
-
-@app.get("/version")
-async def version():
-    """Endpoint version pour déploiements"""
+@system_router.get("/version")
+async def api_version():
+    """Endpoint version avec préfixe API standardisé"""
     return {
         "version": config.service.version,
         "service": config.service.service_name,
-        "build_timestamp": time.time()
+        "build_timestamp": time.time(),
+        "api_version": "v1"
     }
 
 
-# =====================================
-# ENDPOINTS DEBUG (développement)
-# =====================================
-
-@app.get("/debug/config")
-async def debug_config():
-    """Configuration active (développement seulement)"""
+@system_router.get("/debug/config")
+async def api_debug_config():
+    """Configuration active (développement seulement) avec préfixe API"""
     if config.service.log_level != "DEBUG":
         raise HTTPException(status_code=404, detail="Debug endpoints disabled")
     
@@ -347,6 +326,109 @@ async def debug_config():
             "deepseek_enabled": config.service.enable_deepseek_fallback,
             "batch_processing": config.service.enable_batch_processing,
             "metrics_collection": config.service.enable_metrics_collection
+        },
+        "api_info": {
+            "prefix": "/api/v1",
+            "standardized": True
+        }
+    }
+
+
+# =====================================
+# ROUTES PRINCIPALES
+# =====================================
+
+# Inclusion des routers avec préfixes cohérents
+app.include_router(intent_router)      # Déjà avec préfixe /api/v1
+app.include_router(system_router)      # Nouveau router système avec /api/v1
+
+
+# =====================================
+# ENDPOINT RACINE (sans préfixe)
+# =====================================
+
+@app.get("/")
+async def root():
+    """
+    Endpoint racine avec informations service
+    Seul endpoint conservé sans préfixe /api/v1
+    """
+    return {
+        "service": config.service.service_name,
+        "version": config.service.version,
+        "description": config.service.description,
+        "status": "operational",
+        "api": {
+            "version": "v1",
+            "prefix": "/api/v1",
+            "standardized": True
+        },
+        "endpoints": {
+            "health": "/api/v1/health",
+            "detect_intent": "/api/v1/detect-intent",
+            "metrics": "/api/v1/metrics",
+            "status": "/api/v1/status",
+            "version": "/api/v1/version",
+            "documentation": "/docs"
+        },
+        "features": {
+            "rule_based_detection": True,
+            "deepseek_fallback": config.service.enable_deepseek_fallback,
+            "redis_cache": True,
+            "batch_processing": config.service.enable_batch_processing,
+            "metrics_collection": config.service.enable_metrics_collection
+        },
+        "compatibility": {
+            "legacy_endpoints": {
+                "status": "/status → /api/v1/status",
+                "version": "/version → /api/v1/version"
+            },
+            "migration_note": "Tous les endpoints sont maintenant standardisés sous /api/v1"
+        }
+    }
+
+
+# =====================================
+# ENDPOINTS DE COMPATIBILITÉ
+# =====================================
+
+@app.get("/status")
+async def legacy_status():
+    """
+    Endpoint de compatibilité pour /status
+    Redirige vers la version API standardisée
+    """
+    logger.warning("Legacy endpoint /status accessed - consider migrating to /api/v1/status")
+    return {
+        "status": "ok", 
+        "timestamp": time.time(),
+        "service": config.service.service_name,
+        "version": config.service.version,
+        "deprecated": True,
+        "migration": {
+            "message": "Cet endpoint est déprécié",
+            "new_endpoint": "/api/v1/status",
+            "sunset_date": "2025-12-31"
+        }
+    }
+
+
+@app.get("/version")
+async def legacy_version():
+    """
+    Endpoint de compatibilité pour /version
+    Redirige vers la version API standardisée
+    """
+    logger.warning("Legacy endpoint /version accessed - consider migrating to /api/v1/version")
+    return {
+        "version": config.service.version,
+        "service": config.service.service_name,
+        "build_timestamp": time.time(),
+        "deprecated": True,
+        "migration": {
+            "message": "Cet endpoint est déprécié",
+            "new_endpoint": "/api/v1/version",
+            "sunset_date": "2025-12-31"
         }
     }
 

@@ -1,0 +1,456 @@
+{
+  "summary": {
+    "total_tests": 56,
+    "successful": 0,
+    "failed": 56,
+    "success_rate": 0.0,
+    "total_duration_seconds": 195.60976600646973,
+    "average_response_time_ms": 0
+  },
+  "sections": {
+    "system": {
+      "total": 5,
+      "successful": 0,
+      "failed": 5,
+      "results": [
+        "EndpointTestResult(endpoint='/', method='GET', status_code=0, response_time_ms=4105.740547180176, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02650>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/status', method='GET', status_code=0, response_time_ms=4062.8108978271484, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B002E0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/version', method='GET', status_code=0, response_time_ms=4058.1703186035156, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/version (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01240>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/status', method='GET', status_code=0, response_time_ms=4068.9897537231445, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02800>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/version', method='GET', status_code=0, response_time_ms=4086.324691772461, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /version (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B011B0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    },
+    "business": {
+      "total": 5,
+      "successful": 0,
+      "failed": 5,
+      "results": [
+        "EndpointTestResult(endpoint='/api/v1/health', method='GET', status_code=0, response_time_ms=4075.349807739258, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01AB0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/metrics', method='GET', status_code=0, response_time_ms=4084.3513011932373, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/metrics (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B03160>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4070.835828781128, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/batch-detect', method='POST', status_code=0, response_time_ms=4050.332546234131, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/batch-detect (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B03490>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/supported-intents', method='GET', status_code=0, response_time_ms=4076.648712158203, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/supported-intents (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F16A40>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    },
+    "admin": {
+      "total": 3,
+      "successful": 0,
+      "failed": 3,
+      "results": [
+        "EndpointTestResult(endpoint='/api/v1/cache/clear', method='POST', status_code=0, response_time_ms=4052.30712890625, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/cache/clear (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15ED0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/debug/test', method='GET', status_code=0, response_time_ms=4070.9943771362305, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/debug/test (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15630>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/debug/config', method='GET', status_code=0, response_time_ms=4053.2209873199463, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/debug/config (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15D80>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    },
+    "performance": {
+      "total": 10,
+      "successful": 0,
+      "failed": 10,
+      "results": [
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4077.737331390381, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B03460>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4094.3500995635986, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02B30>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4089.6990299224854, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B037C0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4096.022367477417, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01900>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4101.097106933594, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01540>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4066.270589828491, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FA800>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4072.4895000457764, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B016F0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4080.249786376953, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4080.249786376953, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02320>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4081.9220542907715, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C06980>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    },
+    "variety": {
+      "total": 19,
+      "successful": 0,
+      "failed": 19,
+      "results": [
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4069.321393966675, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FAEF0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4060.727834701538, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F14F10>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4080.6915760040283, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F14880>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4079.698324203491, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05330>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4089.8687839508057, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05030>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4078.516721725464, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04CA0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4091.287612915039, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04910>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4089.769124984741, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04580>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4069.0996646881104, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05510>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4069.2217350006104, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C058A0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4075.6068229675293, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F14B80>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4065.261125564575, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F17280>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4072.7298259735107, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FAA40>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4075.775146484375, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FA050>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4074.4144916534424, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01510>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4062.4377727508545, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4083.6803913116455, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01900>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4087.5368118286133, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01270>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4087.864875793457, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C058A0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    },
+    "edge_cases": {
+      "total": 7,
+      "successful": 0,
+      "failed": 7,
+      "results": [
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4079.89501953125, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05600>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4088.836669921875, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04460>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4075.8821964263916, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04880>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4078.5694122314453, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04D60>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4058.222532272339, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05060>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4057.7516555786133, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01E70>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4091.87912940979, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01A50>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    },
+    "invalid_payloads": {
+      "total": 7,
+      "successful": 0,
+      "failed": 7,
+      "results": [
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4084.9649906158447, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4090.3820991516113, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FAF20>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4075.498104095459, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FB010>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4071.4285373687744, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15510>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4073.9879608154297, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F161D0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4034.142255783081, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04B50>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)",
+        "EndpointTestResult(endpoint='/api/v1/detect-intent', method='POST', status_code=0, response_time_ms=4074.1758346557617, success=False, error_message=\"HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04B20>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))\", response_data=None)"
+      ]
+    }
+  },
+  "failed_tests": [
+    {
+      "endpoint": "/",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02650>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/status",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B002E0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/version",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/version (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01240>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/status",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02800>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/version",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /version (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B011B0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/health",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01AB0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/metrics",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/metrics (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B03160>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/batch-detect",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/batch-detect (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B03490>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/supported-intents",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/supported-intents (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F16A40>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/cache/clear",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/cache/clear (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15ED0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/debug/test",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/debug/test (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15630>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/debug/config",
+      "method": "GET",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/debug/config (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15D80>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B03460>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02B30>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B037C0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01900>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01540>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FA800>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B016F0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B02320>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C06980>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FAEF0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F14F10>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F14880>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05330>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05030>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04CA0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04910>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04580>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05510>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C058A0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F14B80>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F17280>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FAA40>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FA050>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01510>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01900>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01270>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C058A0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05600>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04460>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04880>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04D60>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C05060>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01E70>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B01A50>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D76B00790>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FAF20>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D768FB010>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F15510>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D75F161D0>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04B50>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    },
+    {
+      "endpoint": "/api/v1/detect-intent",
+      "method": "POST",
+      "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/v1/detect-intent (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000024D77C04B20>: Failed to establish a new connection: [WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée'))",
+      "status_code": 0
+    }
+  ],
+  "service_status": "DEGRADED"
+}

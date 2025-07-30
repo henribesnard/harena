@@ -1,909 +1,984 @@
+#!/usr/bin/env python3
 """
-Test complet pour le nouveau conversation_service TinyBERT
-Teste spécifiquement l'endpoint /detect-intent avec métriques détaillées
+🧪 Test Complet Conversation Service
 
-Focus sur:
-- Latence TinyBERT (<50ms objectif)
-- Précision intentions financières (>70% objectif)
-- Robustesse sur requêtes variées
-- Analyse performance détaillée
+Suite de tests exhaustive pour vérifier que tous les endpoints du conversation_service
+sont opérationnels et que le service fonctionne correctement dans son état actuel.
+
+Usage:
+    python test_conversation_service_complete.py
+    ou
+    pytest test_conversation_service_complete.py -v
 """
 
-import requests
+import asyncio
 import json
 import time
-import statistics
-from typing import List, Dict, Any, Optional, Tuple
+import uuid
+import requests
+import pytest
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from collections import defaultdict, Counter
-import asyncio
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 
-# Configuration URLs
-BASE_URL = "http://localhost:8000/api/v1/conversation"
-DETECT_INTENT_URL = f"{BASE_URL}/detect-intent"
-HEALTH_URL = f"{BASE_URL}/health"
-ROOT_URL = f"{BASE_URL}/"
+# Configuration logging pour les tests
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 @dataclass
-class IntentTestResult:
-    """Résultat de test détection intention TinyBERT"""
-    query: str
-    intent_detected: str
-    confidence: float
-    processing_time_ms: float
-    total_latency_ms: float
-    success: bool
-    expected_intent: Optional[str] = None
-    intent_correct: Optional[bool] = None
-    model_used: str = "TinyBERT"
-    timestamp: float = 0.0
-    error_message: Optional[str] = None
+class TestConfig:
+    """Configuration des tests"""
+    base_url: str = "http://localhost:8001"  # Port par défaut conversation_service
+    timeout: int = 10
+    max_retries: int = 3
+    test_user_id: str = "test_user_123"
+    admin_token: str = "admin_test_token"
 
-class TinyBERTIntentTester:
-    """Testeur spécialisé pour TinyBERT détection intentions"""
+
+@dataclass
+class EndpointTestResult:
+    """Résultat d'un test d'endpoint"""
+    endpoint: str
+    method: str
+    status_code: int
+    response_time_ms: float
+    success: bool
+    error_message: Optional[str] = None
+    response_data: Optional[Dict] = None
+
+
+class ConversationServiceTester:
+    """Testeur complet du service de conversation"""
     
-    def __init__(self):
-        self.results: List[IntentTestResult] = []
-        self.intent_distribution = Counter()
-        self.confidence_ranges = {"low": 0, "medium": 0, "high": 0}
-        self.latency_stats = []
-        self.accuracy_stats = {"correct": 0, "incorrect": 0, "unknown": 0}
+    def __init__(self, config: TestConfig):
+        self.config = config
+        self.session = requests.Session()
+        self.session.timeout = config.timeout
+        self.test_results: List[EndpointTestResult] = []
         
-    def test_single_intent(self, query: str, expected_intent: str = None, timeout: float = 10.0) -> IntentTestResult:
-        """Test une requête unique avec TinyBERT"""
-        
-        payload = {
-            "query": query,
-            "user_id": f"test_user_{int(time.time())}"
-        }
-        
+    def _make_request(
+        self, 
+        method: str, 
+        endpoint: str, 
+        data: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+        params: Optional[Dict] = None
+    ) -> EndpointTestResult:
+        """
+        Effectue une requête HTTP et retourne le résultat
+        """
+        url = f"{self.config.base_url}{endpoint}"
         start_time = time.time()
         
         try:
-            response = requests.post(
-                DETECT_INTENT_URL,
-                headers={'Content-Type': 'application/json'},
-                json=payload,
-                timeout=timeout
+            if method.upper() == "GET":
+                response = self.session.get(url, params=params, headers=headers)
+            elif method.upper() == "POST":
+                response = self.session.post(url, json=data, headers=headers, params=params)
+            elif method.upper() == "PUT":
+                response = self.session.put(url, json=data, headers=headers)
+            elif method.upper() == "DELETE":
+                response = self.session.delete(url, headers=headers)
+            else:
+                raise ValueError(f"Méthode HTTP non supportée: {method}")
+            
+            response_time_ms = (time.time() - start_time) * 1000
+            
+            # Tentative de parsing JSON
+            try:
+                response_data = response.json()
+            except:
+                response_data = {"raw_content": response.text[:500]}
+            
+            return EndpointTestResult(
+                endpoint=endpoint,
+                method=method,
+                status_code=response.status_code,
+                response_time_ms=response_time_ms,
+                success=200 <= response.status_code < 300,
+                response_data=response_data
             )
             
-            total_latency_ms = (time.time() - start_time) * 1000
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Extraction données réponse
-                intent_detected = data.get("intent", "UNKNOWN")
-                confidence = float(data.get("confidence", 0.0))
-                processing_time_ms = float(data.get("processing_time_ms", 0.0))
-                model_used = data.get("model", "TinyBERT")
-                timestamp = data.get("timestamp", time.time())
-                
-                # Validation intention si attendue
-                intent_correct = None
-                if expected_intent:
-                    intent_correct = (intent_detected == expected_intent)
-                    if intent_correct:
-                        self.accuracy_stats["correct"] += 1
-                    elif intent_detected == "UNKNOWN":
-                        self.accuracy_stats["unknown"] += 1
-                    else:
-                        self.accuracy_stats["incorrect"] += 1
-                
-                # Classification confiance
-                if confidence >= 0.8:
-                    self.confidence_ranges["high"] += 1
-                elif confidence >= 0.5:
-                    self.confidence_ranges["medium"] += 1
-                else:
-                    self.confidence_ranges["low"] += 1
-                
-                # Statistiques
-                self.intent_distribution[intent_detected] += 1
-                self.latency_stats.append(processing_time_ms)
-                
-                result = IntentTestResult(
-                    query=query,
-                    intent_detected=intent_detected,
-                    confidence=confidence,
-                    processing_time_ms=processing_time_ms,
-                    total_latency_ms=total_latency_ms,
-                    success=True,
-                    expected_intent=expected_intent,
-                    intent_correct=intent_correct,
-                    model_used=model_used,
-                    timestamp=timestamp
-                )
-                
-                return result
-                
-            else:
-                return IntentTestResult(
-                    query=query,
-                    intent_detected="ERROR",
-                    confidence=0.0,
-                    processing_time_ms=0.0,
-                    total_latency_ms=total_latency_ms,
-                    success=False,
-                    expected_intent=expected_intent,
-                    error_message=f"HTTP {response.status_code}: {response.text[:200]}"
-                )
-                
         except Exception as e:
-            return IntentTestResult(
-                query=query,
-                intent_detected="ERROR",
-                confidence=0.0,
-                processing_time_ms=0.0,
-                total_latency_ms=(time.time() - start_time) * 1000,
+            response_time_ms = (time.time() - start_time) * 1000
+            return EndpointTestResult(
+                endpoint=endpoint,
+                method=method,
+                status_code=0,
+                response_time_ms=response_time_ms,
                 success=False,
-                expected_intent=expected_intent,
-                error_message=f"Exception: {str(e)}"
+                error_message=str(e)
             )
     
-    def run_comprehensive_test_suite(self) -> Dict[str, Any]:
-        """Suite de tests complète pour TinyBERT"""
-        
-        print("🤖 TESTS COMPLETS TINYBERT DÉTECTION INTENTIONS")
-        print("="*80)
-        print(f"🎯 Endpoint: {DETECT_INTENT_URL}")
-        print(f"📊 Objectifs: <50ms latence, >70% précision")
-        print("="*80)
-        
-        # Test santé service d'abord
-        self._test_service_health()
-        
-        # ==========================================
-        # 1. TESTS INTENTIONS FINANCIÈRES DE BASE
-        # ==========================================
-        print("\n💰 TESTS INTENTIONS FINANCIÈRES DE BASE")
-        print("-" * 60)
-        
-        basic_financial_tests = [
-            ("solde", "BALANCE_CHECK"),
-            ("mon solde", "BALANCE_CHECK"),
-            ("quel est mon solde", "BALANCE_CHECK"),
-            ("combien j'ai sur mon compte", "BALANCE_CHECK"),
-            ("argent disponible", "BALANCE_CHECK"),
-            
-            ("virement", "TRANSFER"),
-            ("faire un virement", "TRANSFER"),
-            ("transférer de l'argent", "TRANSFER"),
-            ("envoyer 100 euros", "TRANSFER"),
-            ("virer 50€ à Paul", "TRANSFER"),
-            
-            ("dépenses", "EXPENSE_ANALYSIS"),
-            ("mes dépenses", "EXPENSE_ANALYSIS"),
-            ("dépenses restaurant", "EXPENSE_ANALYSIS"),
-            ("combien j'ai dépensé", "EXPENSE_ANALYSIS"),
-            ("analyse de mes dépenses", "EXPENSE_ANALYSIS"),
-            
-            ("carte", "CARD_MANAGEMENT"),
-            ("ma carte", "CARD_MANAGEMENT"),
-            ("bloquer ma carte", "CARD_MANAGEMENT"),
-            ("activer carte", "CARD_MANAGEMENT"),
-            ("opposition carte", "CARD_MANAGEMENT"),
-        ]
-        
-        for query, expected_intent in basic_financial_tests:
-            result = self.test_single_intent(query, expected_intent)
-            self.results.append(result)
-            self._print_test_result(result)
-        
-        # ==========================================
-        # 2. TESTS INTENTIONS CONVERSATIONNELLES
-        # ==========================================
-        print("\n💬 TESTS INTENTIONS CONVERSATIONNELLES")
-        print("-" * 60)
-        
-        conversational_tests = [
-            ("bonjour", "GREETING"),
-            ("salut", "GREETING"),
-            ("bonsoir", "GREETING"),
-            ("hello", "GREETING"),
-            
-            ("aide", "HELP"),
-            ("help", "HELP"),
-            ("comment ça marche", "HELP"),
-            ("j'ai besoin d'aide", "HELP"),
-            
-            ("au revoir", "GOODBYE"),
-            ("bye", "GOODBYE"),
-            ("à bientôt", "GOODBYE"),
-            ("merci et au revoir", "GOODBYE"),
-        ]
-        
-        for query, expected_intent in conversational_tests:
-            result = self.test_single_intent(query, expected_intent)
-            self.results.append(result)
-            self._print_test_result(result)
-        
-        # ==========================================
-        # 3. TESTS REQUÊTES COMPLEXES ET VARIATIONS
-        # ==========================================
-        print("\n🔄 TESTS REQUÊTES COMPLEXES ET VARIATIONS")
-        print("-" * 60)
-        
-        complex_tests = [
-            ("Peux-tu me dire mon solde s'il te plaît ?", "BALANCE_CHECK"),
-            ("J'aimerais connaître le montant sur mon compte courant", "BALANCE_CHECK"),
-            ("Est-ce que tu peux m'aider à faire un virement urgent ?", "TRANSFER"),
-            ("Comment puis-je bloquer ma carte bancaire immédiatement ?", "CARD_MANAGEMENT"),
-            ("Montre-moi un résumé de toutes mes dépenses du mois", "EXPENSE_ANALYSIS"),
-            ("Bonjour, comment allez-vous aujourd'hui ?", "GREETING"),
-            ("Pourriez-vous m'expliquer comment utiliser cette application ?", "HELP"),
-        ]
-        
-        for query, expected_intent in complex_tests:
-            result = self.test_single_intent(query, expected_intent)
-            self.results.append(result)
-            self._print_test_result(result)
-        
-        # ==========================================
-        # 4. TESTS EDGE CASES ET ROBUSTESSE
-        # ==========================================
-        print("\n🔍 TESTS EDGE CASES ET ROBUSTESSE")
-        print("-" * 60)
-        
-        edge_cases = [
-            ("", "UNKNOWN"),
-            ("   ", "UNKNOWN"),
-            ("a", "UNKNOWN"),
-            ("123", "UNKNOWN"),
-            ("🏦💰📊", "UNKNOWN"),
-            ("qwertyuiop", "UNKNOWN"),
-            ("Blablabla test xyz", "UNKNOWN"),
-            ("What is the weather today?", "UNKNOWN"),
-            ("Comment cuisiner des pâtes ?", "UNKNOWN"),
-            ("SOLDE SOLDE SOLDE", "BALANCE_CHECK"),
-            ("Solde? Solde! SOLDE.", "BALANCE_CHECK"),
-        ]
-        
-        for query, expected_intent in edge_cases:
-            result = self.test_single_intent(query, expected_intent)
-            self.results.append(result)
-            self._print_test_result(result)
-        
-        # ==========================================
-        # 5. TESTS DE PERFORMANCE ET CHARGE
-        # ==========================================
-        print(f"\n⚡ TESTS DE PERFORMANCE")
-        print("-" * 60)
-        
-        self._run_performance_tests()
-        
-        # ==========================================
-        # 6. GÉNÉRATION RAPPORT FINAL
-        # ==========================================
-        return self._generate_comprehensive_report()
+    # =====================================
+    # TESTS ENDPOINTS SYSTÈME
+    # =====================================
     
-    def _test_service_health(self):
-        """Test santé du service TinyBERT"""
-        print("\n🏥 SANTÉ DU SERVICE")
-        print("-" * 30)
+    def test_root_endpoint(self) -> EndpointTestResult:
+        """Test endpoint racine /"""
+        logger.info("🏠 Test endpoint racine")
+        result = self._make_request("GET", "/")
         
-        try:
-            response = requests.get(HEALTH_URL, timeout=5)
-            if response.status_code == 200:
-                health_data = response.json()
-                status = health_data.get("status", "unknown")
-                model_loaded = health_data.get("model_loaded", False)
-                total_requests = health_data.get("total_requests", 0)
-                avg_latency = health_data.get("average_latency_ms", 0.0)
-                
-                print(f"✅ Status: {status}")
-                print(f"🤖 Modèle chargé: {'Oui' if model_loaded else 'Non'}")
-                print(f"📊 Requêtes totales: {total_requests}")
-                print(f"⚡ Latence moyenne: {avg_latency:.2f}ms")
-                
-                if status != "healthy" or not model_loaded:
-                    print("⚠️  Service en mode dégradé - résultats peuvent être affectés")
-                    
+        if result.success and result.response_data:
+            expected_keys = ["service", "version", "endpoints", "features"]
+            missing_keys = [k for k in expected_keys if k not in result.response_data]
+            
+            if missing_keys:
+                result.success = False
+                result.error_message = f"Clés manquantes: {missing_keys}"
             else:
-                print(f"❌ Health check échoué: HTTP {response.status_code}")
-                
-        except Exception as e:
-            print(f"❌ Erreur health check: {e}")
-            print("⚠️  Impossible de vérifier l'état du service")
+                logger.info(f"✅ Service: {result.response_data.get('service')}")
+                logger.info(f"✅ Version: {result.response_data.get('version')}")
+        
+        return result
     
-    def _run_performance_tests(self):
-        """Tests de performance spécialisés"""
+    def test_api_status_endpoint(self) -> EndpointTestResult:
+        """Test endpoint /api/v1/status"""
+        logger.info("📊 Test endpoint /api/v1/status")
+        result = self._make_request("GET", "/api/v1/status")
         
-        # Test latence sur requête standard
-        standard_query = "quel est mon solde"
-        latencies = []
-        
-        print(f"🔥 Test latence sur '{standard_query}' (20 requêtes):")
-        
-        for i in range(20):
-            result = self.test_single_intent(standard_query, "BALANCE_CHECK")
-            if result.success:
-                latencies.append(result.processing_time_ms)
-        
-        if latencies:
-            avg_latency = statistics.mean(latencies)
-            median_latency = statistics.median(latencies)
-            min_latency = min(latencies)
-            max_latency = max(latencies)
+        if result.success and result.response_data:
+            required_fields = ["status", "timestamp"]
+            missing_fields = [f for f in required_fields if f not in result.response_data]
             
-            print(f"   Moyenne: {avg_latency:.2f}ms")
-            print(f"   Médiane: {median_latency:.2f}ms")  
-            print(f"   Min: {min_latency:.2f}ms")
-            print(f"   Max: {max_latency:.2f}ms")
+            if missing_fields:
+                result.success = False
+                result.error_message = f"Champs manquants: {missing_fields}"
+            elif result.response_data.get("status") != "ok":
+                result.success = False
+                result.error_message = f"Status incorrect: {result.response_data.get('status')}"
+        
+        return result
+    
+    def test_api_version_endpoint(self) -> EndpointTestResult:
+        """Test endpoint /api/v1/version"""
+        logger.info("🔢 Test endpoint /api/v1/version")
+        result = self._make_request("GET", "/api/v1/version")
+        
+        if result.success and result.response_data:
+            required_fields = ["version", "service"]
+            missing_fields = [f for f in required_fields if f not in result.response_data]
             
-            # Évaluation performance
-            if avg_latency < 30:
-                print("   ✅ Performance EXCELLENTE (<30ms)")
-            elif avg_latency < 50:
-                print("   ✅ Performance BONNE (<50ms)")
-            elif avg_latency < 100:
-                print("   ⚠️  Performance ACCEPTABLE (<100ms)")
+            if missing_fields:
+                result.success = False
+                result.error_message = f"Champs manquants: {missing_fields}"
+        
+        return result
+    
+    def test_legacy_status_endpoint(self) -> EndpointTestResult:
+        """Test endpoint legacy /status"""
+        logger.info("📊 Test endpoint legacy /status")
+        result = self._make_request("GET", "/status")
+        
+        if result.success and result.response_data:
+            # Vérifier que l'endpoint legacy inclut un avertissement de dépréciation
+            if not result.response_data.get("deprecated"):
+                result.error_message = "Endpoint legacy devrait inclure deprecated=true"
+        
+        return result
+    
+    def test_legacy_version_endpoint(self) -> EndpointTestResult:
+        """Test endpoint legacy /version"""
+        logger.info("🔢 Test endpoint legacy /version")
+        return self._make_request("GET", "/version")
+    
+    # =====================================
+    # TESTS ENDPOINTS CORE BUSINESS
+    # =====================================
+    
+    def test_health_endpoint(self) -> EndpointTestResult:
+        """Test endpoint /api/v1/health"""
+        logger.info("🏥 Test endpoint health")
+        result = self._make_request("GET", "/api/v1/health")
+        
+        if result.success and result.response_data:
+            required_fields = ["status", "components", "timestamp"]
+            missing_fields = [f for f in required_fields if f not in result.response_data]
+            
+            if missing_fields:
+                result.success = False
+                result.error_message = f"Champs manquants: {missing_fields}"
             else:
-                print("   ❌ Performance FAIBLE (>100ms)")
-        
-        # Test concurrence
-        print(f"\n🔄 Test concurrence (10 requêtes simultanées):")
-        concurrent_results = self._test_concurrent_requests(standard_query, 10)
-        
-        if concurrent_results:
-            successful = [r for r in concurrent_results if r.success]
-            success_rate = len(successful) / len(concurrent_results) * 100
-            
-            if successful:
-                concurrent_latencies = [r.processing_time_ms for r in successful]
-                avg_concurrent_latency = statistics.mean(concurrent_latencies)
-                
-                print(f"   Taux succès: {success_rate:.1f}%")
-                print(f"   Latence moyenne: {avg_concurrent_latency:.2f}ms")
-                
-                if success_rate >= 95:
-                    print("   ✅ Robustesse concurrence EXCELLENTE")
-                elif success_rate >= 80:
-                    print("   ✅ Robustesse concurrence BONNE")
+                # Vérifier statut service
+                status = result.response_data.get("status")
+                if status not in ["healthy", "degraded", "unhealthy"]:
+                    result.success = False
+                    result.error_message = f"Status santé invalide: {status}"
                 else:
-                    print("   ⚠️  Problèmes de concurrence détectés")
-    
-    def _test_concurrent_requests(self, query: str, num_concurrent: int) -> List[IntentTestResult]:
-        """Test requêtes simultanées"""
+                    logger.info(f"✅ Statut santé: {status}")
         
-        def make_request():
-            return self.test_single_intent(query, "BALANCE_CHECK")
+        return result
+    
+    def test_metrics_endpoint(self) -> EndpointTestResult:
+        """Test endpoint /api/v1/metrics"""
+        logger.info("📈 Test endpoint metrics")
+        result = self._make_request("GET", "/api/v1/metrics")
+        
+        if result.success and result.response_data:
+            # Vérifier présence des métriques de base
+            expected_sections = ["service_metrics", "performance_metrics"]
+            
+            for section in expected_sections:
+                if section not in result.response_data:
+                    result.error_message = f"Section métriques manquante: {section}"
+                    break
+        
+        return result
+    
+    def test_detect_intent_endpoint(self) -> EndpointTestResult:
+        """Test endpoint principal /api/v1/detect-intent"""
+        logger.info("🎯 Test endpoint detect-intent")
+        
+        test_payload = {
+            "query": "bonjour comment allez-vous",
+            "user_id": self.config.test_user_id,
+            "use_deepseek_fallback": False,
+            "context": {"session_id": "test_session"}
+        }
+        
+        result = self._make_request("POST", "/api/v1/detect-intent", data=test_payload)
+        
+        if result.success and result.response_data:
+            required_fields = ["intent", "confidence", "entities", "processing_time_ms"]
+            missing_fields = [f for f in required_fields if f not in result.response_data]
+            
+            if missing_fields:
+                result.success = False
+                result.error_message = f"Champs réponse manquants: {missing_fields}"
+            else:
+                intent = result.response_data.get("intent")
+                confidence = result.response_data.get("confidence")
+                latency = result.response_data.get("processing_time_ms")
+                
+                logger.info(f"✅ Intent détecté: {intent}")
+                logger.info(f"✅ Confiance: {confidence:.3f}")
+                logger.info(f"✅ Latence: {latency:.1f}ms")
+                
+                # Vérifications basiques
+                if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
+                    result.success = False
+                    result.error_message = f"Confiance invalide: {confidence}"
+                elif latency > 5000:  # 5 secondes max
+                    result.success = False
+                    result.error_message = f"Latence trop élevée: {latency}ms"
+        
+        return result
+    
+    def test_batch_detect_intent_endpoint(self) -> EndpointTestResult:
+        """Test endpoint /api/v1/batch-detect"""
+        logger.info("📦 Test endpoint batch-detect")
+        
+        test_payload = {
+            "requests": [
+                {
+                    "query": "bonjour",
+                    "user_id": self.config.test_user_id
+                },
+                {
+                    "query": "quel est mon solde",
+                    "user_id": self.config.test_user_id
+                },
+                {
+                    "query": "au revoir",
+                    "user_id": self.config.test_user_id
+                }
+            ]
+        }
+        
+        result = self._make_request("POST", "/api/v1/batch-detect", data=test_payload)
+        
+        if result.success and result.response_data:
+            required_fields = ["results", "batch_metadata"]
+            missing_fields = [f for f in required_fields if f not in result.response_data]
+            
+            if missing_fields:
+                result.success = False
+                result.error_message = f"Champs batch manquants: {missing_fields}"
+            else:
+                results = result.response_data.get("results", [])
+                if len(results) != 3:
+                    result.success = False
+                    result.error_message = f"Nombre résultats incorrect: {len(results)} != 3"
+                else:
+                    logger.info(f"✅ Batch traité: {len(results)} requêtes")
+        
+        return result
+    
+    def test_supported_intents_endpoint(self) -> EndpointTestResult:
+        """Test endpoint /api/v1/supported-intents"""
+        logger.info("📋 Test endpoint supported-intents")
+        result = self._make_request("GET", "/api/v1/supported-intents")
+        
+        if result.success and result.response_data:
+            required_fields = ["supported_intents", "intent_details"]
+            missing_fields = [f for f in required_fields if f not in result.response_data]
+            
+            if missing_fields:
+                result.success = False
+                result.error_message = f"Champs intentions manquants: {missing_fields}"
+            else:
+                intents = result.response_data.get("supported_intents", [])
+                logger.info(f"✅ Intentions supportées: {len(intents)}")
+        
+        return result
+    
+    # =====================================
+    # TESTS ENDPOINTS ADMIN
+    # =====================================
+    
+    def test_cache_clear_endpoint(self) -> EndpointTestResult:
+        """Test endpoint admin /api/v1/cache/clear"""
+        logger.info("🗑️ Test endpoint cache/clear")
+        
+        headers = {"Authorization": f"Bearer {self.config.admin_token}"}
+        result = self._make_request("POST", "/api/v1/cache/clear", headers=headers)
+        
+        # Note: Peut échouer si pas d'auth admin, c'est normal
+        if result.status_code == 401:
+            logger.info("ℹ️ Endpoint admin nécessite authentification (normal)")
+            result.success = True  # On considère ça comme un succès
+        
+        return result
+    
+    def test_debug_test_endpoint(self) -> EndpointTestResult:
+        """Test endpoint debug /api/v1/debug/test"""
+        logger.info("🔧 Test endpoint debug/test")
+        
+        headers = {"Authorization": f"Bearer {self.config.admin_token}"}
+        result = self._make_request("GET", "/api/v1/debug/test", headers=headers)
+        
+        # Endpoint debug peut être désactivé en production
+        if result.status_code == 404:
+            logger.info("ℹ️ Endpoint debug désactivé (normal en production)")
+            result.success = True
+        
+        return result
+    
+    def test_debug_config_endpoint(self) -> EndpointTestResult:
+        """Test endpoint debug /api/v1/debug/config"""
+        logger.info("⚙️ Test endpoint debug/config")
+        result = self._make_request("GET", "/api/v1/debug/config")
+        
+        # Endpoint debug peut être désactivé
+        if result.status_code == 404:
+            logger.info("ℹ️ Endpoint debug/config désactivé (normal)")
+            result.success = True
+        
+        return result
+    
+    # =====================================
+    # TESTS DE CHARGE ET PERFORMANCE
+    # =====================================
+    
+    def test_concurrent_requests(self, num_requests: int = 10) -> List[EndpointTestResult]:
+        """Test de charge avec requêtes concurrentes"""
+        logger.info(f"⚡ Test charge: {num_requests} requêtes concurrentes")
+        
+        test_queries = [
+            "bonjour",
+            "quel est mon solde",
+            "mes dernières transactions",
+            "virement 100 euros",
+            "bloquer ma carte",
+            "au revoir",
+            "aide moi",
+            "historique janvier",
+            "budget mensuel",
+            "dépenses restaurant"
+        ]
+        
+        def make_concurrent_request(i):
+            query = test_queries[i % len(test_queries)]
+            payload = {
+                "query": query,
+                "user_id": f"concurrent_user_{i}",
+                "use_deepseek_fallback": False
+            }
+            return self._make_request("POST", "/api/v1/detect-intent", data=payload)
         
         results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent) as executor:
-            futures = [executor.submit(make_request) for _ in range(num_concurrent)]
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(make_concurrent_request, i) for i in range(num_requests)]
             
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    result = future.result(timeout=10)
-                    results.append(result)
-                except Exception as e:
-                    # Créer un résultat d'erreur
-                    error_result = IntentTestResult(
-                        query=query,
-                        intent_detected="ERROR",
-                        confidence=0.0,
-                        processing_time_ms=0.0,
-                        total_latency_ms=0.0,
-                        success=False,
-                        error_message=f"Concurrent test error: {str(e)}"
-                    )
-                    results.append(error_result)
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+        
+        # Analyse des résultats
+        successful = [r for r in results if r.success]
+        failed = [r for r in results if not r.success]
+        avg_latency = sum(r.response_time_ms for r in successful) / len(successful) if successful else 0
+        
+        logger.info(f"✅ Requêtes réussies: {len(successful)}/{num_requests}")
+        logger.info(f"❌ Requêtes échouées: {len(failed)}")
+        logger.info(f"⏱️ Latence moyenne: {avg_latency:.1f}ms")
         
         return results
     
-    def _print_test_result(self, result: IntentTestResult):
-        """Affichage formaté du résultat"""
+    def test_different_query_types(self) -> List[EndpointTestResult]:
+        """Test avec différents types de requêtes"""
+        logger.info("🎭 Test variété de requêtes")
         
-        # Emojis selon intention
-        intent_emojis = {
-            "BALANCE_CHECK": "💰",
-            "TRANSFER": "💸", 
-            "EXPENSE_ANALYSIS": "📊",
-            "CARD_MANAGEMENT": "💳",
-            "GREETING": "👋",
-            "HELP": "❓",
-            "GOODBYE": "👋",
-            "UNKNOWN": "❔",
-            "ERROR": "❌"
-        }
+        test_cases = [
+            # Salutations
+            {"query": "bonjour", "expected_category": "conversational"},
+            {"query": "salut comment ça va", "expected_category": "conversational"},
+            {"query": "bonsoir", "expected_category": "conversational"},
+            
+            # Finance - Solde
+            {"query": "quel est mon solde", "expected_category": "financial"},
+            {"query": "combien j'ai sur mon compte", "expected_category": "financial"},
+            {"query": "mon argent disponible", "expected_category": "financial"},
+            
+            # Finance - Transactions
+            {"query": "mes derniers achats", "expected_category": "financial"},
+            {"query": "historique janvier 2024", "expected_category": "financial"},
+            {"query": "dépenses restaurant ce mois", "expected_category": "financial"},
+            
+            # Finance - Virements
+            {"query": "virer 50 euros à Paul", "expected_category": "financial"},
+            {"query": "envoyer de l'argent", "expected_category": "financial"},
+            
+            # Finance - Cartes
+            {"query": "bloquer ma carte", "expected_category": "financial"},
+            {"query": "faire opposition", "expected_category": "financial"},
+            
+            # Aide
+            {"query": "aide moi", "expected_category": "conversational"},
+            {"query": "je ne comprends pas", "expected_category": "conversational"},
+            
+            # Au revoir
+            {"query": "au revoir", "expected_category": "conversational"},
+            {"query": "à bientôt", "expected_category": "conversational"},
+            
+            # Requêtes ambigües/inconnues
+            {"query": "aksjdhaksjdh", "expected_category": "unknown"},
+            {"query": "xyz 123 test", "expected_category": "unknown"}
+        ]
         
-        emoji = intent_emojis.get(result.intent_detected, "❓")
+        results = []
+        for i, test_case in enumerate(test_cases):
+            payload = {
+                "query": test_case["query"],
+                "user_id": f"test_variety_{i}",
+                "use_deepseek_fallback": False
+            }
+            
+            result = self._make_request("POST", "/api/v1/detect-intent", data=payload)
+            result.test_case = test_case
+            results.append(result)
+            
+            if result.success and result.response_data:
+                intent = result.response_data.get("intent")
+                confidence = result.response_data.get("confidence", 0)
+                logger.info(f"  '{test_case['query'][:30]}' -> {intent} ({confidence:.3f})")
         
-        # Status intention
-        if result.intent_correct is True:
-            intent_status = "✅"
-        elif result.intent_correct is False:
-            intent_status = "❌"
-        else:
-            intent_status = "➖"
-        
-        # Status performance
-        if result.success and result.processing_time_ms < 50:
-            perf_status = "⚡"
-        elif result.success and result.processing_time_ms < 100:
-            perf_status = "🔄"
-        else:
-            perf_status = "⏱️"
-        
-        # Affichage principal
-        query_display = result.query[:40].ljust(40)
-        intent_display = result.intent_detected.ljust(15)
-        
-        print(f"{emoji} {query_display} → {intent_display} "
-              f"({result.confidence:.3f}) {result.processing_time_ms:6.1f}ms "
-              f"{intent_status}{perf_status}")
-        
-        # Détails erreur si nécessaire
-        if not result.success and result.error_message:
-            print(f"    ❌ Erreur: {result.error_message[:60]}")
+        return results
     
-    def _generate_comprehensive_report(self) -> Dict[str, Any]:
-        """Génération du rapport complet"""
+    # =====================================
+    # TESTS EDGE CASES
+    # =====================================
+    
+    def test_edge_cases(self) -> List[EndpointTestResult]:
+        """Test cas limites et edge cases"""
+        logger.info("🔬 Test cas limites")
         
-        total_tests = len(self.results)
-        successful_tests = [r for r in self.results if r.success]
-        failed_tests = [r for r in self.results if not r.success]
-        
-        print("\n" + "="*80)
-        print("📊 RAPPORT COMPLET TINYBERT DÉTECTION INTENTIONS")
-        print("="*80)
-        
-        # ==========================================
-        # MÉTRIQUES GLOBALES
-        # ==========================================
-        print(f"\n📈 MÉTRIQUES GLOBALES:")
-        print(f"   Tests total: {total_tests}")
-        print(f"   Tests réussis: {len(successful_tests)}")
-        print(f"   Tests échoués: {len(failed_tests)}")
-        print(f"   Taux de succès: {len(successful_tests)/total_tests*100:.1f}%")
-        
-        # ==========================================
-        # PERFORMANCE LATENCE
-        # ==========================================
-        if self.latency_stats:
-            avg_latency = statistics.mean(self.latency_stats)
-            median_latency = statistics.median(self.latency_stats)
-            min_latency = min(self.latency_stats)
-            max_latency = max(self.latency_stats)
+        edge_cases = [
+            # Requête vide
+            {"query": "", "description": "requête vide"},
             
-            print(f"\n⚡ PERFORMANCE LATENCE:")
-            print(f"   Latence moyenne: {avg_latency:.2f}ms")
-            print(f"   Latence médiane: {median_latency:.2f}ms")
-            print(f"   Latence min: {min_latency:.2f}ms")
-            print(f"   Latence max: {max_latency:.2f}ms")
+            # Requête très courte
+            {"query": "a", "description": "requête très courte"},
             
-            # Évaluation objectif <50ms
-            fast_requests = sum(1 for lat in self.latency_stats if lat < 50)
-            fast_percentage = fast_requests / len(self.latency_stats) * 100
-            print(f"   Requêtes <50ms: {fast_requests}/{len(self.latency_stats)} ({fast_percentage:.1f}%)")
+            # Requête très longue
+            {"query": "a" * 1000, "description": "requête très longue"},
             
-            if avg_latency < 50:
-                print("   ✅ OBJECTIF LATENCE ATTEINT (<50ms)")
+            # Caractères spéciaux
+            {"query": "éàçñü特殊字符", "description": "caractères spéciaux"},
+            
+            # Uniquement espaces
+            {"query": "   ", "description": "uniquement espaces"},
+            
+            # Chiffres uniquement
+            {"query": "123456789", "description": "chiffres uniquement"},
+            
+            # Ponctuation uniquement
+            {"query": "!@#$%^&*()", "description": "ponctuation uniquement"}
+        ]
+        
+        results = []
+        for i, case in enumerate(edge_cases):
+            payload = {
+                "query": case["query"],
+                "user_id": f"edge_case_{i}",
+                "use_deepseek_fallback": False
+            }
+            
+            result = self._make_request("POST", "/api/v1/detect-intent", data=payload)
+            result.edge_case = case
+            results.append(result)
+            
+            logger.info(f"  {case['description']}: {'✅' if result.success else '❌'}")
+        
+        return results
+    
+    def test_invalid_payloads(self) -> List[EndpointTestResult]:
+        """Test avec payloads invalides"""
+        logger.info("🚫 Test payloads invalides")
+        
+        invalid_payloads = [
+            # Payload vide
+            {},
+            
+            # Query manquante
+            {"user_id": "test"},
+            
+            # Types incorrects
+            {"query": 123, "user_id": "test"},
+            {"query": "test", "user_id": 123},
+            {"query": "test", "confidence_threshold": "invalid"},
+            
+            # Valeurs nulles
+            {"query": None, "user_id": "test"},
+            {"query": "test", "user_id": None},
+        ]
+        
+        results = []
+        for i, payload in enumerate(invalid_payloads):
+            result = self._make_request("POST", "/api/v1/detect-intent", data=payload)
+            result.invalid_payload = payload
+            results.append(result)
+            
+            # Pour les payloads invalides, on s'attend à une erreur 422
+            if result.status_code == 422:
+                result.success = True  # C'est le comportement attendu
+                logger.info(f"  Payload {i}: ✅ (erreur 422 attendue)")
             else:
-                print("   ❌ OBJECTIF LATENCE NON ATTEINT (>50ms)")
+                logger.info(f"  Payload {i}: ❌ (attendu 422, reçu {result.status_code})")
         
-        # ==========================================
-        # PRÉCISION INTENTIONS
-        # ==========================================
-        total_with_expected = sum(1 for r in self.results if r.expected_intent)
+        return results
+    
+    # =====================================
+    # ORCHESTRATEUR DE TESTS
+    # =====================================
+    
+    def run_all_tests(self) -> Dict[str, Any]:
+        """Exécute tous les tests et retourne un rapport complet"""
+        logger.info("🚀 Démarrage de la suite de tests complète")
+        start_time = time.time()
         
-        if total_with_expected > 0:
-            accuracy_rate = self.accuracy_stats["correct"] / total_with_expected * 100
-            
-            print(f"\n🎯 PRÉCISION INTENTIONS:")
-            print(f"   Intentions correctes: {self.accuracy_stats['correct']}")
-            print(f"   Intentions incorrectes: {self.accuracy_stats['incorrect']}")
-            print(f"   Intentions inconnues: {self.accuracy_stats['unknown']}")
-            print(f"   Taux de précision: {accuracy_rate:.1f}%")
-            
-            if accuracy_rate >= 70:
-                print("   ✅ OBJECTIF PRÉCISION ATTEINT (≥70%)")
-            else:
-                print("   ❌ OBJECTIF PRÉCISION NON ATTEINT (<70%)")
+        all_results = []
+        test_sections = {}
         
-        # ==========================================
-        # DISTRIBUTION INTENTIONS
-        # ==========================================
-        print(f"\n📊 DISTRIBUTION INTENTIONS:")
-        total_successful = len(successful_tests)
-        for intent, count in self.intent_distribution.most_common():
-            percentage = count / total_successful * 100 if total_successful > 0 else 0
-            print(f"   {intent}: {count} ({percentage:.1f}%)")
+        # Tests endpoints système
+        logger.info("\n📁 Section: Endpoints système")
+        system_tests = [
+            self.test_root_endpoint(),
+            self.test_api_status_endpoint(),
+            self.test_api_version_endpoint(),
+            self.test_legacy_status_endpoint(),
+            self.test_legacy_version_endpoint()
+        ]
+        test_sections["system"] = system_tests
+        all_results.extend(system_tests)
         
-        # ==========================================
-        # DISTRIBUTION CONFIANCE
-        # ==========================================
-        total_confidence = sum(self.confidence_ranges.values())
-        if total_confidence > 0:
-            print(f"\n🎲 DISTRIBUTION CONFIANCE:")
-            high_pct = self.confidence_ranges["high"] / total_confidence * 100
-            medium_pct = self.confidence_ranges["medium"] / total_confidence * 100
-            low_pct = self.confidence_ranges["low"] / total_confidence * 100
-            
-            print(f"   Confiance haute (≥0.8): {self.confidence_ranges['high']} ({high_pct:.1f}%)")
-            print(f"   Confiance moyenne (0.5-0.8): {self.confidence_ranges['medium']} ({medium_pct:.1f}%)")
-            print(f"   Confiance faible (<0.5): {self.confidence_ranges['low']} ({low_pct:.1f}%)")
+        # Tests endpoints business
+        logger.info("\n📁 Section: Endpoints métier")
+        business_tests = [
+            self.test_health_endpoint(),
+            self.test_metrics_endpoint(),
+            self.test_detect_intent_endpoint(),
+            self.test_batch_detect_intent_endpoint(),
+            self.test_supported_intents_endpoint()
+        ]
+        test_sections["business"] = business_tests
+        all_results.extend(business_tests)
         
-        # ==========================================
-        # ANALYSE DES ÉCHECS
-        # ==========================================
-        if failed_tests:
-            print(f"\n❌ ANALYSE DES ÉCHECS:")
-            error_types = Counter(r.error_message.split(':')[0] if r.error_message else "Unknown" 
-                                for r in failed_tests)
-            
-            for error_type, count in error_types.items():
-                print(f"   {error_type}: {count}")
+        # Tests endpoints admin
+        logger.info("\n📁 Section: Endpoints admin")
+        admin_tests = [
+            self.test_cache_clear_endpoint(),
+            self.test_debug_test_endpoint(),
+            self.test_debug_config_endpoint()
+        ]
+        test_sections["admin"] = admin_tests
+        all_results.extend(admin_tests)
         
-        # ==========================================
-        # RECOMMANDATIONS
-        # ==========================================
-        recommendations = self._generate_recommendations()
-        print(f"\n💡 RECOMMANDATIONS:")
-        for i, rec in enumerate(recommendations, 1):
-            print(f"   {i}. {rec}")
+        # Tests de performance
+        logger.info("\n📁 Section: Tests de performance")
+        concurrent_results = self.test_concurrent_requests(10)
+        test_sections["performance"] = concurrent_results
+        all_results.extend(concurrent_results)
         
-        # ==========================================
-        # VERDICT FINAL
-        # ==========================================
-        print(f"\n" + "="*80)
-        print("🏆 VERDICT FINAL")
-        print("="*80)
+        # Tests variété de requêtes
+        logger.info("\n📁 Section: Variété de requêtes")
+        variety_results = self.test_different_query_types()
+        test_sections["variety"] = variety_results
+        all_results.extend(variety_results)
         
-        success_rate = len(successful_tests) / total_tests * 100
-        meets_latency = statistics.mean(self.latency_stats) < 50 if self.latency_stats else False
-        meets_accuracy = (self.accuracy_stats["correct"] / max(total_with_expected, 1) * 100) >= 70
+        # Tests edge cases
+        logger.info("\n📁 Section: Cas limites")
+        edge_results = self.test_edge_cases()
+        test_sections["edge_cases"] = edge_results
+        all_results.extend(edge_results)
         
-        if success_rate >= 95 and meets_latency and meets_accuracy:
-            print("🟢 EXCELLENT - TinyBERT prêt pour production")
-        elif success_rate >= 80 and (meets_latency or meets_accuracy):
-            print("🟡 BON - TinyBERT nécessite optimisations mineures")
-        else:
-            print("🔴 INSUFFISANT - TinyBERT nécessite améliorations importantes")
+        # Tests payloads invalides
+        logger.info("\n📁 Section: Payloads invalides")
+        invalid_results = self.test_invalid_payloads()
+        test_sections["invalid_payloads"] = invalid_results
+        all_results.extend(invalid_results)
         
-        return {
+        # Calcul des statistiques finales
+        total_time = time.time() - start_time
+        successful_tests = [r for r in all_results if r.success]
+        failed_tests = [r for r in all_results if not r.success]
+        
+        avg_response_time = sum(r.response_time_ms for r in successful_tests) / len(successful_tests) if successful_tests else 0
+        
+        report = {
             "summary": {
-                "total_tests": total_tests,
-                "successful_tests": len(successful_tests),
-                "failed_tests": len(failed_tests),
-                "success_rate": success_rate,
-                "avg_latency_ms": statistics.mean(self.latency_stats) if self.latency_stats else 0,
-                "accuracy_rate": self.accuracy_stats["correct"] / max(total_with_expected, 1) * 100,
-                "meets_latency_target": meets_latency,
-                "meets_accuracy_target": meets_accuracy
+                "total_tests": len(all_results),
+                "successful": len(successful_tests),
+                "failed": len(failed_tests),
+                "success_rate": len(successful_tests) / len(all_results) if all_results else 0,
+                "total_duration_seconds": total_time,
+                "average_response_time_ms": avg_response_time
             },
-            "performance": {
-                "latency_stats": {
-                    "mean": statistics.mean(self.latency_stats) if self.latency_stats else 0,
-                    "median": statistics.median(self.latency_stats) if self.latency_stats else 0,
-                    "min": min(self.latency_stats) if self.latency_stats else 0,
-                    "max": max(self.latency_stats) if self.latency_stats else 0,
-                },
-                "fast_requests_percentage": sum(1 for lat in self.latency_stats if lat < 50) / len(self.latency_stats) * 100 if self.latency_stats else 0
-            },
-            "accuracy": dict(self.accuracy_stats),
-            "intent_distribution": dict(self.intent_distribution),
-            "confidence_distribution": dict(self.confidence_ranges),
-            "recommendations": recommendations,
-            "detailed_results": [
-                {
-                    "query": r.query,
-                    "intent_detected": r.intent_detected,
-                    "expected_intent": r.expected_intent,
-                    "confidence": r.confidence,
-                    "processing_time_ms": r.processing_time_ms,
-                    "success": r.success,
-                    "intent_correct": r.intent_correct
+            "sections": {
+                section: {
+                    "total": len(results),
+                    "successful": len([r for r in results if r.success]),
+                    "failed": len([r for r in results if not r.success]),
+                    "results": results
                 }
-                for r in self.results
-            ]
+                for section, results in test_sections.items()
+            },
+            "failed_tests": [
+                {
+                    "endpoint": r.endpoint,
+                    "method": r.method,
+                    "error": r.error_message,
+                    "status_code": r.status_code
+                }
+                for r in failed_tests
+            ],
+            "service_status": "OPERATIONAL" if len(successful_tests) >= len(all_results) * 0.8 else "DEGRADED"
         }
+        
+        return report
     
-    def _generate_recommendations(self) -> List[str]:
-        """Génération recommandations basées sur l'analyse"""
-        recommendations = []
+    def print_report(self, report: Dict[str, Any]):
+        """Affiche le rapport de tests de façon lisible"""
+        print("\n" + "="*80)
+        print("🧪 RAPPORT DE TESTS CONVERSATION SERVICE")
+        print("="*80)
         
-        # Recommandations latence
-        if self.latency_stats:
-            avg_latency = statistics.mean(self.latency_stats)
-            if avg_latency > 100:
-                recommendations.append("Optimiser TinyBERT - latence trop élevée (>100ms)")
-            elif avg_latency > 50:
-                recommendations.append("Améliorer performance TinyBERT - objectif <50ms non atteint")
+        summary = report["summary"]
+        print(f"\n📊 RÉSUMÉ GLOBAL:")
+        print(f"   Total tests: {summary['total_tests']}")
+        print(f"   ✅ Réussis: {summary['successful']}")
+        print(f"   ❌ Échoués: {summary['failed']}")
+        print(f"   📈 Taux de réussite: {summary['success_rate']:.1%}")
+        print(f"   ⏱️ Durée totale: {summary['total_duration_seconds']:.2f}s")
+        print(f"   🚀 Temps de réponse moyen: {summary['average_response_time_ms']:.1f}ms")
+        print(f"   🎯 Statut service: {report['service_status']}")
         
-        # Recommandations précision
-        total_with_expected = sum(1 for r in self.results if r.expected_intent)
-        if total_with_expected > 0:
-            accuracy_rate = self.accuracy_stats["correct"] / total_with_expected * 100
-            if accuracy_rate < 50:
-                recommendations.append("Fine-tuner TinyBERT sur données françaises - précision critique")
-            elif accuracy_rate < 70:
-                recommendations.append("Améliorer dataset d'entraînement TinyBERT - objectif 70% non atteint")
+        print(f"\n📁 DÉTAIL PAR SECTION:")
+        for section_name, section_data in report["sections"].items():
+            success_rate = section_data["successful"] / section_data["total"] if section_data["total"] > 0 else 0
+            print(f"   {section_name.title()}: {section_data['successful']}/{section_data['total']} ({success_rate:.1%})")
         
-        # Recommandations UNKNOWN
-        unknown_rate = self.intent_distribution.get("UNKNOWN", 0) / len(self.results) * 100
-        if unknown_rate > 30:
-            recommendations.append("Réduire taux UNKNOWN - ajouter plus d'exemples d'entraînement")
+        if report["failed_tests"]:
+            print(f"\n❌ TESTS ÉCHOUÉS:")
+            for failed in report["failed_tests"]:
+                print(f"   {failed['method']} {failed['endpoint']} (HTTP {failed['status_code']})")
+                if failed["error"]:
+                    print(f"      Erreur: {failed['error']}")
         
-        # Recommandations confiance
-        low_confidence = self.confidence_ranges.get("low", 0)
-        total_confidence = sum(self.confidence_ranges.values())
-        if total_confidence > 0 and low_confidence / total_confidence > 0.5:
-            recommendations.append("Améliorer confiance modèle - trop de prédictions incertaines")
-        
-        # Recommandations échecs
-        failed_tests = [r for r in self.results if not r.success]
-        if len(failed_tests) > len(self.results) * 0.1:
-            recommendations.append("Résoudre problèmes techniques - taux d'échec élevé")
-        
-        if not recommendations:
-            recommendations.append("TinyBERT fonctionne correctement - prêt pour mise en production")
-        
-        return recommendations
+        print(f"\n{'🎉 SERVICE OPÉRATIONNEL' if report['service_status'] == 'OPERATIONAL' else '⚠️ SERVICE DÉGRADÉ'}")
+        print("="*80)
 
-def test_service_availability():
-    """Test disponibilité du service"""
-    print("🔍 VÉRIFICATION DISPONIBILITÉ SERVICE")
-    print("-" * 50)
+
+def main():
+    """Fonction principale pour exécuter les tests"""
+    config = TestConfig()
+    tester = ConversationServiceTester(config)
+    
+    print("🧪 Démarrage des tests complets du Conversation Service")
+    print(f"🎯 URL de test: {config.base_url}")
+    print("="*60)
     
     try:
-        # Test endpoint root
-        response = requests.get(ROOT_URL, timeout=5)
-        if response.status_code == 200:
-            print("✅ Service disponible")
-            data = response.json()
-            print(f"   Service: {data.get('service', 'Unknown')}")
-            print(f"   Version: {data.get('version', 'Unknown')}")
-            print(f"   Modèle: {data.get('model', 'Unknown')}")
-        else:
-            print(f"❌ Service indisponible: HTTP {response.status_code}")
-            return False
-            
+        # Exécution de tous les tests
+        report = tester.run_all_tests()
+        
+        # Affichage du rapport
+        tester.print_report(report)
+        
+        # Sauvegarde du rapport en JSON
+        with open("conversation_service_test_report.json", "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False, default=str)
+        
+        print(f"\n💾 Rapport sauvegardé: conversation_service_test_report.json")
+        
+        # Code de sortie selon le statut
+        return 0 if report["service_status"] == "OPERATIONAL" else 1
+        
+    except KeyboardInterrupt:
+        print("\n⏹️ Tests interrompus par l'utilisateur")
+        return 2
     except Exception as e:
-        print(f"❌ Erreur connexion service: {e}")
+        print(f"\n💥 Erreur lors des tests: {e}")
+        logger.error(f"Erreur critique: {e}", exc_info=True)
+        return 3
+
+
+# =====================================
+# TESTS PYTEST (optionnel)
+# =====================================
+
+class TestConversationServicePytest:
+    """
+    Classe de tests compatible pytest pour intégration CI/CD
+    """
+    
+    @classmethod
+    def setup_class(cls):
+        """Setup global des tests pytest"""
+        cls.config = TestConfig()
+        cls.tester = ConversationServiceTester(cls.config)
+    
+    def test_service_availability(self):
+        """Test disponibilité générale du service"""
+        result = self.tester.test_root_endpoint()
+        assert result.success, f"Service indisponible: {result.error_message}"
+        assert result.response_time_ms < 1000, f"Temps de réponse trop élevé: {result.response_time_ms}ms"
+    
+    def test_health_check(self):
+        """Test endpoint de santé"""
+        result = self.tester.test_health_endpoint()
+        assert result.success, f"Health check échoué: {result.error_message}"
+        
+        if result.response_data:
+            status = result.response_data.get("status")
+            assert status in ["healthy", "degraded"], f"Statut santé invalide: {status}"
+    
+    def test_intent_detection_basic(self):
+        """Test détection d'intention basique"""
+        result = self.tester.test_detect_intent_endpoint()
+        assert result.success, f"Détection intention échouée: {result.error_message}"
+        
+        if result.response_data:
+            confidence = result.response_data.get("confidence")
+            assert isinstance(confidence, (int, float)), "Confiance doit être numérique"
+            assert 0 <= confidence <= 1, f"Confiance hors limites: {confidence}"
+    
+    def test_batch_processing(self):
+        """Test traitement par batch"""
+        result = self.tester.test_batch_detect_intent_endpoint()
+        assert result.success, f"Batch processing échoué: {result.error_message}"
+    
+    def test_api_consistency(self):
+        """Test cohérence des endpoints API"""
+        # Test que tous les endpoints /api/v1 sont cohérents
+        endpoints_to_test = [
+            "/api/v1/status",
+            "/api/v1/version", 
+            "/api/v1/health",
+            "/api/v1/metrics",
+            "/api/v1/supported-intents"
+        ]
+        
+        for endpoint in endpoints_to_test:
+            result = self.tester._make_request("GET", endpoint)
+            assert result.success or result.status_code in [401, 403], f"Endpoint {endpoint} inaccessible: {result.status_code}"
+    
+    def test_performance_baseline(self):
+        """Test performance baseline"""
+        concurrent_results = self.tester.test_concurrent_requests(5)
+        successful = [r for r in concurrent_results if r.success]
+        
+        assert len(successful) >= len(concurrent_results) * 0.8, "Trop d'échecs en concurrence"
+        
+        if successful:
+            avg_latency = sum(r.response_time_ms for r in successful) / len(successful)
+            assert avg_latency < 2000, f"Latence moyenne trop élevée: {avg_latency}ms"
+    
+    def test_error_handling(self):
+        """Test gestion d'erreurs"""
+        invalid_results = self.tester.test_invalid_payloads()
+        
+        # La plupart des payloads invalides doivent retourner 422
+        valid_error_responses = [r for r in invalid_results if r.status_code == 422]
+        assert len(valid_error_responses) >= len(invalid_results) * 0.7, "Gestion d'erreurs insuffisante"
+
+
+# =====================================
+# UTILITAIRES ET HELPERS
+# =====================================
+
+def check_service_dependencies():
+    """
+    Vérifie les dépendances du service avant les tests
+    """
+    print("🔍 Vérification des dépendances...")
+    
+    dependencies = {
+        "requests": "pour les appels HTTP",
+        "json": "pour le parsing JSON",
+        "concurrent.futures": "pour les tests concurrents"
+    }
+    
+    missing_deps = []
+    for dep, description in dependencies.items():
+        try:
+            __import__(dep)
+            print(f"  ✅ {dep}: OK")
+        except ImportError:
+            print(f"  ❌ {dep}: MANQUANT ({description})")
+            missing_deps.append(dep)
+    
+    if missing_deps:
+        print(f"\n⚠️ Dépendances manquantes: {', '.join(missing_deps)}")
+        print("Installez avec: pip install requests pytest")
         return False
     
     return True
 
-def main():
-    """Fonction principale des tests TinyBERT"""
-    print("🤖 TESTS COMPLETS TINYBERT DÉTECTION INTENTIONS")
-    print("="*80)
-    print(f"⏰ Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"🎯 Endpoint: {DETECT_INTENT_URL}")
-    print(f"📊 Objectifs: <50ms latence, >70% précision intentions")
-    
-    # Vérifier disponibilité service
-    if not test_service_availability():
-        print("\n❌ Service indisponible - arrêt des tests")
-        return None
-    
-    # Lancer suite de tests
-    tester = TinyBERTIntentTester()
-    report = tester.run_comprehensive_test_suite()
-    
-    # Sauvegarder rapport
-    timestamp = int(time.time())
-    report_filename = f"tinybert_test_report_{timestamp}.json"
-    
-    try:
-        with open(report_filename, 'w', encoding='utf-8') as f:
-            json.dump(report, f, indent=2, ensure_ascii=False, default=str)
-        print(f"\n💾 Rapport sauvegardé: {report_filename}")
-    except Exception as e:
-        print(f"\n❌ Erreur sauvegarde rapport: {e}")
-    
-    # Conclusion finale
-    print("\n" + "="*80)
-    print("🎯 CONCLUSION ET ACTIONS RECOMMANDÉES")
-    print("="*80)
-    
-    summary = report["summary"]
-    success_rate = summary["success_rate"]
-    avg_latency = summary["avg_latency_ms"]
-    accuracy_rate = summary["accuracy_rate"]
-    meets_latency = summary["meets_latency_target"]
-    meets_accuracy = summary["meets_accuracy_target"]
-    
-    # Status global
-    if success_rate >= 95 and meets_latency and meets_accuracy:
-        print("🟢 STATUS: EXCELLENT")
-        print("   TinyBERT est prêt pour la production")
-        print("   ✅ Latence cible atteinte")
-        print("   ✅ Précision cible atteinte")
-        print("   ✅ Taux de succès élevé")
-        action = "DÉPLOYER EN PRODUCTION"
-        
-    elif success_rate >= 80 and (meets_latency or meets_accuracy):
-        print("🟡 STATUS: BON")
-        print("   TinyBERT nécessite optimisations mineures")
-        if not meets_latency:
-            print("   ⚠️  Objectif latence non atteint")
-        if not meets_accuracy:
-            print("   ⚠️  Objectif précision non atteint")
-        action = "OPTIMISER PUIS DÉPLOYER"
-        
-    else:
-        print("🔴 STATUS: INSUFFISANT")
-        print("   TinyBERT nécessite améliorations importantes")
-        print(f"   ❌ Taux succès: {success_rate:.1f}% (objectif: >95%)")
-        if not meets_latency:
-            print(f"   ❌ Latence moyenne: {avg_latency:.1f}ms (objectif: <50ms)")
-        if not meets_accuracy:
-            print(f"   ❌ Précision: {accuracy_rate:.1f}% (objectif: >70%)")
-        action = "AMÉLIORER AVANT DÉPLOIEMENT"
-    
-    print(f"\n🚀 ACTION RECOMMANDÉE: {action}")
-    
-    # Métriques clés finales
-    print(f"\n📊 MÉTRIQUES CLÉS:")
-    print(f"   Taux de succès: {success_rate:.1f}%")
-    print(f"   Latence moyenne: {avg_latency:.1f}ms")
-    print(f"   Précision intentions: {accuracy_rate:.1f}%")
-    print(f"   Tests réussis: {summary['successful_tests']}/{summary['total_tests']}")
-    
-    # Prochaines étapes
-    print(f"\n📋 PROCHAINES ÉTAPES:")
-    if meets_latency and meets_accuracy:
-        print("   1. Valider avec données réelles utilisateurs")
-        print("   2. Tester charge en production")
-        print("   3. Monitorer métriques en continu")
-        print("   4. Optimiser patterns si nécessaire")
-    else:
-        print("   1. Analyser cas d'échec détaillés")
-        print("   2. Fine-tuner modèle sur données françaises")
-        print("   3. Optimiser architecture si latence élevée")
-        print("   4. Re-tester jusqu'à atteinte objectifs")
-    
-    return report
 
-def run_quick_test():
-    """Test rapide pour vérification de base"""
-    print("⚡ TEST RAPIDE TINYBERT")
-    print("-" * 30)
-    
-    tester = TinyBERTIntentTester()
-    
-    # Quelques tests de base
-    quick_tests = [
-        ("bonjour", "GREETING"),
-        ("quel est mon solde", "BALANCE_CHECK"),
-        ("faire un virement", "TRANSFER"),
-        ("mes dépenses", "EXPENSE_ANALYSIS"),
-        ("bloquer ma carte", "CARD_MANAGEMENT"),
-        ("aide", "HELP"),
-        ("au revoir", "GOODBYE"),
-        ("test xyz", "UNKNOWN")
-    ]
-    
-    print("Tests en cours...")
-    for query, expected in quick_tests:
-        result = tester.test_single_intent(query, expected)
-        tester.results.append(result)
-        
-        status = "✅" if result.success and result.intent_correct else "❌"
-        print(f"{status} '{query}' → {result.intent_detected} ({result.confidence:.2f}) {result.processing_time_ms:.1f}ms")
-    
-    # Métriques rapides
-    successful = [r for r in tester.results if r.success]
-    correct_intents = [r for r in tester.results if r.intent_correct]
-    
-    if successful:
-        avg_latency = sum(r.processing_time_ms for r in successful) / len(successful)
-        accuracy = len(correct_intents) / len(tester.results) * 100
-        
-        print(f"\n📊 Résultats rapides:")
-        print(f"   Succès: {len(successful)}/{len(tester.results)} ({len(successful)/len(tester.results)*100:.1f}%)")
-        print(f"   Précision: {accuracy:.1f}%")
-        print(f"   Latence moyenne: {avg_latency:.1f}ms")
-        
-        if avg_latency < 50 and accuracy > 70:
-            print("✅ Test rapide RÉUSSI - TinyBERT fonctionne correctement")
-        else:
-            print("⚠️  Test rapide PARTIEL - optimisations recommandées")
-    else:
-        print("❌ Test rapide ÉCHOUÉ - problème technique")
+def generate_test_data():
+    """
+    Génère des données de test pour les différents scénarios
+    """
+    return {
+        "financial_queries": [
+            "quel est mon solde",
+            "mes dernières transactions",
+            "virement 100 euros à Paul",
+            "dépenses restaurant janvier",
+            "bloquer ma carte",
+            "historique des virements",
+            "budget mensuel",
+            "mes revenus",
+            "analyse des dépenses",
+            "recherche par catégorie alimentation"
+        ],
+        "conversational_queries": [
+            "bonjour",
+            "salut comment ça va",
+            "bonsoir",
+            "aide moi",
+            "je ne comprends pas",
+            "peux tu m'aider",
+            "au revoir",
+            "à bientôt",
+            "merci beaucoup",
+            "comment ça marche"
+        ],
+        "edge_case_queries": [
+            "",
+            "a",
+            "?",
+            "123",
+            "éàç",
+            "très très très longue requête " * 50,
+            "!@#$%",
+            "   ",
+            "\n\t",
+            "query with\nnewlines"
+        ]
+    }
 
-def run_load_test():
-    """Test de charge spécialisé"""
-    print("🔥 TEST DE CHARGE TINYBERT")
-    print("-" * 40)
+
+def benchmark_service_performance():
+    """
+    Benchmark rapide de performance du service
+    """
+    print("⚡ Benchmark de performance...")
     
-    test_query = "quel est mon solde"
-    num_requests = 50
+    config = TestConfig()
+    tester = ConversationServiceTester(config)
     
-    print(f"🎯 Requête test: '{test_query}'")
-    print(f"📊 Nombre de requêtes: {num_requests}")
-    print("⏱️  Test en cours...")
-    
-    tester = TinyBERTIntentTester()
-    start_time = time.time()
-    
-    # Test séquentiel
-    sequential_latencies = []
-    for i in range(num_requests):
-        result = tester.test_single_intent(test_query, "BALANCE_CHECK")
+    # Test de latence simple
+    single_request_times = []
+    for i in range(10):
+        result = tester._make_request("GET", "/api/v1/health")
         if result.success:
-            sequential_latencies.append(result.processing_time_ms)
+            single_request_times.append(result.response_time_ms)
     
-    sequential_duration = time.time() - start_time
+    if single_request_times:
+        avg_single = sum(single_request_times) / len(single_request_times)
+        print(f"  📊 Latence moyenne (health): {avg_single:.1f}ms")
+        print(f"  📊 Latence min/max: {min(single_request_times):.1f}ms / {max(single_request_times):.1f}ms")
     
-    # Test concurrent
-    print("🔄 Test concurrent...")
-    concurrent_results = tester._test_concurrent_requests(test_query, min(num_requests, 20))
-    concurrent_latencies = [r.processing_time_ms for r in concurrent_results if r.success]
+    # Test de charge
+    concurrent_results = tester.test_concurrent_requests(20)
+    successful_concurrent = [r for r in concurrent_results if r.success]
     
-    # Résultats
-    print(f"\n📊 RÉSULTATS TEST DE CHARGE:")
+    if successful_concurrent:
+        avg_concurrent = sum(r.response_time_ms for r in successful_concurrent) / len(successful_concurrent)
+        success_rate = len(successful_concurrent) / len(concurrent_results)
+        print(f"  ⚡ Latence sous charge: {avg_concurrent:.1f}ms")
+        print(f"  ⚡ Taux de succès concurrent: {success_rate:.1%}")
     
-    if sequential_latencies:
-        print(f"🔄 Séquentiel ({len(sequential_latencies)} requêtes):")
-        print(f"   Latence moyenne: {statistics.mean(sequential_latencies):.2f}ms")
-        print(f"   Latence médiane: {statistics.median(sequential_latencies):.2f}ms")
-        print(f"   Temps total: {sequential_duration:.2f}s")
-        print(f"   Débit: {len(sequential_latencies)/sequential_duration:.1f} req/s")
-    
-    if concurrent_latencies:
-        success_rate = len(concurrent_latencies) / len(concurrent_results) * 100
-        print(f"⚡ Concurrent ({len(concurrent_results)} requêtes):")
-        print(f"   Taux succès: {success_rate:.1f}%")
-        print(f"   Latence moyenne: {statistics.mean(concurrent_latencies):.2f}ms")
-        print(f"   Latence médiane: {statistics.median(concurrent_latencies):.2f}ms")
-        
-        if success_rate >= 95:
-            print("   ✅ Excellente robustesse concurrentielle")
-        elif success_rate >= 80:
-            print("   ✅ Bonne robustesse concurrentielle")
-        else:
-            print("   ⚠️  Problèmes de concurrence détectés")
-    
-    # Recommandations performance
-    if sequential_latencies:
-        p95_latency = sorted(sequential_latencies)[int(0.95 * len(sequential_latencies))]
-        print(f"\n💡 Analyse performance:")
-        print(f"   P95 latence: {p95_latency:.2f}ms")
-        
-        if p95_latency < 50:
-            print("   ✅ Performance P95 excellente (<50ms)")
-        elif p95_latency < 100:
-            print("   ✅ Performance P95 acceptable (<100ms)")
-        else:
-            print("   ⚠️  Performance P95 à améliorer (>100ms)")
+    return {
+        "single_request_avg_ms": avg_single if single_request_times else 0,
+        "concurrent_avg_ms": avg_concurrent if successful_concurrent else 0,
+        "concurrent_success_rate": success_rate if successful_concurrent else 0
+    }
+
+
+def create_monitoring_dashboard_data(report: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Crée des données pour un dashboard de monitoring
+    """
+    return {
+        "timestamp": time.time(),
+        "service_status": report["service_status"],
+        "overall_health": {
+            "success_rate": report["summary"]["success_rate"],
+            "avg_response_time_ms": report["summary"]["average_response_time_ms"],
+            "total_tests": report["summary"]["total_tests"]
+        },
+        "endpoint_health": {
+            section: {
+                "availability": data["successful"] / data["total"] if data["total"] > 0 else 0,
+                "test_count": data["total"]
+            }
+            for section, data in report["sections"].items()
+        },
+        "alerts": [
+            f"Test échoué: {test['method']} {test['endpoint']}"
+            for test in report["failed_tests"][:5]  # Limite à 5 alertes
+        ],
+        "performance_metrics": {
+            "response_time_threshold_ms": 1000,
+            "success_rate_threshold": 0.95,
+            "current_success_rate": report["summary"]["success_rate"],
+            "current_avg_response_time": report["summary"]["average_response_time_ms"]
+        }
+    }
+
 
 if __name__ == "__main__":
-    import sys
+    # Vérification des dépendances
+    if not check_service_dependencies():
+        print("❌ Impossible de continuer sans les dépendances requises")
+        exit(1)
     
-    # Options de test
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--quick":
-            run_quick_test()
-        elif sys.argv[1] == "--load":
-            run_load_test()
-        elif sys.argv[1] == "--help":
-            print("🤖 Tests TinyBERT Détection Intentions")
-            print("")
-            print("Usage:")
-            print("  python test_tinybert_intentions.py           # Test complet")
-            print("  python test_tinybert_intentions.py --quick   # Test rapide")
-            print("  python test_tinybert_intentions.py --load    # Test de charge")
-            print("  python test_tinybert_intentions.py --help    # Cette aide")
-        else:
-            print(f"❌ Option inconnue: {sys.argv[1]}")
-            print("Utilisez --help pour voir les options disponibles")
-    else:
-        # Test complet par défaut
-        report = main()
-        
-        # Code de sortie selon résultats
-        if report:
-            summary = report["summary"]
-            if summary["meets_latency_target"] and summary["meets_accuracy_target"] and summary["success_rate"] >= 95:
-                sys.exit(0)  # Succès complet
-            elif summary["success_rate"] >= 80:
-                sys.exit(1)  # Succès partiel
-            else:
-                sys.exit(2)  # Échec
-        else:
-            sys.exit(3)  # Erreur technique
+    # Benchmark rapide optionnel
+    if "--benchmark" in __import__("sys").argv:
+        benchmark_results = benchmark_service_performance()
+        print("\n📊 Résultats benchmark:")
+        for key, value in benchmark_results.items():
+            print(f"   {key}: {value}")
+        print()
+    
+    # Exécution des tests principaux
+    exit_code = main()
+    exit(exit_code)

@@ -8,6 +8,8 @@ cœur du système de détection hybride niveau 0.
 Responsabilité : Détection d'intentions via règles configurables
 Dépendances : rule_loader.py, pattern_matcher.py
 Performance : <1ms exact match, <10ms pattern match avec entités
+
+VERSION CORRIGÉE : Résolution du conflit de noms PatternMatcher
 """
 
 import re
@@ -20,7 +22,7 @@ import hashlib
 
 # Imports locaux
 from .rule_loader import RuleLoader, IntentRule, IntentCategory, RuleMatch as LoaderRuleMatch
-from .pattern_matcher import PatternMatcher, EntityMatch, ExtractionResult, create_pattern_matcher
+from .pattern_matcher import PatternMatcher as EntityPatternMatcher, EntityMatch, ExtractionResult, create_pattern_matcher
 
 logger = logging.getLogger(__name__)
 
@@ -256,16 +258,19 @@ class PatternMatchScorer:
         return score * priority_multiplier
 
 
-class PatternMatcher:
-    """Matcher avancé pour patterns regex avec scoring intelligent"""
+class RulePatternMatcher:
+    """
+    RENOMMÉ: Matcher avancé pour patterns regex avec scoring intelligent
+    (Anciennement PatternMatcher - renommé pour éviter conflit avec EntityPatternMatcher)
+    """
     
-    def __init__(self, rules: Dict[str, IntentRule], entity_matcher: PatternMatcher):
+    def __init__(self, rules: Dict[str, IntentRule], entity_matcher: EntityPatternMatcher):
         """
-        Initialise le matcher de patterns
+        Initialise le matcher de patterns de règles
         
         Args:
             rules: Dictionnaire des règles d'intention
-            entity_matcher: Matcher d'entités
+            entity_matcher: Matcher d'entités (EntityPatternMatcher)
         """
         self.rules = rules
         self.entity_matcher = entity_matcher
@@ -321,7 +326,7 @@ class PatternMatcher:
         start_time = datetime.now()
         matches = []
         
-        # Extraction d'entités une seule fois pour toutes les règles
+        # CORRECTION CRITIQUE : Extraction d'entités UNE SEULE FOIS avec le bon matcher
         entity_extraction = self.entity_matcher.extract_entities(context.original_text)
         
         # Test de chaque règle
@@ -396,11 +401,12 @@ class PatternMatcher:
         if final_score < confidence_threshold:
             return None
         
+        # CORRECTION CRITIQUE : Passage des entités extraites au RuleMatch
         return RuleMatch(
             intent=rule.intent,
             intent_category=rule.intent_category.value,
             confidence=final_score,
-            entities=entity_extraction.entities,
+            entities=entity_extraction.entities,  # ENTITÉS PASSÉES CORRECTEMENT
             method="pattern_match",
             execution_time_ms=0.0,  # Sera mis à jour par le caller
             pattern_matched=";".join(matched_patterns),
@@ -420,7 +426,7 @@ class PatternMatcher:
         )[:5]
         
         return {
-            "matcher_type": "pattern",
+            "matcher_type": "rule_pattern",
             "rules_count": len(self.rules),
             "compiled_patterns_count": sum(len(p) for p in self._compiled_patterns.values()),
             "match_count": self.match_count,
@@ -439,27 +445,30 @@ class RuleEngine:
     
     Ce moteur combine recherche exacte ultra-rapide et pattern matching intelligent
     pour détecter les intentions avec extraction d'entités intégrée.
+    
+    VERSION CORRIGÉE : Utilise EntityPatternMatcher pour l'extraction d'entités
+                      et RulePatternMatcher pour le matching de règles
     """
     
     def __init__(self, rule_loader: Optional[RuleLoader] = None, 
-                 entity_matcher: Optional[PatternMatcher] = None):
+                 entity_matcher: Optional[EntityPatternMatcher] = None):
         """
         Initialise le moteur de règles
         
         Args:
             rule_loader: Loader des règles (optionnel)
-            entity_matcher: Matcher d'entités (optionnel)
+            entity_matcher: Matcher d'entités (EntityPatternMatcher, optionnel)
         """
         # Initialisation des composants
         if rule_loader is None:
             from . import get_default_loader
-            rule_loader = rule_loader or get_default_loader()
+            rule_loader = get_default_loader()
         
         if entity_matcher is None:
             entity_matcher = create_pattern_matcher(rule_loader)
         
         self.rule_loader = rule_loader
-        self.entity_matcher = entity_matcher
+        self.entity_matcher = entity_matcher  # CORRECTION : EntityPatternMatcher
         
         # Chargement des règles
         self.financial_rules = rule_loader.get_financial_rules()
@@ -468,7 +477,7 @@ class RuleEngine:
         
         # Initialisation des matchers
         self.exact_matcher = ExactMatcher(self.all_rules)
-        self.pattern_matcher = PatternMatcher(self.all_rules, entity_matcher)
+        self.pattern_matcher = RulePatternMatcher(self.all_rules, entity_matcher)  # CORRECTION
         
         # Cache des résultats
         self._result_cache: Dict[str, RuleMatch] = {}
@@ -520,6 +529,15 @@ class RuleEngine:
         exact_match = self.exact_matcher.find_exact_match(context)
         if exact_match and exact_match.confidence >= threshold:
             execution_time = (datetime.now() - start_time).total_seconds() * 1000
+            
+            # CORRECTION : Ajout des entités même pour exact match
+            if exact_match.entity_count == 0:
+                # Extraction d'entités même pour les matches exacts
+                entity_extraction = self.entity_matcher.extract_entities(context.original_text)
+                exact_match = exact_match._replace(
+                    entities=entity_extraction.entities,
+                    entity_count=entity_extraction.total_matches
+                )
             
             # Mise à jour du temps d'exécution
             final_match = exact_match._replace(execution_time_ms=execution_time)
@@ -602,7 +620,7 @@ class RuleEngine:
         
         # Création d'un matcher temporaire avec les règles filtrées
         temp_exact_matcher = ExactMatcher(category_rules)
-        temp_pattern_matcher = PatternMatcher(category_rules, self.entity_matcher)
+        temp_pattern_matcher = RulePatternMatcher(category_rules, self.entity_matcher)
         
         context = MatchingContext.create(text)
         
@@ -703,7 +721,7 @@ class RuleEngine:
         
         # Réinitialisation des matchers
         self.exact_matcher = ExactMatcher(self.all_rules)
-        self.pattern_matcher = PatternMatcher(self.all_rules, self.entity_matcher)
+        self.pattern_matcher = RulePatternMatcher(self.all_rules, self.entity_matcher)
         
         # Vidage du cache
         self.clear_cache()
@@ -727,13 +745,13 @@ class RuleEngine:
 
 # Factory function pour faciliter l'utilisation
 def create_rule_engine(rule_loader: Optional[RuleLoader] = None,
-                      entity_matcher: Optional[PatternMatcher] = None) -> RuleEngine:
+                      entity_matcher: Optional[EntityPatternMatcher] = None) -> RuleEngine:
     """
     Factory function pour créer un RuleEngine
     
     Args:
         rule_loader: RuleLoader personnalisé (optionnel)
-        entity_matcher: PatternMatcher personnalisé (optionnel)
+        entity_matcher: EntityPatternMatcher personnalisé (optionnel)
         
     Returns:
         Instance RuleEngine configurée
@@ -747,7 +765,7 @@ __all__ = [
     "RuleMatch", 
     "MatchingContext",
     "ExactMatcher",
-    "PatternMatcher",
+    "RulePatternMatcher",  # RENOMMÉ
     "PatternMatchScorer",
     "create_rule_engine"
 ]

@@ -242,9 +242,13 @@ RESPONSE_TEMPLATES_BY_INTENT = {
     "budget_inquiry": "💰 État de votre budget :",
     "category_analysis": "📋 Analyse par catégorie :",
     "merchant_inquiry": "🏪 Transactions chez {merchant} :",
+    "balance_inquiry": "🏦 Consultation de soldes :",
     "trend_analysis": "📈 Analyse des tendances :",
     "comparison_query": "⚖️ Comparaison demandée :",
-    "conversational": "D'après vos données financières :"
+    "goal_tracking": "🎯 Suivi de vos objectifs :",
+    "alert_management": "🔔 Gestion des alertes :",
+    "conversational": "D'après vos données financières :",
+    "other": "ℹ️ Information financière :"
 }
 
 FINANCIAL_EMOJIS = {

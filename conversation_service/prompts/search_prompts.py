@@ -610,6 +610,8 @@ QUERY_TYPE_STRATEGIES = {
     "balance_inquiry": "aggregation",
     "trend_analysis": "aggregation",
     "comparison_query": "aggregation",
+    "goal_tracking": "aggregation",
+    "alert_management": "lexical",
     "conversational": "lexical",
     "other": "lexical"
 }

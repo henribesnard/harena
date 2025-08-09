@@ -1,0 +1,503 @@
+"""
+MVP Team Manager for coordinating the complete agent team.
+
+This manager orchestrates the entire conversation service team, including
+the orchestrator agent and all specialized agents. It provides high-level
+API for conversation processing with comprehensive error handling, 
+monitoring, and performance optimization.
+
+Classes:
+    - MVPTeamManager: Main team coordination manager
+    - TeamHealth: Team health monitoring
+    - TeamConfiguration: Team setup configuration
+
+Author: Conversation Service Team
+Created: 2025-01-31
+Version: 1.0.0 MVP - Complete Team Management
+"""
+
+import asyncio
+import logging
+import os
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+from dataclasses import dataclass
+
+from ..core.deepseek_client import DeepSeekClient
+from ..agents.orchestrator_agent import OrchestratorAgent
+from ..agents.hybrid_intent_agent import HybridIntentAgent
+from ..agents.search_query_agent import SearchQueryAgent
+from ..agents.response_agent import ResponseAgent
+from .conversation_manager import ConversationManager
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TeamHealth:
+    """Team health status information."""
+    overall_healthy: bool
+    agent_statuses: Dict[str, bool]
+    last_health_check: datetime
+    issues: List[str]
+    performance_summary: Dict[str, Any]
+
+
+@dataclass
+class TeamConfiguration:
+    """Team configuration parameters."""
+    search_service_url: str
+    enable_intent_caching: bool = True
+    enable_response_caching: bool = True
+    max_conversation_history: int = 100
+    workflow_timeout_seconds: int = 60
+    health_check_interval_seconds: int = 300
+    auto_recovery_enabled: bool = True
+
+
+class MVPTeamManager:
+    """
+    MVP Team Manager for the complete conversation service.
+    
+    This manager provides the high-level interface for conversation processing,
+    coordinating all agents and providing comprehensive monitoring, error
+    handling, and performance optimization.
+    
+    Attributes:
+        config: Application settings
+        team_config: Team-specific configuration
+        deepseek_client: DeepSeek LLM client
+        agents: Dictionary of initialized agents
+        orchestrator: Main orchestrator agent
+        conversation_manager: Conversation context manager
+        team_health: Current team health status
+        is_initialized: Whether the team is fully initialized
+    """
+    
+    def __init__(self, config: Optional[Dict[str, Any]] = None, team_config: Optional[TeamConfiguration] = None):
+        """
+        Initialize the MVP team manager.
+        
+        Args:
+            config: Optional configuration dictionary (from environment variables)
+            team_config: Optional team configuration (uses defaults if None)
+        """
+        # Load configuration from environment variables
+        self.config = config or self._load_config_from_env()
+        self.team_config = team_config or TeamConfiguration(
+            search_service_url=self.config.get('SEARCH_SERVICE_URL', 'http://localhost:8000')
+        )
+        
+        # Core components
+        self.deepseek_client: Optional[DeepSeekClient] = None
+        self.agents: Dict[str, Any] = {}
+        self.orchestrator: Optional[OrchestratorAgent] = None
+        self.conversation_manager: Optional[ConversationManager] = None
+        
+        # Team status
+        self.team_health: Optional[TeamHealth] = None
+        self.is_initialized = False
+        self.initialization_error: Optional[str] = None
+        self.last_health_check = datetime.utcnow()
+        
+        # Performance tracking
+        self.team_stats = {
+            "total_conversations": 0,
+            "successful_conversations": 0,
+            "failed_conversations": 0,
+            "avg_response_time_ms": 0.0,
+            "uptime_start": datetime.utcnow()
+        }
+        
+        logger.info("Initialized MVPTeamManager")
+    
+    async def initialize_agents(self) -> None:
+        """
+        Initialize all agents and team components.
+        
+        Raises:
+            Exception: If initialization fails
+        """
+        try:
+            logger.info("Starting team initialization...")
+            
+            # Step 1: Initialize DeepSeek client
+            await self._initialize_deepseek_client()
+            
+            # Step 2: Initialize conversation manager
+            await self._initialize_conversation_manager()
+            
+            # Step 3: Initialize specialized agents
+            await self._initialize_specialized_agents()
+            
+            # Step 4: Initialize orchestrator
+            await self._initialize_orchestrator()
+            
+            # Step 5: Initial health check
+            await self._perform_health_check()
+            
+            self.is_initialized = True
+            logger.info("Team initialization completed successfully")
+            
+        except Exception as e:
+            self.initialization_error = str(e)
+            logger.error(f"Team initialization failed: {e}")
+            raise Exception(f"Failed to initialize team: {e}")
+    
+    async def process_user_message(self, user_message: str, user_id: int, 
+                                 conversation_id: str) -> str:
+        """
+        Process a user message through the complete agent team.
+        
+        Args:
+            user_message: User's input message
+            user_id: User identifier
+            conversation_id: Conversation identifier
+            
+        Returns:
+            Generated response string
+            
+        Raises:
+            Exception: If team is not initialized or processing fails
+        """
+        if not self.is_initialized:
+            raise Exception("Team not initialized. Call initialize_agents() first.")
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        try:
+            # Update conversation context with user info
+            await self.conversation_manager.update_user_context(
+                conversation_id, user_id, user_message
+            )
+            
+            # Process through orchestrator
+            response_data = await self.orchestrator.execute_with_metrics({
+                "user_message": user_message,
+                "conversation_id": conversation_id
+            })
+            
+            if response_data.success:
+                final_response = response_data.content
+                
+                # Update conversation history
+                await self.conversation_manager.add_turn(
+                    conversation_id, user_message, final_response
+                )
+                
+                # Update team statistics
+                execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
+                self._update_team_stats(True, execution_time)
+                
+                logger.info(f"Successfully processed message for conversation {conversation_id}")
+                return final_response
+            
+            else:
+                # Handle orchestrator failure
+                error_msg = response_data.error_message or "Orchestrator execution failed"
+                logger.error(f"Orchestrator failed: {error_msg}")
+                
+                execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
+                self._update_team_stats(False, execution_time)
+                
+                # Return graceful error response
+                return self._generate_error_response(user_message, error_msg)
+                
+        except Exception as e:
+            execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
+            self._update_team_stats(False, execution_time)
+            
+            logger.error(f"Message processing failed: {e}")
+            
+            # Return graceful error response
+            return self._generate_error_response(user_message, str(e))
+    
+    def get_team_performance(self) -> Dict[str, Any]:
+        """
+        Get comprehensive team performance metrics.
+        
+        Returns:
+            Dictionary containing all team performance data
+        """
+        if not self.is_initialized:
+            return {"error": "Team not initialized"}
+        
+        # Aggregate metrics from all agents
+        agent_metrics = {}
+        for agent_name, agent in self.agents.items():
+            try:
+                agent_metrics[agent_name] = agent.get_performance_stats()
+            except Exception as e:
+                agent_metrics[agent_name] = {"error": str(e)}
+        
+        # Orchestrator metrics
+        orchestrator_metrics = {}
+        if self.orchestrator:
+            try:
+                orchestrator_metrics = self.orchestrator.get_workflow_stats()
+            except Exception as e:
+                orchestrator_metrics = {"error": str(e)}
+        
+        # Conversation manager metrics
+        conversation_metrics = {}
+        if self.conversation_manager:
+            try:
+                conversation_metrics = self.conversation_manager.get_stats()
+            except Exception as e:
+                conversation_metrics = {"error": str(e)}
+        
+        # Team-level metrics
+        uptime_seconds = (datetime.utcnow() - self.team_stats["uptime_start"]).total_seconds()
+        total_conversations = self.team_stats["total_conversations"]
+        success_rate = (
+            self.team_stats["successful_conversations"] / total_conversations
+            if total_conversations > 0 else 0.0
+        )
+        
+        return {
+            "team_overview": {
+                "is_initialized": self.is_initialized,
+                "initialization_error": self.initialization_error,
+                "uptime_seconds": round(uptime_seconds, 2),
+                "last_health_check": self.last_health_check.isoformat(),
+                "team_healthy": self.team_health.overall_healthy if self.team_health else False
+            },
+            "team_statistics": {
+                "total_conversations": total_conversations,
+                "successful_conversations": self.team_stats["successful_conversations"],
+                "failed_conversations": self.team_stats["failed_conversations"],
+                "success_rate": round(success_rate, 4),
+                "avg_response_time_ms": round(self.team_stats["avg_response_time_ms"], 2),
+                "conversations_per_hour": round(total_conversations / (uptime_seconds / 3600), 2) if uptime_seconds > 0 else 0.0
+            },
+            "agent_performance": agent_metrics,
+            "orchestrator_performance": orchestrator_metrics,
+            "conversation_manager_performance": conversation_metrics,
+            "team_health": self.team_health.__dict__ if self.team_health else None,
+            "configuration": {
+                "search_service_url": self.team_config.search_service_url,
+                "workflow_timeout_seconds": self.team_config.workflow_timeout_seconds,
+                "max_conversation_history": self.team_config.max_conversation_history
+            }
+        }
+    
+    async def shutdown(self) -> None:
+        """
+        Gracefully shutdown the team and all components.
+        """
+        logger.info("Starting team shutdown...")
+        
+        try:
+            # Close agents with async cleanup
+            if self.agents.get("search_query_agent"):
+                await self.agents["search_query_agent"].close()
+            
+            # Close conversation manager
+            if self.conversation_manager:
+                await self.conversation_manager.close()
+            
+            # Close DeepSeek client
+            if self.deepseek_client:
+                await self.deepseek_client.close()
+            
+            self.is_initialized = False
+            logger.info("Team shutdown completed")
+            
+        except Exception as e:
+            logger.error(f"Error during team shutdown: {e}")
+    
+    def _load_config_from_env(self) -> Dict[str, Any]:
+        """Load configuration from environment variables."""
+        return {
+            'DEEPSEEK_API_KEY': os.getenv('DEEPSEEK_API_KEY', ''),
+            'DEEPSEEK_BASE_URL': os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
+            'DEEPSEEK_TIMEOUT': int(os.getenv('DEEPSEEK_TIMEOUT', '30')),
+            'SEARCH_SERVICE_URL': os.getenv('SEARCH_SERVICE_URL', 'http://localhost:8000'),
+            'MAX_CONVERSATION_HISTORY': int(os.getenv('MAX_CONVERSATION_HISTORY', '100')),
+            'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '60')),
+            'HEALTH_CHECK_INTERVAL_SECONDS': int(os.getenv('HEALTH_CHECK_INTERVAL_SECONDS', '300')),
+            'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true'
+        }
+    
+    async def _initialize_deepseek_client(self) -> None:
+        """Initialize the DeepSeek client."""
+        try:
+            self.deepseek_client = DeepSeekClient(
+                api_key=self.config['DEEPSEEK_API_KEY'],
+                base_url=self.config['DEEPSEEK_BASE_URL'],
+                timeout_seconds=self.config['DEEPSEEK_TIMEOUT']
+            )
+            
+            # Test connection
+            await self.deepseek_client.health_check()
+            logger.info("DeepSeek client initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize DeepSeek client: {e}")
+            raise
+    
+    async def _initialize_conversation_manager(self) -> None:
+        """Initialize the conversation manager."""
+        try:
+            self.conversation_manager = ConversationManager(
+                storage_backend="memory",  # MVP uses memory storage
+                max_conversations=self.config['MAX_CONVERSATION_HISTORY']
+            )
+            
+            await self.conversation_manager.initialize()
+            logger.info("Conversation manager initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize conversation manager: {e}")
+            raise
+    
+    async def _initialize_specialized_agents(self) -> None:
+        """Initialize all specialized agents."""
+        try:
+            # Intent detection agent
+            self.agents["intent_agent"] = HybridIntentAgent(
+                deepseek_client=self.deepseek_client
+            )
+            
+            # Search query agent
+            self.agents["search_query_agent"] = SearchQueryAgent(
+                deepseek_client=self.deepseek_client,
+                search_service_url=self.team_config.search_service_url
+            )
+            
+            # Response generation agent
+            self.agents["response_agent"] = ResponseAgent(
+                deepseek_client=self.deepseek_client
+            )
+            
+            logger.info("Specialized agents initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize specialized agents: {e}")
+            raise
+    
+    async def _initialize_orchestrator(self) -> None:
+        """Initialize the orchestrator agent."""
+        try:
+            self.orchestrator = OrchestratorAgent(
+                intent_agent=self.agents["intent_agent"],
+                search_agent=self.agents["search_query_agent"],
+                response_agent=self.agents["response_agent"]
+            )
+            
+            logger.info("Orchestrator agent initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize orchestrator: {e}")
+            raise
+    
+    async def _perform_health_check(self) -> None:
+        """Perform comprehensive health check of all team components."""
+        try:
+            agent_statuses = {}
+            issues = []
+            
+            # Check each agent
+            for agent_name, agent in self.agents.items():
+                try:
+                    is_healthy = agent.is_healthy()
+                    agent_statuses[agent_name] = is_healthy
+                    if not is_healthy:
+                        issues.append(f"Agent {agent_name} is unhealthy")
+                except Exception as e:
+                    agent_statuses[agent_name] = False
+                    issues.append(f"Agent {agent_name} health check failed: {e}")
+            
+            # Check orchestrator
+            if self.orchestrator:
+                try:
+                    orchestrator_healthy = self.orchestrator.is_healthy()
+                    agent_statuses["orchestrator"] = orchestrator_healthy
+                    if not orchestrator_healthy:
+                        issues.append("Orchestrator is unhealthy")
+                except Exception as e:
+                    agent_statuses["orchestrator"] = False
+                    issues.append(f"Orchestrator health check failed: {e}")
+            
+            # Overall health
+            overall_healthy = all(agent_statuses.values()) and len(issues) == 0
+            
+            # Performance summary
+            performance_summary = {
+                "total_agents": len(self.agents),
+                "healthy_agents": sum(1 for status in agent_statuses.values() if status),
+                "response_time_ms": self.team_stats["avg_response_time_ms"]
+            }
+            
+            self.team_health = TeamHealth(
+                overall_healthy=overall_healthy,
+                agent_statuses=agent_statuses,
+                last_health_check=datetime.utcnow(),
+                issues=issues,
+                performance_summary=performance_summary
+            )
+            
+            self.last_health_check = datetime.utcnow()
+            
+            if overall_healthy:
+                logger.info("Team health check passed")
+            else:
+                logger.warning(f"Team health check failed with issues: {issues}")
+                
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            self.team_health = TeamHealth(
+                overall_healthy=False,
+                agent_statuses={},
+                last_health_check=datetime.utcnow(),
+                issues=[f"Health check system error: {e}"],
+                performance_summary={}
+            )
+    
+    def _update_team_stats(self, success: bool, execution_time_ms: float) -> None:
+        """Update team-level statistics."""
+        self.team_stats["total_conversations"] += 1
+        
+        if success:
+            self.team_stats["successful_conversations"] += 1
+        else:
+            self.team_stats["failed_conversations"] += 1
+        
+        # Update running average of response time
+        total = self.team_stats["total_conversations"]
+        current_avg = self.team_stats["avg_response_time_ms"]
+        self.team_stats["avg_response_time_ms"] = (
+            (current_avg * (total - 1) + execution_time_ms) / total
+        )
+    
+    def _generate_error_response(self, user_message: str, error: str) -> str:
+        """Generate a graceful error response for users."""
+        return f"Je rencontre actuellement des difficultés techniques pour traiter votre demande concernant '{user_message[:50]}...'. Veuillez réessayer dans quelques instants. Si le problème persiste, contactez le support technique."
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform and return current health status.
+        
+        Returns:
+            Dictionary containing current health status
+        """
+        await self._perform_health_check()
+        
+        return {
+            "healthy": self.team_health.overall_healthy if self.team_health else False,
+            "timestamp": datetime.utcnow().isoformat(),
+            "details": self.team_health.__dict__ if self.team_health else None
+        }
+    
+    def is_healthy(self) -> bool:
+        """
+        Quick health check.
+        
+        Returns:
+            True if team is healthy, False otherwise
+        """
+        return (
+            self.is_initialized and 
+            self.team_health is not None and 
+            self.team_health.overall_healthy
+        )

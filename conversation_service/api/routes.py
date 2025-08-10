@@ -17,6 +17,7 @@ Version: 1.0.0 MVP - FastAPI Routes
 
 import logging
 import time
+import asyncio
 from typing import Dict, Any, Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -197,7 +198,7 @@ async def health_check(
 ) -> Dict[str, Any]:
     """
     Comprehensive health check for all service components.
-    
+
     Returns:
         Dict containing health status of all components
     """
@@ -207,13 +208,17 @@ async def health_check(
         "timestamp": time.time(),
         "service": "conversation_service_mvp",
         "version": "1.0.0",
-        "components": {}
+        "components": {},
+        "errors": []
     }
-    
+    component_timeout = 2
+
     try:
-        # Check AutoGen team manager
+        # Check AutoGen team manager with timeout
         try:
-            team_health = await team_manager.get_health_status()
+            team_health = await asyncio.wait_for(
+                team_manager.get_health_status(), timeout=component_timeout
+            )
             health_status["components"]["team_manager"] = {
                 "status": "healthy",
                 "agents_loaded": team_health.get("agents_count", 0),
@@ -221,12 +226,15 @@ async def health_check(
             }
         except Exception as e:
             logger.error(f"Team manager health check failed: {e}")
+            health_status["status"] = "degraded"
             health_status["components"]["team_manager"] = {
-                "status": "unhealthy",
+                "status": "unavailable",
                 "error": str(e)
             }
-            health_status["status"] = "degraded"
-        
+            health_status["errors"].append({"component": "team_manager", "error": str(e)})
+            health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
+            return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
+
         # Check conversation manager
         try:
             conv_stats = await conversation_manager.get_stats()
@@ -237,12 +245,15 @@ async def health_check(
             }
         except Exception as e:
             logger.error(f"Conversation manager health check failed: {e}")
+            health_status["status"] = "degraded"
             health_status["components"]["conversation_manager"] = {
-                "status": "unhealthy", 
+                "status": "unavailable",
                 "error": str(e)
             }
-            health_status["status"] = "degraded"
-        
+            health_status["errors"].append({"component": "conversation_manager", "error": str(e)})
+            health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
+            return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
+
         # Check metrics collector
         try:
             metrics_summary = metrics.get_summary()
@@ -253,32 +264,18 @@ async def health_check(
             }
         except Exception as e:
             logger.warning(f"Metrics health check failed: {e}")
+            health_status["status"] = "degraded"
             health_status["components"]["metrics"] = {
-                "status": "degraded",
+                "status": "unavailable",
                 "error": str(e)
             }
-        
-        # Overall health assessment
-        unhealthy_components = [
-            name for name, component in health_status["components"].items()
-            if component["status"] == "unhealthy"
-        ]
-        
-        if unhealthy_components:
-            health_status["status"] = "unhealthy"
-            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        elif health_status["status"] == "degraded":
-            status_code = status.HTTP_200_OK
-        else:
-            status_code = status.HTTP_200_OK
-        
+            health_status["errors"].append({"component": "metrics", "error": str(e)})
+            health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
+            return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
+
         health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
-        
-        return JSONResponse(
-            status_code=status_code,
-            content=health_status
-        )
-        
+        return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
+
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         error_response = {
@@ -287,13 +284,10 @@ async def health_check(
             "error": "Health check system failure",
             "response_time_ms": int((time.time() - start_time) * 1000)
         }
-        
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=error_response
         )
-
-
 @health_router.get(
     "/metrics",
     summary="Service performance metrics",

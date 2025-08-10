@@ -165,7 +165,7 @@ def main() -> None:
         sys.exit(1)
 
 
-def test_greeting_skips_search():
+def test_skips_search_when_not_required():
     from types import SimpleNamespace
     import asyncio
     import conversation_service.agents.base_financial_agent as base_financial_agent
@@ -180,13 +180,13 @@ def test_greeting_skips_search():
 
         async def execute_with_metrics(self, data):
             ir = IntentResult(
-                intent_type="GREETING",
-                intent_category=IntentCategory.GREETING,
+                intent_type="TEST_INTENT",
+                intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.99,
                 entities=[],
                 method=DetectionMethod.RULE_BASED,
                 processing_time_ms=1.0,
-                suggested_actions=["Bonjour ! Comment puis-je vous aider ?"],
+                suggested_actions=["No search needed"],
                 search_required=False,
             )
             return SimpleNamespace(success=True, metadata={"intent_result": ir})
@@ -205,7 +205,7 @@ def test_greeting_skips_search():
 
     agent = OrchestratorAgent(DummyIntentAgent(), DummySearchAgent(), DummyResponseAgent())
     result = asyncio.run(agent.process_conversation("Bonjour", "conv1"))
-    assert "bonjour" in result["content"].lower()
+    assert result["content"] == "No search needed"
     steps = {s["name"]: s["status"] for s in result["metadata"]["execution_details"]["steps"]}
     assert steps.get("search_query") == "skipped"
     assert steps.get("response_generation") == "skipped"

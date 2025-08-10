@@ -158,8 +158,6 @@ class WorkflowExecutor:
             intent_result = workflow_data["intent_result"]
             if intent_result:
                 search_needed = getattr(intent_result, "search_required", True)
-                if intent_result.intent_type in {"GREETING", "HELP", "GOODBYE"}:
-                    search_needed = False
                 if search_needed:
                     search_step.status = WorkflowStepStatus.RUNNING
                     search_step.start_time = time.perf_counter()
@@ -190,7 +188,7 @@ class WorkflowExecutor:
                     if getattr(intent_result, "suggested_actions", None):
                         workflow_data["final_response"] = intent_result.suggested_actions[0]
                     else:
-                        workflow_data["final_response"] = "Bonjour !"
+                        workflow_data["final_response"] = "Je suis là pour vous aider."
                     response_step.status = WorkflowStepStatus.SKIPPED
                     response_step.error = "Search not required for intent"
                     response_step.start_time = time.perf_counter()

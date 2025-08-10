@@ -63,11 +63,12 @@ class HybridIntentAgent(BaseFinancialAgent):
         ai_confidence_threshold: Minimum confidence for AI results
     """
 
-    NO_SEARCH_INTENTS = {"GREETING", "HELP", "GOODBYE"}
+    NO_SEARCH_INTENTS = {"GREETING", "HELP", "GOODBYE", "GRATITUDE"}
     DEFAULT_RESPONSES = {
         "GREETING": "Bonjour ! Comment puis-je vous aider avec vos finances aujourd'hui ?",
         "HELP": "Voici comment je peux vous aider concernant vos finances.",
         "GOODBYE": "Au revoir !",
+        "GRATITUDE": "De rien ! Je suis là pour vous aider avec vos finances.",
     }
     
     def __init__(self, deepseek_client: DeepSeekClient, config: Optional[AgentConfig] = None):

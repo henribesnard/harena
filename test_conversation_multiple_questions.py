@@ -165,13 +165,13 @@ def main() -> None:
         sys.exit(1)
 
 
-def test_greeting_skips_search():
+def _run_skip_search_test(intent_type: str, intent_category, message: str, suggestion: str):
     from types import SimpleNamespace
     import asyncio
     import conversation_service.agents.base_financial_agent as base_financial_agent
     base_financial_agent.AUTOGEN_AVAILABLE = True
     from conversation_service.agents.orchestrator_agent import OrchestratorAgent
-    from conversation_service.models.financial_models import IntentResult, IntentCategory, DetectionMethod
+    from conversation_service.models.financial_models import IntentResult, DetectionMethod
 
     class DummyIntentAgent:
         name = "intent"
@@ -179,13 +179,13 @@ def test_greeting_skips_search():
 
         async def execute_with_metrics(self, data):
             ir = IntentResult(
-                intent_type="GREETING",
-                intent_category=IntentCategory.GREETING,
+                intent_type=intent_type,
+                intent_category=intent_category,
                 confidence=0.99,
                 entities=[],
                 method=DetectionMethod.RULE_BASED,
                 processing_time_ms=1.0,
-                suggested_actions=["Bonjour ! Comment puis-je vous aider ?"],
+                suggested_actions=[suggestion],
                 search_required=False,
             )
             return SimpleNamespace(success=True, metadata={"intent_result": ir})
@@ -203,11 +203,55 @@ def test_greeting_skips_search():
             raise RuntimeError("response should be skipped")
 
     agent = OrchestratorAgent(DummyIntentAgent(), DummySearchAgent(), DummyResponseAgent())
-    result = asyncio.run(agent.process_conversation("Bonjour", "conv1"))
-    assert "bonjour" in result["content"].lower()
+    result = asyncio.run(agent.process_conversation(message, "conv1"))
+    assert result["content"] == suggestion
     steps = {s["name"]: s["status"] for s in result["metadata"]["execution_details"]["steps"]}
     assert steps.get("search_query") == "skipped"
     assert steps.get("response_generation") == "skipped"
+
+
+def test_greeting_skips_search():
+    from conversation_service.models.financial_models import IntentCategory
+
+    _run_skip_search_test(
+        intent_type="GREETING",
+        intent_category=IntentCategory.GREETING,
+        message="Bonjour",
+        suggestion="Bonjour ! Comment puis-je vous aider ?",
+    )
+
+
+def test_help_skips_search():
+    from conversation_service.models.financial_models import IntentCategory
+
+    _run_skip_search_test(
+        intent_type="HELP",
+        intent_category=IntentCategory.GENERAL_QUESTION,
+        message="aide",
+        suggestion="Voici comment je peux vous aider concernant vos finances.",
+    )
+
+
+def test_goodbye_skips_search():
+    from conversation_service.models.financial_models import IntentCategory
+
+    _run_skip_search_test(
+        intent_type="GOODBYE",
+        intent_category=IntentCategory.GREETING,
+        message="au revoir",
+        suggestion="Au revoir !",
+    )
+
+
+def test_gratitude_skips_search():
+    from conversation_service.models.financial_models import IntentCategory
+
+    _run_skip_search_test(
+        intent_type="GRATITUDE",
+        intent_category=IntentCategory.GENERAL_QUESTION,
+        message="merci",
+        suggestion="De rien ! Je suis là pour vous aider avec vos finances.",
+    )
 
 
 if __name__ == "__main__":

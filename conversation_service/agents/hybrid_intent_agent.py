@@ -292,13 +292,14 @@ class HybridIntentAgent(BaseFinancialAgent):
     async def _ai_fallback_detection(self, message: str, rule_backup: Optional[IntentResult] = None) -> IntentResult:
         """
         AI-powered intent detection fallback using DeepSeek.
-        
+
         Args:
             message: User message to analyze
-            rule_backup: Optional rule-based result as context
-            
+            rule_backup: Optional rule-based result providing context and
+                metadata (search_required flag, suggested actions)
+
         Returns:
-            IntentResult from AI analysis
+            IntentResult from AI analysis, enriched with rule backup metadata
         """
         start_time = time.perf_counter()
         
@@ -319,7 +320,15 @@ class HybridIntentAgent(BaseFinancialAgent):
             # Parse AI response into structured result
             result = self._parse_ai_response(response.content, message)
             result.processing_time_ms = (time.perf_counter() - start_time) * 1000
-            
+
+            # If rule backup indicates no search is required, propagate that metadata
+            if rule_backup and rule_backup.search_required is False:
+                result.search_required = False
+
+                # Merge suggested actions from rule backup if AI result lacks them
+                if not result.suggested_actions and rule_backup.suggested_actions:
+                    result.suggested_actions = rule_backup.suggested_actions
+
             return result
             
         except Exception as e:

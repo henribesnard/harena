@@ -20,7 +20,9 @@ Version: 1.0.0 MVP - FastAPI Dependencies
 
 import logging
 import time
-from typing import Dict, Optional, Any, Annotated
+import asyncio
+from collections import deque
+from typing import Dict, Optional, Any, Annotated, Deque
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -41,8 +43,11 @@ _team_manager: Optional[MVPTeamManager] = None
 _conversation_manager: Optional[ConversationManager] = None  
 _metrics_collector: Optional[MetricsCollector] = None
 
-# Rate limiting storage (in-memory for MVP, should use Redis in production)
-_rate_limit_storage: Dict[str, Dict[str, Any]] = {}
+# Rate limiting storage (in-memory for MVP; use Redis or another shared backend in production)
+_rate_limit_storage: Dict[str, Deque[float]] = {}
+_rate_limit_lock = asyncio.Lock()
+# Evict users who haven't made a request within this TTL (seconds)
+_RATE_LIMIT_TTL = 300
 
 
 async def get_team_manager() -> MVPTeamManager:
@@ -254,30 +259,40 @@ async def validate_request_rate_limit(
     limit = rate_limits.get(rate_limit_tier, 30)
     current_time = time.time()
     window_size = 60  # 1 minute window
-    
-    # Clean old entries
-    if user_id in _rate_limit_storage:
-        _rate_limit_storage[user_id]["requests"] = [
-            req_time for req_time in _rate_limit_storage[user_id]["requests"]
-            if current_time - req_time < window_size
+
+    async with _rate_limit_lock:
+        # TTL cleanup for users who haven't made requests recently
+        expired_users = [
+            uid for uid, timestamps in list(_rate_limit_storage.items())
+            if timestamps and current_time - timestamps[-1] > _RATE_LIMIT_TTL
         ]
-    else:
-        _rate_limit_storage[user_id] = {"requests": []}
-    
-    # Check current rate
-    current_requests = len(_rate_limit_storage[user_id]["requests"])
-    
-    if current_requests >= limit:
-        logger.warning(f"Rate limit exceeded for user {user_id}: {current_requests}/{limit}")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded: {limit} requests per minute",
-            headers={"Retry-After": "60"}
-        )
-    
-    # Record this request
-    _rate_limit_storage[user_id]["requests"].append(current_time)
-    logger.debug(f"Rate limit check passed for user {user_id}: {current_requests + 1}/{limit}")
+        for uid in expired_users:
+            del _rate_limit_storage[uid]
+
+        requests = _rate_limit_storage.setdefault(user_id, deque())
+
+        # Remove entries outside the current window
+        while requests and current_time - requests[0] >= window_size:
+            requests.popleft()
+
+        current_requests = len(requests)
+
+        if current_requests >= limit:
+            logger.warning(
+                f"Rate limit exceeded for user {user_id}: {current_requests}/{limit}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded: {limit} requests per minute",
+                headers={"Retry-After": "60"}
+            )
+
+        # Record this request
+        requests.append(current_time)
+
+    logger.debug(
+        f"Rate limit check passed for user {user_id}: {current_requests + 1}/{limit}"
+    )
 
 
 async def cleanup_dependencies():

@@ -36,8 +36,8 @@ from fastapi.exception_handlers import (
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.routes import router as api_router
-from api.dependencies import cleanup_dependencies
+from .api.routes import router as api_router
+from .api.dependencies import cleanup_dependencies
 import os
 
 # Configure logging
@@ -276,9 +276,9 @@ async def pre_initialize_dependencies() -> None:
     
     try:
         # Test import of critical modules
-        from core.mvp_team_manager import MVPTeamManager
-        from core.conversation_manager import ConversationManager
-        from utils.metrics import MetricsCollector
+        from .core.mvp_team_manager import MVPTeamManager
+        from .core.conversation_manager import ConversationManager
+        from .utils.metrics import MetricsCollector
         
         # Test basic initialization without full setup
         logger.info("✅ Core modules loaded successfully")

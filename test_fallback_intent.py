@@ -74,7 +74,11 @@ core_ds.DeepSeekClient = DeepSeekClient
 sys.modules["conversation_service.core.deepseek_client"] = core_ds
 
 from conversation_service.agents.orchestrator_agent import WorkflowExecutor
-from conversation_service.models.financial_models import IntentResult, DetectionMethod
+from conversation_service.models.financial_models import (
+    IntentResult,
+    DetectionMethod,
+    FinancialEntity,
+)
 
 
 class FailingIntentAgent:
@@ -104,3 +108,5 @@ def test_fallback_intent_valid():
     intent_result = result["workflow_data"]["intent_result"]
     assert isinstance(intent_result, IntentResult)
     assert intent_result.method == DetectionMethod.FALLBACK
+    assert isinstance(intent_result.entities, list)
+    assert all(isinstance(e, FinancialEntity) for e in intent_result.entities)

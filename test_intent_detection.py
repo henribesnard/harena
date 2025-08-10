@@ -21,6 +21,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+from conversation_service.models.financial_models import FinancialEntity
 
 # Configuration logging pour les tests
 logging.basicConfig(
@@ -244,21 +245,38 @@ class ConversationServiceTester:
         result = self._make_request("POST", "/api/v1/detect-intent", data=test_payload)
         
         if result.success and result.response_data:
-            required_fields = ["intent", "confidence", "entities", "processing_time_ms"]
+            required_fields = [
+                "intent_type",
+                "intent_category",
+                "confidence",
+                "entities",
+                "processing_time_ms",
+            ]
             missing_fields = [f for f in required_fields if f not in result.response_data]
-            
+
             if missing_fields:
                 result.success = False
                 result.error_message = f"Champs réponse manquants: {missing_fields}"
             else:
-                intent = result.response_data.get("intent")
+                intent_type = result.response_data.get("intent_type")
+                intent_category = result.response_data.get("intent_category")
                 confidence = result.response_data.get("confidence")
                 latency = result.response_data.get("processing_time_ms")
-                
-                logger.info(f"✅ Intent détecté: {intent}")
+                entities = result.response_data.get("entities", [])
+
+                logger.info(
+                    f"✅ Intent détecté: {intent_type} ({intent_category})"
+                )
                 logger.info(f"✅ Confiance: {confidence:.3f}")
                 logger.info(f"✅ Latence: {latency:.1f}ms")
-                
+
+                if not isinstance(entities, list):
+                    result.success = False
+                    result.error_message = "Entities should be a list"
+                else:
+                    for entity in entities:
+                        FinancialEntity(**entity)
+
                 # Vérifications basiques
                 if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
                     result.success = False
@@ -426,39 +444,39 @@ class ConversationServiceTester:
         
         test_cases = [
             # Salutations
-            {"query": "bonjour", "expected_category": "conversational"},
-            {"query": "salut comment ça va", "expected_category": "conversational"},
-            {"query": "bonsoir", "expected_category": "conversational"},
-            
+            {"query": "bonjour", "expected_intent_category": "conversational"},
+            {"query": "salut comment ça va", "expected_intent_category": "conversational"},
+            {"query": "bonsoir", "expected_intent_category": "conversational"},
+
             # Finance - Solde
-            {"query": "quel est mon solde", "expected_category": "financial"},
-            {"query": "combien j'ai sur mon compte", "expected_category": "financial"},
-            {"query": "mon argent disponible", "expected_category": "financial"},
-            
+            {"query": "quel est mon solde", "expected_intent_category": "financial"},
+            {"query": "combien j'ai sur mon compte", "expected_intent_category": "financial"},
+            {"query": "mon argent disponible", "expected_intent_category": "financial"},
+
             # Finance - Transactions
-            {"query": "mes derniers achats", "expected_category": "financial"},
-            {"query": "historique janvier 2024", "expected_category": "financial"},
-            {"query": "dépenses restaurant ce mois", "expected_category": "financial"},
-            
+            {"query": "mes derniers achats", "expected_intent_category": "financial"},
+            {"query": "historique janvier 2024", "expected_intent_category": "financial"},
+            {"query": "dépenses restaurant ce mois", "expected_intent_category": "financial"},
+
             # Finance - Virements
-            {"query": "virer 50 euros à Paul", "expected_category": "financial"},
-            {"query": "envoyer de l'argent", "expected_category": "financial"},
-            
+            {"query": "virer 50 euros à Paul", "expected_intent_category": "financial"},
+            {"query": "envoyer de l'argent", "expected_intent_category": "financial"},
+
             # Finance - Cartes
-            {"query": "bloquer ma carte", "expected_category": "financial"},
-            {"query": "faire opposition", "expected_category": "financial"},
-            
+            {"query": "bloquer ma carte", "expected_intent_category": "financial"},
+            {"query": "faire opposition", "expected_intent_category": "financial"},
+
             # Aide
-            {"query": "aide moi", "expected_category": "conversational"},
-            {"query": "je ne comprends pas", "expected_category": "conversational"},
-            
+            {"query": "aide moi", "expected_intent_category": "conversational"},
+            {"query": "je ne comprends pas", "expected_intent_category": "conversational"},
+
             # Au revoir
-            {"query": "au revoir", "expected_category": "conversational"},
-            {"query": "à bientôt", "expected_category": "conversational"},
-            
+            {"query": "au revoir", "expected_intent_category": "conversational"},
+            {"query": "à bientôt", "expected_intent_category": "conversational"},
+
             # Requêtes ambigües/inconnues
-            {"query": "aksjdhaksjdh", "expected_category": "unknown"},
-            {"query": "xyz 123 test", "expected_category": "unknown"}
+            {"query": "aksjdhaksjdh", "expected_intent_category": "unknown"},
+            {"query": "xyz 123 test", "expected_intent_category": "unknown"}
         ]
         
         results = []
@@ -474,9 +492,11 @@ class ConversationServiceTester:
             results.append(result)
             
             if result.success and result.response_data:
-                intent = result.response_data.get("intent")
+                intent_type = result.response_data.get("intent_type")
                 confidence = result.response_data.get("confidence", 0)
-                logger.info(f"  '{test_case['query'][:30]}' -> {intent} ({confidence:.3f})")
+                logger.info(
+                    f"  '{test_case['query'][:30]}' -> {intent_type} ({confidence:.3f})"
+                )
         
         return results
     

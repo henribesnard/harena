@@ -352,6 +352,11 @@ class IntentResult(BaseModel):
         description="Normalized version of user query"
     )
 
+    search_required: bool = Field(
+        default=True,
+        description="Whether downstream search is required for this intent",
+    )
+
     @field_validator("alternative_intents")
     @classmethod
     def validate_alternative_intents(cls, v: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
@@ -462,7 +467,8 @@ class IntentResult(BaseModel):
                     "apply_amount_filter",
                     "apply_date_filter"
                 ],
-                "normalized_query": "Find transactions with amount=500 EUR in date_range=2024-01"
+                "normalized_query": "Find transactions with amount=500 EUR in date_range=2024-01",
+                "search_required": True,
             }
         }
     }

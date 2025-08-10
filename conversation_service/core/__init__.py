@@ -102,7 +102,8 @@ __all__ = [
     # Utility functions
     "check_core_dependencies",
     "get_available_components",
-    "get_core_config"
+    "get_core_config",
+    "run_core_validation"
 ]
 
 # Configuration par défaut
@@ -264,11 +265,19 @@ logger.info(f"Core package initialized - version {__version__}")
 dependencies_status = check_core_dependencies()
 logger.info(f"Dependencies status: {dependencies_status}")
 
-# Validate setup on import
-validation = validate_core_setup()
-if not validation["valid"]:
-    logger.error(f"Core setup validation failed: {validation['errors']}")
-if validation["warnings"]:
-    logger.warning(f"Core setup warnings: {validation['warnings']}")
+# Deferred validation entrypoint
+def run_core_validation() -> dict:
+    """Execute core setup validation with logging.
 
-logger.info("Core package ready for use")
+    Returns:
+        Validation results dictionary
+    """
+    validation = validate_core_setup()
+
+    if not validation["valid"]:
+        logger.error(f"Core setup validation failed: {validation['errors']}")
+    if validation["warnings"]:
+        logger.warning(f"Core setup warnings: {validation['warnings']}")
+
+    logger.info("Core package ready for use")
+    return validation

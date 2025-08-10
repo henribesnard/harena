@@ -38,6 +38,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api.routes import router as api_router
 from .api.dependencies import cleanup_dependencies
+from .core import run_core_validation
 import os
 
 # Configure logging
@@ -139,6 +140,9 @@ def create_app() -> FastAPI:
     environment = os.getenv("ENVIRONMENT", "development")
     cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
     allowed_hosts = ["localhost", "127.0.0.1"] + cors_origins
+
+    # Validate core setup after environment configuration
+    run_core_validation()
     
     # Create FastAPI app with metadata
     app = FastAPI(

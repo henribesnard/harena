@@ -18,12 +18,16 @@ import time
 import logging
 import httpx
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
 
 from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
-from ..models.service_contracts import SearchServiceQuery, SearchServiceResponse, QueryMetadata, SearchParameters
-from ..models.financial_models import IntentResult
+from ..models.service_contracts import (
+    SearchServiceQuery,
+    SearchServiceResponse,
+    QueryMetadata,
+    SearchParameters,
+)
+from ..models.financial_models import IntentResult, FinancialEntity, EntityType
 from ..core.deepseek_client import DeepSeekClient
 from ..utils.validators import ContractValidator
 
@@ -54,68 +58,56 @@ class QueryOptimizer:
         
         # Add entity-based keywords
         if intent_result.entities:
-            for entity_type, entity_list in intent_result.entities.items():
-                if entity_type == "MERCHANT_NAME":
-                    for entity in entity_list:
-                        if entity.get("normalized_value"):
-                            words.append(entity["normalized_value"])
-                elif entity_type == "CATEGORY":
-                    for entity in entity_list:
-                        if entity.get("normalized_value"):
-                            words.append(entity["normalized_value"])
+            for entity in intent_result.entities:
+                if entity.entity_type in {EntityType.MERCHANT, EntityType.CATEGORY}:
+                    if entity.normalized_value:
+                        words.append(str(entity.normalized_value))
         
         return " ".join(words)[:200]  # Limit search text length
     
     @staticmethod
     def extract_date_filters(intent_result: IntentResult) -> Dict[str, Any]:
         """Extract date range filters from intent entities."""
-        date_filters = {}
-        
+        date_filters: Dict[str, Any] = {}
+
         if not intent_result.entities:
             return date_filters
-        
-        # Look for date entities
-        date_entities = intent_result.entities.get("DATE_RANGE", [])
-        for date_entity in date_entities:
-            normalized_date = date_entity.get("normalized_value")
-            if normalized_date:
+
+        for entity in intent_result.entities:
+            if entity.entity_type == EntityType.DATE_RANGE and entity.normalized_value:
+                normalized_date = entity.normalized_value
                 if isinstance(normalized_date, dict):
                     if "start_date" in normalized_date:
                         date_filters["date_from"] = normalized_date["start_date"]
                     if "end_date" in normalized_date:
                         date_filters["date_to"] = normalized_date["end_date"]
                 elif isinstance(normalized_date, str):
-                    # Handle single date or month format
                     try:
                         if len(normalized_date) == 7:  # YYYY-MM format
-                            year, month = normalized_date.split('-')
                             date_filters["month_year"] = normalized_date
                         elif len(normalized_date) == 10:  # YYYY-MM-DD format
                             date_filters["date_from"] = normalized_date
                             date_filters["date_to"] = normalized_date
-                    except:
+                    except Exception:
                         pass
-        
+
         return date_filters
     
     @staticmethod
     def extract_amount_filters(intent_result: IntentResult) -> Dict[str, Any]:
         """Extract amount range filters from intent entities."""
-        amount_filters = {}
-        
+        amount_filters: Dict[str, Any] = {}
+
         if not intent_result.entities:
             return amount_filters
-        
-        # Look for amount entities
-        amount_entities = intent_result.entities.get("AMOUNT", [])
-        for amount_entity in amount_entities:
-            normalized_amount = amount_entity.get("normalized_value")
-            if normalized_amount and isinstance(normalized_amount, (int, float)):
-                # For single amounts, create a range around the value
+
+        for entity in intent_result.entities:
+            if entity.entity_type == EntityType.AMOUNT and isinstance(entity.normalized_value, (int, float)):
+                normalized_amount = entity.normalized_value
                 tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
                 amount_filters["amount_min"] = normalized_amount - tolerance
                 amount_filters["amount_max"] = normalized_amount + tolerance
-        
+
         return amount_filters
 
 
@@ -221,8 +213,10 @@ class SearchQueryAgent(BaseFinancialAgent):
                 "metadata": {
                     "search_query": search_query.dict(),
                     "search_response": search_response.dict(),
-                    "enhanced_entities": enhanced_entities,
-                    "execution_time_ms": execution_time
+                    "enhanced_entities": [
+                        e.dict() for e in enhanced_entities
+                    ] if enhanced_entities else [],
+                    "execution_time_ms": execution_time,
                 },
                 "confidence_score": min(intent_result.confidence + 0.1, 1.0),  # Boost confidence slightly
                 "token_usage": {
@@ -236,8 +230,12 @@ class SearchQueryAgent(BaseFinancialAgent):
             logger.error(f"Search request processing failed: {e}")
             raise
     
-    async def _generate_search_contract(self, intent_result: IntentResult, user_message: str,
-                                      enhanced_entities: Optional[Dict] = None) -> SearchServiceQuery:
+    async def _generate_search_contract(
+        self,
+        intent_result: IntentResult,
+        user_message: str,
+        enhanced_entities: Optional[List[FinancialEntity]] = None,
+    ) -> SearchServiceQuery:
         """
         Generate a SearchServiceQuery contract from intent and message.
         
@@ -257,36 +255,39 @@ class SearchQueryAgent(BaseFinancialAgent):
         amount_filters = self.query_optimizer.extract_amount_filters(intent_result)
         
         # Combine all entities
-        all_entities = intent_result.entities.copy() if intent_result.entities else {}
+        all_entities: List[FinancialEntity] = (
+            intent_result.entities.copy() if intent_result.entities else []
+        )
         if enhanced_entities:
-            for entity_type, entities in enhanced_entities.items():
-                if entity_type in all_entities:
-                    all_entities[entity_type].extend(entities)
-                else:
-                    all_entities[entity_type] = entities
-        
+            all_entities.extend(enhanced_entities)
+
         # Build search filters
-        search_filters = {}
+        search_filters: Dict[str, Any] = {}
         search_filters.update(date_filters)
         search_filters.update(amount_filters)
-        
-        # Add category filters if found
-        if "CATEGORY" in all_entities:
-            categories = [e.get("normalized_value") for e in all_entities["CATEGORY"] if e.get("normalized_value")]
-            if categories:
-                search_filters["categories"] = categories
-        
-        # Add merchant filters if found
-        if "MERCHANT_NAME" in all_entities:
-            merchants = [e.get("normalized_value") for e in all_entities["MERCHANT_NAME"] if e.get("normalized_value")]
-            if merchants:
-                search_filters["merchants"] = merchants
+
+        # Group entities by type for filter creation
+        categories = [
+            str(e.normalized_value)
+            for e in all_entities
+            if e.entity_type == EntityType.CATEGORY and e.normalized_value
+        ]
+        if categories:
+            search_filters["categories"] = categories
+
+        merchants = [
+            str(e.normalized_value)
+            for e in all_entities
+            if e.entity_type == EntityType.MERCHANT and e.normalized_value
+        ]
+        if merchants:
+            search_filters["merchants"] = merchants
         
         # Create query metadata
         query_metadata = QueryMetadata(
             conversation_id=f"conv_{int(time.time())}",  # Placeholder - should come from context
             user_id=1,  # Placeholder - should come from context
-            intent_type=intent_result.intent,
+            intent_type=intent_result.intent_type,
             language="fr",
             priority="normal",
             source_agent=self.name
@@ -295,9 +296,12 @@ class SearchQueryAgent(BaseFinancialAgent):
         # Create search parameters based on intent
         search_params = SearchParameters(
             search_text=search_text,
-            size=20 if intent_result.intent == "TRANSACTION_SEARCH" else 10,
+            size=20 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10,
             include_highlights=True,
-            boost_recent=intent_result.intent in ["BALANCE_CHECK", "SPENDING_ANALYSIS"],
+            boost_recent=intent_result.intent_type in [
+                "BALANCE_CHECK",
+                "SPENDING_ANALYSIS",
+            ],
             fuzzy_matching=True if len(search_text.split()) > 1 else False
         )
         
@@ -361,7 +365,9 @@ class SearchQueryAgent(BaseFinancialAgent):
             logger.error(f"Search query execution failed: {e}")
             raise
     
-    async def _extract_additional_entities(self, message: str, intent_result: IntentResult) -> Dict[str, List[Dict]]:
+    async def _extract_additional_entities(
+        self, message: str, intent_result: IntentResult
+    ) -> List[FinancialEntity]:
         """
         Extract additional entities using AI that weren't caught by rules.
         
@@ -370,11 +376,11 @@ class SearchQueryAgent(BaseFinancialAgent):
             intent_result: Intent with existing entities
             
         Returns:
-            Dictionary of additional entities found
+            List of additional entities found
         """
         try:
             # Prepare context for entity extraction
-            existing_entities = intent_result.entities if intent_result.entities else {}
+            existing_entities = intent_result.entities if intent_result.entities else []
             context = self._prepare_entity_extraction_context(message, existing_entities)
             
             # Call DeepSeek for entity extraction
@@ -389,29 +395,36 @@ class SearchQueryAgent(BaseFinancialAgent):
             
             # Parse AI response
             additional_entities = self._parse_entity_response(response.content)
-            
+
             return additional_entities
             
         except Exception as e:
             logger.warning(f"Additional entity extraction failed: {e}")
-            return {}
-    
-    def _prepare_entity_extraction_context(self, message: str, existing_entities: Dict) -> str:
+            return []
+
+    def _prepare_entity_extraction_context(
+        self, message: str, existing_entities: List[FinancialEntity]
+    ) -> str:
         """Prepare context for AI entity extraction."""
         context = f"Message: \"{message}\"\n\n"
         
         if existing_entities:
             context += "Entités déjà détectées:\n"
-            for entity_type, entities in existing_entities.items():
-                context += f"- {entity_type}: {entities}\n"
+            entities_by_type: Dict[str, List[str]] = {}
+            for entity in existing_entities:
+                entities_by_type.setdefault(entity.entity_type.value, []).append(
+                    str(entity.normalized_value)
+                )
+            for entity_type, values in entities_by_type.items():
+                context += f"- {entity_type}: {values}\n"
             context += "\n"
         
         context += "Extrais toutes les entités financières supplémentaires non détectées."
         return context
     
-    def _parse_entity_response(self, ai_content: str) -> Dict[str, List[Dict]]:
+    def _parse_entity_response(self, ai_content: str) -> List[FinancialEntity]:
         """Parse AI entity extraction response."""
-        entities = {}
+        entities: List[FinancialEntity] = []
         
         try:
             # Simple parsing - enhance as needed
@@ -421,19 +434,23 @@ class SearchQueryAgent(BaseFinancialAgent):
                 if ':' in line:
                     parts = line.split(':', 1)
                     if len(parts) == 2:
-                        entity_type = parts[0].strip().upper()
+                        entity_type_str = parts[0].strip().upper()
                         entity_value = parts[1].strip()
-                        
-                        if entity_value and entity_value != "aucune":
-                            if entity_type not in entities:
-                                entities[entity_type] = []
-                            
-                            entities[entity_type].append({
-                                "raw_value": entity_value,
-                                "normalized_value": entity_value,
-                                "confidence": 0.8,
-                                "source": "ai_extraction"
-                            })
+
+                        if entity_value and entity_value.lower() != "aucune":
+                            try:
+                                entity_type = EntityType(entity_type_str)
+                            except ValueError:
+                                continue
+
+                            entities.append(
+                                FinancialEntity(
+                                    entity_type=entity_type,
+                                    raw_value=entity_value,
+                                    normalized_value=entity_value,
+                                    confidence=0.8,
+                                )
+                            )
         
         except Exception as e:
             logger.warning(f"Failed to parse entity response: {e}")
@@ -451,7 +468,7 @@ Ton rôle est de:
 4. Exécuter les requêtes et retourner les résultats structurés
 
 Types d'entités à extraire:
-- MERCHANT_NAME: Noms de commerçants
+- MERCHANT: Noms de commerçants
 - CATEGORY: Catégories de transactions
 - AMOUNT: Montants et plages de montants
 - DATE_RANGE: Dates et périodes
@@ -464,7 +481,7 @@ Optimise les requêtes pour la pertinence et la performance."""
         return """Extrais toutes les entités financières du message utilisateur.
 
 Types d'entités à rechercher:
-- MERCHANT_NAME: Noms de commerçants, magasins, services
+- MERCHANT: Noms de commerçants, magasins, services
 - CATEGORY: Catégories de dépenses (alimentation, transport, etc.)
 - AMOUNT: Montants, prix, valeurs monétaires
 - DATE_RANGE: Dates, périodes, mois, années

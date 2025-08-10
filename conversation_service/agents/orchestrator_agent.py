@@ -153,70 +153,76 @@ class WorkflowExecutor:
             
             # Step 2: Search Query (only if we have intent)
             search_step = steps[1]
-            if workflow_data["intent_result"]:
-                search_step.status = WorkflowStepStatus.RUNNING
-                search_step.start_time = time.perf_counter()
-                
-                try:
-                    search_response = await self.search_agent.execute_with_metrics({
-                        "intent_result": workflow_data["intent_result"],
-                        "user_message": user_message
-                    })
-                    
-                    if search_response.success:
-                        workflow_data["search_results"] = search_response.metadata
-                        search_step.status = WorkflowStepStatus.COMPLETED
-                        search_step.result = search_response
-                    else:
-                        raise Exception(search_response.error_message or "Search query failed")
-                        
-                except Exception as e:
-                    search_step.status = WorkflowStepStatus.FAILED
-                    search_step.error = str(e)
-                    logger.error(f"Search query step failed: {e}")
-                    
-                    # Create empty search results for response generation
-                    workflow_data["search_results"] = self._create_empty_search_results()
-                
-                finally:
+            response_step = steps[2]
+            intent_result = workflow_data["intent_result"]
+            if intent_result:
+                search_needed = getattr(intent_result, "search_required", True)
+                if intent_result.intent_type in {"GREETING", "HELP", "GOODBYE"}:
+                    search_needed = False
+                if search_needed:
+                    search_step.status = WorkflowStepStatus.RUNNING
+                    search_step.start_time = time.perf_counter()
+                    try:
+                        search_response = await self.search_agent.execute_with_metrics({
+                            "intent_result": intent_result,
+                            "user_message": user_message
+                        })
+                        if search_response.success:
+                            workflow_data["search_results"] = search_response.metadata
+                            search_step.status = WorkflowStepStatus.COMPLETED
+                            search_step.result = search_response
+                        else:
+                            raise Exception(search_response.error_message or "Search query failed")
+                    except Exception as e:
+                        search_step.status = WorkflowStepStatus.FAILED
+                        search_step.error = str(e)
+                        logger.error(f"Search query step failed: {e}")
+                        workflow_data["search_results"] = self._create_empty_search_results()
+                    finally:
+                        search_step.end_time = time.perf_counter()
+                else:
+                    search_step.status = WorkflowStepStatus.SKIPPED
+                    search_step.error = "Search not required for intent"
+                    search_step.start_time = time.perf_counter()
                     search_step.end_time = time.perf_counter()
+                    workflow_data["search_results"] = self._create_empty_search_results()
+                    if getattr(intent_result, "suggested_actions", None):
+                        workflow_data["final_response"] = intent_result.suggested_actions[0]
+                    else:
+                        workflow_data["final_response"] = "Bonjour !"
+                    response_step.status = WorkflowStepStatus.SKIPPED
+                    response_step.error = "Search not required for intent"
+                    response_step.start_time = time.perf_counter()
+                    response_step.end_time = time.perf_counter()
             else:
                 search_step.status = WorkflowStepStatus.SKIPPED
                 search_step.error = "No valid intent result"
                 workflow_data["search_results"] = self._create_empty_search_results()
-            
+
             # Step 3: Response Generation
-            response_step = steps[2]
-            response_step.status = WorkflowStepStatus.RUNNING
-            response_step.start_time = time.perf_counter()
-            
-            try:
-                # Create conversation context if needed
-                context = self._create_conversation_context(conversation_id, user_message)
-                
-                response_response = await self.response_agent.execute_with_metrics({
-                    "user_message": user_message,
-                    "search_results": workflow_data["search_results"],
-                    "context": context
-                })
-                
-                if response_response.success:
-                    workflow_data["final_response"] = response_response.content
-                    response_step.status = WorkflowStepStatus.COMPLETED
-                    response_step.result = response_response
-                else:
-                    raise Exception(response_response.error_message or "Response generation failed")
-                    
-            except Exception as e:
-                response_step.status = WorkflowStepStatus.FAILED
-                response_step.error = str(e)
-                logger.error(f"Response generation step failed: {e}")
-                
-                # Create fallback response
-                workflow_data["final_response"] = self._create_fallback_response(user_message)
-            
-            finally:
-                response_step.end_time = time.perf_counter()
+            if response_step.status == WorkflowStepStatus.PENDING:
+                response_step.status = WorkflowStepStatus.RUNNING
+                response_step.start_time = time.perf_counter()
+                try:
+                    context = self._create_conversation_context(conversation_id, user_message)
+                    response_response = await self.response_agent.execute_with_metrics({
+                        "user_message": user_message,
+                        "search_results": workflow_data["search_results"],
+                        "context": context
+                    })
+                    if response_response.success:
+                        workflow_data["final_response"] = response_response.content
+                        response_step.status = WorkflowStepStatus.COMPLETED
+                        response_step.result = response_response
+                    else:
+                        raise Exception(response_response.error_message or "Response generation failed")
+                except Exception as e:
+                    response_step.status = WorkflowStepStatus.FAILED
+                    response_step.error = str(e)
+                    logger.error(f"Response generation step failed: {e}")
+                    workflow_data["final_response"] = self._create_fallback_response(user_message)
+                finally:
+                    response_step.end_time = time.perf_counter()
             
             # Compile workflow results
             workflow_end = time.perf_counter()

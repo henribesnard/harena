@@ -12,6 +12,8 @@ Exports:
         - TeamWorkflow: Team workflow configuration
     
     Conversation Models:
+        - ConversationRequest: API request model
+        - ConversationResponse: API response model
         - ConversationTurn: Individual conversation turn
         - ConversationContext: Complete conversation context
     
@@ -45,7 +47,9 @@ from .agent_models import (
 # Import conversation models
 from .conversation_models import (
     ConversationTurn,
-    ConversationContext
+    ConversationContext,
+    ConversationRequest,
+    ConversationResponse
 )
 
 # Import financial models
@@ -87,6 +91,8 @@ __all__ = [
     "TeamWorkflow",
     
     # Conversation Models
+    "ConversationRequest",
+    "ConversationResponse",
     "ConversationTurn",
     "ConversationContext",
     

@@ -62,9 +62,9 @@ class WorkflowStep:
 
 class WorkflowExecutor:
     """Helper class for executing multi-agent workflows."""
-    
-    def __init__(self, intent_agent: HybridIntentAgent, 
-                 search_agent: SearchQueryAgent, 
+
+    def __init__(self, intent_agent: HybridIntentAgent,
+                 search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent):
         """
         Initialize workflow executor.
@@ -77,6 +77,14 @@ class WorkflowExecutor:
         self.intent_agent = intent_agent
         self.search_agent = search_agent
         self.response_agent = response_agent
+
+    def _build_performance_summary(self, steps: List[WorkflowStep]) -> Dict[str, int]:
+        """Create a performance summary from workflow steps."""
+        return {
+            "completed_steps": len([s for s in steps if s.status == WorkflowStepStatus.COMPLETED]),
+            "failed_steps": len([s for s in steps if s.status == WorkflowStepStatus.FAILED]),
+            "total_steps": len(steps),
+        }
         
     async def execute_workflow(self, user_message: str,
                              conversation_id: str) -> Dict[str, Any]:
@@ -231,11 +239,7 @@ class WorkflowExecutor:
                         for step in steps
                     ]
                 },
-                "performance_summary": {
-                    "completed_steps": len([s for s in steps if s.status == WorkflowStepStatus.COMPLETED]),
-                    "failed_steps": len([s for s in steps if s.status == WorkflowStepStatus.FAILED]),
-                    "total_steps": len(steps)
-                }
+                "performance_summary": self._build_performance_summary(steps)
             }
             
         except Exception as e:
@@ -258,11 +262,7 @@ class WorkflowExecutor:
                         for step in steps
                     ]
                 },
-                "performance_summary": {
-                    "completed_steps": len([s for s in steps if s.status == WorkflowStepStatus.COMPLETED]),
-                    "failed_steps": len([s for s in steps if s.status == WorkflowStepStatus.FAILED]),
-                    "total_steps": len(steps)
-                }
+                "performance_summary": self._build_performance_summary(steps)
             }
     
     def _create_fallback_intent(self) -> Dict[str, Any]:
@@ -433,6 +433,7 @@ class OrchestratorAgent(BaseFinancialAgent):
         try:
             # Execute the complete workflow
             workflow_result = await self._execute_workflow(user_message, conversation_id)
+            performance_summary = workflow_result.get("performance_summary", {})
             
             # Update workflow statistics
             self._update_workflow_stats(workflow_result, time.perf_counter() - start_time)
@@ -445,7 +446,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                 "metadata": {
                     "workflow_success": workflow_result.get("success", False),
                     "execution_details": workflow_result.get("execution_details", {}),
-                    "performance_summary": workflow_result.get("performance_summary", {}),
+                    "performance_summary": performance_summary,
                     "conversation_id": conversation_id,
                 },
                 "confidence_score": self._calculate_workflow_confidence(workflow_result),

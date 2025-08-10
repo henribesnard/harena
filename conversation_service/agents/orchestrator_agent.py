@@ -84,6 +84,7 @@ class WorkflowExecutor:
         return {
             "completed_steps": len([s for s in steps if s.status == WorkflowStepStatus.COMPLETED]),
             "failed_steps": len([s for s in steps if s.status == WorkflowStepStatus.FAILED]),
+            "skipped_steps": len([s for s in steps if s.status == WorkflowStepStatus.SKIPPED]),
             "total_steps": len(steps),
         }
         
@@ -157,10 +158,8 @@ class WorkflowExecutor:
             response_step = steps[2]
             intent_result = workflow_data["intent_result"]
             if intent_result:
-                search_needed = getattr(intent_result, "search_required", True)
-                if intent_result.intent_type in {"GREETING", "HELP", "GOODBYE"}:
-                    search_needed = False
-                if search_needed:
+                search_required = getattr(intent_result, "search_required", True)
+                if search_required:
                     search_step.status = WorkflowStepStatus.RUNNING
                     search_step.start_time = time.perf_counter()
                     try:
@@ -547,6 +546,8 @@ class OrchestratorAgent(BaseFinancialAgent):
         for step in steps:
             step_name = step["name"]
             if step_name in self.workflow_stats["step_success_rates"]:
+                if step["status"] == "skipped":
+                    continue
                 current_rate = self.workflow_stats["step_success_rates"][step_name]
                 success = 1.0 if step["status"] == "completed" else 0.0
                 new_rate = (current_rate * (total - 1) + success) / total

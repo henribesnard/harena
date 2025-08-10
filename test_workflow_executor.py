@@ -52,7 +52,13 @@ sys.modules["conversation_service.models.agent_models"] = models_agent
 
 models_conv = types.ModuleType("conversation_service.models.conversation_models")
 class ConversationContext: ...
+class ConversationTurn: ...
+class ConversationRequest: ...
+class ConversationResponse: ...
 models_conv.ConversationContext = ConversationContext
+models_conv.ConversationTurn = ConversationTurn
+models_conv.ConversationRequest = ConversationRequest
+models_conv.ConversationResponse = ConversationResponse
 sys.modules["conversation_service.models.conversation_models"] = models_conv
 
 core_ds = types.ModuleType("conversation_service.core.deepseek_client")

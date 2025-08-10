@@ -62,6 +62,13 @@ class HybridIntentAgent(BaseFinancialAgent):
         detection_stats: Performance statistics tracker
         ai_confidence_threshold: Minimum confidence for AI results
     """
+
+    NO_SEARCH_INTENTS = {"GREETING", "HELP", "GOODBYE"}
+    DEFAULT_RESPONSES = {
+        "GREETING": "Bonjour ! Comment puis-je vous aider avec vos finances aujourd'hui ?",
+        "HELP": "Voici comment je peux vous aider concernant vos finances.",
+        "GOODBYE": "Au revoir !",
+    }
     
     def __init__(self, deepseek_client: DeepSeekClient, config: Optional[AgentConfig] = None):
         """
@@ -247,13 +254,18 @@ class HybridIntentAgent(BaseFinancialAgent):
             if exact_match:
                 execution_time = (time.perf_counter() - start_time) * 1000
                 entities = self._convert_rule_entities(exact_match.entities)
+                intent = exact_match.intent
+                search_required = intent not in self.NO_SEARCH_INTENTS
+                suggestions = [self.DEFAULT_RESPONSES.get(intent)] if intent in self.DEFAULT_RESPONSES else None
                 return IntentResult(
-                    intent_type=exact_match.intent,
+                    intent_type=intent,
                     intent_category=self._map_rule_category(exact_match.intent_category),
                     confidence=exact_match.confidence,
                     entities=entities,
                     method=DetectionMethod.EXACT_RULE,
                     processing_time_ms=execution_time,
+                    suggested_actions=suggestions,
+                    search_required=search_required,
                 )
 
             # Try pattern matching
@@ -261,13 +273,18 @@ class HybridIntentAgent(BaseFinancialAgent):
             if pattern_match:
                 execution_time = (time.perf_counter() - start_time) * 1000
                 entities = self._convert_rule_entities(pattern_match.entities)
+                intent = pattern_match.intent
+                search_required = intent not in self.NO_SEARCH_INTENTS
+                suggestions = [self.DEFAULT_RESPONSES.get(intent)] if intent in self.DEFAULT_RESPONSES else None
                 return IntentResult(
-                    intent_type=pattern_match.intent,
+                    intent_type=intent,
                     intent_category=self._map_rule_category(pattern_match.intent_category),
                     confidence=pattern_match.confidence,
                     entities=entities,
                     method=DetectionMethod.PATTERN_RULE,
                     processing_time_ms=execution_time,
+                    suggested_actions=suggestions,
+                    search_required=search_required,
                 )
             
             return None

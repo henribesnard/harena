@@ -6,6 +6,8 @@ and multi-turn dialogue state. Optimized for financial conversation scenarios
 with AutoGen agents.
 
 Classes:
+    - ConversationRequest: API request model for conversation messages
+    - ConversationResponse: API response model with assistant reply
     - ConversationTurn: Individual conversation turn between user and assistant
     - ConversationContext: Complete conversation context with all turns
 
@@ -18,6 +20,107 @@ from typing import Dict, List, Optional, Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from uuid import uuid4
+
+
+class ConversationRequest(BaseModel):
+    """
+    Request model for processing user conversation messages.
+
+    Attributes:
+        message: The user's input message.
+        conversation_id: Optional identifier of an existing conversation.
+        language: Optional language code for the message.
+        metadata: Additional request metadata.
+        timestamp: When the message was created.
+    """
+
+    message: str = Field(
+        ...,
+        description="The user's input message",
+        min_length=1,
+        max_length=10000,
+    )
+    conversation_id: Optional[str] = Field(
+        default=None, description="Existing conversation identifier if any"
+    )
+    language: Optional[str] = Field(
+        default=None, description="Language code of the incoming message"
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata for the request"
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow, description="Message timestamp"
+    )
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        """Ensure message is not empty."""
+        if not v.strip():
+            raise ValueError("Message cannot be empty")
+        return v.strip()
+
+
+class ConversationResponse(BaseModel):
+    """
+    Response model returned after processing a conversation message.
+
+    Attributes:
+        message: Assistant response message.
+        conversation_id: Identifier of the conversation.
+        success: Indicates if processing was successful.
+        processing_time_ms: Time taken to process the request.
+        agent_used: Primary agent that generated the response.
+        confidence: Confidence score of the response.
+        metadata: Additional response metadata.
+        error_code: Optional error code when processing fails.
+        timestamp: When the response was generated.
+    """
+
+    message: str = Field(
+        ...,
+        description="Assistant response message",
+        min_length=1,
+        max_length=4000,
+    )
+    conversation_id: str = Field(
+        ..., description="Identifier of the conversation this response belongs to"
+    )
+    success: bool = Field(
+        True, description="Whether the request was processed successfully"
+    )
+    processing_time_ms: int = Field(
+        ...,
+        ge=0,
+        description="Processing time in milliseconds",
+    )
+    agent_used: Optional[str] = Field(
+        default=None, description="Primary agent that generated the response"
+    )
+    confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the response",
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional response metadata"
+    )
+    error_code: Optional[str] = Field(
+        default=None, description="Error code if the request failed"
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow, description="Response timestamp"
+    )
+
+    @field_validator("message")
+    @classmethod
+    def validate_response_message(cls, v: str) -> str:
+        """Ensure response message is not empty."""
+        if not v.strip():
+            raise ValueError("Response message cannot be empty")
+        return v.strip()
 
 
 class ConversationTurn(BaseModel):

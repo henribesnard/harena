@@ -422,15 +422,18 @@ class OrchestratorAgent(BaseFinancialAgent):
             self._update_workflow_stats(workflow_result, time.perf_counter() - start_time)
             
             return {
-                "content": workflow_result["final_response"],
+                "content": workflow_result.get(
+                    "final_response",
+                    "Je rencontre des difficultés techniques."
+                ),
                 "metadata": {
-                    "workflow_success": workflow_result["success"],
-                    "execution_details": workflow_result["execution_details"],
-                    "performance_summary": workflow_result["performance_summary"],
-                    "conversation_id": conversation_id
+                    "workflow_success": workflow_result.get("success", False),
+                    "execution_details": workflow_result.get("execution_details", {}),
+                    "performance_summary": workflow_result.get("performance_summary", {}),
+                    "conversation_id": conversation_id,
                 },
                 "confidence_score": self._calculate_workflow_confidence(workflow_result),
-                "token_usage": self._aggregate_token_usage(workflow_result)
+                "token_usage": self._aggregate_token_usage(workflow_result),
             }
             
         except Exception as e:

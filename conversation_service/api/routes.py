@@ -113,18 +113,12 @@ async def chat_endpoint(
         
         # Process message through AutoGen team
         try:
-            team_response = await team_manager.process_conversation(
+            team_response = await team_manager.process_user_message(
                 user_message=validated_request.message,
-                conversation_id=conversation_id,
-                context=context,
                 user_id=user_id,
-                metadata={
-                    "user_preferences": user.get("preferences", {}),
-                    "subscription_type": user.get("subscription_type", "standard"),
-                    "language": validated_request.language or "fr"
-                }
+                conversation_id=conversation_id
             )
-            
+
             logger.info(f"AutoGen team processed message successfully")
             
         except Exception as e:
@@ -150,7 +144,7 @@ async def chat_endpoint(
             conversation_manager,
             conversation_id,
             validated_request.message,
-            team_response.message,
+            team_response,
             int((time.time() - start_time) * 1000),
             metrics
         )
@@ -160,18 +154,13 @@ async def chat_endpoint(
         
         # Create response
         response = ConversationResponse(
-            message=team_response.message,
+            message=team_response,
             conversation_id=conversation_id,
             success=True,
             processing_time_ms=processing_time,
-            agent_used=team_response.primary_agent,
-            confidence=team_response.confidence,
-            metadata={
-                "agents_involved": team_response.agents_involved,
-                "search_performed": team_response.search_performed,
-                "entities_detected": team_response.entities_detected,
-                "intent_detected": team_response.intent_detected
-            }
+            agent_used="orchestrator_agent",
+            confidence=1.0,
+            metadata={}
         )
         
         # Record success metrics

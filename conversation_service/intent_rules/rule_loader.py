@@ -56,6 +56,7 @@ class IntentRule:
     search_parameters: Optional[Dict] = None
     default_filters: Optional[List[Dict]] = None
     examples: Optional[List[str]] = None
+    no_search_needed: bool = False
     
     def __post_init__(self):
         """Validation post-initialisation"""
@@ -236,7 +237,8 @@ class RuleLoader:
                 exact_matches=set(config.get('exact_matches', [])),
                 search_parameters=config.get('search_parameters'),
                 default_filters=config.get('default_filters'),
-                examples=config.get('examples')
+                examples=config.get('examples'),
+                no_search_needed=config.get('no_search_needed', False)
             )
             
             return rule

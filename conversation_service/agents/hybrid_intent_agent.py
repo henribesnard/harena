@@ -63,7 +63,6 @@ class HybridIntentAgent(BaseFinancialAgent):
         ai_confidence_threshold: Minimum confidence for AI results
     """
 
-    NO_SEARCH_INTENTS = {"GREETING", "HELP", "GOODBYE"}
     DEFAULT_RESPONSES = {
         "GREETING": "Bonjour ! Comment puis-je vous aider avec vos finances aujourd'hui ?",
         "HELP": "Voici comment je peux vous aider concernant vos finances.",
@@ -255,7 +254,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                 execution_time = (time.perf_counter() - start_time) * 1000
                 entities = self._convert_rule_entities(exact_match.entities)
                 intent = exact_match.intent
-                search_required = intent not in self.NO_SEARCH_INTENTS
+                rule = self.rule_engine.all_rules.get(intent)
+                search_required = not getattr(rule, "no_search_needed", False)
                 suggestions = [self.DEFAULT_RESPONSES.get(intent)] if intent in self.DEFAULT_RESPONSES else None
                 return IntentResult(
                     intent_type=intent,
@@ -274,7 +274,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                 execution_time = (time.perf_counter() - start_time) * 1000
                 entities = self._convert_rule_entities(pattern_match.entities)
                 intent = pattern_match.intent
-                search_required = intent not in self.NO_SEARCH_INTENTS
+                rule = self.rule_engine.all_rules.get(intent)
+                search_required = not getattr(rule, "no_search_needed", False)
                 suggestions = [self.DEFAULT_RESPONSES.get(intent)] if intent in self.DEFAULT_RESPONSES else None
                 return IntentResult(
                     intent_type=intent,
@@ -323,7 +324,9 @@ class HybridIntentAgent(BaseFinancialAgent):
             # Parse AI response into structured result
             result = self._parse_ai_response(response.content, message)
             result.processing_time_ms = (time.perf_counter() - start_time) * 1000
-            
+            if rule_backup and not getattr(rule_backup, "search_required", True):
+                result.search_required = False
+
             return result
             
         except Exception as e:

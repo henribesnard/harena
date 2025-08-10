@@ -19,16 +19,18 @@ Version: 1.0.0 MVP - Complete Team Management
 import asyncio
 import logging
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
 from dataclasses import dataclass
 
 from ..core.deepseek_client import DeepSeekClient
-from ..agents.orchestrator_agent import OrchestratorAgent
 from ..agents.hybrid_intent_agent import HybridIntentAgent
 from ..agents.search_query_agent import SearchQueryAgent
 from ..agents.response_agent import ResponseAgent
 from .conversation_manager import ConversationManager
+
+if TYPE_CHECKING:
+    from ..agents.orchestrator_agent import OrchestratorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,7 @@ class MVPTeamManager:
         # Core components
         self.deepseek_client: Optional[DeepSeekClient] = None
         self.agents: Dict[str, Any] = {}
-        self.orchestrator: Optional[OrchestratorAgent] = None
+        self.orchestrator: Optional["OrchestratorAgent"] = None
         self.conversation_manager: Optional[ConversationManager] = None
         
         # Team status
@@ -379,14 +381,16 @@ class MVPTeamManager:
     async def _initialize_orchestrator(self) -> None:
         """Initialize the orchestrator agent."""
         try:
+            from ..agents.orchestrator_agent import OrchestratorAgent
+
             self.orchestrator = OrchestratorAgent(
                 intent_agent=self.agents["intent_agent"],
                 search_agent=self.agents["search_query_agent"],
                 response_agent=self.agents["response_agent"]
             )
-            
+
             logger.info("Orchestrator agent initialized successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize orchestrator: {e}")
             raise

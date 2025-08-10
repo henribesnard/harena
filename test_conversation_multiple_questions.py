@@ -18,6 +18,7 @@ import sys
 from datetime import datetime
 from typing import List
 import types
+import pytest
 
 # Stub missing third-party modules for isolated tests
 openai_module = types.ModuleType("openai")
@@ -208,6 +209,117 @@ def test_greeting_skips_search():
     steps = {s["name"]: s["status"] for s in result["metadata"]["execution_details"]["steps"]}
     assert steps.get("search_query") == "skipped"
     assert steps.get("response_generation") == "skipped"
+
+
+@pytest.mark.parametrize(
+    "intent_type,user_message,suggestion",
+    [
+        ("HELP", "Peux-tu m'aider ?", "Bien sûr, comment puis-je vous assister ?"),
+        ("GOODBYE", "Au revoir", "Au revoir !"),
+        ("GRATITUDE", "Merci pour ton aide", "Avec plaisir !"),
+    ],
+)
+def test_special_intents_skip_workflow(intent_type, user_message, suggestion):
+    from types import SimpleNamespace
+    import asyncio
+    import conversation_service.agents.base_financial_agent as base_financial_agent
+
+    base_financial_agent.AUTOGEN_AVAILABLE = True
+
+    from conversation_service.agents.orchestrator_agent import OrchestratorAgent
+    from conversation_service.models.financial_models import (
+        IntentResult,
+        IntentCategory,
+        DetectionMethod,
+    )
+
+    class DummyIntentAgent:
+        name = "intent"
+        deepseek_client = SimpleNamespace(api_key="test", base_url="http://test")
+
+        async def execute_with_metrics(self, data):
+            ir = IntentResult(
+                intent_type=intent_type,
+                intent_category=IntentCategory.GREETING,
+                confidence=0.99,
+                entities=[],
+                method=DetectionMethod.RULE_BASED,
+                processing_time_ms=1.0,
+                suggested_actions=[suggestion],
+                search_required=False,
+            )
+            return SimpleNamespace(success=True, metadata={"intent_result": ir})
+
+    class DummySearchAgent:
+        name = "search"
+
+        async def execute_with_metrics(self, data):
+            raise RuntimeError("search should be skipped")
+
+    class DummyResponseAgent:
+        name = "response"
+
+        async def execute_with_metrics(self, data):
+            raise RuntimeError("response should be skipped")
+
+    agent = OrchestratorAgent(DummyIntentAgent(), DummySearchAgent(), DummyResponseAgent())
+    result = asyncio.run(agent.process_conversation(user_message, "conv1"))
+
+    assert result["content"] == suggestion
+    steps = {s["name"]: s["status"] for s in result["metadata"]["execution_details"]["steps"]}
+    assert steps.get("search_query") == "skipped"
+    assert steps.get("response_generation") == "skipped"
+
+
+def test_financial_intent_executes_full_workflow():
+    from types import SimpleNamespace
+    import asyncio
+    import conversation_service.agents.base_financial_agent as base_financial_agent
+
+    base_financial_agent.AUTOGEN_AVAILABLE = True
+
+    from conversation_service.agents.orchestrator_agent import OrchestratorAgent
+    from conversation_service.models.financial_models import (
+        IntentResult,
+        IntentCategory,
+        DetectionMethod,
+    )
+
+    class DummyIntentAgent:
+        name = "intent"
+        deepseek_client = SimpleNamespace(api_key="test", base_url="http://test")
+
+        async def execute_with_metrics(self, data):
+            ir = IntentResult(
+                intent_type="BALANCE_INQUIRY",
+                intent_category=IntentCategory.BALANCE_INQUIRY,
+                confidence=0.99,
+                entities=[],
+                method=DetectionMethod.RULE_BASED,
+                processing_time_ms=1.0,
+                search_required=True,
+            )
+            return SimpleNamespace(success=True, metadata={"intent_result": ir})
+
+    class DummySearchAgent:
+        name = "search"
+
+        async def execute_with_metrics(self, data):
+            return SimpleNamespace(success=True, metadata={"results": ["dummy"]})
+
+    class DummyResponseAgent:
+        name = "response"
+
+        async def execute_with_metrics(self, data):
+            return SimpleNamespace(success=True, content="Votre solde est de 100 €")
+
+    agent = OrchestratorAgent(DummyIntentAgent(), DummySearchAgent(), DummyResponseAgent())
+    result = asyncio.run(agent.process_conversation("Quel est mon solde ?", "conv2"))
+
+    assert "solde" in result["content"].lower()
+    steps = {s["name"]: s["status"] for s in result["metadata"]["execution_details"]["steps"]}
+    assert steps.get("search_query") == "completed"
+    assert steps.get("response_generation") == "completed"
 
 
 if __name__ == "__main__":

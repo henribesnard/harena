@@ -71,8 +71,8 @@ class HarenaTestClient:
     def _print_response(self, response: Optional[requests.Response], expected_status: int = 200):
         """Affiche les détails de la réponse.
 
-        Retourne un tuple (success, json_data)."""
-        if not response:
+        Retourne toujours un tuple (success, json_data)."""
+        if response is None:
             print("❌ Pas de réponse reçue")
             return False, None
         
@@ -85,7 +85,7 @@ class HarenaTestClient:
         
         try:
             json_response = response.json()
-            print(f"Réponse JSON:")
+            print("Réponse JSON:")
             print(json.dumps(json_response, indent=2, ensure_ascii=False))
             return response.status_code == expected_status, json_response
         except json.JSONDecodeError:
@@ -103,8 +103,7 @@ class HarenaTestClient:
         }
         
         response = self._make_request("POST", "/users/auth/login", headers=headers, data=payload)
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
         
         if success and json_data and 'access_token' in json_data:
             self.token = json_data['access_token']
@@ -123,8 +122,7 @@ class HarenaTestClient:
             return False
         
         response = self._make_request("GET", "/users/me")
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
         
         if success and json_data and 'id' in json_data:
             self.user_id = json_data['id']
@@ -145,8 +143,7 @@ class HarenaTestClient:
             return False
         
         response = self._make_request("POST", f"/enrichment/elasticsearch/sync-user/{self.user_id}")
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
         
         if success and json_data:
             total_tx = json_data.get('total_transactions', 0)
@@ -174,8 +171,7 @@ class HarenaTestClient:
         self._print_step(4, "HEALTH CHECK ENRICHMENT SERVICE")
         
         response = self._make_request("GET", "/enrichment/elasticsearch/health")
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
         
         if success and json_data:
             service_status = json_data.get('status', 'unknown')
@@ -245,8 +241,7 @@ class HarenaTestClient:
                                     headers=headers,
                                     data=json.dumps(search_payload))
 
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
         
         if success and json_data:
             total_hits = json_data.get('total_hits', 0)
@@ -284,8 +279,7 @@ class HarenaTestClient:
         self._print_step(6, "HEALTH CHECK CONVERSATION SERVICE")
 
         response = self._make_request("GET", "/conversation/health")
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
 
         if success and json_data:
             status = json_data.get('status', 'unknown')
@@ -305,8 +299,7 @@ class HarenaTestClient:
         self._print_step(7, "STATUS CONVERSATION SERVICE")
 
         response = self._make_request("GET", "/conversation/status")
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
 
         if success and json_data:
             service = json_data.get('service')
@@ -333,8 +326,7 @@ class HarenaTestClient:
                                       headers=headers,
                                       data=json.dumps(payload))
 
-        result = self._print_response(response)
-        success, json_data = result if isinstance(result, tuple) else (result, None)
+        success, json_data = self._print_response(response)
 
         if success and json_data:
             if json_data.get('success') is True:

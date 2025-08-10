@@ -141,13 +141,18 @@ class ServiceLoader:
             app.state.deepseek_client = deepseek_client
             app.state.intent_classifier = intent_classifier
             app.state.conversation_initialization_error = None
-            
+
             self.conversation_service_initialized = True
             self.conversation_service_error = None
-            
+            self.services_status["conversation_service"] = {
+                "status": "ok",
+                "dependencies_ready": True,
+                "error": None,
+            }
+
             logger.info("🎉 Conversation Service complètement initialisé!")
             return True
-            
+
         except Exception as e:
             error_msg = f"Erreur initialisation conversation_service: {str(e)}"
             logger.error(f"❌ {error_msg}")
@@ -157,9 +162,14 @@ class ServiceLoader:
             app.state.deepseek_client = None
             app.state.intent_classifier = None
             app.state.conversation_initialization_error = error_msg
-            
+
             self.conversation_service_initialized = False
             self.conversation_service_error = error_msg
+            self.services_status["conversation_service"] = {
+                "status": "error",
+                "dependencies_ready": False,
+                "error": error_msg,
+            }
             return False
     
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
@@ -379,44 +389,53 @@ def create_app():
                 from conversation_service.api.routes import router as conversation_router
                 app.include_router(conversation_router, prefix="/api/v1/conversation")
                 routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
-                
+
                 if conversation_init_success:
-                    logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation (AVEC initialisation)")
-                    loader.services_status["conversation_service"] = {
-                        "status": "ok", 
-                        "routes": routes_count, 
+                    logger.info(
+                        f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation (AVEC initialisation)"
+                    )
+                    loader.services_status.setdefault("conversation_service", {})
+                    loader.services_status["conversation_service"].update({
+                        "status": "ok",
+                        "routes": routes_count,
                         "prefix": "/api/v1/conversation",
                         "initialized": True,
                         "architecture": "mvp_intent_classifier",
-                        "model": "deepseek-chat"
-                    }
+                        "model": "deepseek-chat",
+                        "error": None,
+                    })
                 else:
-                    logger.warning(f"⚠️ conversation_service: {routes_count} routes chargées SANS initialisation")
-                    loader.services_status["conversation_service"] = {
-                        "status": "degraded", 
-                        "routes": routes_count, 
+                    logger.warning(
+                        f"⚠️ conversation_service: {routes_count} routes chargées SANS initialisation"
+                    )
+                    loader.services_status.setdefault("conversation_service", {})
+                    loader.services_status["conversation_service"].update({
+                        "status": "degraded",
+                        "routes": routes_count,
                         "prefix": "/api/v1/conversation",
                         "initialized": False,
                         "error": loader.conversation_service_error,
                         "architecture": "mvp_intent_classifier",
-                        "model": "deepseek-chat"
-                    }
-                    
+                        "model": "deepseek-chat",
+                    })
+
             except ImportError as e:
                 logger.error(f"❌ conversation_service: Impossible de charger les routes - {str(e)}")
-                loader.services_status["conversation_service"] = {
-                    "status": "error", 
+                loader.services_status.setdefault("conversation_service", {})
+                loader.services_status["conversation_service"].update({
+                    "status": "error",
                     "error": f"Routes import failed: {str(e)}",
-                    "architecture": "mvp_intent_classifier"
-                }
-                    
+                    "architecture": "mvp_intent_classifier",
+                })
+
         except Exception as e:
             logger.error(f"❌ conversation_service: Erreur générale - {str(e)}")
-            loader.services_status["conversation_service"] = {
-                "status": "error", 
+            loader.services_status.setdefault("conversation_service", {})
+            loader.services_status["conversation_service"].update({
+                "status": "error",
                 "error": str(e),
-                "architecture": "mvp_intent_classifier"
-            }
+                "architecture": "mvp_intent_classifier",
+            })
 
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
@@ -429,9 +448,9 @@ def create_app():
         
         logger.info(f"📊 Services OK: {', '.join(ok_services)}")
         if degraded_services:
-            logger.warning(f"📊 Services dégradés: {', '.join(degraded_services)}")
+            logger.warning(f"⚠️ Services dégradés mais fonctionnels: {', '.join(degraded_services)}")
         if failed_services:
-            logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
+            logger.error(f"❌ Services en erreur d'initialisation: {', '.join(failed_services)}")
         
         logger.info("🎉 Plateforme Harena complètement déployée avec Conversation Service!")
 

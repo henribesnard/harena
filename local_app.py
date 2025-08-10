@@ -112,13 +112,23 @@ class ServiceLoader:
         logger.info("🗣️ Validation du conversation_service...")
 
         try:
-            from conversation_service.main import validate_configuration, pre_initialize_dependencies
+            from conversation_service.main import (
+                validate_configuration,
+                pre_initialize_dependencies,
+                initialize_dependencies,
+            )
 
             await validate_configuration()
             await pre_initialize_dependencies()
+            await initialize_dependencies()
 
             self.conversation_service_initialized = True
             self.conversation_service_error = None
+            self.services_status["conversation_service"] = {
+                "status": "ok",
+                "dependencies_ready": True,
+                "error": None,
+            }
 
             logger.info("✅ conversation_service prêt")
             return True
@@ -129,6 +139,11 @@ class ServiceLoader:
 
             self.conversation_service_initialized = False
             self.conversation_service_error = error_msg
+            self.services_status["conversation_service"] = {
+                "status": "error",
+                "dependencies_ready": False,
+                "error": error_msg,
+            }
             return False
     
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
@@ -405,22 +420,26 @@ def create_app():
                 app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
                 routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
                 logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation")
-                loader.services_status["conversation_service"] = {
+                loader.services_status.setdefault("conversation_service", {})
+                loader.services_status["conversation_service"].update({
                     "status": "ok",
                     "routes": routes_count,
-                    "prefix": "/api/v1/conversation"
-                }
+                    "prefix": "/api/v1/conversation",
+                    "error": None,
+                })
             else:
-                loader.services_status["conversation_service"] = {
+                loader.services_status.setdefault("conversation_service", {})
+                loader.services_status["conversation_service"].update({
                     "status": "error",
-                    "error": loader.conversation_service_error
-                }
+                    "error": loader.conversation_service_error,
+                })
         except Exception as e:
             logger.error(f"❌ conversation_service: {e}")
-            loader.services_status["conversation_service"] = {
+            loader.services_status.setdefault("conversation_service", {})
+            loader.services_status["conversation_service"].update({
                 "status": "error",
-                "error": str(e)
-            }
+                "error": str(e),
+            })
 
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
@@ -433,9 +452,9 @@ def create_app():
         
         logger.info(f"📊 Services OK: {', '.join(ok_services)}")
         if degraded_services:
-            logger.warning(f"📊 Services dégradés: {', '.join(degraded_services)}")
+            logger.warning(f"⚠️ Services dégradés mais fonctionnels: {', '.join(degraded_services)}")
         if failed_services:
-            logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
+            logger.error(f"❌ Services en erreur d'initialisation: {', '.join(failed_services)}")
 
         logger.info("🎉 Plateforme Harena complètement déployée!")
 

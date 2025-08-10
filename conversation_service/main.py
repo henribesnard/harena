@@ -295,6 +295,25 @@ async def pre_initialize_dependencies() -> None:
         raise
 
 
+async def initialize_dependencies() -> None:
+    """Initialize and validate core dependencies."""
+    logger.info("🔧 Initializing dependencies")
+
+    try:
+        from .core.mvp_team_manager import MVPTeamManager
+        from .core.conversation_manager import ConversationManager
+
+        # Instantiate core components to ensure availability
+        MVPTeamManager()
+        conversation_manager = ConversationManager()
+        await conversation_manager.initialize()
+
+        logger.info("✅ Dependencies initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Dependency initialization failed: {e}")
+        raise
+
+
 # Middleware functions
 async def add_process_time_header(request: Request, call_next):
     """Add processing time header to responses."""

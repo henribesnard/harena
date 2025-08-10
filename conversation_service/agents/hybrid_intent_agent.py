@@ -24,7 +24,11 @@ from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..core.deepseek_client import DeepSeekClient
 from ..intent_rules.rule_engine import RuleEngine, RuleMatch
-from ..models.financial_models import IntentResult, IntentCategory
+from ..models.financial_models import (
+    IntentResult,
+    IntentCategory,
+    DetectionMethod,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +145,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                     "content": f"Intent detected: {rule_result.intent}",
                     "metadata": {
                         "intent_result": rule_result,
-                        "detection_method": "rules",
+                        "detection_method": rule_result.method,
                         "confidence": rule_result.confidence,
                         "entities": rule_result.entities
                     },
@@ -153,17 +157,17 @@ class HybridIntentAgent(BaseFinancialAgent):
             self.detection_stats.ai_fallback_uses += 1
             self._update_detection_stats(ai_time=time.perf_counter() - start_time)
             
-            return {
-                "content": f"Intent detected: {ai_result.intent}",
-                "metadata": {
-                    "intent_result": ai_result,
-                    "detection_method": "ai_fallback",
-                    "confidence": ai_result.confidence,
-                    "entities": ai_result.entities,
-                    "rule_backup": rule_result.__dict__ if rule_result else None
-                },
-                "confidence_score": ai_result.confidence
-            }
+                return {
+                    "content": f"Intent detected: {ai_result.intent}",
+                    "metadata": {
+                        "intent_result": ai_result,
+                        "detection_method": DetectionMethod.AI_FALLBACK,
+                        "confidence": ai_result.confidence,
+                        "entities": ai_result.entities,
+                        "rule_backup": rule_result.__dict__ if rule_result else None
+                    },
+                    "confidence_score": ai_result.confidence
+                }
             
         except Exception as e:
             logger.error(f"Intent detection failed for message: {user_message[:100]}... Error: {e}")
@@ -174,7 +178,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 category=IntentCategory.CONVERSATIONAL,
                 confidence=0.5,
                 entities={},
-                method="fallback",
+                method=DetectionMethod.FALLBACK,
                 execution_time_ms=(time.perf_counter() - start_time) * 1000
             )
             
@@ -182,7 +186,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 "content": "Intent detected: GENERAL (fallback)",
                 "metadata": {
                     "intent_result": fallback_result,
-                    "detection_method": "fallback",
+                    "detection_method": DetectionMethod.FALLBACK,
                     "confidence": 0.5,
                     "entities": {},
                     "error": str(e)
@@ -212,7 +216,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                     category=IntentCategory.SEARCH,  # Most exact matches are search intents
                     confidence=exact_match.confidence,
                     entities=exact_match.entities,
-                    method="exact_rule",
+                    method=DetectionMethod.EXACT_RULE,
                     execution_time_ms=execution_time
                 )
             
@@ -225,7 +229,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                     category=IntentCategory.SEARCH,
                     confidence=pattern_match.confidence,
                     entities=pattern_match.entities,
-                    method="pattern_rule",
+                    method=DetectionMethod.PATTERN_RULE,
                     execution_time_ms=execution_time
                 )
             
@@ -277,7 +281,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 category=IntentCategory.CONVERSATIONAL,
                 confidence=0.3,
                 entities={},
-                method="ai_error_fallback",
+                method=DetectionMethod.AI_ERROR_FALLBACK,
                 execution_time_ms=(time.perf_counter() - start_time) * 1000
             )
     
@@ -326,7 +330,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 category=category,
                 confidence=min(confidence, 0.95),  # Cap AI confidence
                 entities=entities,
-                method="ai_detection"
+                method=DetectionMethod.AI_DETECTION
             )
             
         except Exception as e:
@@ -336,7 +340,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 category=IntentCategory.CONVERSATIONAL,
                 confidence=0.5,
                 entities={},
-                method="ai_parse_fallback"
+                method=DetectionMethod.AI_PARSE_FALLBACK
             )
     
     def get_detection_stats(self) -> Dict[str, Any]:

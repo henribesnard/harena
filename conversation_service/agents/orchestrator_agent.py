@@ -267,14 +267,18 @@ class WorkflowExecutor:
     
     def _create_fallback_intent(self) -> Dict[str, Any]:
         """Create a fallback intent when detection fails."""
-        from ..models.financial_models import IntentResult, IntentCategory
+        from ..models.financial_models import (
+            IntentResult,
+            IntentCategory,
+            DetectionMethod,
+        )
         
         return IntentResult(
             intent_type="GENERAL",
             intent_category=IntentCategory.GENERAL_QUESTION,
             confidence=0.3,
             entities=[],
-            method="fallback",
+            method=DetectionMethod.FALLBACK,
             processing_time_ms=0.0
         )
     

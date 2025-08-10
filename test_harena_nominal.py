@@ -3,10 +3,13 @@ Script de test automatique pour Harena Finance Platform - Chemin nominal.
 
 Ce script teste automatiquement la chaîne complète :
 1. Login utilisateur
-2. Récupération profil utilisateur  
+2. Récupération profil utilisateur
 3. Synchronisation enrichment Elasticsearch
 4. Health check enrichment service
 5. Recherche de transactions
+6. Health check conversation service
+7. Status conversation service
+8. Chat conversation
 
 Usage:
     python test_harena_nominal.py
@@ -268,6 +271,71 @@ class HarenaTestClient:
         else:
             print("❌ Échec recherche")
             return False
+
+    def test_conversation_health(self) -> bool:
+        """Test 6: Health check conversation service."""
+        self._print_step(6, "HEALTH CHECK CONVERSATION SERVICE")
+
+        response = self._make_request("GET", "/conversation/health")
+        success, json_data = self._print_response(response)
+
+        if success and json_data:
+            status = json_data.get('status', 'unknown')
+            print(f"✅ Service: {json_data.get('service', 'unknown')}")
+            print(f"✅ Status: {status}")
+            if status in ("healthy", "degraded"):
+                return True
+            else:
+                print("❌ Statut inattendu")
+                return False
+        else:
+            print("❌ Échec health check conversation")
+            return False
+
+    def test_conversation_status(self) -> bool:
+        """Test 7: Status conversation service."""
+        self._print_step(7, "STATUS CONVERSATION SERVICE")
+
+        response = self._make_request("GET", "/conversation/status")
+        success, json_data = self._print_response(response)
+
+        if success and json_data:
+            service = json_data.get('service')
+            status = json_data.get('status')
+            version = json_data.get('version')
+            print(f"✅ Service: {service}")
+            print(f"✅ Status: {status}")
+            print(f"✅ Version: {version}")
+            if service and status and version:
+                return True
+        print("❌ Échec status conversation")
+        return False
+
+    def test_conversation_chat(self) -> bool:
+        """Test 8: Chat conversation."""
+        self._print_step(8, "CHAT CONVERSATION")
+
+        payload = {
+            "conversation_id": "test-conversation",
+            "message": "Bonjour"
+        }
+        headers = {'Content-Type': 'application/json'}
+        response = self._make_request("POST", "/conversation/chat",
+                                      headers=headers,
+                                      data=json.dumps(payload))
+
+        success, json_data = self._print_response(response)
+
+        if success and json_data:
+            if json_data.get('success') is True:
+                print("✅ Chat success")
+                return True
+            else:
+                print("❌ success != True")
+                return False
+        else:
+            print("❌ Échec appel chat")
+            return False
     
     def run_full_test(self, username: str, password: str) -> bool:
         """Lance le test complet."""
@@ -278,7 +346,7 @@ class HarenaTestClient:
         
         # Compteur de succès
         tests_passed = 0
-        total_tests = 5
+        total_tests = 8
         
         # Test 1: Login
         if self.test_login(username, password):
@@ -305,7 +373,19 @@ class HarenaTestClient:
         # Test 5: Recherche
         if self.test_search():
             tests_passed += 1
-        
+
+        # Test 6: Conversation health
+        if self.test_conversation_health():
+            tests_passed += 1
+
+        # Test 7: Conversation status
+        if self.test_conversation_status():
+            tests_passed += 1
+
+        # Test 8: Conversation chat
+        if self.test_conversation_chat():
+            tests_passed += 1
+
         # Résumé final
         print(f"\n{'='*60}")
         print("📊 RÉSUMÉ DU TEST")

@@ -354,7 +354,8 @@ class OrchestratorAgent(BaseFinancialAgent):
     def __init__(self, intent_agent: HybridIntentAgent,
                  search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent,
-                 config: Optional[AgentConfig] = None):
+                 config: Optional[AgentConfig] = None,
+                 performance_threshold_ms: int = 500):
         """
         Initialize the orchestrator agent.
         
@@ -363,6 +364,7 @@ class OrchestratorAgent(BaseFinancialAgent):
             search_agent: Search query agent
             response_agent: Response generation agent
             config: Optional agent configuration
+            performance_threshold_ms: Maximum allowed workflow duration in milliseconds
         """
         if config is None:
             try:
@@ -415,6 +417,9 @@ class OrchestratorAgent(BaseFinancialAgent):
         self.search_agent = search_agent
         self.response_agent = response_agent
         self.workflow_executor = WorkflowExecutor(intent_agent, search_agent, response_agent)
+
+        # Performance monitoring
+        self.performance_threshold_ms = performance_threshold_ms
         
         # Workflow statistics
         self.workflow_stats = {
@@ -466,6 +471,19 @@ class OrchestratorAgent(BaseFinancialAgent):
             # Execute the complete workflow
             workflow_result = await self._execute_workflow(user_message, conversation_id)
             performance_summary = workflow_result.get("performance_summary", {})
+
+            # Performance alerting
+            execution_details = workflow_result.get("execution_details", {})
+            total_duration = execution_details.get("total_duration_ms")
+            if (
+                isinstance(total_duration, (int, float))
+                and total_duration > self.performance_threshold_ms
+            ):
+                logger.warning(
+                    "Workflow execution exceeded %d ms: %.2f ms",
+                    self.performance_threshold_ms,
+                    total_duration,
+                )
             
             # Update workflow statistics
             self._update_workflow_stats(workflow_result, time.perf_counter() - start_time)
@@ -477,7 +495,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                 ),
                 "metadata": {
                     "workflow_success": workflow_result.get("success", False),
-                    "execution_details": workflow_result.get("execution_details", {}),
+                    "execution_details": execution_details,
                     "performance_summary": performance_summary,
                     "conversation_id": conversation_id,
                 },

@@ -762,6 +762,7 @@ def main():
 # TESTS PYTEST (optionnel)
 # =====================================
 
+@pytest.mark.skip("requires live conversation service")
 class TestConversationServicePytest:
     """
     Classe de tests compatible pytest pour intégration CI/CD

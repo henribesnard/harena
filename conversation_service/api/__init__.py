@@ -51,7 +51,7 @@ from .routes import (
 )
 
 # API Models for external use
-from ..models.conversation_models import (
+from ..models import (
     ConversationRequest,
     ConversationResponse,
     ConversationTurn,

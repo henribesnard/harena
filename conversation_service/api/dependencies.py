@@ -28,7 +28,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ..core.mvp_team_manager import MVPTeamManager
 from ..core.conversation_manager import ConversationManager
-from ..models.conversation_models import ConversationRequest, ConversationResponse
+from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 import os
 

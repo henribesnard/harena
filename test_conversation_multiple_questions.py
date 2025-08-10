@@ -170,6 +170,7 @@ def test_greeting_skips_search():
     import asyncio
     import conversation_service.agents.base_financial_agent as base_financial_agent
     base_financial_agent.AUTOGEN_AVAILABLE = True
+    base_financial_agent.AssistantAgent.__init__ = lambda self, *args, **kwargs: setattr(self, "name", kwargs.get("name"))
     from conversation_service.agents.orchestrator_agent import OrchestratorAgent
     from conversation_service.models.financial_models import IntentResult, IntentCategory, DetectionMethod
 
@@ -208,6 +209,40 @@ def test_greeting_skips_search():
     steps = {s["name"]: s["status"] for s in result["metadata"]["execution_details"]["steps"]}
     assert steps.get("search_query") == "skipped"
     assert steps.get("response_generation") == "skipped"
+
+
+def test_gratitude_skips_search():
+    import types
+    import sys
+    import asyncio
+
+    import conversation_service.agents.base_financial_agent as base_financial_agent
+    base_financial_agent.AUTOGEN_AVAILABLE = True
+    base_financial_agent.AssistantAgent.__init__ = lambda self, *args, **kwargs: setattr(self, "name", kwargs.get("name"))
+
+    deepseek_module = types.ModuleType("conversation_service.core.deepseek_client")
+
+    class DeepSeekClient:
+        def __init__(self):
+            self.api_key = "test"
+            self.base_url = "http://test"
+
+        async def generate_response(self, *args, **kwargs):
+            raise RuntimeError("AI should not be called")
+
+    deepseek_module.DeepSeekClient = DeepSeekClient
+    sys.modules["conversation_service.core.deepseek_client"] = deepseek_module
+
+    from conversation_service.agents.hybrid_intent_agent import HybridIntentAgent
+
+    intent_agent = HybridIntentAgent(DeepSeekClient())
+    result = asyncio.run(intent_agent.detect_intent("merci"))
+    intent_result = result["metadata"]["intent_result"]
+
+    suggestions = intent_agent.rule_engine.all_rules["GRATITUDE"].suggested_responses
+    assert intent_result.intent_type == "GRATITUDE"
+    assert intent_result.search_required is False
+    assert intent_result.suggested_actions == suggestions
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
 # Imports locaux
-from utils.cache import MultiLevelCache, generate_cache_key
+from ..utils.cache import MultiLevelCache, generate_cache_key
 
 logger = logging.getLogger(__name__)
 

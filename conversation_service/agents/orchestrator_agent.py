@@ -272,14 +272,20 @@ class WorkflowExecutor:
             "metadata": {
                 "search_response": {
                     "response_metadata": {
-                        "query_id": "fallback",
+                        "query_id": f"fallback_{int(time.time())}",
                         "execution_time_ms": 0,
                         "returned_hits": 0,
-                        "total_hits": 0
+                        "total_hits": 0,
+                        "has_more": False,
+                        "cache_hit": False,
+                        "search_strategy_used": "none"
                     },
                     "results": [],
                     "aggregations": None
-                }
+                },
+                "search_query": None,
+                "enhanced_entities": {},
+                "execution_time_ms": 0
             }
         }
     

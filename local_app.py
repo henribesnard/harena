@@ -17,6 +17,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 
 # Charger le fichier .env en priorité
 load_dotenv()
@@ -194,26 +195,11 @@ class ServiceLoader:
 
 def create_app():
     """Créer l'application FastAPI principale"""
-    
-    app = FastAPI(
-        title="Harena Finance Platform - Local Dev",
-        description="Plateforme de gestion financière - Version développement avec conversation_service",
-        version="1.0.0-dev"
-    )
-
-    # CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
     loader = ServiceLoader()
 
-    @app.on_event("startup")
-    async def startup():
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
         logger.info("🚀 Démarrage Harena Finance Platform - LOCAL DEV")
         
         # Test DB critique
@@ -453,15 +439,32 @@ def create_app():
 
         logger.info("🎉 Plateforme Harena complètement déployée!")
 
-    @app.on_event("shutdown")
-    async def shutdown():
-        logger.info("🛑 Arrêt de Harena - nettoyage conversation_service")
         try:
-            from conversation_service.api.dependencies import cleanup_dependencies
-            await cleanup_dependencies()
-            logger.info("✅ Ressources conversation_service libérées")
-        except Exception as e:
-            logger.error(f"❌ Erreur cleanup conversation_service: {e}")
+            yield
+        finally:
+            logger.info("🛑 Arrêt de Harena - nettoyage conversation_service")
+            try:
+                from conversation_service.api.dependencies import cleanup_dependencies
+                await cleanup_dependencies()
+                logger.info("✅ Ressources conversation_service libérées")
+            except Exception as e:
+                logger.error(f"❌ Erreur cleanup conversation_service: {e}")
+
+    app = FastAPI(
+        title="Harena Finance Platform - Local Dev",
+        description="Plateforme de gestion financière - Version développement avec conversation_service",
+        version="1.0.0-dev",
+        lifespan=lifespan
+    )
+
+    # CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     async def health():

@@ -82,3 +82,9 @@ def test_failed_workflow_does_not_raise_performance_summary_error():
     assert result["metadata"]["performance_summary"] == {}
     assert result["metadata"]["execution_details"] == {}
     assert result["metadata"]["workflow_success"] is False
+
+
+if __name__ == "__main__":
+    import pytest, sys
+
+    sys.exit(pytest.main([__file__]))

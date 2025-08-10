@@ -98,3 +98,9 @@ def test_performance_summary_in_failure(monkeypatch):
     assert "performance_summary" in result
     summary = result["performance_summary"]
     assert {"completed_steps", "failed_steps", "total_steps"} <= summary.keys()
+
+
+if __name__ == "__main__":
+    import pytest, sys
+
+    sys.exit(pytest.main([__file__]))

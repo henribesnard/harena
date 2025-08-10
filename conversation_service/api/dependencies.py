@@ -61,7 +61,7 @@ async def get_team_manager() -> MVPTeamManager:
         try:
             logger.info("Initializing MVPTeamManager singleton")
             _team_manager = MVPTeamManager()
-            await _team_manager.initialize()
+            await _team_manager.initialize_agents()
             logger.info("MVPTeamManager initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize MVPTeamManager: {e}")

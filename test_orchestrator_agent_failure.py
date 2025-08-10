@@ -44,6 +44,17 @@ pydantic_module.model_validator = model_validator
 pydantic_module.ValidationError = ValidationError
 sys.modules["pydantic"] = pydantic_module
 
+# Stub internal agent modules to avoid loading full implementations
+for mod_name in [
+    "conversation_service.agents.hybrid_intent_agent",
+    "conversation_service.agents.search_query_agent",
+    "conversation_service.agents.response_agent",
+]:
+    mod = types.ModuleType(mod_name)
+    cls_name = mod_name.split('.')[-1].title().replace('_', '')
+    setattr(mod, cls_name, type(cls_name, (), {}))
+    sys.modules[mod_name] = mod
+
 from conversation_service.agents.orchestrator_agent import OrchestratorAgent
 import conversation_service.agents.base_financial_agent as base_financial_agent
 
@@ -60,6 +71,16 @@ class DummyAgent:
     def __init__(self, name: str):
         self.name = name
         self.deepseek_client = DummyDeepSeekClient()
+
+
+class AsyncDummyAgent(DummyAgent):
+    async def execute_with_metrics(self, data):
+        return type("Resp", (), {"success": True, "metadata": {}, "content": "ok", "error_message": None})()
+
+
+class FailingIntentAgent(DummyAgent):
+    async def execute_with_metrics(self, data):
+        raise RuntimeError("intent failure")
 
 
 class FailingOrchestratorAgent(OrchestratorAgent):
@@ -82,6 +103,25 @@ def test_failed_workflow_does_not_raise_performance_summary_error():
     assert result["metadata"]["performance_summary"] == {}
     assert result["metadata"]["execution_details"] == {}
     assert result["metadata"]["workflow_success"] is False
+
+
+def test_workflow_executor_exception_returns_summary(monkeypatch):
+    agent = OrchestratorAgent(
+        FailingIntentAgent("intent"),
+        AsyncDummyAgent("search"),
+        AsyncDummyAgent("response"),
+    )
+
+    def failing_fallback(self):
+        raise RuntimeError("no fallback")
+
+    monkeypatch.setattr(agent.workflow_executor, "_create_fallback_intent", failing_fallback)
+
+    result = asyncio.run(agent.process_conversation("hello", "conv1"))
+
+    summary = result["metadata"]["performance_summary"]
+    assert result["metadata"]["workflow_success"] is False
+    assert {"completed_steps", "failed_steps", "total_steps"} <= summary.keys()
 
 
 if __name__ == "__main__":

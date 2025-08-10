@@ -279,7 +279,8 @@ class WorkflowExecutor:
             confidence=0.3,
             entities=[],
             method=DetectionMethod.FALLBACK,
-            processing_time_ms=0.0
+            processing_time_ms=0.0,
+            search_required=True,
         )
     
     def _create_empty_search_results(self) -> Dict[str, Any]:

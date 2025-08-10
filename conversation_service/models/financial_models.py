@@ -277,6 +277,7 @@ class IntentResult(BaseModel):
         context_influence: How conversation context influenced classification
         validation_errors: Any validation errors encountered
         requires_clarification: Whether user clarification is needed
+        search_required: Whether a follow-up search should be performed
         suggested_actions: Suggested actions based on intent
         raw_user_message: Original user message for reference
         normalized_query: Normalized version of user query
@@ -336,7 +337,12 @@ class IntentResult(BaseModel):
         default=False,
         description="Whether user clarification is needed"
     )
-    
+
+    search_required: bool = Field(
+        default=True,
+        description="Whether a follow-up search should be performed"
+    )
+
     suggested_actions: Optional[List[str]] = Field(
         default=None,
         description="Suggested actions based on intent"
@@ -457,6 +463,7 @@ class IntentResult(BaseModel):
                     }
                 ],
                 "requires_clarification": False,
+                "search_required": True,
                 "suggested_actions": [
                     "search_transactions",
                     "apply_amount_filter",

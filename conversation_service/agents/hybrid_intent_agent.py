@@ -184,6 +184,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 entities=[],
                 method=DetectionMethod.FALLBACK,
                 processing_time_ms=(time.perf_counter() - start_time) * 1000,
+                search_required=True,
             )
 
             return {
@@ -254,6 +255,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                     entities=entities,
                     method=DetectionMethod.EXACT_RULE,
                     processing_time_ms=execution_time,
+                    search_required=not exact_match.no_search_needed,
+                    suggested_actions=exact_match.suggested_responses,
                 )
 
             # Try pattern matching
@@ -268,6 +271,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                     entities=entities,
                     method=DetectionMethod.PATTERN_RULE,
                     processing_time_ms=execution_time,
+                    search_required=not pattern_match.no_search_needed,
+                    suggested_actions=pattern_match.suggested_responses,
                 )
             
             return None
@@ -320,6 +325,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 entities=[],
                 method=DetectionMethod.AI_ERROR_FALLBACK,
                 processing_time_ms=(time.perf_counter() - start_time) * 1000,
+                search_required=True,
             )
     
     def _prepare_ai_context(self, message: str, rule_backup: Optional[IntentResult]) -> str:
@@ -389,6 +395,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 entities=entities,
                 method=DetectionMethod.AI_DETECTION,
                 processing_time_ms=0.0,
+                search_required=True,
             )
 
         except Exception as e:
@@ -400,6 +407,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 entities=[],
                 method=DetectionMethod.AI_PARSE_FALLBACK,
                 processing_time_ms=0.0,
+                search_required=True,
             )
     
     def get_detection_stats(self) -> Dict[str, Any]:

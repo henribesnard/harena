@@ -328,7 +328,7 @@ async def get_metrics(
         metrics_summary = metrics.get_summary()
         
         # Get team performance
-        team_performance = await team_manager.get_team_performance()
+        team_performance = team_manager.get_team_performance()
         
         # Compile comprehensive metrics
         comprehensive_metrics = {

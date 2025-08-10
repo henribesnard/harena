@@ -28,7 +28,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ..core.mvp_team_manager import MVPTeamManager
 from ..core.conversation_manager import ConversationManager
-from ..models import ConversationRequest, ConversationResponse
+from ..models import ConversationRequest
 from ..utils.metrics import MetricsCollector
 import os
 
@@ -49,76 +49,89 @@ _rate_limit_lock = asyncio.Lock()
 # Evict users who haven't made a request within this TTL (seconds)
 _RATE_LIMIT_TTL = 300
 
+async def initialize_dependencies() -> None:
+    """Initialize singleton instances for service dependencies."""
+    global _team_manager, _conversation_manager, _metrics_collector
+
+    if _team_manager is None:
+        logger.info("Initializing MVPTeamManager singleton")
+        _team_manager = MVPTeamManager()
+        await _team_manager.initialize_agents()
+        logger.info("MVPTeamManager initialized successfully")
+
+    if _conversation_manager is None:
+        logger.info("Initializing ConversationManager singleton")
+        _conversation_manager = ConversationManager(storage_backend="memory")
+        await _conversation_manager.initialize()
+        logger.info("ConversationManager initialized successfully")
+
+    if _metrics_collector is None:
+        logger.info("Initializing MetricsCollector singleton")
+        _metrics_collector = MetricsCollector()
+
 
 async def get_team_manager() -> MVPTeamManager:
     """
     Dependency to get the singleton MVPTeamManager instance.
-    
+
     Returns:
         MVPTeamManager: Configured team manager with AutoGen agents
-        
+
     Raises:
         HTTPException: If team manager initialization fails
     """
     global _team_manager
-    
+
     if _team_manager is None:
         try:
-            logger.info("Initializing MVPTeamManager singleton")
-            _team_manager = MVPTeamManager()
-            await _team_manager.initialize_agents()
-            logger.info("MVPTeamManager initialized successfully")
+            await initialize_dependencies()
         except Exception as e:
             logger.error(f"Failed to initialize MVPTeamManager: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Conversation service temporarily unavailable"
+                detail="Conversation service temporarily unavailable",
             )
-    
+
     return _team_manager
 
 
 async def get_conversation_manager() -> ConversationManager:
     """
     Dependency to get the singleton ConversationManager instance.
-    
+
     Returns:
         ConversationManager: Configured conversation context manager
-        
+
     Raises:
         HTTPException: If conversation manager initialization fails
     """
     global _conversation_manager
-    
+
     if _conversation_manager is None:
         try:
-            logger.info("Initializing ConversationManager singleton")
-            _conversation_manager = ConversationManager(storage_backend="memory")
-            await _conversation_manager.initialize()
-            logger.info("ConversationManager initialized successfully")
+            await initialize_dependencies()
         except Exception as e:
             logger.error(f"Failed to initialize ConversationManager: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Conversation context service unavailable"
+                detail="Conversation context service unavailable",
             )
-    
+
     return _conversation_manager
 
 
 async def get_metrics_collector() -> MetricsCollector:
     """
     Dependency to get the singleton MetricsCollector instance.
-    
+
     Returns:
         MetricsCollector: Metrics collection and analysis instance
     """
     global _metrics_collector
-    
+
     if _metrics_collector is None:
-        logger.info("Initializing MetricsCollector singleton")
-        _metrics_collector = MetricsCollector()
-    
+        await initialize_dependencies()
+
     return _metrics_collector
 
 

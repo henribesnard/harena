@@ -112,10 +112,11 @@ class ServiceLoader:
         logger.info("🗣️ Validation du conversation_service...")
 
         try:
-            from conversation_service.main import validate_configuration, pre_initialize_dependencies
+            from conversation_service.main import validate_configuration
+            from conversation_service.api.dependencies import initialize_dependencies
 
             await validate_configuration()
-            await pre_initialize_dependencies()
+            await initialize_dependencies()
 
             self.conversation_service_initialized = True
             self.conversation_service_error = None

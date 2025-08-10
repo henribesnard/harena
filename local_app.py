@@ -1,22 +1,20 @@
 """
 Application Harena pour développement local.
-Version sans conversation_service - Services core uniquement.
+Version avec conversation_service activé.
 
-✅ SERVICES MAINTENUS:
+✅ SERVICES DISPONIBLES:
 - User Service: Gestion utilisateurs
 - Sync Service: Synchronisation Bridge API
 - Enrichment Service: Elasticsearch uniquement (v2.0)
 - Search Service: Recherche lexicale simplifiée
-
-❌ SUPPRIMÉ:
-- Conversation Service: Complètement retiré
+- Conversation Service: IA conversationnelle AutoGen
 """
 
 import logging
 import os
 import sys
 from pathlib import Path
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -42,12 +40,14 @@ if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
 class ServiceLoader:
-    """Chargeur de services sans conversation_service"""
-    
+    """Chargeur de services"""
+
     def __init__(self):
         self.services_status = {}
         self.search_service_initialized = False
         self.search_service_error = None
+        self.conversation_service_initialized = False
+        self.conversation_service_error = None
     
     async def initialize_search_service(self, app: FastAPI):
         """Initialise le search_service - COPIE EXACTE"""
@@ -104,6 +104,30 @@ class ServiceLoader:
             
             self.search_service_initialized = False
             self.search_service_error = error_msg
+            return False
+
+    async def initialize_conversation_service(self):
+        """Valide la configuration du conversation_service"""
+        logger.info("🗣️ Validation du conversation_service...")
+
+        try:
+            from conversation_service.main import validate_configuration, pre_initialize_dependencies
+
+            await validate_configuration()
+            await pre_initialize_dependencies()
+
+            self.conversation_service_initialized = True
+            self.conversation_service_error = None
+
+            logger.info("✅ conversation_service prêt")
+            return True
+
+        except Exception as e:
+            error_msg = f"Erreur initialisation conversation_service: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+
+            self.conversation_service_initialized = False
+            self.conversation_service_error = error_msg
             return False
     
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
@@ -169,11 +193,11 @@ class ServiceLoader:
             return False
 
 def create_app():
-    """Créer l'application FastAPI principale sans conversation_service"""
+    """Créer l'application FastAPI principale"""
     
     app = FastAPI(
         title="Harena Finance Platform - Local Dev",
-        description="Plateforme de gestion financière - Version développement sans conversation_service",
+        description="Plateforme de gestion financière - Version développement avec conversation_service",
         version="1.0.0-dev"
     )
 
@@ -190,7 +214,7 @@ def create_app():
 
     @app.on_event("startup")
     async def startup():
-        logger.info("🚀 Démarrage Harena Finance Platform - LOCAL DEV sans conversation_service")
+        logger.info("🚀 Démarrage Harena Finance Platform - LOCAL DEV")
         
         # Test DB critique
         try:
@@ -381,9 +405,35 @@ def create_app():
         except Exception as e:
             logger.error(f"❌ search_service: Erreur générale - {str(e)}")
             loader.services_status["search_service"] = {
-                "status": "error", 
+                "status": "error",
                 "error": str(e),
                 "architecture": "simplified_unified"
+            }
+
+        # 5. Conversation Service
+        logger.info("🗣️ Chargement du conversation_service...")
+        try:
+            conv_init = await loader.initialize_conversation_service()
+            if conv_init:
+                from conversation_service.api.routes import router as conversation_router
+                app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+                routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
+                logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation")
+                loader.services_status["conversation_service"] = {
+                    "status": "ok",
+                    "routes": routes_count,
+                    "prefix": "/api/v1/conversation"
+                }
+            else:
+                loader.services_status["conversation_service"] = {
+                    "status": "error",
+                    "error": loader.conversation_service_error
+                }
+        except Exception as e:
+            logger.error(f"❌ conversation_service: {e}")
+            loader.services_status["conversation_service"] = {
+                "status": "error",
+                "error": str(e)
             }
 
         # Compter les services réussis
@@ -400,20 +450,31 @@ def create_app():
             logger.warning(f"📊 Services dégradés: {', '.join(degraded_services)}")
         if failed_services:
             logger.warning(f"📊 Services en erreur: {', '.join(failed_services)}")
-        
-        logger.info("🎉 Plateforme Harena complètement déployée (sans conversation_service)!")
+
+        logger.info("🎉 Plateforme Harena complètement déployée!")
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        logger.info("🛑 Arrêt de Harena - nettoyage conversation_service")
+        try:
+            from conversation_service.api.dependencies import cleanup_dependencies
+            await cleanup_dependencies()
+            logger.info("✅ Ressources conversation_service libérées")
+        except Exception as e:
+            logger.error(f"❌ Erreur cleanup conversation_service: {e}")
 
     @app.get("/health")
     async def health():
-        """Health check global sans conversation_service"""
+        """Health check global"""
         ok_services = [name for name, status in loader.services_status.items() 
                       if status.get("status") == "ok"]
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détails spéciaux pour search_service et enrichment_service
+        # Détails spéciaux pour search_service, enrichment_service et conversation_service
         search_status = loader.services_status.get("search_service", {})
         enrichment_status = loader.services_status.get("enrichment_service", {})
+        conversation_status = loader.services_status.get("conversation_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -437,12 +498,18 @@ def create_app():
                 "elasticsearch_available": enrichment_status.get("elasticsearch_available", False),
                 "initialized": enrichment_status.get("initialized", False),
                 "error": enrichment_status.get("error")
+            },
+            "conversation_service": {
+                "status": conversation_status.get("status"),
+                "initialized": loader.conversation_service_initialized,
+                "error": conversation_status.get("error"),
+                "prefix": conversation_status.get("prefix")
             }
         }
 
     @app.get("/status")
     async def status():
-        """Statut détaillé sans conversation_service"""
+        """Statut détaillé"""
         return {
             "platform": "Harena Finance",
             "services": loader.services_status,
@@ -461,23 +528,26 @@ def create_app():
                     "Batch processing",
                     "User sync operations"
                 ]
+            },
+            "conversation_service_details": {
+                "initialized": loader.conversation_service_initialized,
+                "error": loader.conversation_service_error,
+                "prefix": "/api/v1/conversation"
             }
         }
 
     @app.get("/")
     async def root():
-        """Page d'accueil sans conversation_service"""
+        """Page d'accueil"""
         return {
             "message": "🏦 Harena Finance Platform - LOCAL DEVELOPMENT (Core Services)",
             "version": "1.0.0-dev-core",
             "services_available": [
                 "user_service - Gestion utilisateurs",
-                "sync_service - Synchronisation Bridge API", 
+                "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
-                "search_service - Recherche lexicale (Architecture simplifiée)"
-            ],
-            "services_removed": [
-                "conversation_service - Complètement supprimé"
+                "search_service - Recherche lexicale (Architecture simplifiée)",
+                "conversation_service - Service de conversation AutoGen"
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
@@ -489,7 +559,11 @@ def create_app():
                 "/api/v1/accounts/*": "Comptes",
                 "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/elasticsearch/*": "Enrichissement Elasticsearch (v2.0)",
-                "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)"
+                "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
+                "/api/v1/conversation/chat": "Chat conversationnel",
+                "/api/v1/conversation/health": "Santé du conversation_service",
+                "/api/v1/conversation/metrics": "Métriques du conversation_service",
+                "/api/v1/conversation/status": "Statut du conversation_service"
             },
             "development_mode": {
                 "hot_reload": True,
@@ -557,7 +631,8 @@ def create_app():
                     "health": "GET /health",
                     "user_service": "GET /api/v1/users/me",
                     "enrichment": "GET /api/v1/enrichment/health",
-                    "search": "GET /api/v1/search/health"
+                    "search": "GET /api/v1/search/health",
+                    "conversation": "GET /api/v1/conversation/health"
                 }
             }
         }
@@ -573,8 +648,8 @@ if __name__ == "__main__":
     logger.info("📡 Accès: http://localhost:8000")
     logger.info("📚 Docs: http://localhost:8000/docs")
     logger.info("🔍 Status: http://localhost:8000/status")
-    logger.info("🏦 Services Core: User, Sync, Enrichment, Search")
-    logger.info("❌ Conversation Service: Complètement supprimé")
+    logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
+    logger.info("🗣️ Conversation Service: Activé")
     logger.info("✅ Architecture allégée pour développement core")
     
     uvicorn.run(

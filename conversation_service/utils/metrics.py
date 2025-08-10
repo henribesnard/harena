@@ -28,6 +28,10 @@ from enum import Enum
 import os
 import uuid
 import statistics
+try:  # pragma: no cover - psutil may not be available in all environments
+    import psutil
+except Exception:  # pragma: no cover
+    psutil = None
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +310,8 @@ class MetricsCollector:
             collection_interval: Intervalle de collecte en secondes
         """
         self.collection_interval = collection_interval or int(os.getenv('METRICS_COLLECTION_INTERVAL', '60'))
-        self.enabled = os.getenv('ENABLE_METRICS', 'true').lower() == 'true'  
+        self.enabled = os.getenv('ENABLE_METRICS', 'true').lower() == 'true'
+        self.start_time = time.time()
         
         # Stockage des métriques
         self._metrics: List[MetricPoint] = []
@@ -582,6 +587,48 @@ class MetricsCollector:
                     alert.resolved = True
                     return True
         return False
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Retourne un résumé des compteurs, jauges et histogrammes."""
+        with self._lock:
+            counters_summary = dict(self._counters)
+            gauges_summary = dict(self._gauges)
+            histograms_summary: Dict[str, Dict[str, float]] = {}
+            for key, values in self._histograms.items():
+                if values:
+                    histograms_summary[key] = {
+                        "count": len(values),
+                        "min": min(values),
+                        "max": max(values),
+                        "avg": statistics.mean(values)
+                    }
+
+        return {
+            "counters": counters_summary,
+            "gauges": gauges_summary,
+            "histograms": histograms_summary,
+            "total_requests": counters_summary.get("requests_total", 0),
+            "avg_response_time": histograms_summary.get("request_duration_ms", {}).get("avg", 0)
+        }
+
+    def get_memory_usage(self) -> Dict[str, float]:
+        """Retourne l'utilisation mémoire du processus."""
+        if psutil is None:  # pragma: no cover
+            return {}
+
+        process = psutil.Process(os.getpid())
+        mem_info = process.memory_info()
+        return {
+            "rss": mem_info.rss,
+            "vms": mem_info.vms,
+            "percent": psutil.virtual_memory().percent
+        }
+
+    def get_cpu_usage(self) -> float:
+        """Retourne l'utilisation CPU en pourcentage."""
+        if psutil is None:  # pragma: no cover
+            return 0.0
+        return psutil.cpu_percent(interval=None)
     
     def get_performance_report(self) -> Dict[str, Any]:
         """
@@ -788,5 +835,4 @@ def get_default_metrics_collector() -> MetricsCollector:
     
     if _default_metrics_collector is None:
         _default_metrics_collector = MetricsCollector()
-    
     return _default_metrics_collector

@@ -420,7 +420,28 @@ class MetricsCollector:
                 actual=duration_ms,
                 level=AlertLevel.WARNING
             )
-    
+
+    def record_request(self, endpoint: str, user_id: int) -> None:
+        """Enregistre une requête reçue pour un endpoint."""
+        labels = {"endpoint": endpoint, "user_id": str(user_id)}
+        self.record_counter("requests_total", 1.0, labels)
+
+    def record_response_time(self, endpoint: str, duration_ms: float) -> None:
+        """Enregistre le temps de réponse d'un endpoint."""
+        labels = {"endpoint": endpoint}
+        self.record_timer("response_time_ms", duration_ms, labels)
+
+    def record_success(self, endpoint: str) -> None:
+        """Enregistre un succès pour un endpoint."""
+        labels = {"endpoint": endpoint}
+        self.record_counter("success_total", 1.0, labels)
+
+    def record_error(self, endpoint: str, error_message: str) -> None:
+        """Enregistre une erreur survenue pour un endpoint et loggue le message."""
+        labels = {"endpoint": endpoint}
+        self.record_counter("errors_total", 1.0, labels)
+        logger.error(f"[{endpoint}] {error_message}")
+
     def record_agent_execution(self, agent_name: str, duration_ms: float, success: bool = True, **labels) -> None:
         """
         Enregistre l'exécution d'un agent AutoGen.

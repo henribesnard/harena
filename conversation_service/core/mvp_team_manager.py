@@ -325,7 +325,7 @@ class MVPTeamManager:
             self.deepseek_client = DeepSeekClient(
                 api_key=self.config['DEEPSEEK_API_KEY'],
                 base_url=self.config['DEEPSEEK_BASE_URL'],
-                timeout_seconds=self.config['DEEPSEEK_TIMEOUT']
+                timeout=self.config['DEEPSEEK_TIMEOUT']
             )
             
             # Test connection

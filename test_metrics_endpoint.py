@@ -18,3 +18,8 @@ def test_metrics_endpoint_returns_json():
     assert "memory_usage" in result["system_info"]
     assert "cpu_usage" in result["system_info"]
 
+
+if __name__ == "__main__":
+    import pytest, sys
+
+    sys.exit(pytest.main([__file__]))

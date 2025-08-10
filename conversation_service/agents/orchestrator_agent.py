@@ -78,17 +78,24 @@ class WorkflowExecutor:
         self.search_agent = search_agent
         self.response_agent = response_agent
         
-    async def execute_workflow(self, user_message: str, 
+    async def execute_workflow(self, user_message: str,
                              conversation_id: str) -> Dict[str, Any]:
         """
         Execute the complete 3-agent workflow.
-        
+
         Args:
             user_message: User's input message
             conversation_id: Conversation identifier
-            
+
         Returns:
-            Workflow execution results with all step details
+            Dict with workflow execution results including:
+                - ``success``: Overall workflow success flag
+                - ``final_response``: Final response string (may be fallback)
+                - ``workflow_data``: Intermediate data collected during steps
+                - ``execution_details``: Timing and status for each step
+                - ``performance_summary``: Summary of completed and failed
+                  steps. Always present, even when the workflow fails
+                  entirely.
         """
         workflow_start = time.perf_counter()
         
@@ -250,6 +257,11 @@ class WorkflowExecutor:
                         }
                         for step in steps
                     ]
+                },
+                "performance_summary": {
+                    "completed_steps": len([s for s in steps if s.status == WorkflowStepStatus.COMPLETED]),
+                    "failed_steps": len([s for s in steps if s.status == WorkflowStepStatus.FAILED]),
+                    "total_steps": len(steps)
                 }
             }
     

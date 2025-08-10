@@ -17,8 +17,8 @@ Version: 1.0.0 MVP - FastAPI Routes
 
 import logging
 import time
-from typing import Dict, Any, List, Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
+from typing import Dict, Any, Annotated
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 
 from .dependencies import (
@@ -60,7 +60,6 @@ health_router = APIRouter(prefix="/health", tags=["monitoring"])
     }
 )
 async def chat_endpoint(
-    request: ConversationRequest,
     background_tasks: BackgroundTasks,
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
@@ -80,13 +79,12 @@ async def chat_endpoint(
     5. Returns AI response with metadata
     
     Args:
-        request: User conversation request
         background_tasks: FastAPI background tasks
         team_manager: AutoGen team manager dependency
         conversation_manager: Conversation context dependency
         user: Authenticated user context
         metrics: Metrics collector dependency
-        validated_request: Pre-validated request
+        validated_request: Validated conversation request
         
     Returns:
         ConversationResponse: AI response with metadata

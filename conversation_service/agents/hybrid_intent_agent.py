@@ -24,7 +24,13 @@ from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..core.deepseek_client import DeepSeekClient
 from ..intent_rules.rule_engine import RuleEngine, RuleMatch
-from ..models.financial_models import IntentResult, IntentCategory
+from ..models.financial_models import (
+    IntentResult,
+    IntentCategory,
+    FinancialEntity,
+    EntityType,
+    DetectionMethod,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +105,54 @@ class HybridIntentAgent(BaseFinancialAgent):
         self.rule_confidence_threshold = 0.8
         
         logger.info("Initialized HybridIntentAgent with rule engine and AI fallback")
+
+    # ------------------------------------------------------------------
+    # Helper conversion methods
+    # ------------------------------------------------------------------
+
+    def _determine_intent_category(self, intent: str, fallback: Optional[str] = None) -> IntentCategory:
+        """Map intent or fallback string to IntentCategory enum."""
+        if intent and intent in IntentCategory.__members__:
+            return IntentCategory[intent]
+        if fallback:
+            mapping = {
+                "SEARCH": IntentCategory.FINANCIAL_QUERY,
+                "ANALYZE": IntentCategory.TREND_ANALYSIS,
+                "CONVERSATIONAL": IntentCategory.GENERAL_QUESTION,
+            }
+            cat = mapping.get(fallback.upper())
+            if cat:
+                return cat
+        return IntentCategory.GENERAL_QUESTION
+
+    def _convert_entities(self, entities: Dict[str, List[Any]]) -> List[FinancialEntity]:
+        """Convert rule engine entities to FinancialEntity list."""
+        converted: List[FinancialEntity] = []
+        for etype, entity_list in entities.items():
+            for ent in entity_list:
+                try:
+                    entity_type = EntityType(etype)
+                except ValueError:
+                    entity_type = EntityType.OTHER
+                start, end = getattr(ent, "position", (None, None))
+                detection = (
+                    DetectionMethod.PATTERN_MATCHING
+                    if getattr(ent, "extraction_method", "") == "pattern"
+                    else DetectionMethod.RULE_BASED
+                )
+                converted.append(
+                    FinancialEntity(
+                        entity_type=entity_type,
+                        raw_value=getattr(ent, "raw_value", ""),
+                        normalized_value=getattr(ent, "normalized_value", None),
+                        confidence=getattr(ent, "confidence", 0.0),
+                        start_position=start,
+                        end_position=end,
+                        detection_method=detection,
+                        metadata={"pattern": getattr(ent, "pattern_matched", "")},
+                    )
+                )
+        return converted
     
     async def _execute_operation(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -138,14 +192,14 @@ class HybridIntentAgent(BaseFinancialAgent):
                 self._update_detection_stats(rule_time=time.perf_counter() - start_time)
                 
                 return {
-                    "content": f"Intent detected: {rule_result.intent}",
+                    "content": f"Intent detected: {rule_result.intent_type}",
                     "metadata": {
                         "intent_result": rule_result,
                         "detection_method": "rules",
                         "confidence": rule_result.confidence,
-                        "entities": rule_result.entities
+                        "entities": rule_result.entities,
                     },
-                    "confidence_score": rule_result.confidence
+                    "confidence_score": rule_result.confidence,
                 }
             
             # Stage 2: AI fallback for complex cases
@@ -154,15 +208,15 @@ class HybridIntentAgent(BaseFinancialAgent):
             self._update_detection_stats(ai_time=time.perf_counter() - start_time)
             
             return {
-                "content": f"Intent detected: {ai_result.intent}",
+                "content": f"Intent detected: {ai_result.intent_type}",
                 "metadata": {
                     "intent_result": ai_result,
                     "detection_method": "ai_fallback",
                     "confidence": ai_result.confidence,
                     "entities": ai_result.entities,
-                    "rule_backup": rule_result.__dict__ if rule_result else None
+                    "rule_backup": rule_result.model_dump() if rule_result else None,
                 },
-                "confidence_score": ai_result.confidence
+                "confidence_score": ai_result.confidence,
             }
             
         except Exception as e:
@@ -170,24 +224,24 @@ class HybridIntentAgent(BaseFinancialAgent):
             
             # Fallback to GENERAL intent
             fallback_result = IntentResult(
-                intent="GENERAL",
-                category=IntentCategory.CONVERSATIONAL,
+                intent_type="GENERAL",
+                intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.5,
-                entities={},
-                method="fallback",
-                execution_time_ms=(time.perf_counter() - start_time) * 1000
+                entities=[],
+                method=DetectionMethod.HYBRID,
+                processing_time_ms=(time.perf_counter() - start_time) * 1000,
             )
-            
+
             return {
                 "content": "Intent detected: GENERAL (fallback)",
                 "metadata": {
                     "intent_result": fallback_result,
                     "detection_method": "fallback",
                     "confidence": 0.5,
-                    "entities": {},
+                    "entities": fallback_result.entities,
                     "error": str(e)
                 },
-                "confidence_score": 0.5
+                "confidence_score": 0.5,
             }
     
     async def _try_rule_based_detection(self, message: str) -> Optional[IntentResult]:
@@ -208,12 +262,14 @@ class HybridIntentAgent(BaseFinancialAgent):
             if exact_match:
                 execution_time = (time.perf_counter() - start_time) * 1000
                 return IntentResult(
-                    intent=exact_match.intent,
-                    category=IntentCategory.SEARCH,  # Most exact matches are search intents
+                    intent_type=exact_match.intent,
+                    intent_category=self._determine_intent_category(
+                        exact_match.intent, exact_match.intent_category
+                    ),
                     confidence=exact_match.confidence,
-                    entities=exact_match.entities,
-                    method="exact_rule",
-                    execution_time_ms=execution_time
+                    entities=self._convert_entities(exact_match.entities),
+                    method=DetectionMethod.RULE_BASED,
+                    processing_time_ms=execution_time,
                 )
             
             # Try pattern matching
@@ -221,12 +277,14 @@ class HybridIntentAgent(BaseFinancialAgent):
             if pattern_match:
                 execution_time = (time.perf_counter() - start_time) * 1000
                 return IntentResult(
-                    intent=pattern_match.intent,
-                    category=IntentCategory.SEARCH,
+                    intent_type=pattern_match.intent,
+                    intent_category=self._determine_intent_category(
+                        pattern_match.intent, pattern_match.intent_category
+                    ),
                     confidence=pattern_match.confidence,
-                    entities=pattern_match.entities,
-                    method="pattern_rule",
-                    execution_time_ms=execution_time
+                    entities=self._convert_entities(pattern_match.entities),
+                    method=DetectionMethod.PATTERN_MATCHING,
+                    processing_time_ms=execution_time,
                 )
             
             return None
@@ -264,8 +322,8 @@ class HybridIntentAgent(BaseFinancialAgent):
             
             # Parse AI response into structured result
             result = self._parse_ai_response(response.content, message)
-            result.execution_time_ms = (time.perf_counter() - start_time) * 1000
-            
+            result.processing_time_ms = (time.perf_counter() - start_time) * 1000
+
             return result
             
         except Exception as e:
@@ -273,12 +331,12 @@ class HybridIntentAgent(BaseFinancialAgent):
             
             # Ultimate fallback
             return IntentResult(
-                intent="GENERAL",
-                category=IntentCategory.CONVERSATIONAL,
+                intent_type="GENERAL",
+                intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.3,
-                entities={},
-                method="ai_error_fallback",
-                execution_time_ms=(time.perf_counter() - start_time) * 1000
+                entities=[],
+                method=DetectionMethod.LLM_BASED,
+                processing_time_ms=(time.perf_counter() - start_time) * 1000,
             )
     
     def _prepare_ai_context(self, message: str, rule_backup: Optional[IntentResult]) -> str:
@@ -286,9 +344,13 @@ class HybridIntentAgent(BaseFinancialAgent):
         context = f"Message à analyser: \"{message}\"\n\n"
         
         if rule_backup:
-            context += f"Règle trouvée (confiance faible): {rule_backup.intent} (confiance: {rule_backup.confidence})\n"
+            context += (
+                f"Règle trouvée (confiance faible): {rule_backup.intent_type} "
+                f"(confiance: {rule_backup.confidence})\n"
+            )
             if rule_backup.entities:
-                context += f"Entités détectées: {rule_backup.entities}\n"
+                raw_entities = [e.raw_value for e in rule_backup.entities]
+                context += f"Entités détectées: {raw_entities}\n"
         
         context += "\nAnalyse l'intention et extrais les entités financières pertinentes."
         
@@ -301,7 +363,6 @@ class HybridIntentAgent(BaseFinancialAgent):
             lines = ai_content.strip().split('\n')
             intent = "GENERAL"
             confidence = 0.7
-            entities = {}
             
             for line in lines:
                 if line.lower().startswith('intention:') or line.lower().startswith('intent:'):
@@ -316,27 +377,26 @@ class HybridIntentAgent(BaseFinancialAgent):
                     pass
             
             # Determine category based on intent
-            category = IntentCategory.SEARCH if intent in [
-                "FINANCIAL_QUERY", "TRANSACTION_SEARCH", "BALANCE_CHECK", 
-                "SPENDING_ANALYSIS", "CATEGORY_ANALYSIS"
-            ] else IntentCategory.CONVERSATIONAL
-            
+            category = self._determine_intent_category(intent)
+
             return IntentResult(
-                intent=intent,
-                category=category,
+                intent_type=intent,
+                intent_category=category,
                 confidence=min(confidence, 0.95),  # Cap AI confidence
-                entities=entities,
-                method="ai_detection"
+                entities=[],
+                method=DetectionMethod.LLM_BASED,
+                processing_time_ms=0.0,
             )
             
         except Exception as e:
             logger.warning(f"Failed to parse AI response: {e}")
             return IntentResult(
-                intent="GENERAL",
-                category=IntentCategory.CONVERSATIONAL,
+                intent_type="GENERAL",
+                intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.5,
-                entities={},
-                method="ai_parse_fallback"
+                entities=[],
+                method=DetectionMethod.LLM_BASED,
+                processing_time_ms=0.0,
             )
     
     def get_detection_stats(self) -> Dict[str, Any]:

@@ -31,13 +31,15 @@ class RuleMatch(NamedTuple):
     """Résultat d'un match de règle avec entités"""
     intent: str
     intent_category: str
-    confidence: float 
+    confidence: float
     entities: Dict[str, List[EntityMatch]]
     method: str  # "exact_match" | "pattern_match"
     execution_time_ms: float
     pattern_matched: str
     rule_priority: int
     entity_count: int
+    no_search_needed: bool
+    suggested_responses: Optional[List[str]]
     
     def to_dict(self) -> Dict[str, Any]:
         """Convertit le match en dictionnaire pour sérialisation"""
@@ -63,7 +65,9 @@ class RuleMatch(NamedTuple):
             "execution_time_ms": self.execution_time_ms,
             "pattern_matched": self.pattern_matched,
             "rule_priority": self.rule_priority,
-            "entity_count": self.entity_count
+            "entity_count": self.entity_count,
+            "no_search_needed": self.no_search_needed,
+            "suggested_responses": self.suggested_responses
         }
 
 
@@ -158,7 +162,9 @@ class ExactMatcher:
                 execution_time_ms=execution_time,
                 pattern_matched=f"exact:{context.normalized_text}",
                 rule_priority=rule.priority,
-                entity_count=0
+                entity_count=0,
+                no_search_needed=rule.no_search_needed,
+                suggested_responses=rule.suggested_responses
             )
         
         return None
@@ -411,7 +417,9 @@ class RulePatternMatcher:
             execution_time_ms=0.0,  # Sera mis à jour par le caller
             pattern_matched=";".join(matched_patterns),
             rule_priority=rule.priority,
-            entity_count=entity_count
+            entity_count=entity_count,
+            no_search_needed=rule.no_search_needed,
+            suggested_responses=rule.suggested_responses
         )
     
     def get_stats(self) -> Dict[str, Any]:

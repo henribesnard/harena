@@ -27,14 +27,14 @@ from pydantic import ValidationError as PydanticValidationError
 
 # Imports locaux des modèles (à ajuster selon structure)
 try:
-    from models.service_contracts import (
+    from ..models.service_contracts import (
         SearchServiceQuery,
         SearchServiceResponse,
         QueryMetadata,
         SearchParameters,
         SearchFilters
     )
-    from models.financial_models import (
+    from ..models.financial_models import (
         IntentResult,
         FinancialEntity,
         EntityType,

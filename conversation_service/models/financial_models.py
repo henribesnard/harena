@@ -94,12 +94,19 @@ class IntentCategory(str, Enum):
 
 class DetectionMethod(str, Enum):
     """Method used for entity detection or intent classification."""
-    
+
     RULE_BASED = "rule_based"
     LLM_BASED = "llm_based"
     HYBRID = "hybrid"
     PATTERN_MATCHING = "pattern_matching"
     NER_MODEL = "ner_model"
+    FALLBACK = "fallback"
+    AI_FALLBACK = "ai_fallback"
+    AI_ERROR_FALLBACK = "ai_error_fallback"
+    AI_PARSE_FALLBACK = "ai_parse_fallback"
+    EXACT_RULE = "exact_rule"
+    PATTERN_RULE = "pattern_rule"
+    AI_DETECTION = "ai_detection"
 
 
 class FinancialEntity(BaseModel):

@@ -181,15 +181,22 @@ class SearchQueryAgent(BaseFinancialAgent):
         if not intent_result:
             raise ValueError("intent_result is required for search query generation")
         
-        return await self.process_search_request(intent_result, user_message)
-    
-    async def process_search_request(self, intent_result: IntentResult, user_message: str) -> Dict[str, Any]:
+        user_id = input_data.get("user_id")
+        if user_id is None:
+            raise ValueError("user_id is required for search query generation")
+
+        return await self.process_search_request(intent_result, user_message, user_id)
+
+    async def process_search_request(
+        self, intent_result: IntentResult, user_message: str, user_id: int
+    ) -> Dict[str, Any]:
         """
         Process a search request end-to-end.
         
         Args:
             intent_result: Detected intent with entities
             user_message: Original user message
+            user_id: ID of the requesting user
             
         Returns:
             Dictionary containing search results and metadata
@@ -198,10 +205,14 @@ class SearchQueryAgent(BaseFinancialAgent):
         
         try:
             # Step 1: Extract additional entities using AI
-            enhanced_entities = await self._extract_additional_entities(user_message, intent_result)
-            
+            enhanced_entities = await self._extract_additional_entities(
+                user_message, intent_result
+            )
+
             # Step 2: Generate search service query contract
-            search_query = await self._generate_search_contract(intent_result, user_message, enhanced_entities)
+            search_query = await self._generate_search_contract(
+                intent_result, user_message, user_id, enhanced_entities
+            )
             
             # Step 3: Execute search query
             search_response = await self._execute_search_query(search_query)
@@ -234,6 +245,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         self,
         intent_result: IntentResult,
         user_message: str,
+        user_id: int,
         enhanced_entities: Optional[List[FinancialEntity]] = None,
     ) -> SearchServiceQuery:
         """
@@ -242,6 +254,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         Args:
             intent_result: Detected intent with entities
             user_message: Original user message
+            user_id: ID of the requesting user
             enhanced_entities: Additional entities from AI extraction
             
         Returns:
@@ -286,7 +299,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         # Create query metadata
         query_metadata = QueryMetadata(
             conversation_id=f"conv_{int(time.time())}",  # Placeholder - should come from context
-            user_id=1,  # Placeholder - should come from context
+            user_id=user_id,
             intent_type=intent_result.intent_type,
             language="fr",
             priority="normal",

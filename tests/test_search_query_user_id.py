@@ -34,14 +34,14 @@ class _BaseModel:
         return result
 
 
-pydantic_stub = types.SimpleNamespace(
-    BaseModel=_BaseModel,
-    Field=lambda *args, **kwargs: None,
-    field_validator=lambda *args, **kwargs: (lambda f: f),
-    model_validator=lambda *args, **kwargs: (lambda f: f),
-    ValidationError=Exception,
-)
+pydantic_stub = types.ModuleType("pydantic")
+pydantic_stub.BaseModel = _BaseModel
+pydantic_stub.Field = lambda *args, **kwargs: None
+pydantic_stub.field_validator = lambda *args, **kwargs: (lambda f: f)
+pydantic_stub.model_validator = lambda *args, **kwargs: (lambda f: f)
+pydantic_stub.ValidationError = Exception
 sys.modules.setdefault("pydantic", pydantic_stub)
+sys.modules.setdefault("pydantic.generics", types.ModuleType("generics"))
 
 # Stub for openai client used in DeepSeekClient
 openai_types_chat_stub = types.SimpleNamespace(ChatCompletion=SimpleNamespace)

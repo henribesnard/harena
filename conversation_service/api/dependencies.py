@@ -61,6 +61,8 @@ _rate_limit_lock = asyncio.Lock()
 # Evict users who haven't made a request within this TTL (seconds)
 _RATE_LIMIT_TTL = 300
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
 
 def get_db() -> Generator[Session, None, None]:
     """Provide a database session with automatic commit/rollback.
@@ -173,6 +175,10 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """
     Validate the provided Bearer token with the user service.
+
+    Args:
+        token: OAuth2 Bearer token extracted from the request
+
     Returns:
         Dict containing the authenticated user's profile information
 
@@ -368,5 +374,5 @@ async def cleanup_dependencies():
     _team_manager = None
     _conversation_manager = None
     _metrics_collector = None
-    
+
     logger.info("API dependencies cleanup completed")

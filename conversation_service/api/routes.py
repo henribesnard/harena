@@ -15,13 +15,12 @@ Created: 2025-01-31
 Version: 1.0.0 MVP - FastAPI Routes
 """
 
+import asyncio
 import logging
 import time
-import asyncio
-from typing import Dict, Any, Annotated, TYPE_CHECKING, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from typing import Dict, Any, Annotated, TYPE_CHECKING, List
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from typing import Annotated, Any, Dict, List, Optional, Protocol
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -41,16 +40,25 @@ from ..models import (
     ConversationOut,
     ConversationTurn,
 )
-from ..utils.metrics import MetricsCollector
-from ..utils.logging import log_unauthorized_access
-from ..services.conversation_db import ConversationService as ConversationDBService
-from db_service.session import get_db
 import os
 
-if TYPE_CHECKING:
+from ..utils.logging import log_unauthorized_access
+from ..services.conversation_db import ConversationService as ConversationDBService
+from ..utils.metrics import MetricsCollector
+from ..services.conversation_db import ConversationService
+from db_service.session import get_db
+
+try:
     from ..core.mvp_team_manager import MVPTeamManager
-else:
-    MVPTeamManager = Any
+except ImportError:
+    class MVPTeamManager(Protocol):
+        async def process_user_message(
+            self, user_message: str, user_id: int, conversation_id: str
+        ) -> Any:
+            ...
+
+        async def get_health_status(self) -> Dict[str, Any]:
+            ...
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -301,13 +309,17 @@ async def health_check(
         # Check AutoGen team manager with timeout
         try:
             team_health = await asyncio.wait_for(
-                team_manager.get_health_status(), timeout=component_timeout
+                team_manager.health_check(), timeout=component_timeout
             )
+            details = team_health.get("details", {})
             health_status["components"]["team_manager"] = {
-                "status": "healthy",
-                "agents_loaded": team_health.get("agents_count", 0),
-                "last_activity": team_health.get("last_activity")
+                "status": "healthy" if team_health.get("healthy") else "unhealthy",
+                "agents_loaded": len(details.get("agent_statuses", {})),
+                "last_activity": details.get("last_health_check")
             }
+            if not team_health.get("healthy"):
+                health_status["status"] = "degraded"
+                health_status["errors"].append({"component": "team_manager", "error": "unhealthy"})
         except Exception as e:
             logger.error(f"Team manager health check failed: {e}")
             health_status["status"] = "degraded"

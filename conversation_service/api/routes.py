@@ -18,8 +18,8 @@ Version: 1.0.0 MVP - FastAPI Routes
 import logging
 import time
 import asyncio
-from typing import Dict, Any, Annotated, TYPE_CHECKING
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from typing import Dict, Any, Annotated, TYPE_CHECKING, List
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -30,11 +30,19 @@ from .dependencies import (
     get_conversation_manager,
     validate_request_rate_limit,
     get_metrics_collector,
+    get_conversation_service
     get_conversation_service,
+
 )
 from ..core.conversation_manager import ConversationManager
-from ..models import ConversationRequest, ConversationResponse
+from ..models import (
+    ConversationRequest,
+    ConversationResponse,
+    ConversationOut,
+    ConversationTurn,
+)
 from ..utils.metrics import MetricsCollector
+from ..services.conversation_service import ConversationService
 from ..services.conversation_db import ConversationService
 from db_service.session import get_db
 import os
@@ -53,6 +61,7 @@ router = APIRouter()
 # Create specialized routers
 chat_router = APIRouter(prefix="/chat", tags=["conversation"])
 health_router = APIRouter(prefix="/health", tags=["monitoring"])
+conversations_router = APIRouter(prefix="/conversations", tags=["conversation"])
 
 
 @chat_router.post(
@@ -392,6 +401,78 @@ async def get_metrics(
         )
 
 
+@conversations_router.get(
+    "",
+    response_model=List[ConversationOut],
+    summary="List user conversations",
+    description="Return conversations for the authenticated user",
+    responses={
+        200: {"description": "Conversations retrieved successfully"},
+        401: {"description": "Unauthorized"},
+    },
+)
+async def list_conversations(
+    user: Annotated[Dict[str, Any], Depends(get_current_user)],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> List[ConversationOut]:
+    """List conversations belonging to the current user."""
+    conversations = service.get_conversations(user["user_id"], limit=limit, offset=offset)
+    return [
+        ConversationOut(
+            conversation_id=c.conversation_id,
+            title=c.title,
+            status=c.status,
+            total_turns=c.total_turns,
+            last_activity_at=c.last_activity_at,
+        )
+        for c in conversations
+    ]
+
+
+@conversations_router.get(
+    "/{conversation_id}/turns",
+    response_model=List[ConversationTurn],
+    summary="Get conversation turns",
+    description="Return turns of a conversation if it belongs to the user",
+    responses={
+        200: {"description": "Conversation turns retrieved"},
+        404: {"description": "Conversation not found"},
+        401: {"description": "Unauthorized"},
+    },
+)
+async def get_conversation_turns(
+    conversation_id: str,
+    user: Annotated[Dict[str, Any], Depends(get_current_user)],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> List[ConversationTurn]:
+    """Return the turns for a specific conversation."""
+    conversation = service.get_conversation(conversation_id)
+    if conversation is None or conversation.user_id != user["user_id"]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    turns: List[ConversationTurn] = []
+    for t in conversation.turns:
+        turns.append(
+            ConversationTurn(
+                turn_id=t.turn_id,
+                user_message=t.user_message,
+                assistant_response=t.assistant_response,
+                timestamp=t.created_at,
+                metadata=t.turn_metadata or {},
+                turn_number=t.turn_number,
+                processing_time_ms=t.processing_time_ms or 0.0,
+                intent_detected=t.intent_detected,
+                entities_extracted=t.entities_extracted,
+                confidence_score=t.confidence_score,
+                error_occurred=t.error_occurred,
+                agent_chain=t.agent_chain,
+            )
+        )
+    return turns
+
+
 @router.get(
     "/status",
     summary="Service status information",
@@ -467,3 +548,4 @@ async def store_conversation_turn(
 # Include routers in main router
 router.include_router(chat_router)
 router.include_router(health_router)
+router.include_router(conversations_router)

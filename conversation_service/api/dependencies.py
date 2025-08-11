@@ -57,6 +57,8 @@ _rate_limit_lock = asyncio.Lock()
 # Evict users who haven't made a request within this TTL (seconds)
 _RATE_LIMIT_TTL = 300
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
 
 def get_db() -> Generator[Session, None, None]:
     """Provide a database session with automatic commit/rollback.
@@ -149,7 +151,6 @@ async def get_metrics_collector() -> MetricsCollector:
     return _metrics_collector
 
 
-async def get_current_user(request: Request) -> Dict[str, Any]:
 def get_conversation_service(
     db: Annotated[Session, Depends(get_db)]
 ) -> ConversationService:
@@ -172,7 +173,7 @@ async def get_current_user(
     Validate the provided Bearer token with the user service.
 
     Args:
-        request: Incoming FastAPI request
+        token: OAuth2 Bearer token extracted from the request
 
     Returns:
         Dict containing the authenticated user's profile information
@@ -180,24 +181,6 @@ async def get_current_user(
     Raises:
         HTTPException: If authentication fails or the user service is unavailable
     """
-
-    authorization = request.headers.get("Authorization")
-    if not authorization:
-        log_unauthorized_access(reason="missing token")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        log_unauthorized_access(reason="invalid authentication scheme")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication scheme",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -387,5 +370,5 @@ async def cleanup_dependencies():
     _team_manager = None
     _conversation_manager = None
     _metrics_collector = None
-    
+
     logger.info("API dependencies cleanup completed")

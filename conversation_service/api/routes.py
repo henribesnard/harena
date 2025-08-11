@@ -21,6 +21,7 @@ import asyncio
 from typing import Dict, Any, Annotated, TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
 from .dependencies import (
     get_team_manager,
@@ -28,11 +29,14 @@ from .dependencies import (
     validate_conversation_request,
     get_conversation_manager,
     validate_request_rate_limit,
-    get_metrics_collector
+    get_metrics_collector,
+    get_conversation_service,
 )
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
+from ..services.conversation_db import ConversationService
+from db_service.session import get_db
 import os
 
 if TYPE_CHECKING:
@@ -69,6 +73,10 @@ async def chat_endpoint(
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
     metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
+    conversation_service: Annotated[
+        ConversationService, Depends(get_conversation_service)
+    ],
+    db: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validate_request_rate_limit)],
     validated_request: Annotated[ConversationRequest, Depends(validate_conversation_request)]
 ) -> ConversationResponse:
@@ -96,8 +104,27 @@ async def chat_endpoint(
     start_time = time.time()
     conversation_id = validated_request.conversation_id
     user_id = user["user_id"]
-    
-    logger.info(f"Processing conversation for user {user_id}, conversation {conversation_id}")
+
+    try:
+        conversation = conversation_service.get_or_create_conversation(
+            user_id, conversation_id
+        )
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Conversation access denied",
+        )
+    except Exception as e:
+        logger.error(f"Conversation retrieval failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database access error",
+        )
+
+    conversation_id = conversation.conversation_id
+    logger.info(
+        f"Processing conversation for user {user_id}, conversation {conversation_id}"
+    )
     
     try:
         # Record request metrics
@@ -154,7 +181,21 @@ async def chat_endpoint(
         
         # Calculate processing time
         processing_time = int((time.time() - start_time) * 1000)
-        
+
+        try:
+            conversation_service.add_turn(
+                conversation,
+                validated_request.message,
+                team_response,
+                processing_time,
+            )
+        except Exception as e:
+            logger.error(f"Failed to store conversation turn: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to store conversation turn",
+            )
+
         # Create response
         response = ConversationResponse(
             message=team_response,

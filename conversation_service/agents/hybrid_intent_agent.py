@@ -107,29 +107,31 @@ class HybridIntentAgent(BaseFinancialAgent):
         
         logger.info("Initialized HybridIntentAgent with rule engine and AI fallback")
     
-    async def _execute_operation(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_operation(self, input_data: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         """
         Execute hybrid intent detection operation.
-        
+
         Args:
             input_data: Dict containing 'user_message' key
-            
+            user_id: ID of the requesting user
+
         Returns:
             Dict with intent detection results
         """
         user_message = input_data.get("user_message", "")
         if not user_message:
             raise ValueError("user_message is required for intent detection")
-        
-        return await self.detect_intent(user_message)
 
-    async def detect_intent(self, user_message: str) -> Dict[str, Any]:
+        return await self.detect_intent(user_message, user_id)
+
+    async def detect_intent(self, user_message: str, user_id: int) -> Dict[str, Any]:
         """
         Detect user intent using hybrid approach (rules + AI fallback).
-        
+
         Args:
             user_message: User's input message
-            
+            user_id: ID of the requesting user
+
         Returns:
             Dictionary containing intent detection results
         """
@@ -151,28 +153,32 @@ class HybridIntentAgent(BaseFinancialAgent):
                         "detection_method": rule_result.method,
                         "confidence": rule_result.confidence,
                         "intent_type": rule_result.intent_type,
-                        "entities": rule_result.entities,
+                        "entities": [e.model_dump() for e in rule_result.entities],
+                        "intent_detected": rule_result.intent_type,
+                        "entities_extracted": [e.model_dump() for e in rule_result.entities],
                     },
                     "confidence_score": rule_result.confidence,
                 }
 
             # Stage 2: AI fallback for complex cases
-            ai_result = await self._ai_fallback_detection(user_message, rule_result)
+            ai_result = await self._ai_fallback_detection(user_message, rule_result, user_id)
             self.detection_stats.ai_fallback_uses += 1
             self._update_detection_stats(ai_time=time.perf_counter() - start_time)
 
-            return {
-                "content": f"Intent detected: {ai_result.intent_type}",
-                "metadata": {
-                    "intent_result": ai_result,
-                    "detection_method": DetectionMethod.AI_FALLBACK,
-                    "confidence": ai_result.confidence,
-                    "intent_type": ai_result.intent_type,
-                    "entities": ai_result.entities,
-                    "rule_backup": rule_result.model_dump() if rule_result else None,
-                },
-                "confidence_score": ai_result.confidence,
-            }
+                return {
+                    "content": f"Intent detected: {ai_result.intent_type}",
+                    "metadata": {
+                        "intent_result": ai_result,
+                        "detection_method": DetectionMethod.AI_FALLBACK,
+                        "confidence": ai_result.confidence,
+                        "intent_type": ai_result.intent_type,
+                        "entities": [e.model_dump() for e in ai_result.entities],
+                        "intent_detected": ai_result.intent_type,
+                        "entities_extracted": [e.model_dump() for e in ai_result.entities],
+                        "rule_backup": rule_result.model_dump() if rule_result else None,
+                    },
+                    "confidence_score": ai_result.confidence,
+                }
             
         except Exception as e:
             logger.error(f"Intent detection failed for message: {user_message[:100]}... Error: {e}")
@@ -187,18 +193,20 @@ class HybridIntentAgent(BaseFinancialAgent):
                 processing_time_ms=(time.perf_counter() - start_time) * 1000,
             )
 
-            return {
-                "content": "Intent detected: GENERAL (fallback)",
-                "metadata": {
-                    "intent_result": fallback_result,
-                    "detection_method": DetectionMethod.FALLBACK,
-                    "confidence": 0.5,
-                    "intent_type": fallback_result.intent_type,
-                    "entities": fallback_result.entities,
-                    "error": str(e),
-                },
-                "confidence_score": 0.5,
-            }
+                return {
+                    "content": "Intent detected: GENERAL (fallback)",
+                    "metadata": {
+                        "intent_result": fallback_result,
+                        "detection_method": DetectionMethod.FALLBACK,
+                        "confidence": 0.5,
+                        "intent_type": fallback_result.intent_type,
+                        "entities": [],
+                        "intent_detected": fallback_result.intent_type,
+                        "entities_extracted": [],
+                        "error": str(e),
+                    },
+                    "confidence_score": 0.5,
+                }
 
     def _map_rule_category(self, category: str) -> IntentCategory:
         """Map rule engine categories to IntentCategory values."""
@@ -289,7 +297,12 @@ class HybridIntentAgent(BaseFinancialAgent):
             logger.warning(f"Rule-based detection failed: {e}")
             return None
     
-    async def _ai_fallback_detection(self, message: str, rule_backup: Optional[IntentResult] = None) -> IntentResult:
+    async def _ai_fallback_detection(
+        self,
+        message: str,
+        rule_backup: Optional[IntentResult] = None,
+        user_id: int,
+    ) -> IntentResult:
         """
         AI-powered intent detection fallback using DeepSeek.
 
@@ -297,6 +310,7 @@ class HybridIntentAgent(BaseFinancialAgent):
             message: User message to analyze
             rule_backup: Optional rule-based result providing context and
                 metadata (search_required flag, suggested actions)
+            user_id: ID of the requesting user
 
         Returns:
             IntentResult from AI analysis, enriched with rule backup metadata
@@ -314,7 +328,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                     {"role": "user", "content": context}
                 ],
                 temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens
+                max_tokens=self.config.max_tokens,
+                user_id=user_id,
             )
             
             # Parse AI response into structured result

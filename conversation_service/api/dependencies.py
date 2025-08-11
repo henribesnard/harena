@@ -40,6 +40,10 @@ from ..utils.logging import log_unauthorized_access
 from ..services.conversation_db import ConversationService
 from config_service.config import settings
 
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/users/auth/login"
+)
+
 if TYPE_CHECKING:
     from ..core.mvp_team_manager import MVPTeamManager
 

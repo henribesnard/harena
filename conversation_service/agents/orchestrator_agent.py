@@ -88,14 +88,16 @@ class WorkflowExecutor:
             "total_steps": len(steps),
         }
         
-    async def execute_workflow(self, user_message: str,
-                             conversation_id: str) -> Dict[str, Any]:
+    async def execute_workflow(
+        self, user_message: str, conversation_id: str, user_id: int
+    ) -> Dict[str, Any]:
         """
         Execute the complete 3-agent workflow.
 
         Args:
             user_message: User's input message
             conversation_id: Conversation identifier
+            user_id: ID of the requesting user
 
         Returns:
             Dict with workflow execution results including:
@@ -165,7 +167,8 @@ class WorkflowExecutor:
                     try:
                         search_response = await self.search_agent.execute_with_metrics({
                             "intent_result": intent_result,
-                            "user_message": user_message
+                            "user_message": user_message,
+                            "user_id": user_id,
                         })
                         if search_response.success:
                             workflow_data["search_results"] = search_response.metadata
@@ -204,7 +207,9 @@ class WorkflowExecutor:
                 response_step.status = WorkflowStepStatus.RUNNING
                 response_step.start_time = time.perf_counter()
                 try:
-                    context = self._create_conversation_context(conversation_id, user_message)
+                    context = self._create_conversation_context(
+                        conversation_id, user_message, user_id
+                    )
                     response_response = await self.response_agent.execute_with_metrics({
                         "user_message": user_message,
                         "search_results": workflow_data["search_results"],
@@ -311,19 +316,20 @@ class WorkflowExecutor:
             }
         }
     
-    def _create_conversation_context(self, conversation_id: str, 
-                                   user_message: str) -> Optional[ConversationContext]:
+    def _create_conversation_context(
+        self, conversation_id: str, user_message: str, user_id: int
+    ) -> Optional[ConversationContext]:
         """Create basic conversation context."""
         try:
             from ..models.conversation_models import ConversationContext
             
             return ConversationContext(
                 conversation_id=conversation_id,
-                user_id=1,  # Placeholder
+                user_id=user_id,
                 turns=[],
                 current_turn=1,
                 status="active",
-                language="fr"
+                language="fr",
             )
         except Exception as e:
             logger.warning(f"Failed to create conversation context: {e}")
@@ -440,7 +446,7 @@ class OrchestratorAgent(BaseFinancialAgent):
         Execute orchestration operation.
         
         Args:
-            input_data: Dict containing 'user_message' and 'conversation_id'
+            input_data: Dict containing 'user_message', 'conversation_id', and 'user_id'
             
         Returns:
             Dict with workflow execution results
@@ -451,15 +457,22 @@ class OrchestratorAgent(BaseFinancialAgent):
         if not user_message:
             raise ValueError("user_message is required for workflow execution")
         
-        return await self.process_conversation(user_message, conversation_id)
-    
-    async def process_conversation(self, user_message: str, conversation_id: str) -> Dict[str, Any]:
+        user_id = input_data.get("user_id")
+        if user_id is None:
+            raise ValueError("user_id is required for workflow execution")
+
+        return await self.process_conversation(user_message, conversation_id, user_id)
+
+    async def process_conversation(
+        self, user_message: str, conversation_id: str, user_id: int
+    ) -> Dict[str, Any]:
         """
         Process a conversation through the complete agent workflow.
         
         Args:
             user_message: User's input message
             conversation_id: Conversation identifier
+            user_id: ID of the requesting user
             
         Returns:
             Dictionary containing final response and workflow details
@@ -468,7 +481,9 @@ class OrchestratorAgent(BaseFinancialAgent):
         
         try:
             # Execute the complete workflow
-            workflow_result = await self._execute_workflow(user_message, conversation_id)
+            workflow_result = await self._execute_workflow(
+                user_message, conversation_id, user_id
+            )
             performance_summary = workflow_result.get("performance_summary", {})
 
             # Performance alerting
@@ -519,9 +534,13 @@ class OrchestratorAgent(BaseFinancialAgent):
                 "confidence_score": 0.1
             }
     
-    async def _execute_workflow(self, user_message: str, conversation_id: str) -> Dict[str, Any]:
+    async def _execute_workflow(
+        self, user_message: str, conversation_id: str, user_id: int
+    ) -> Dict[str, Any]:
         """Execute the workflow using the workflow executor."""
-        return await self.workflow_executor.execute_workflow(user_message, conversation_id)
+        return await self.workflow_executor.execute_workflow(
+            user_message, conversation_id, user_id
+        )
     
     def _update_workflow_stats(self, workflow_result: Dict[str, Any], duration_seconds: float) -> None:
         """Update workflow performance statistics."""

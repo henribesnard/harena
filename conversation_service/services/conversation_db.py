@@ -3,7 +3,7 @@ from __future__ import annotations
 """Database utilities for conversation management."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
@@ -53,12 +53,30 @@ class ConversationService:
 
     def add_turn(
         self,
-        conversation: Conversation,
+        conversation_id: str,
+        user_id: int,
         user_message: str,
         assistant_response: str,
         processing_time_ms: float,
+        intent_detected: Optional[str] = None,
+        entities_extracted: Optional[List[Dict[str, Any]]] = None,
+        confidence_score: Optional[float] = None,
+        agent_chain: Optional[List[str]] = None,
+        search_results_count: Optional[int] = None,
     ) -> ConversationTurn:
         """Persist a conversation turn and update conversation metadata."""
+
+        conversation = (
+            self.db.query(Conversation)
+            .filter(
+                Conversation.conversation_id == conversation_id,
+                Conversation.user_id == user_id,
+            )
+            .first()
+        )
+        if conversation is None:
+            raise ValueError("Conversation not found")
+
         turn_number = conversation.total_turns + 1
         turn = ConversationTurn(
             conversation_id=conversation.id,
@@ -66,6 +84,11 @@ class ConversationService:
             user_message=user_message,
             assistant_response=assistant_response,
             processing_time_ms=processing_time_ms,
+            intent_detected=intent_detected,
+            entities_extracted=entities_extracted or [],
+            confidence_score=confidence_score,
+            agent_chain=agent_chain or [],
+            search_results_count=search_results_count or 0,
         )
         try:
             self.db.add(turn)

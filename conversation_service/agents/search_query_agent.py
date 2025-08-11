@@ -26,6 +26,7 @@ from ..models.service_contracts import (
     SearchServiceResponse,
     QueryMetadata,
     SearchParameters,
+    SearchFilters,
 )
 from ..models.financial_models import IntentResult, FinancialEntity, EntityType
 from ..core.deepseek_client import DeepSeekClient
@@ -219,8 +220,12 @@ class SearchQueryAgent(BaseFinancialAgent):
             
             execution_time = (time.perf_counter() - start_time) * 1000
             
+            returned_hits = getattr(getattr(search_response, "response_metadata", {}), "returned_hits", 0)
+            if isinstance(getattr(search_response, "response_metadata", None), dict):
+                returned_hits = search_response.response_metadata.get("returned_hits", 0)
+
             return {
-                "content": f"Search completed: {search_response.response_metadata.returned_hits} results",
+                "content": f"Search completed: {returned_hits} results",
                 "metadata": {
                     "search_query": search_query.dict(),
                     "search_response": search_response.dict(),
@@ -295,7 +300,10 @@ class SearchQueryAgent(BaseFinancialAgent):
         ]
         if merchants:
             search_filters["merchants"] = merchants
-        
+
+        # Always filter by user_id for security and multi-tenant isolation
+        search_filters["user_id"] = user_id
+
         # Create query metadata
         query_metadata = QueryMetadata(
             conversation_id=f"conv_{int(time.time())}",  # Placeholder - should come from context
@@ -319,10 +327,12 @@ class SearchQueryAgent(BaseFinancialAgent):
         )
         
         # Create complete search query
+        filters_obj = SearchFilters(**search_filters) if search_filters else SearchFilters()
+
         search_query = SearchServiceQuery(
             query_metadata=query_metadata,
             search_parameters=search_params,
-            filters=search_filters if search_filters else None
+            filters=filters_obj
         )
         
         # Validate the query
@@ -344,17 +354,19 @@ class SearchQueryAgent(BaseFinancialAgent):
             SearchServiceResponse from the service
         """
         try:
-            # Prepare request
-            url = f"{self.search_service_url}/search/lexical"
+            # Prepare request payload for SearchRequest schema
+            url = f"{self.search_service_url}/search"
             headers = {
                 "Content-Type": "application/json",
                 "User-Agent": f"ConversationService/{self.name}"
             }
-            
+
+            request_payload = query.to_search_request() if hasattr(query, "to_search_request") else query.dict()
+
             # Execute HTTP request
             response = await self.http_client.post(
                 url=url,
-                json=query.dict(),
+                json=request_payload,
                 headers=headers
             )
             
@@ -363,8 +375,14 @@ class SearchQueryAgent(BaseFinancialAgent):
             # Parse response
             response_data = response.json()
             search_response = SearchServiceResponse(**response_data)
-            
-            logger.info(f"Search query executed successfully: {search_response.response_metadata.returned_hits} results")
+
+            returned_hits = getattr(getattr(search_response, "response_metadata", {}), "returned_hits", 0)
+            if isinstance(getattr(search_response, "response_metadata", None), dict):
+                returned_hits = search_response.response_metadata.get("returned_hits", 0)
+
+            logger.info(
+                f"Search query executed successfully: {returned_hits} results"
+            )
             
             return search_response
             

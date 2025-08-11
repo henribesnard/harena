@@ -171,6 +171,7 @@ def get_conversation_service(
 
 
 async def get_current_user(
+    request: Request,
     token: Annotated[str, Depends(oauth2_scheme)]
 ) -> Dict[str, Any]:
     """

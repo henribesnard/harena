@@ -260,6 +260,26 @@ class ConversationTurn(BaseModel):
     }
 
 
+class ConversationOut(BaseModel):
+    """Lightweight conversation representation for API responses."""
+
+    conversation_id: str = Field(
+        ..., description="Unique identifier for the conversation"
+    )
+    title: Optional[str] = Field(
+        default=None, description="Optional conversation title"
+    )
+    status: str = Field(
+        ..., description="Current status of the conversation"
+    )
+    total_turns: int = Field(
+        ..., description="Total number of turns in the conversation", ge=0
+    )
+    last_activity_at: datetime = Field(
+        ..., description="Timestamp of the last activity"
+    )
+
+
 class ConversationContext(BaseModel):
     """
     Complete conversation context with all turns and state management.

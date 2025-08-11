@@ -7,11 +7,12 @@ and request validation.
 
 Dependencies:
     - get_team_manager: Provides singleton MVPTeamManager instance
-    - get_current_user: Authentication and user context (placeholder)
+    - get_current_user: Authentication and user context
     - validate_conversation_request: Request validation and enrichment
     - get_conversation_manager: Conversation context management
     - validate_request_rate_limit: Rate limiting validation
     - get_metrics_collector: Metrics collection dependency
+    - get_conversation_service: Database conversation service
 
 Author: Conversation Service Team
 Created: 2025-01-31
@@ -28,13 +29,13 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import httpx
 
+from db_service.session import get_db
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
-from config_service.config import settings
-from db_service.session import get_db
 from ..services.conversation_db import ConversationService
+from config_service.config import settings
 
 if TYPE_CHECKING:
     from ..core.mvp_team_manager import MVPTeamManager
@@ -136,7 +137,15 @@ async def get_metrics_collector() -> MetricsCollector:
 def get_conversation_service(
     db: Annotated[Session, Depends(get_db)]
 ) -> ConversationService:
-    """Provide a ConversationService bound to a database session."""
+    """
+    Dependency to provide ConversationService instance bound to a database session.
+    
+    Args:
+        db: Database session from FastAPI dependency injection
+        
+    Returns:
+        ConversationService: Service instance for conversation operations
+    """
     return ConversationService(db)
 
 

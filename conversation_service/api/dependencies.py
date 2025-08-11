@@ -22,11 +22,13 @@ import logging
 import time
 import asyncio
 from collections import deque
-from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
+from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING, Generator
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 import httpx
+from sqlalchemy.orm import Session
 
+from db_service.session import SessionLocal
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
@@ -54,6 +56,23 @@ _rate_limit_storage: Dict[str, Deque[float]] = {}
 _rate_limit_lock = asyncio.Lock()
 # Evict users who haven't made a request within this TTL (seconds)
 _RATE_LIMIT_TTL = 300
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Provide a database session with automatic commit/rollback.
+
+    Yields:
+        Session: SQLAlchemy database session
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 async def get_team_manager() -> "MVPTeamManager":

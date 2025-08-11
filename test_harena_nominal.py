@@ -39,6 +39,7 @@ class HarenaTestClient:
         self.base_url = base_url.rstrip('/')
         self.token: Optional[str] = None
         self.user_id: Optional[int] = None
+        self.conversation_id: Optional[str] = None
         self.session = requests.Session()
         self.session.timeout = REQUEST_TIMEOUT
     
@@ -123,10 +124,12 @@ class HarenaTestClient:
         
         response = self._make_request("GET", "/users/me")
         success, json_data = self._print_response(response)
-        
+
         if success and json_data and 'id' in json_data:
             self.user_id = json_data['id']
+            self.conversation_id = f"conv-{self.user_id}"
             print(f"✅ User ID récupéré: {self.user_id}")
+            print(f"✅ Conversation ID généré: {self.conversation_id}")
             print(f"✅ Email: {json_data.get('email', 'N/A')}")
             print(f"✅ Nom: {json_data.get('first_name', '')} {json_data.get('last_name', '')}")
             return True
@@ -316,24 +319,36 @@ class HarenaTestClient:
     def test_conversation_chat(self) -> bool:
         """Test 8: Chat conversation."""
         self._print_step(8, "CHAT CONVERSATION")
+        if not self.conversation_id or not self.user_id:
+            print("❌ conversation_id ou user_id manquant")
+            return False
 
         payload = {
-            "conversation_id": "test-conversation",
-            "message": "Bonjour"
+            "conversation_id": self.conversation_id,
+            "message": "Bonjour",
+            "metadata": {"user_id": self.user_id}
         }
         headers = {'Content-Type': 'application/json'}
-        response = self._make_request("POST", "/conversation/chat",
-                                      headers=headers,
-                                      data=json.dumps(payload))
+        response = self._make_request(
+            "POST",
+            "/conversation/chat",
+            headers=headers,
+            data=json.dumps(payload)
+        )
 
         success, json_data = self._print_response(response)
 
         if success and json_data:
-            if json_data.get('success') is True:
+            metadata = json_data.get('metadata', {}) if isinstance(json_data, dict) else {}
+            if (
+                json_data.get('success') is True
+                and json_data.get('conversation_id') == self.conversation_id
+                and metadata.get('user_id') == self.user_id
+            ):
                 print("✅ Chat success")
                 return True
             else:
-                print("❌ success != True")
+                print("❌ Réponse incohérente avec l'utilisateur")
                 return False
         else:
             print("❌ Échec appel chat")

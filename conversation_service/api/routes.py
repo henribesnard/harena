@@ -18,7 +18,7 @@ Version: 1.0.0 MVP - FastAPI Routes
 import logging
 import time
 import asyncio
-from typing import Dict, Any, Annotated
+from typing import Dict, Any, Annotated, TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 
@@ -30,12 +30,15 @@ from .dependencies import (
     validate_request_rate_limit,
     get_metrics_collector
 )
-
-from ..core.mvp_team_manager import MVPTeamManager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 import os
+
+if TYPE_CHECKING:
+    from ..core.mvp_team_manager import MVPTeamManager
+else:
+    MVPTeamManager = Any
 
 # Configure logging
 logger = logging.getLogger(__name__)

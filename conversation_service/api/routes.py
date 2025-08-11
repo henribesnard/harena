@@ -194,7 +194,8 @@ async def chat_endpoint(
 async def health_check(
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
-    metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)]
+    metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
+    user: Annotated[Dict[str, Any], Depends(get_current_user)]
 ) -> Dict[str, Any]:
     """
     Comprehensive health check for all service components.
@@ -352,7 +353,9 @@ async def get_metrics(
     description="Basic service status and configuration",
     tags=["monitoring"]
 )
-async def get_status() -> Dict[str, Any]:
+async def get_status(
+    user: Annotated[Dict[str, Any], Depends(get_current_user)]
+) -> Dict[str, Any]:
     """
     Get basic service status and configuration information.
     
@@ -360,7 +363,7 @@ async def get_status() -> Dict[str, Any]:
         Dict containing service status
     """
     environment = os.getenv("ENVIRONMENT", "development")
-    enable_auth = os.getenv("ENABLE_AUTHENTICATION", "false").lower() == "true"
+    enable_auth = True
     
     return {
         "service": "conversation_service_mvp",

@@ -24,19 +24,22 @@ import asyncio
 from collections import deque
 from typing import Dict, Optional, Any, Annotated, Deque
 from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import OAuth2PasswordBearer
+import httpx
 
 from ..core.mvp_team_manager import MVPTeamManager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
-import os
+from config_service.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Security scheme for authentication
-security = HTTPBearer(auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/auth/login"
+)
 
 # Global instances (singleton pattern)
 _team_manager: Optional[MVPTeamManager] = None
@@ -123,57 +126,51 @@ async def get_metrics_collector() -> MetricsCollector:
 
 
 async def get_current_user(
-    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)]
+    token: Annotated[str, Depends(oauth2_scheme)]
 ) -> Dict[str, Any]:
     """
-    Authentication dependency (placeholder implementation).
-    
-    In MVP, returns a mock user. In production, this should validate JWT tokens,
-    check user permissions, and return user context from database.
-    
+    Validate the provided Bearer token with the user service.
+
     Args:
-        credentials: Bearer token from Authorization header
-        
+        token: JWT access token obtained from the user service
+
     Returns:
-        Dict containing user information
-        
+        Dict containing the authenticated user's profile information
+
     Raises:
-        HTTPException: If authentication fails (disabled in MVP)
+        HTTPException: If authentication fails or the user service is unavailable
     """
-    # MVP: Return mock user without authentication
-    # TODO: Implement real JWT validation for production
-    enable_auth = os.getenv("ENABLE_AUTHENTICATION", "false").lower() == "true"
-    
-    if enable_auth:
-        if not credentials:
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/me",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == status.HTTP_401_UNAUTHORIZED:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
+                detail="Invalid authentication credentials",
                 headers={"WWW-Authenticate": "Bearer"}
             )
-        
-        # TODO: Validate JWT token here
-        # For now, accept any token
-        token = credentials.credentials
-        if not token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication token"
-            )
-    
-    # Return mock user for MVP
-    mock_user = {
-        "user_id": 12345,
-        "username": "mvp_user",
-        "email": "user@harena.ai",
-        "is_active": True,
-        "permissions": ["chat", "view_metrics"],
-        "subscription_type": "premium",
-        "rate_limit_tier": "standard"
-    }
-    
-    logger.debug(f"Authenticated user: {mock_user['user_id']}")
-    return mock_user
+        logger.error(f"User service returned error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User service error"
+        )
+    except httpx.RequestError as exc:
+        logger.error(f"Failed to contact user service: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User service unavailable"
+        )
+
+    user_data = response.json()
+    user_data.setdefault("user_id", user_data.get("id"))
+    logger.debug(f"Authenticated user: {user_data.get('user_id')}")
+    return user_data
 
 
 def validate_conversation_request(request: ConversationRequest) -> ConversationRequest:

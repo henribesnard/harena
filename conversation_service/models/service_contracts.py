@@ -249,6 +249,12 @@ class SearchFilters(BaseModel):
         description="Additional custom filters"
     )
 
+    user_id: Optional[int] = Field(
+        default=None,
+        description="Identifier of the user executing the query",
+        gt=0
+    )
+
     @field_validator("date_range")
     @classmethod
     def validate_date_range(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
@@ -393,6 +399,22 @@ class SearchServiceQuery(BaseModel):
             }
         }
     }
+
+    def to_search_request(self) -> Dict[str, Any]:
+        """Convert this query to the simplified SearchRequest schema."""
+        filters_dict = self.filters.dict() if self.filters else {}
+        return {
+            "user_id": self.query_metadata.user_id,
+            "query": getattr(self.search_parameters, "search_text", ""),
+            "filters": filters_dict,
+            "limit": getattr(self.search_parameters, "size", getattr(self.search_parameters, "max_results", 20)),
+            "offset": getattr(self.search_parameters, "offset", 0),
+            "metadata": {
+                "conversation_id": self.query_metadata.conversation_id,
+                "intent_type": self.query_metadata.intent_type,
+                "source_agent": self.query_metadata.source_agent,
+            },
+        }
 
 
 class ResponseMetadata(BaseModel):

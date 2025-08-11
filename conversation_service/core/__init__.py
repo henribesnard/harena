@@ -58,14 +58,33 @@ except ImportError as e:
     CONVERSATION_MANAGER_AVAILABLE = False
     ConversationManager = None
 
-try:
-    from .mvp_team_manager import MVPTeamManager, TeamConfiguration
-    TEAM_MANAGER_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"MVPTeamManager not available: {e}")
-    TEAM_MANAGER_AVAILABLE = False
-    MVPTeamManager = None
-    TeamConfiguration = None
+MVPTeamManager = None
+TeamConfiguration = None
+TEAM_MANAGER_AVAILABLE = False
+
+
+def load_team_manager():
+    """Lazily load the team manager components."""
+    global MVPTeamManager, TeamConfiguration, TEAM_MANAGER_AVAILABLE
+
+    if TEAM_MANAGER_AVAILABLE and MVPTeamManager and TeamConfiguration:
+        return MVPTeamManager, TeamConfiguration
+
+    try:
+        from .mvp_team_manager import (
+            MVPTeamManager as _MVPTeamManager,
+            TeamConfiguration as _TeamConfiguration,
+        )
+        MVPTeamManager = _MVPTeamManager
+        TeamConfiguration = _TeamConfiguration
+        TEAM_MANAGER_AVAILABLE = True
+    except ImportError as e:
+        logger.warning(f"MVPTeamManager not available: {e}")
+        MVPTeamManager = None
+        TeamConfiguration = None
+        TEAM_MANAGER_AVAILABLE = False
+
+    return MVPTeamManager, TeamConfiguration
 
 # Conditional imports for type checking
 if TYPE_CHECKING:
@@ -98,8 +117,9 @@ __all__ = [
     # Team Management
     "MVPTeamManager",
     "TeamConfiguration",
-    
+
     # Utility functions
+    "load_team_manager",
     "check_core_dependencies",
     "get_available_components",
     "get_core_config",
@@ -123,10 +143,12 @@ DEFAULT_CORE_CONFIG = {
 def check_core_dependencies() -> dict:
     """
     Check availability of all core dependencies.
-    
+
     Returns:
         Dictionary with availability status of each component
     """
+    load_team_manager()
+
     return {
         "deepseek_client": DEEPSEEK_AVAILABLE,
         "conversation_manager": CONVERSATION_MANAGER_AVAILABLE,
@@ -141,10 +163,12 @@ def check_core_dependencies() -> dict:
 def get_available_components() -> list:
     """
     Get list of available component names.
-    
+
     Returns:
         List of available component names
     """
+    load_team_manager()
+
     available = []
     
     if DEEPSEEK_AVAILABLE:
@@ -207,10 +231,12 @@ def get_core_config() -> dict:
 def validate_core_setup() -> dict:
     """
     Validate the core package setup and configuration.
-    
+
     Returns:
         Validation results with status and messages
     """
+    load_team_manager()
+
     results = {
         "valid": True,
         "errors": [],

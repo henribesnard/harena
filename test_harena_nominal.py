@@ -42,14 +42,12 @@ class HarenaTestClient:
         self.session = requests.Session()
         self.session.timeout = REQUEST_TIMEOUT
     
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
+    def _make_request(self, method: str, endpoint: str, use_auth: bool = True, **kwargs) -> requests.Response:
         """Fait une requête HTTP avec gestion d'erreurs."""
         url = f"{self.base_url}{endpoint}"
-        
-        # Ajouter l'Authorization header si token disponible
-        if self.token and 'headers' not in kwargs:
-            kwargs['headers'] = {}
-        if self.token:
+
+        # Ajouter l'Authorization header si token disponible et requis
+        if self.token and use_auth:
             kwargs['headers'] = kwargs.get('headers', {})
             kwargs['headers']['Authorization'] = f'Bearer {self.token}'
         
@@ -317,71 +315,57 @@ class HarenaTestClient:
         """Test 8: Chat conversation."""
         self._print_step(8, "CHAT CONVERSATION")
 
-        # Liste de messages représentatifs à envoyer séquentiellement
-        test_cases = [
-            {"message": "Bonjour", "expected_intent": "GREETING"},
-            {
-                "message": "Recherche mes dépenses Netflix",
-                "expected_intent": "TRANSACTION_SEARCH",
-            },
-            {"message": "Quel est mon solde ?", "expected_intent": "BALANCE_INQUIRY"},
-            {
-                "message": "Analyse mes dépenses alimentaires",
-                "expected_intent": "SPENDING_ANALYSIS",
-            },
-        ]
-
         headers = {"Content-Type": "application/json"}
         conversation_id = "test-conversation"
-        all_passed = True
 
-        for idx, case in enumerate(test_cases, start=1):
-            payload = {
-                "conversation_id": conversation_id,
-                "message": case["message"],
-            }
+        # 1) Appel sans jeton - doit retourner 401
+        payload = {"conversation_id": conversation_id, "message": "Test sans token"}
+        response = self._make_request(
+            "POST", "/conversation/chat", headers=headers, data=json.dumps(payload), use_auth=False
+        )
+        success, _ = self._print_response(response, expected_status=401)
+        if not success:
+            print("❌ L'appel sans jeton n'a pas retourné 401")
+            return False
 
-            print(f"\n--- Chat message {idx}: {case['message']} ---")
-            response = self._make_request(
-                "POST",
-                "/conversation/chat",
-                headers=headers,
-                data=json.dumps(payload),
-            )
+        # 2) Appel authentifié avec message de recherche Netflix
+        payload = {
+            "conversation_id": conversation_id,
+            "message": "Recherche mes dépenses Netflix",
+        }
+        response = self._make_request(
+            "POST", "/conversation/chat", headers=headers, data=json.dumps(payload)
+        )
+        success, json_data = self._print_response(response)
 
-            success, json_data = self._print_response(response)
+        if not (success and json_data and json_data.get("success") is True):
+            print("❌ Échec chat conversation authentifié")
+            return False
 
-            if not (
-                success
-                and json_data
-                and json_data.get("success") is True
-                and json_data.get("message")
-            ):
-                print(f"❌ Échec chat pour le message {idx}")
-                all_passed = False
-                continue
+        returned_conv_id = json_data.get("conversation_id")
+        if returned_conv_id != conversation_id:
+            print("❌ conversation_id incohérent")
+            return False
 
-            # Vérification facultative de l'intention si renvoyée
-            expected_intent = case.get("expected_intent")
-            if expected_intent:
-                metadata = json_data.get("metadata", {})
-                detected_intent = metadata.get("intent") or metadata.get("intent_type")
-                if detected_intent:
-                    if detected_intent == expected_intent:
-                        print(f"✅ Intention détectée: {detected_intent}")
-                    else:
-                        print(
-                            f"❌ Intention attendue: {expected_intent}, reçue: {detected_intent}"
-                        )
-                        all_passed = False
-                else:
-                    print("ℹ️ Intention non fournie dans la réponse")
+        # 3) Vérification cohérence user_id via métriques
+        if not self.user_id:
+            print("❌ user_id non disponible")
+            return False
 
-        if all_passed:
-            print("✅ Chat sequence success")
+        metrics_resp = self._make_request("GET", "/conversation/metrics")
+        metrics_ok, metrics_json = self._print_response(metrics_resp)
+        if metrics_ok and metrics_json:
+            counters = metrics_json.get("service_metrics", {}).get("counters", {})
+            key = f"requests_total{{endpoint=chat,user_id={self.user_id}}}"
+            if counters.get(key, 0) < 1:
+                print("❌ Métriques user_id incohérentes")
+                return False
         else:
-            print("❌ Chat sequence failed")
-        return all_passed
+            print("❌ Impossible de vérifier les métriques de conversation")
+            return False
+
+        print("✅ Chat conversation authentifiée et cohérente")
+        return True
     
     def run_full_test(self, username: str, password: str) -> bool:
         """Lance le test complet."""

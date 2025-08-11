@@ -24,13 +24,13 @@ import asyncio
 from collections import deque
 from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
 from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer
 import httpx
 
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
+from ..utils.logging import log_unauthorized_access
 from config_service.config import settings
 
 if TYPE_CHECKING:
@@ -38,11 +38,6 @@ if TYPE_CHECKING:
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-# Security scheme for authentication
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/auth/login"
-)
 
 # Global instances (singleton pattern)
 _team_manager: Optional["MVPTeamManager"] = None
@@ -130,14 +125,12 @@ async def get_metrics_collector() -> MetricsCollector:
     return _metrics_collector
 
 
-async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)]
-) -> Dict[str, Any]:
+async def get_current_user(request: Request) -> Dict[str, Any]:
     """
     Validate the provided Bearer token with the user service.
 
     Args:
-        token: JWT access token obtained from the user service
+        request: Incoming FastAPI request
 
     Returns:
         Dict containing the authenticated user's profile information
@@ -145,6 +138,24 @@ async def get_current_user(
     Raises:
         HTTPException: If authentication fails or the user service is unavailable
     """
+
+    authorization = request.headers.get("Authorization")
+    if not authorization:
+        log_unauthorized_access(reason="missing token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        log_unauthorized_access(reason="invalid authentication scheme")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication scheme",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -155,10 +166,11 @@ async def get_current_user(
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == status.HTTP_401_UNAUTHORIZED:
+            log_unauthorized_access(reason="invalid token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"}
+                headers={"WWW-Authenticate": "Bearer"},
             )
         logger.error(f"User service returned error: {exc}")
         raise HTTPException(

@@ -33,6 +33,7 @@ from .dependencies import (
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
+from ..utils.logging import log_unauthorized_access
 import os
 
 if TYPE_CHECKING:
@@ -98,21 +99,35 @@ async def chat_endpoint(
     user_id = user["user_id"]
     
     logger.info(f"Processing conversation for user {user_id}, conversation {conversation_id}")
-    
+
     try:
         # Record request metrics
         metrics.record_request("chat", user_id)
-        
+
+        # Permission check
+        if "chat:write" not in user.get("permissions", []):
+            log_unauthorized_access(user_id=user_id, conversation_id=conversation_id, reason="insufficient permissions")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+
         # Get conversation context
-        try:
-            context = await conversation_manager.get_context(conversation_id)
-            logger.debug(f"Retrieved context with {len(context.turns)} previous turns")
-        except Exception as e:
-            logger.warning(f"Failed to retrieve context for {conversation_id}: {e}")
-            # Continue with empty context
-            from ..models.conversation_models import ConversationContext
-            context = ConversationContext(conversation_id=conversation_id, turns=[])
-        
+        context = await conversation_manager.store.get_context(conversation_id)
+        if context is None:
+            log_unauthorized_access(user_id=user_id, conversation_id=conversation_id, reason="conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found",
+            )
+        if getattr(context, "user_id", user_id) != user_id:
+            log_unauthorized_access(user_id=user_id, conversation_id=conversation_id, reason="forbidden conversation access")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        logger.debug(f"Retrieved context with {len(context.turns)} previous turns")
+
         # Process message through AutoGen team
         try:
             team_response = await team_manager.process_user_message(

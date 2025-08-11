@@ -23,8 +23,15 @@ try:
 except ImportError:
     VALIDATORS_AVAILABLE = False
 
+try:
+    from .logging import log_unauthorized_access
+    LOGGING_AVAILABLE = True
+except ImportError:
+    LOGGING_AVAILABLE = False
+
 __all__ = [
-    "ContractValidator" if VALIDATORS_AVAILABLE else "# ContractValidator not available"
+    "ContractValidator" if VALIDATORS_AVAILABLE else "# ContractValidator not available",
+    "log_unauthorized_access" if LOGGING_AVAILABLE else "# log_unauthorized_access not available",
 ]
 
 def check_dependencies():
@@ -33,6 +40,8 @@ def check_dependencies():
     
     if not VALIDATORS_AVAILABLE:
         missing_deps.append("validators module")
+    if not LOGGING_AVAILABLE:
+        missing_deps.append("logging module")
     
     if missing_deps:
         import logging

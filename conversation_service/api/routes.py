@@ -308,13 +308,17 @@ async def health_check(
         # Check AutoGen team manager with timeout
         try:
             team_health = await asyncio.wait_for(
-                team_manager.get_health_status(), timeout=component_timeout
+                team_manager.health_check(), timeout=component_timeout
             )
+            details = team_health.get("details", {})
             health_status["components"]["team_manager"] = {
-                "status": "healthy",
-                "agents_loaded": team_health.get("agents_count", 0),
-                "last_activity": team_health.get("last_activity")
+                "status": "healthy" if team_health.get("healthy") else "unhealthy",
+                "agents_loaded": len(details.get("agent_statuses", {})),
+                "last_activity": details.get("last_health_check")
             }
+            if not team_health.get("healthy"):
+                health_status["status"] = "degraded"
+                health_status["errors"].append({"component": "team_manager", "error": "unhealthy"})
         except Exception as e:
             logger.error(f"Team manager health check failed: {e}")
             health_status["status"] = "degraded"

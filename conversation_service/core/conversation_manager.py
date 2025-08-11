@@ -340,15 +340,16 @@ class ConversationManager:
         
         return context
     
-    async def add_turn(self, conversation_id: str, user_msg: str, 
+    async def add_turn(self, conversation_id: str, user_id: int, user_msg: str,
                       assistant_msg: str, intent_detected: Optional[str] = None,
                       entities_extracted: Optional[List[Dict]] = None,
                       processing_time_ms: Optional[float] = None) -> None:
         """
         Add a conversation turn.
-        
+
         Args:
             conversation_id: Conversation identifier
+            user_id: User identifier
             user_msg: User's message
             assistant_msg: Assistant's response
             intent_detected: Detected intent (optional)
@@ -356,10 +357,26 @@ class ConversationManager:
             processing_time_ms: Processing time (optional)
         """
         self.manager_stats["turns_added"] += 1
-        
-        # Get current context
-        context = await self.get_context(conversation_id)
-        
+        self.manager_stats["context_retrievals"] += 1
+
+        # Get current context or create a new one with provided user_id
+        context = await self.store.get_context(conversation_id)
+
+        if context is None:
+            context = ConversationContext(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                turns=[],
+                current_turn=0,
+                status="active",
+                language="fr",
+                domain="financial"
+            )
+            await self.store.save_context(context)
+        elif context.user_id != user_id:
+            context.user_id = user_id
+            await self.store.save_context(context)
+
         # Create conversation turn
         turn = ConversationTurn(
             user_message=user_msg,
@@ -372,10 +389,10 @@ class ConversationManager:
             error_occurred=False,
             agent_chain=["orchestrator_agent"]  # Default agent chain
         )
-        
+
         # Add turn to storage
         await self.store.add_turn(conversation_id, turn)
-        
+
         logger.debug(f"Added turn to conversation {conversation_id}")
     
     async def update_user_context(self, conversation_id: str, user_id: int, 

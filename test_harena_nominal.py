@@ -317,27 +317,71 @@ class HarenaTestClient:
         """Test 8: Chat conversation."""
         self._print_step(8, "CHAT CONVERSATION")
 
-        payload = {
-            "conversation_id": "test-conversation",
-            "message": "Bonjour"
-        }
-        headers = {'Content-Type': 'application/json'}
-        response = self._make_request("POST", "/conversation/chat",
-                                      headers=headers,
-                                      data=json.dumps(payload))
+        # Liste de messages représentatifs à envoyer séquentiellement
+        test_cases = [
+            {"message": "Bonjour", "expected_intent": "GREETING"},
+            {
+                "message": "Recherche mes dépenses Netflix",
+                "expected_intent": "TRANSACTION_SEARCH",
+            },
+            {"message": "Quel est mon solde ?", "expected_intent": "BALANCE_INQUIRY"},
+            {
+                "message": "Analyse mes dépenses alimentaires",
+                "expected_intent": "SPENDING_ANALYSIS",
+            },
+        ]
 
-        success, json_data = self._print_response(response)
+        headers = {"Content-Type": "application/json"}
+        conversation_id = "test-conversation"
+        all_passed = True
 
-        if success and json_data:
-            if json_data.get('success') is True:
-                print("✅ Chat success")
-                return True
-            else:
-                print("❌ success != True")
-                return False
+        for idx, case in enumerate(test_cases, start=1):
+            payload = {
+                "conversation_id": conversation_id,
+                "message": case["message"],
+            }
+
+            print(f"\n--- Chat message {idx}: {case['message']} ---")
+            response = self._make_request(
+                "POST",
+                "/conversation/chat",
+                headers=headers,
+                data=json.dumps(payload),
+            )
+
+            success, json_data = self._print_response(response)
+
+            if not (
+                success
+                and json_data
+                and json_data.get("success") is True
+                and json_data.get("message")
+            ):
+                print(f"❌ Échec chat pour le message {idx}")
+                all_passed = False
+                continue
+
+            # Vérification facultative de l'intention si renvoyée
+            expected_intent = case.get("expected_intent")
+            if expected_intent:
+                metadata = json_data.get("metadata", {})
+                detected_intent = metadata.get("intent") or metadata.get("intent_type")
+                if detected_intent:
+                    if detected_intent == expected_intent:
+                        print(f"✅ Intention détectée: {detected_intent}")
+                    else:
+                        print(
+                            f"❌ Intention attendue: {expected_intent}, reçue: {detected_intent}"
+                        )
+                        all_passed = False
+                else:
+                    print("ℹ️ Intention non fournie dans la réponse")
+
+        if all_passed:
+            print("✅ Chat sequence success")
         else:
-            print("❌ Échec appel chat")
-            return False
+            print("❌ Chat sequence failed")
+        return all_passed
     
     def run_full_test(self, username: str, password: str) -> bool:
         """Lance le test complet."""

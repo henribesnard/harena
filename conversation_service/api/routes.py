@@ -32,6 +32,7 @@ from .dependencies import (
     validate_request_rate_limit,
     get_metrics_collector,
     get_conversation_service,
+    get_conversation_read_service,
 )
 from ..core.conversation_manager import ConversationManager
 from ..models import (
@@ -44,8 +45,8 @@ import os
 
 from ..utils.logging import log_unauthorized_access
 from ..services.conversation_db import ConversationService as ConversationDBService
+from ..services.conversation_service import ConversationService
 from ..utils.metrics import MetricsCollector
-from ..services.conversation_db import ConversationService
 from db_service.session import get_db
 
 try:
@@ -454,7 +455,7 @@ async def get_metrics(
 )
 async def list_conversations(
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    service: Annotated[ConversationDBService, Depends(get_conversation_service)],
+    service: Annotated[ConversationService, Depends(get_conversation_read_service)],
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> List[ConversationOut]:
@@ -488,6 +489,7 @@ async def get_conversation_turns(
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
     service: Annotated[ConversationDBService, Depends(get_conversation_service)],
     limit: int = Query(10, ge=1, le=50),
+    service: Annotated[ConversationService, Depends(get_conversation_read_service)],
 ) -> List[ConversationTurn]:
     """Return the turns for a specific conversation."""
     conversation = service.get_conversation(conversation_id)

@@ -225,10 +225,21 @@ async def chat_endpoint(
 
         try:
             conversation_service.add_turn(
-                conversation,
-                validated_request.message,
-                team_response,
-                processing_time,
+                conversation_id=conversation.conversation_id,
+                user_id=user_id,
+                user_message=validated_request.message,
+                assistant_response=team_response.content,
+                processing_time_ms=processing_time,
+                intent_detected=team_response.metadata.get("intent_detected"),
+                entities_extracted=team_response.metadata.get("entities_extracted"),
+                confidence_score=team_response.confidence_score,
+                agent_chain=team_response.metadata.get("agent_chain"),
+                search_results_count=team_response.metadata.get(
+                    "search_results_count", 0
+                ),
+                search_execution_time_ms=team_response.metadata.get(
+                    "search_execution_time_ms"
+                ),
             )
         except Exception as e:
             logger.error(f"Failed to store conversation turn: {e}")

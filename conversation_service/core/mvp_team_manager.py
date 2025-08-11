@@ -490,17 +490,26 @@ class MVPTeamManager:
     async def health_check(self) -> Dict[str, Any]:
         """
         Perform and return current health status.
-        
+
         Returns:
             Dictionary containing current health status
         """
         await self._perform_health_check()
-        
+
         return {
             "healthy": self.team_health.overall_healthy if self.team_health else False,
             "timestamp": datetime.utcnow().isoformat(),
             "details": self.team_health.__dict__ if self.team_health else None
         }
+
+    async def get_health_status(self) -> Dict[str, Any]:
+        """
+        Backward compatible wrapper for :meth:`health_check`.
+
+        Returns:
+            Current health status information.
+        """
+        return await self.health_check()
     
     def is_healthy(self) -> bool:
         """

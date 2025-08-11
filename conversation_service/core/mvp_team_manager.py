@@ -222,6 +222,30 @@ class MVPTeamManager:
                 error_message=str(e),
                 confidence_score=0.1,
             )
+
+    async def process_user_message_with_metadata(
+        self, user_message: str, user_id: int, conversation_id: str
+    ) -> Dict[str, Any]:
+        """Process a user message and return response with agent metadata."""
+
+        response = await self.process_user_message(
+            user_message=user_message,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+
+        return {
+            "content": response.content,
+            "success": response.success,
+            "confidence_score": response.confidence_score,
+            "error_message": response.error_message,
+            "metadata": {
+                "intent_detected": response.metadata.get("intent_detected"),
+                "entities_extracted": response.metadata.get("entities_extracted"),
+                "agent_chain": response.metadata.get("agent_chain"),
+                "search_results_count": response.metadata.get("search_results_count"),
+            },
+        }
     
     def get_team_performance(self) -> Dict[str, Any]:
         """

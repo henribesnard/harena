@@ -25,6 +25,7 @@ from collections import deque
 from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 import httpx
 
 from ..core import load_team_manager
@@ -32,6 +33,8 @@ from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 from config_service.config import settings
+from db_service.session import get_db
+from ..services.conversation_db import ConversationService
 
 if TYPE_CHECKING:
     from ..core.mvp_team_manager import MVPTeamManager
@@ -126,8 +129,15 @@ async def get_metrics_collector() -> MetricsCollector:
     if _metrics_collector is None:
         logger.info("Initializing MetricsCollector singleton")
         _metrics_collector = MetricsCollector()
-    
+
     return _metrics_collector
+
+
+def get_conversation_service(
+    db: Annotated[Session, Depends(get_db)]
+) -> ConversationService:
+    """Provide a ConversationService bound to a database session."""
+    return ConversationService(db)
 
 
 async def get_current_user(

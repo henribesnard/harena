@@ -142,6 +142,7 @@ async def chat_endpoint(
             store_conversation_turn,
             conversation_manager,
             conversation_id,
+            user_id,
             validated_request.message,
             team_response,
             int((time.time() - start_time) * 1000),
@@ -386,6 +387,7 @@ async def get_status(
 async def store_conversation_turn(
     conversation_manager: ConversationManager,
     conversation_id: str,
+    user_id: int,
     user_message: str,
     assistant_message: str,
     processing_time_ms: int,
@@ -397,6 +399,7 @@ async def store_conversation_turn(
     Args:
         conversation_manager: Conversation manager instance
         conversation_id: Conversation identifier
+        user_id: User identifier
         user_message: User's message
         assistant_message: Assistant's response
         processing_time_ms: Processing time in milliseconds
@@ -405,6 +408,7 @@ async def store_conversation_turn(
     try:
         await conversation_manager.add_turn(
             conversation_id=conversation_id,
+            user_id=user_id,
             user_msg=user_message,
             assistant_msg=assistant_message,
             processing_time_ms=float(processing_time_ms)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from db_service.session import get_db
+from conversation_service.api.dependencies import get_db
 from user_service.api.deps import get_current_active_user
 from db_service.models.user import User
 from db_service.models.sync import RawStock, SyncAccount

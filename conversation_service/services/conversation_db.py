@@ -61,6 +61,10 @@ class ConversationService:
         processing_time_ms: float,
         intent_detected: Optional[str] = None,
         entities_extracted: Optional[List[Dict[str, Any]]] = None,
+        agent_chain: Optional[List[str]] = None,
+        search_results_count: Optional[int] = None,
+        confidence_score: Optional[float] = None,
+
         confidence_score: Optional[float] = None,
         agent_chain: Optional[List[str]] = None,
         search_results_count: Optional[int] = None,
@@ -122,6 +126,10 @@ class ConversationService:
             processing_time_ms=processing_time_ms,
             intent_detected=intent_detected,
             entities_extracted=entities_extracted or [],
+            agent_chain=agent_chain or [],
+            search_results_count=search_results_count or 0,
+            confidence_score=confidence_score,
+
             confidence_score=confidence_score,
             agent_chain=agent_chain or [],
             search_results_count=search_results_count or 0,

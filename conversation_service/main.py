@@ -280,10 +280,14 @@ async def pre_initialize_dependencies() -> None:
     
     try:
         # Test import of critical modules
-        from .core.mvp_team_manager import MVPTeamManager
+        from .core import load_team_manager
         from .core.conversation_manager import ConversationManager
         from .utils.metrics import MetricsCollector
-        
+
+        MVPTeamManager, _ = load_team_manager()
+        if MVPTeamManager is None:
+            raise ImportError("MVPTeamManager not available")
+
         # Test basic initialization without full setup
         logger.info("✅ Core modules loaded successfully")
         
@@ -304,10 +308,13 @@ async def initialize_dependencies() -> None:
     logger.info("🔧 Initializing dependencies")
 
     try:
-        from .core.mvp_team_manager import MVPTeamManager
+        from .core import load_team_manager
         from .core.conversation_manager import ConversationManager
 
         # Instantiate core components to ensure availability
+        MVPTeamManager, _ = load_team_manager()
+        if MVPTeamManager is None:
+            raise ImportError("MVPTeamManager not available")
         MVPTeamManager()
         conversation_manager = ConversationManager()
         await conversation_manager.initialize()

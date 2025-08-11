@@ -133,9 +133,9 @@ class WorkflowExecutor:
             intent_step.start_time = time.perf_counter()
             
             try:
-                intent_response = await self.intent_agent.execute_with_metrics({
-                    "user_message": user_message
-                })
+                intent_response = await self.intent_agent.execute_with_metrics(
+                    {"user_message": user_message}, user_id
+                )
                 
                 if intent_response.success:
                     workflow_data["intent_result"] = intent_response.metadata.get("intent_result")
@@ -165,11 +165,10 @@ class WorkflowExecutor:
                     search_step.status = WorkflowStepStatus.RUNNING
                     search_step.start_time = time.perf_counter()
                     try:
-                        search_response = await self.search_agent.execute_with_metrics({
-                            "intent_result": intent_result,
-                            "user_message": user_message,
-                            "user_id": user_id,
-                        })
+                        search_response = await self.search_agent.execute_with_metrics(
+                            {"intent_result": intent_result, "user_message": user_message},
+                            user_id,
+                        )
                         if search_response.success:
                             workflow_data["search_results"] = search_response.metadata
                             search_step.status = WorkflowStepStatus.COMPLETED
@@ -210,11 +209,14 @@ class WorkflowExecutor:
                     context = self._create_conversation_context(
                         conversation_id, user_message, user_id
                     )
-                    response_response = await self.response_agent.execute_with_metrics({
-                        "user_message": user_message,
-                        "search_results": workflow_data["search_results"],
-                        "context": context
-                    })
+                    response_response = await self.response_agent.execute_with_metrics(
+                        {
+                            "user_message": user_message,
+                            "search_results": workflow_data["search_results"],
+                            "context": context,
+                        },
+                        user_id,
+                    )
                     if response_response.success:
                         workflow_data["final_response"] = response_response.content
                         response_step.status = WorkflowStepStatus.COMPLETED
@@ -441,25 +443,22 @@ class OrchestratorAgent(BaseFinancialAgent):
         
         logger.info("Initialized OrchestratorAgent with 3-agent workflow")
     
-    async def _execute_operation(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_operation(self, input_data: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         """
         Execute orchestration operation.
-        
+
         Args:
-            input_data: Dict containing 'user_message', 'conversation_id', and 'user_id'
-            
+            input_data: Dict containing 'user_message' and optional 'conversation_id'
+            user_id: ID of the requesting user
+
         Returns:
             Dict with workflow execution results
         """
         user_message = input_data.get("user_message", "")
         conversation_id = input_data.get("conversation_id", f"conv_{int(time.time())}")
-        
+
         if not user_message:
             raise ValueError("user_message is required for workflow execution")
-        
-        user_id = input_data.get("user_id")
-        if user_id is None:
-            raise ValueError("user_id is required for workflow execution")
 
         return await self.process_conversation(user_message, conversation_id, user_id)
 

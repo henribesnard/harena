@@ -498,9 +498,37 @@ class OrchestratorAgent(BaseFinancialAgent):
                     total_duration,
                 )
             
+            # Extract workflow data for additional metadata
+            workflow_data = workflow_result.get("workflow_data", {})
+            intent_result = workflow_data.get("intent_result")
+            search_metadata = workflow_data.get("search_results") or {}
+            search_results_count = search_metadata.get("search_results_count")
+            if search_results_count is None:
+                sr_meta = (
+                    search_metadata.get("search_response", {})
+                    if isinstance(search_metadata, dict)
+                    else {}
+                )
+                rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
+                search_results_count = rm.get("returned_hits", 0)
+
+            entities_extracted = []
+            intent_detected = None
+            if intent_result is not None:
+                intent_detected = getattr(intent_result, "intent_type", None)
+                entities_extracted = [
+                    e.model_dump() for e in getattr(intent_result, "entities", [])
+                ]
+
+            steps = execution_details.get("steps", []) if isinstance(execution_details, dict) else []
+            agent_chain = [
+                "orchestrator_agent",
+                *[step.get("agent") for step in steps if step.get("status") != "skipped"],
+            ]
+
             # Update workflow statistics
             self._update_workflow_stats(workflow_result, time.perf_counter() - start_time)
-            
+
             return {
                 "content": workflow_result.get(
                     "final_response",
@@ -511,6 +539,10 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "execution_details": execution_details,
                     "performance_summary": performance_summary,
                     "conversation_id": conversation_id,
+                    "intent_detected": intent_detected,
+                    "entities_extracted": entities_extracted,
+                    "agent_chain": agent_chain,
+                    "search_results_count": search_results_count,
                 },
                 "confidence_score": self._calculate_workflow_confidence(workflow_result),
                 "token_usage": self._aggregate_token_usage(workflow_result),
@@ -528,7 +560,11 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "workflow_success": False,
                     "error": str(e),
                     "execution_time_ms": execution_time,
-                    "conversation_id": conversation_id
+                    "conversation_id": conversation_id,
+                    "intent_detected": None,
+                    "entities_extracted": [],
+                    "agent_chain": ["orchestrator_agent"],
+                    "search_results_count": 0,
                 },
                 "confidence_score": 0.1
             }

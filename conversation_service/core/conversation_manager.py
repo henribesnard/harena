@@ -343,7 +343,10 @@ class ConversationManager:
     async def add_turn(self, conversation_id: str, user_id: int, user_msg: str,
                       assistant_msg: str, intent_detected: Optional[str] = None,
                       entities_extracted: Optional[List[Dict]] = None,
-                      processing_time_ms: Optional[float] = None) -> None:
+                      processing_time_ms: Optional[float] = None,
+                      agent_chain: Optional[List[str]] = None,
+                      search_results_count: Optional[int] = None,
+                      confidence_score: Optional[float] = None) -> None:
         """
         Add a conversation turn.
 
@@ -355,6 +358,9 @@ class ConversationManager:
             intent_detected: Detected intent (optional)
             entities_extracted: Extracted entities (optional)
             processing_time_ms: Processing time (optional)
+            agent_chain: Chain of agents involved (optional)
+            search_results_count: Number of search results returned (optional)
+            confidence_score: Confidence score for the response (optional)
         """
         self.manager_stats["turns_added"] += 1
         self.manager_stats["context_retrievals"] += 1
@@ -378,6 +384,10 @@ class ConversationManager:
             await self.store.save_context(context)
 
         # Create conversation turn
+        metadata: Dict[str, Any] = {}
+        if search_results_count is not None:
+            metadata["search_results_count"] = search_results_count
+
         turn = ConversationTurn(
             user_message=user_msg,
             assistant_response=assistant_msg,
@@ -385,9 +395,10 @@ class ConversationManager:
             processing_time_ms=processing_time_ms or 0.0,
             intent_detected=intent_detected,
             entities_extracted=entities_extracted or [],
-            confidence_score=0.8,  # Default confidence
+            confidence_score=confidence_score or 0.8,
             error_occurred=False,
-            agent_chain=["orchestrator_agent"]  # Default agent chain
+            agent_chain=agent_chain or ["orchestrator_agent"],
+            metadata=metadata
         )
 
         # Add turn to storage

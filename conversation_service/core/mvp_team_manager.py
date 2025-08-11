@@ -31,6 +31,7 @@ from .conversation_manager import ConversationManager
 
 if TYPE_CHECKING:
     from ..agents.orchestrator_agent import OrchestratorAgent
+    from ..models.agent_models import AgentResponse
 
 logger = logging.getLogger(__name__)
 
@@ -146,33 +147,33 @@ class MVPTeamManager:
             logger.error(f"Team initialization failed: {e}")
             raise Exception(f"Failed to initialize team: {e}")
     
-    async def process_user_message(self, user_message: str, user_id: int, 
-                                 conversation_id: str) -> str:
+    async def process_user_message(self, user_message: str, user_id: int,
+                                 conversation_id: str) -> "AgentResponse":
         """
         Process a user message through the complete agent team.
-        
+
         Args:
             user_message: User's input message
             user_id: User identifier
             conversation_id: Conversation identifier
-            
+
         Returns:
-            Generated response string
-            
+            AgentResponse from the orchestrator containing content and metadata
+
         Raises:
             Exception: If team is not initialized or processing fails
         """
         if not self.is_initialized:
             raise Exception("Team not initialized. Call initialize_agents() first.")
-        
+
         start_time = asyncio.get_event_loop().time()
-        
+
         try:
             # Update conversation context with user info
             await self.conversation_manager.update_user_context(
                 conversation_id, user_id, user_message
             )
-            
+
             # Process through orchestrator
             response_data = await self.orchestrator.execute_with_metrics(
                 {
@@ -182,43 +183,45 @@ class MVPTeamManager:
                 user_id,
             )
             
+            response_data = await self.orchestrator.execute_with_metrics({
+                "user_message": user_message,
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+            })
+
+            execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
             if response_data.success:
-                final_response = response_data.content
-                
-                # Update conversation history
-                await self.conversation_manager.add_turn(
-                    conversation_id,
-                    user_id,
-                    user_message,
-                    final_response
-                )
-                
-                # Update team statistics
-                execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
                 self._update_team_stats(True, execution_time)
-                
                 logger.info(f"Successfully processed message for conversation {conversation_id}")
-                return final_response
-            
+                return response_data
             else:
                 # Handle orchestrator failure
                 error_msg = response_data.error_message or "Orchestrator execution failed"
                 logger.error(f"Orchestrator failed: {error_msg}")
-                
-                execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
+
                 self._update_team_stats(False, execution_time)
-                
-                # Return graceful error response
-                return self._generate_error_response(user_message, error_msg)
-                
+
+                # Return graceful error response while preserving metadata
+                response_data.content = self._generate_error_response(user_message, error_msg)
+                return response_data
+
         except Exception as e:
             execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
             self._update_team_stats(False, execution_time)
-            
+
             logger.error(f"Message processing failed: {e}")
-            
-            # Return graceful error response
-            return self._generate_error_response(user_message, str(e))
+
+            from ..models.agent_models import AgentResponse
+
+            return AgentResponse(
+                agent_name="orchestrator_agent",
+                content=self._generate_error_response(user_message, str(e)),
+                metadata={},
+                execution_time_ms=execution_time,
+                success=False,
+                error_message=str(e),
+                confidence_score=0.1,
+            )
     
     def get_team_performance(self) -> Dict[str, Any]:
         """

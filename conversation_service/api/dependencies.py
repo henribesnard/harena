@@ -7,11 +7,12 @@ and request validation.
 
 Dependencies:
     - get_team_manager: Provides singleton MVPTeamManager instance
-    - get_current_user: Authentication and user context (placeholder)
+    - get_current_user: Authentication and user context
     - validate_conversation_request: Request validation and enrichment
     - get_conversation_manager: Conversation context management
     - validate_request_rate_limit: Rate limiting validation
     - get_metrics_collector: Metrics collection dependency
+    - get_conversation_service: Database conversation service
 
 Author: Conversation Service Team
 Created: 2025-01-31
@@ -24,13 +25,17 @@ import asyncio
 from collections import deque
 from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
 from fastapi import Depends, HTTPException, status, Request
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 import httpx
 
+from db_service.session import get_db
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 from ..utils.logging import log_unauthorized_access
+from ..services.conversation_db import ConversationService
 from config_service.config import settings
 
 if TYPE_CHECKING:
@@ -121,11 +126,29 @@ async def get_metrics_collector() -> MetricsCollector:
     if _metrics_collector is None:
         logger.info("Initializing MetricsCollector singleton")
         _metrics_collector = MetricsCollector()
-    
+
     return _metrics_collector
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:
+def get_conversation_service(
+    db: Annotated[Session, Depends(get_db)]
+) -> ConversationService:
+    """
+    Dependency to provide ConversationService instance bound to a database session.
+    
+    Args:
+        db: Database session from FastAPI dependency injection
+        
+    Returns:
+        ConversationService: Service instance for conversation operations
+    """
+    return ConversationService(db)
+
+
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)]
+) -> Dict[str, Any]:
     """
     Validate the provided Bearer token with the user service.
 

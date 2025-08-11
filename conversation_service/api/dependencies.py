@@ -30,7 +30,6 @@ from sqlalchemy.orm import Session
 import httpx
 
 from db_service.session import SessionLocal
-from db_service.session import get_db
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
@@ -44,10 +43,6 @@ from ..services.conversation_service import (
 )
 from config_service.config import settings
 
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/users/auth/login"
-)
-
 if TYPE_CHECKING:
     from ..core.mvp_team_manager import MVPTeamManager
 
@@ -56,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 # Global instances (singleton pattern)
 _team_manager: Optional["MVPTeamManager"] = None
-_conversation_manager: Optional[ConversationManager] = None  
+_conversation_manager: Optional[ConversationManager] = None
 _metrics_collector: Optional[MetricsCollector] = None
 
 # Rate limiting storage (in-memory for MVP; use Redis or another shared backend in production)

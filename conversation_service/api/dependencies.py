@@ -149,7 +149,6 @@ async def get_metrics_collector() -> MetricsCollector:
     return _metrics_collector
 
 
-async def get_current_user(request: Request) -> Dict[str, Any]:
 def get_conversation_service(
     db: Annotated[Session, Depends(get_db)]
 ) -> ConversationService:
@@ -166,6 +165,7 @@ def get_conversation_service(
 
 
 async def get_current_user(
+    request: Request,
     token: Annotated[str, Depends(oauth2_scheme)]
 ) -> Dict[str, Any]:
     """

@@ -139,3 +139,64 @@ def test_search_query_agent_uses_provided_user_id():
     import asyncio
 
     asyncio.run(run_test())
+
+
+def test_execute_search_query_sends_user_id_in_request():
+    async def run_test():
+        client = DummyDeepSeekClient()
+        agent = SearchQueryAgent(client, search_service_url="http://search")
+        agent.name = "search_query_agent"
+
+        agent._extract_additional_entities = AsyncMock(return_value=[])
+
+        from conversation_service.utils.validators import ContractValidator
+
+        ContractValidator.validate_search_query = lambda self, query: []
+
+        captured = {}
+
+        class DummyHTTPClient:
+            async def post(self, url, json, headers):
+                captured["url"] = url
+                captured["json"] = json
+
+                class Resp:
+                    def raise_for_status(self):
+                        pass
+
+                    def json(self):
+                        return {
+                            "response_metadata": {
+                                "query_id": "q1",
+                                "processing_time_ms": 1.0,
+                                "total_results": 0,
+                                "returned_results": 0,
+                                "returned_hits": 0,
+                                "has_more_results": False,
+                                "search_strategy_used": "lexical",
+                            },
+                            "results": [],
+                        }
+
+                return Resp()
+
+        agent.http_client = DummyHTTPClient()
+
+        intent = IntentResult(
+            intent_type="TRANSACTION_SEARCH",
+            intent_category=IntentCategory.TRANSACTION_SEARCH,
+            confidence=0.8,
+            entities=[],
+            method=DetectionMethod.RULE_BASED,
+            processing_time_ms=1.0,
+        )
+
+        await agent.process_search_request(intent, "test message", user_id=2)
+
+        assert captured["url"].endswith("/search")
+        assert captured["json"]["user_id"] == 2
+        assert captured["json"]["filters"]["user_id"] == 2
+
+    import asyncio
+
+    asyncio.run(run_test())

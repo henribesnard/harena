@@ -99,6 +99,14 @@ class QueryMetadata(BaseModel):
         }
     }
 
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, v: int) -> int:
+        """Ensure user_id is provided and positive."""
+        if v is None or v <= 0:
+            raise ValueError("user_id must be greater than 0")
+        return v
+
 
 class SearchParameters(BaseModel):
     """

@@ -33,6 +33,8 @@ from ..core.deepseek_client import DeepSeekClient
 from ..utils.validators import ContractValidator
 
 logger = logging.getLogger(__name__)
+# Dedicated logger for security/audit events
+audit_logger = logging.getLogger("audit")
 
 
 class QueryOptimizer:
@@ -362,6 +364,16 @@ class SearchQueryAgent(BaseFinancialAgent):
             }
 
             request_payload = query.to_search_request() if hasattr(query, "to_search_request") else query.dict()
+
+            # Audit logging for search execution
+            metadata = query.query_metadata
+            audit_logger.info(
+                "search query execution: user_id=%s conversation_id=%s query_id=%s intent_type=%s",
+                metadata.user_id,
+                metadata.conversation_id,
+                metadata.query_id,
+                metadata.intent_type,
+            )
 
             # Execute HTTP request
             response = await self.http_client.post(

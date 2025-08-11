@@ -36,7 +36,12 @@ from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 from ..utils.logging import log_unauthorized_access
-from ..services.conversation_db import ConversationService
+from ..services.conversation_db import (
+    ConversationService as ConversationWriteService,
+)
+from ..services.conversation_service import (
+    ConversationService as ConversationReadService,
+)
 from config_service.config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(
@@ -156,17 +161,26 @@ async def get_metrics_collector() -> MetricsCollector:
 
 def get_conversation_service(
     db: Annotated[Session, Depends(get_db)]
-) -> ConversationService:
+) -> ConversationWriteService:
     """
-    Dependency to provide ConversationService instance bound to a database session.
-    
+    Dependency to provide ConversationWriteService instance bound to a database
+    session.
+
     Args:
         db: Database session from FastAPI dependency injection
-        
+
     Returns:
-        ConversationService: Service instance for conversation operations
+        ConversationWriteService: Service instance for conversation write
+        operations
     """
-    return ConversationService(db)
+    return ConversationWriteService(db)
+
+
+def get_conversation_read_service(
+    db: Annotated[Session, Depends(get_db)]
+) -> ConversationReadService:
+    """Dependency to provide ConversationReadService for read-only operations."""
+    return ConversationReadService(db)
 
 
 async def get_current_user(

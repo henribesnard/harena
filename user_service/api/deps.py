@@ -5,7 +5,7 @@ from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from db_service.session import get_db
+from conversation_service.api.dependencies import get_db
 from db_service.models.user import User
 from user_service.services.users import get_user_by_id
 from config_service.config import settings

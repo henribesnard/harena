@@ -26,6 +26,10 @@ from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 import httpx
+from sqlalchemy.orm import Session
+
+from db_service.session import get_db
+from conversation_service.services.conversation_service import ConversationService
 
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
@@ -128,6 +132,13 @@ async def get_metrics_collector() -> MetricsCollector:
         _metrics_collector = MetricsCollector()
     
     return _metrics_collector
+
+
+def get_conversation_service(
+    db: Annotated[Session, Depends(get_db)]
+) -> ConversationService:
+    """Dependency to provide ConversationService instance."""
+    return ConversationService(db)
 
 
 async def get_current_user(

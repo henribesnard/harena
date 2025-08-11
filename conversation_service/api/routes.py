@@ -57,6 +57,11 @@ except ImportError:
         ) -> Any:
             ...
 
+        async def process_user_message_with_metadata(
+            self, user_message: str, user_id: int, conversation_id: str
+        ) -> Dict[str, Any]:
+            ...
+
         async def get_health_status(self) -> Dict[str, Any]:
             ...
 
@@ -175,14 +180,14 @@ async def chat_endpoint(
 
         # Process message through AutoGen team
         try:
-            team_response = await team_manager.process_user_message(
+            team_result = await team_manager.process_user_message_with_metadata(
                 user_message=validated_request.message,
                 user_id=user_id,
-                conversation_id=conversation_id
+                conversation_id=conversation_id,
             )
-            if not team_response.success:
+            if not team_result["success"]:
                 metrics.record_error(
-                    "team_processing", team_response.error_message or "unknown_error"
+                    "team_processing", team_result.get("error_message") or "unknown_error"
                 )
             logger.info("AutoGen team processed message")
 
@@ -202,7 +207,7 @@ async def chat_endpoint(
             )
 
             return fallback_response
-        
+
         # Store conversation turn in background
         background_tasks.add_task(
             store_conversation_turn,
@@ -210,16 +215,16 @@ async def chat_endpoint(
             conversation_id,
             user_id,
             validated_request.message,
-            team_response.content,
+            team_result["content"],
             int((time.time() - start_time) * 1000),
             metrics,
-            intent_detected=team_response.metadata.get("intent_detected"),
-            entities_extracted=team_response.metadata.get("entities_extracted"),
-            agent_chain=team_response.metadata.get("agent_chain"),
-            search_results_count=team_response.metadata.get("search_results_count"),
-            confidence_score=team_response.confidence_score,
+            intent_detected=team_result["metadata"].get("intent_detected"),
+            entities_extracted=team_result["metadata"].get("entities_extracted"),
+            agent_chain=team_result["metadata"].get("agent_chain"),
+            search_results_count=team_result["metadata"].get("search_results_count"),
+            confidence_score=team_result.get("confidence_score"),
         )
-        
+
         # Calculate processing time
         processing_time = int((time.time() - start_time) * 1000)
 
@@ -227,8 +232,13 @@ async def chat_endpoint(
             conversation_service.add_turn(
                 conversation,
                 validated_request.message,
-                team_response,
+                team_result["content"],
                 processing_time,
+                intent_detected=team_result["metadata"].get("intent_detected"),
+                entities_extracted=team_result["metadata"].get("entities_extracted"),
+                agent_chain=team_result["metadata"].get("agent_chain"),
+                search_results_count=team_result["metadata"].get("search_results_count"),
+                confidence_score=team_result.get("confidence_score"),
             )
         except Exception as e:
             logger.error(f"Failed to store conversation turn: {e}")
@@ -239,23 +249,23 @@ async def chat_endpoint(
 
         # Create response
         response = ConversationResponse(
-            message=team_response.content,
+            message=team_result["content"],
             conversation_id=conversation_id,
-            success=team_response.success,
+            success=team_result["success"],
             processing_time_ms=processing_time,
             agent_used="orchestrator_agent",
-            confidence=team_response.confidence_score or 0.0,
-            metadata=team_response.metadata,
-            error_code=None if team_response.success else "TEAM_PROCESSING_ERROR",
+            confidence=team_result.get("confidence_score") or 0.0,
+            metadata=team_result["metadata"],
+            error_code=None if team_result["success"] else "TEAM_PROCESSING_ERROR",
         )
-        
+
         # Record metrics based on success
-        if team_response.success:
+        if team_result["success"]:
             metrics.record_response_time("chat", processing_time)
             metrics.record_success("chat")
             logger.info(f"Conversation processed successfully in {processing_time}ms")
         else:
-            metrics.record_error("chat", team_response.error_message or "unknown_error")
+            metrics.record_error("chat", team_result.get("error_message") or "unknown_error")
             logger.warning(f"Conversation processed with errors in {processing_time}ms")
 
         return response

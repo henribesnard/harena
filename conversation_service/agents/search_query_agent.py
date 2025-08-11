@@ -363,6 +363,16 @@ class SearchQueryAgent(BaseFinancialAgent):
 
             request_payload = query.to_search_request() if hasattr(query, "to_search_request") else query.dict()
 
+            logger.info(
+                (
+                    "Sending search request to Search Service: user_id=%s, "
+                    "conversation_id=%s, query_id=%s"
+                ),
+                query.query_metadata.user_id,
+                query.query_metadata.conversation_id,
+                query.query_metadata.query_id,
+            )
+
             # Execute HTTP request
             response = await self.http_client.post(
                 url=url,

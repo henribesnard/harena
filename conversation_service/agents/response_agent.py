@@ -162,35 +162,42 @@ class ResponseAgent(BaseFinancialAgent):
         
         logger.info("Initialized ResponseAgent with conversation context")
     
-    async def _execute_operation(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_operation(self, input_data: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         """
         Execute response generation operation.
-        
+
         Args:
             input_data: Dict containing 'user_message', 'search_results', and 'context'
-            
+            user_id: ID of the requesting user
+
         Returns:
             Dict with generated response and metadata
         """
         user_message = input_data.get("user_message", "")
         search_results = input_data.get("search_results", {})
         context = input_data.get("context")
-        
+
         if not search_results:
             raise ValueError("search_results are required for response generation")
-        
-        return await self.generate_response(user_message, search_results, context)
-    
-    async def generate_response(self, user_message: str, search_results: Dict[str, Any], 
-                              context: Optional[ConversationContext] = None) -> Dict[str, Any]:
+
+        return await self.generate_response(user_message, search_results, user_id, context)
+
+    async def generate_response(
+        self,
+        user_message: str,
+        search_results: Dict[str, Any],
+        user_id: int,
+        context: Optional[ConversationContext] = None,
+    ) -> Dict[str, Any]:
         """
         Generate a contextual response based on search results.
-        
+
         Args:
             user_message: Original user message
             search_results: Results from SearchQueryAgent
+            user_id: ID of the requesting user
             context: Optional conversation context
-            
+
         Returns:
             Dictionary containing the generated response
         """
@@ -209,7 +216,7 @@ class ResponseAgent(BaseFinancialAgent):
             
             # Generate contextual response using AI
             ai_response = await self._generate_ai_response(
-                user_message, formatted_results, conversation_context
+                user_message, formatted_results, conversation_context, user_id
             )
             
             # Update conversation context
@@ -319,22 +326,28 @@ class ResponseAgent(BaseFinancialAgent):
         
         return "\n".join(context_parts) if context_parts else "Contexte minimal disponible."
     
-    async def _generate_ai_response(self, user_message: str, formatted_results: str, 
-                                   conversation_context: str) -> str:
+    async def _generate_ai_response(
+        self,
+        user_message: str,
+        formatted_results: str,
+        conversation_context: str,
+        user_id: int,
+    ) -> str:
         """
         Generate AI response using DeepSeek.
-        
+
         Args:
             user_message: Original user message
             formatted_results: Formatted search results
             conversation_context: Conversation context
-            
+            user_id: ID of the requesting user
+
         Returns:
             Generated response string
         """
         # Prepare prompt for response generation
         prompt = self._build_response_prompt(user_message, formatted_results, conversation_context)
-        
+
         try:
             response = await self.deepseek_client.generate_response(
                 messages=[
@@ -342,11 +355,12 @@ class ResponseAgent(BaseFinancialAgent):
                     {"role": "user", "content": prompt}
                 ],
                 temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens
+                max_tokens=self.config.max_tokens,
+                user_id=user_id,
             )
-            
+
             return response.content.strip()
-            
+
         except Exception as e:
             logger.error(f"AI response generation failed: {e}")
             return self._generate_fallback_response(user_message, {"formatted_results": formatted_results})

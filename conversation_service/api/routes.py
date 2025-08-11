@@ -226,6 +226,7 @@ async def chat_endpoint(
 
         try:
             conversation_service.add_turn(
+                conversation_id=conversation_id,
                 conversation_id=conversation.conversation_id,
                 user_id=user_id,
                 user_message=validated_request.message,
@@ -235,6 +236,7 @@ async def chat_endpoint(
                 entities_extracted=team_response.metadata.get("entities_extracted"),
                 confidence_score=team_response.confidence_score,
                 agent_chain=team_response.metadata.get("agent_chain"),
+                search_results_count=team_response.metadata.get("search_results_count"),
                 search_results_count=team_response.metadata.get(
                     "search_results_count", 0
                 ),

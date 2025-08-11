@@ -514,11 +514,12 @@ async def list_conversations(
 async def get_conversation_turns(
     conversation_id: str,
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    service: Annotated[ConversationDBService, Depends(get_conversation_service)],
-    limit: int = Query(10, ge=1, le=50),
+    db_service: Annotated[ConversationDBService, Depends(get_conversation_service)],
     service: Annotated[ConversationService, Depends(get_conversation_read_service)],
+    limit: int = Query(10, ge=1, le=50),
 ) -> List[ConversationTurn]:
     """Return the turns for a specific conversation."""
+    _ = db_service  # dependency for potential future use
     conversation = service.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(

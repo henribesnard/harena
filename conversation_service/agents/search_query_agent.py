@@ -168,25 +168,22 @@ class SearchQueryAgent(BaseFinancialAgent):
         
         logger.info(f"Initialized SearchQueryAgent with service URL: {search_service_url}")
     
-    async def _execute_operation(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_operation(self, input_data: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         """
         Execute search query operation.
-        
+
         Args:
             input_data: Dict containing 'intent_result' and 'user_message'
-            
+            user_id: ID of the requesting user
+
         Returns:
             Dict with search results and metadata
         """
         intent_result = input_data.get("intent_result")
         user_message = input_data.get("user_message", "")
-        
+
         if not intent_result:
             raise ValueError("intent_result is required for search query generation")
-        
-        user_id = input_data.get("user_id")
-        if user_id is None:
-            raise ValueError("user_id is required for search query generation")
 
         return await self.process_search_request(intent_result, user_message, user_id)
 
@@ -209,7 +206,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         try:
             # Step 1: Extract additional entities using AI
             enhanced_entities = await self._extract_additional_entities(
-                user_message, intent_result
+                user_message, intent_result, user_id
             )
 
             # Step 2: Generate search service query contract
@@ -235,6 +232,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                         e.dict() for e in enhanced_entities
                     ] if enhanced_entities else [],
                     "execution_time_ms": execution_time,
+                    "search_results_count": returned_hits,
                 },
                 "confidence_score": min(intent_result.confidence + 0.1, 1.0),  # Boost confidence slightly
                 "token_usage": {
@@ -373,6 +371,14 @@ class SearchQueryAgent(BaseFinancialAgent):
                 metadata.conversation_id,
                 metadata.query_id,
                 metadata.intent_type,
+            logger.info(
+                (
+                    "Sending search request to Search Service: user_id=%s, "
+                    "conversation_id=%s, query_id=%s"
+                ),
+                query.query_metadata.user_id,
+                query.query_metadata.conversation_id,
+                query.query_metadata.query_id,
             )
 
             # Execute HTTP request
@@ -409,7 +415,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             raise
     
     async def _extract_additional_entities(
-        self, message: str, intent_result: IntentResult
+        self, message: str, intent_result: IntentResult, user_id: int
     ) -> List[FinancialEntity]:
         """
         Extract additional entities using AI that weren't caught by rules.
@@ -433,7 +439,8 @@ class SearchQueryAgent(BaseFinancialAgent):
                     {"role": "user", "content": context}
                 ],
                 temperature=0.1,
-                max_tokens=200
+                max_tokens=200,
+                user_id=user_id,
             )
             
             # Parse AI response

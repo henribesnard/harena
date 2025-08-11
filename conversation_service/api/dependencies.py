@@ -7,11 +7,12 @@ and request validation.
 
 Dependencies:
     - get_team_manager: Provides singleton MVPTeamManager instance
-    - get_current_user: Authentication and user context (placeholder)
+    - get_current_user: Authentication and user context
     - validate_conversation_request: Request validation and enrichment
     - get_conversation_manager: Conversation context management
     - validate_request_rate_limit: Rate limiting validation
     - get_metrics_collector: Metrics collection dependency
+    - get_conversation_service: Database conversation service
 
 Author: Conversation Service Team
 Created: 2025-01-31
@@ -22,15 +23,21 @@ import logging
 import time
 import asyncio
 from collections import deque
-from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
+from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING, Generator
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 import httpx
+from sqlalchemy.orm import Session
 
+from db_service.session import SessionLocal
+from db_service.session import get_db
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
+from ..utils.logging import log_unauthorized_access
+from ..services.conversation_db import ConversationService
 from config_service.config import settings
 
 if TYPE_CHECKING:
@@ -38,11 +45,6 @@ if TYPE_CHECKING:
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-# Security scheme for authentication
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/auth/login"
-)
 
 # Global instances (singleton pattern)
 _team_manager: Optional["MVPTeamManager"] = None
@@ -54,6 +56,23 @@ _rate_limit_storage: Dict[str, Deque[float]] = {}
 _rate_limit_lock = asyncio.Lock()
 # Evict users who haven't made a request within this TTL (seconds)
 _RATE_LIMIT_TTL = 300
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Provide a database session with automatic commit/rollback.
+
+    Yields:
+        Session: SQLAlchemy database session
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 async def get_team_manager() -> "MVPTeamManager":
@@ -126,8 +145,24 @@ async def get_metrics_collector() -> MetricsCollector:
     if _metrics_collector is None:
         logger.info("Initializing MetricsCollector singleton")
         _metrics_collector = MetricsCollector()
-    
+
     return _metrics_collector
+
+
+async def get_current_user(request: Request) -> Dict[str, Any]:
+def get_conversation_service(
+    db: Annotated[Session, Depends(get_db)]
+) -> ConversationService:
+    """
+    Dependency to provide ConversationService instance bound to a database session.
+    
+    Args:
+        db: Database session from FastAPI dependency injection
+        
+    Returns:
+        ConversationService: Service instance for conversation operations
+    """
+    return ConversationService(db)
 
 
 async def get_current_user(
@@ -137,7 +172,7 @@ async def get_current_user(
     Validate the provided Bearer token with the user service.
 
     Args:
-        token: JWT access token obtained from the user service
+        request: Incoming FastAPI request
 
     Returns:
         Dict containing the authenticated user's profile information
@@ -145,6 +180,24 @@ async def get_current_user(
     Raises:
         HTTPException: If authentication fails or the user service is unavailable
     """
+
+    authorization = request.headers.get("Authorization")
+    if not authorization:
+        log_unauthorized_access(reason="missing token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        log_unauthorized_access(reason="invalid authentication scheme")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication scheme",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -155,10 +208,11 @@ async def get_current_user(
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == status.HTTP_401_UNAUTHORIZED:
+            log_unauthorized_access(reason="invalid token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"}
+                headers={"WWW-Authenticate": "Bearer"},
             )
         logger.error(f"User service returned error: {exc}")
         raise HTTPException(

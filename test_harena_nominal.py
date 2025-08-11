@@ -366,6 +366,74 @@ class HarenaTestClient:
 
         print("✅ Chat conversation authentifiée et cohérente")
         return True
+
+    def test_conversation_intents(self) -> bool:
+        """Test 9: Conversation avec détection d'intentions."""
+        self._print_step(9, "CONVERSATION INTENTS")
+
+        headers = {"Content-Type": "application/json"}
+        conversation_id = "test-conversation-intents"
+
+        intents = [
+            ("recherche pizza", "SEARCH_BY_TEXT"),
+            ("combien d'opérations ce mois", "COUNT_TRANSACTIONS"),
+            ("tendance budget 2025", "ANALYZE_TRENDS"),
+            ("bonjour", "SMALL_TALK"),
+        ]
+
+        records = []
+        for message, expected_intent in intents:
+            payload = {"conversation_id": conversation_id, "message": message}
+            response = self._make_request(
+                "POST", "/conversation/chat", headers=headers, data=json.dumps(payload)
+            )
+            success, json_data = self._print_response(response)
+            if not (success and json_data and json_data.get("success") is True):
+                print("❌ Échec conversation pour le message envoyé")
+                return False
+
+            metadata = json_data.get("metadata", {})
+            detected_intent = metadata.get("intent_detected")
+            x_process = response.headers.get("X-Process-Time")
+            proc_json = json_data.get("processing_time_ms")
+            records.append((expected_intent, detected_intent, x_process, proc_json))
+
+        # Affichage tableau récapitulatif
+        print("\nIntent détecté vs temps de traitement")
+        header = f"{'Attendu':25} | {'Détecté':25} | {'Header(ms)':12} | {'JSON(ms)':10}"
+        print(header)
+        print("-" * len(header))
+        for exp_intent, det_intent, x_proc, proc_json in records:
+            print(
+                f"{exp_intent:25} | {str(det_intent):25} | {str(x_proc):12} | {str(proc_json):10}"
+            )
+
+        # Vérification cloisonnement
+        turns_endpoint = f"/conversation/conversations/{conversation_id}/turns"
+        resp = self._make_request("GET", turns_endpoint, use_auth=False)
+        success, _ = self._print_response(resp, expected_status=401)
+        if not success:
+            print("❌ L'historique sans token n'a pas retourné 401")
+            return False
+
+        # Contrôle persistance
+        resp = self._make_request("GET", turns_endpoint)
+        success, json_data = self._print_response(resp)
+        if not (success and json_data and isinstance(json_data.get("turns"), list)):
+            print("❌ Échec récupération des turns")
+            return False
+
+        turns = json_data.get("turns", [])
+        if len(turns) != len(intents):
+            print("❌ Nombre de turns incohérent")
+            return False
+        turn_numbers = {t.get("turn_number") for t in turns}
+        if turn_numbers != set(range(1, len(intents) + 1)):
+            print("❌ turn_number manquant dans les turns")
+            return False
+
+        print("✅ Intents détectés et persistance vérifiée")
+        return True
     
     def run_full_test(self, username: str, password: str) -> bool:
         """Lance le test complet."""
@@ -376,7 +444,7 @@ class HarenaTestClient:
         
         # Compteur de succès
         tests_passed = 0
-        total_tests = 8
+        total_tests = 9
         
         # Test 1: Login
         if self.test_login(username, password):
@@ -414,6 +482,10 @@ class HarenaTestClient:
 
         # Test 8: Conversation chat
         if self.test_conversation_chat():
+            tests_passed += 1
+
+        # Test 9: Conversation intents
+        if self.test_conversation_intents():
             tests_passed += 1
 
         # Résumé final

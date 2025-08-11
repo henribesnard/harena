@@ -15,13 +15,12 @@ Created: 2025-01-31
 Version: 1.0.0 MVP - FastAPI Routes
 """
 
+import asyncio
 import logging
 import time
-import asyncio
-from typing import Dict, Any, Annotated, TYPE_CHECKING, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from typing import Dict, Any, Annotated, TYPE_CHECKING, List
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from typing import Annotated, Any, Dict, List, Optional, Protocol
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -32,9 +31,7 @@ from .dependencies import (
     get_conversation_manager,
     validate_request_rate_limit,
     get_metrics_collector,
-    get_conversation_service
     get_conversation_service,
-
 )
 from ..core.conversation_manager import ConversationManager
 from ..models import (
@@ -43,17 +40,24 @@ from ..models import (
     ConversationOut,
     ConversationTurn,
 )
-from ..utils.metrics import MetricsCollector
-from ..utils.logging import log_unauthorized_access
-from ..services.conversation_service import ConversationService
-from ..services.conversation_db import ConversationService
-from db_service.session import get_db
 import os
 
-if TYPE_CHECKING:
+from ..utils.logging import log_unauthorized_access
+from ..utils.metrics import MetricsCollector
+from ..services.conversation_db import ConversationService
+from db_service.session import get_db
+
+try:
     from ..core.mvp_team_manager import MVPTeamManager
-else:
-    MVPTeamManager = Any
+except ImportError:
+    class MVPTeamManager(Protocol):
+        async def process_user_message(
+            self, user_message: str, user_id: int, conversation_id: str
+        ) -> Any:
+            ...
+
+        async def get_health_status(self) -> Dict[str, Any]:
+            ...
 
 # Configure logging
 logger = logging.getLogger(__name__)

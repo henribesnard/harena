@@ -223,19 +223,20 @@ class BaseFinancialAgent(AssistantAgent):
         
         logger.info(f"Initialized {self.__class__.__name__} agent: {name}")
     
-    async def execute_with_metrics(self, input_data: Dict[str, Any]) -> AgentResponse:
+    async def execute_with_metrics(self, input_data: Dict[str, Any], user_id: int) -> AgentResponse:
         """
         Execute agent operation with comprehensive metrics tracking.
-        
+
         This method wraps the agent's core functionality with timing,
         error handling, and metrics collection.
-        
+
         Args:
             input_data: Input data for the agent operation
-            
+            user_id: ID of the requesting user
+
         Returns:
             AgentResponse with result and metadata
-            
+
         Raises:
             Exception: If agent execution fails and retry limit exceeded
         """
@@ -243,10 +244,10 @@ class BaseFinancialAgent(AssistantAgent):
         success = False
         error_message = None
         tokens_used = 0
-        
+
         try:
             # Execute the agent's specific logic
-            result = await self._execute_operation(input_data)
+            result = await self._execute_operation(input_data, user_id)
             
             # Extract token usage if available
             if isinstance(result, dict) and "token_usage" in result:
@@ -295,19 +296,20 @@ class BaseFinancialAgent(AssistantAgent):
                 error_message=error_message
             )
     
-    async def _execute_operation(self, input_data: Dict[str, Any]) -> Any:
+    async def _execute_operation(self, input_data: Dict[str, Any], user_id: int) -> Any:
         """
         Execute the agent's specific operation logic.
-        
+
         This method should be overridden by concrete agent implementations
         to provide their specialized functionality.
-        
+
         Args:
             input_data: Input data for the operation
-            
+            user_id: ID of the requesting user
+
         Returns:
             Result of the agent operation
-            
+
         Raises:
             NotImplementedError: If not overridden by concrete class
         """

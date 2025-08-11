@@ -43,6 +43,7 @@ from ..models import (
 import os
 
 from ..utils.logging import log_unauthorized_access
+from ..services.conversation_db import ConversationService as ConversationDBService
 from ..utils.metrics import MetricsCollector
 from ..services.conversation_db import ConversationService
 from db_service.session import get_db
@@ -90,7 +91,7 @@ async def chat_endpoint(
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
     metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
     conversation_service: Annotated[
-        ConversationService, Depends(get_conversation_service)
+        ConversationDBService, Depends(get_conversation_service)
     ],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validate_request_rate_limit)],
@@ -453,7 +454,7 @@ async def get_metrics(
 )
 async def list_conversations(
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    service: Annotated[ConversationDBService, Depends(get_conversation_service)],
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> List[ConversationOut]:
@@ -485,7 +486,7 @@ async def list_conversations(
 async def get_conversation_turns(
     conversation_id: str,
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    service: Annotated[ConversationDBService, Depends(get_conversation_service)],
 ) -> List[ConversationTurn]:
     """Return the turns for a specific conversation."""
     conversation = service.get_conversation(conversation_id)

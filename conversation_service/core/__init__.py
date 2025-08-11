@@ -283,13 +283,11 @@ def validate_core_setup() -> dict:
     results["info"].append(f"Core package version: {__version__}")
     results["info"].append(f"Available components: {len(get_available_components())}")
     results["info"].append(f"Configuration loaded with {len(config)} parameters")
-    
+
     return results
 
 # Log core package initialization
 logger.info(f"Core package initialized - version {__version__}")
-dependencies_status = check_core_dependencies()
-logger.info(f"Dependencies status: {dependencies_status}")
 
 # Deferred validation entrypoint
 def run_core_validation() -> dict:

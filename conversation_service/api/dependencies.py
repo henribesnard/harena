@@ -22,16 +22,19 @@ import logging
 import time
 import asyncio
 from collections import deque
-from typing import Dict, Optional, Any, Annotated, Deque
+from typing import Dict, Optional, Any, Annotated, Deque, TYPE_CHECKING
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 import httpx
 
-from ..core.mvp_team_manager import MVPTeamManager
+from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 from config_service.config import settings
+
+if TYPE_CHECKING:
+    from ..core.mvp_team_manager import MVPTeamManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -42,7 +45,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 # Global instances (singleton pattern)
-_team_manager: Optional[MVPTeamManager] = None
+_team_manager: Optional["MVPTeamManager"] = None
 _conversation_manager: Optional[ConversationManager] = None  
 _metrics_collector: Optional[MetricsCollector] = None
 
@@ -53,21 +56,23 @@ _rate_limit_lock = asyncio.Lock()
 _RATE_LIMIT_TTL = 300
 
 
-async def get_team_manager() -> MVPTeamManager:
-    """
-    Dependency to get the singleton MVPTeamManager instance.
-    
+async def get_team_manager() -> "MVPTeamManager":
+    """Dependency to get the singleton MVPTeamManager instance.
+
     Returns:
         MVPTeamManager: Configured team manager with AutoGen agents
-        
+
     Raises:
         HTTPException: If team manager initialization fails
     """
     global _team_manager
-    
+
     if _team_manager is None:
         try:
             logger.info("Initializing MVPTeamManager singleton")
+            MVPTeamManager, _ = load_team_manager()
+            if MVPTeamManager is None:
+                raise ImportError("MVPTeamManager not available")
             _team_manager = MVPTeamManager()
             await _team_manager.initialize_agents()
             logger.info("MVPTeamManager initialized successfully")
@@ -75,9 +80,9 @@ async def get_team_manager() -> MVPTeamManager:
             logger.error(f"Failed to initialize MVPTeamManager: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Conversation service temporarily unavailable"
+                detail="Conversation service temporarily unavailable",
             )
-    
+
     return _team_manager
 
 

@@ -519,6 +519,7 @@ async def get_conversation_turns(
     limit: int = Query(10, ge=1, le=50),
 ) -> List[ConversationTurn]:
     """Return the turns for a specific conversation."""
+    _ = db_service  # dependency for potential future use
     conversation = service.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(

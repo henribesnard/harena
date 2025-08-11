@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -64,27 +63,6 @@ class ConversationService:
         agent_chain: Optional[List[str]] = None,
         search_results_count: Optional[int] = None,
         confidence_score: Optional[float] = None,
-
-        confidence_score: Optional[float] = None,
-        agent_chain: Optional[List[str]] = None,
-        search_results_count: Optional[int] = None,
-    ) -> ConversationTurn:
-        """Persist a conversation turn and update conversation metadata."""
-
-        conversation = (
-            self.db.query(Conversation)
-            .filter(
-                Conversation.conversation_id == conversation_id,
-                Conversation.user_id == user_id,
-            )
-            .first()
-        )
-        if conversation is None:
-            raise ValueError("Conversation not found")
-        entities_extracted: Optional[List[Dict]] = None,
-        confidence_score: Optional[float] = None,
-        agent_chain: Optional[List[str]] = None,
-        search_results_count: int = 0,
         search_execution_time_ms: Optional[float] = None,
     ) -> ConversationTurn:
         """Persist a conversation turn and update conversation metadata.
@@ -97,9 +75,9 @@ class ConversationService:
             processing_time_ms: Processing time of the turn in milliseconds.
             intent_detected: Optional detected intent.
             entities_extracted: Optional list of extracted entities.
-            confidence_score: Optional confidence score for the response.
             agent_chain: Optional list of agents involved in the processing.
             search_results_count: Number of results returned by search.
+            confidence_score: Optional confidence score for the response.
             search_execution_time_ms: Time taken to execute search, if any.
 
         Raises:
@@ -129,11 +107,6 @@ class ConversationService:
             agent_chain=agent_chain or [],
             search_results_count=search_results_count or 0,
             confidence_score=confidence_score,
-
-            confidence_score=confidence_score,
-            agent_chain=agent_chain or [],
-            search_results_count=search_results_count or 0,
-            search_results_count=search_results_count,
             search_execution_time_ms=search_execution_time_ms,
         )
         try:

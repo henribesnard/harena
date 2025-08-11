@@ -18,6 +18,8 @@ Version: 1.0.0 MVP - FastAPI Routes
 import logging
 import time
 import asyncio
+from typing import Dict, Any, Annotated, TYPE_CHECKING, Optional, List
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from typing import Dict, Any, Annotated, TYPE_CHECKING, List
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
@@ -173,13 +175,16 @@ async def chat_endpoint(
                 user_id=user_id,
                 conversation_id=conversation_id
             )
+            if not team_response.success:
+                metrics.record_error(
+                    "team_processing", team_response.error_message or "unknown_error"
+                )
+            logger.info("AutoGen team processed message")
 
-            logger.info(f"AutoGen team processed message successfully")
-            
         except Exception as e:
             logger.error(f"AutoGen team processing failed: {e}")
             metrics.record_error("team_processing", str(e))
-            
+
             # Fallback response
             fallback_response = ConversationResponse(
                 message="Je suis désolé, je rencontre une difficulté technique. Pouvez-vous reformuler votre question ?",
@@ -190,7 +195,7 @@ async def chat_endpoint(
                 agent_used="fallback",
                 confidence=0.1
             )
-            
+
             return fallback_response
         
         # Store conversation turn in background
@@ -200,9 +205,14 @@ async def chat_endpoint(
             conversation_id,
             user_id,
             validated_request.message,
-            team_response,
+            team_response.content,
             int((time.time() - start_time) * 1000),
-            metrics
+            metrics,
+            intent_detected=team_response.metadata.get("intent_detected"),
+            entities_extracted=team_response.metadata.get("entities_extracted"),
+            agent_chain=team_response.metadata.get("agent_chain"),
+            search_results_count=team_response.metadata.get("search_results_count"),
+            confidence_score=team_response.confidence_score,
         )
         
         # Calculate processing time
@@ -224,20 +234,25 @@ async def chat_endpoint(
 
         # Create response
         response = ConversationResponse(
-            message=team_response,
+            message=team_response.content,
             conversation_id=conversation_id,
-            success=True,
+            success=team_response.success,
             processing_time_ms=processing_time,
             agent_used="orchestrator_agent",
-            confidence=1.0,
-            metadata={}
+            confidence=team_response.confidence_score or 0.0,
+            metadata=team_response.metadata,
+            error_code=None if team_response.success else "TEAM_PROCESSING_ERROR",
         )
         
-        # Record success metrics
-        metrics.record_response_time("chat", processing_time)
-        metrics.record_success("chat")
-        
-        logger.info(f"Conversation processed successfully in {processing_time}ms")
+        # Record metrics based on success
+        if team_response.success:
+            metrics.record_response_time("chat", processing_time)
+            metrics.record_success("chat")
+            logger.info(f"Conversation processed successfully in {processing_time}ms")
+        else:
+            metrics.record_error("chat", team_response.error_message or "unknown_error")
+            logger.warning(f"Conversation processed with errors in {processing_time}ms")
+
         return response
         
     except HTTPException:
@@ -533,7 +548,12 @@ async def store_conversation_turn(
     user_message: str,
     assistant_message: str,
     processing_time_ms: int,
-    metrics: MetricsCollector
+    metrics: MetricsCollector,
+    intent_detected: Optional[str] = None,
+    entities_extracted: Optional[List[Dict[str, Any]]] = None,
+    agent_chain: Optional[List[str]] = None,
+    search_results_count: Optional[int] = None,
+    confidence_score: Optional[float] = None,
 ) -> None:
     """
     Background task to store conversation turn.
@@ -546,6 +566,11 @@ async def store_conversation_turn(
         assistant_message: Assistant's response
         processing_time_ms: Processing time in milliseconds
         metrics: Metrics collector
+        intent_detected: Detected user intent
+        entities_extracted: Entities extracted from the user message
+        agent_chain: Chain of agents involved in processing
+        search_results_count: Number of results returned by search
+        confidence_score: Confidence score of the response
     """
     try:
         await conversation_manager.add_turn(
@@ -553,7 +578,12 @@ async def store_conversation_turn(
             user_id=user_id,
             user_msg=user_message,
             assistant_msg=assistant_message,
-            processing_time_ms=float(processing_time_ms)
+            processing_time_ms=float(processing_time_ms),
+            intent_detected=intent_detected,
+            entities_extracted=entities_extracted,
+            agent_chain=agent_chain,
+            search_results_count=search_results_count,
+            confidence_score=confidence_score,
         )
         logger.debug(f"Stored conversation turn for {conversation_id}")
         

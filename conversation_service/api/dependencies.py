@@ -28,7 +28,6 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import httpx
-from sqlalchemy.orm import Session
 
 from db_service.session import SessionLocal
 from db_service.session import get_db

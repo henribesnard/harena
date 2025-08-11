@@ -185,7 +185,10 @@ class MVPTeamManager:
                 
                 # Update conversation history
                 await self.conversation_manager.add_turn(
-                    conversation_id, user_message, final_response
+                    conversation_id,
+                    user_id,
+                    user_message,
+                    final_response
                 )
                 
                 # Update team statistics

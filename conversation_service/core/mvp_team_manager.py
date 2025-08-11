@@ -175,6 +175,14 @@ class MVPTeamManager:
             )
 
             # Process through orchestrator
+            response_data = await self.orchestrator.execute_with_metrics(
+                {
+                    "user_message": user_message,
+                    "conversation_id": conversation_id,
+                },
+                user_id,
+            )
+            
             response_data = await self.orchestrator.execute_with_metrics({
                 "user_message": user_message,
                 "conversation_id": conversation_id,
@@ -182,7 +190,6 @@ class MVPTeamManager:
             })
 
             execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
-
             if response_data.success:
                 self._update_team_stats(True, execution_time)
                 logger.info(f"Successfully processed message for conversation {conversation_id}")

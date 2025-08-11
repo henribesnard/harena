@@ -487,15 +487,30 @@ async def list_conversations(
 async def get_conversation_turns(
     conversation_id: str,
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
+    service: Annotated[ConversationDBService, Depends(get_conversation_service)],
+    limit: int = Query(10, ge=1, le=50),
     service: Annotated[ConversationService, Depends(get_conversation_read_service)],
 ) -> List[ConversationTurn]:
     """Return the turns for a specific conversation."""
     conversation = service.get_conversation(conversation_id)
-    if conversation is None or conversation.user_id != user["user_id"]:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+        )
+    if conversation.user_id != user["user_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
+    try:
+        turns_raw = service.get_conversation_turns(conversation_id, user["user_id"], limit)
+    except TypeError:
+        turns_raw = (
+            service.get_conversation_turns(conversation_id)
+            if hasattr(service, "get_conversation_turns")
+            else conversation.turns
+        )
 
     turns: List[ConversationTurn] = []
-    for t in conversation.turns:
+    for t in turns_raw[:limit]:
         turns.append(
             ConversationTurn(
                 turn_id=t.turn_id,

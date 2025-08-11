@@ -174,11 +174,13 @@ class MVPTeamManager:
             )
             
             # Process through orchestrator
-            response_data = await self.orchestrator.execute_with_metrics({
-                "user_message": user_message,
-                "conversation_id": conversation_id,
-                "user_id": user_id,
-            })
+            response_data = await self.orchestrator.execute_with_metrics(
+                {
+                    "user_message": user_message,
+                    "conversation_id": conversation_id,
+                },
+                user_id,
+            )
             
             if response_data.success:
                 final_response = response_data.content

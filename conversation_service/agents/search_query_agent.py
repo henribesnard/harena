@@ -233,6 +233,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                         e.dict() for e in enhanced_entities
                     ] if enhanced_entities else [],
                     "execution_time_ms": execution_time,
+                    "search_results_count": returned_hits,
                 },
                 "confidence_score": min(intent_result.confidence + 0.1, 1.0),  # Boost confidence slightly
                 "token_usage": {

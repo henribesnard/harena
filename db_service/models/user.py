@@ -1,3 +1,7 @@
+"""
+Modèles utilisateur avec ajout de la relation conversations IA.
+"""
+
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, JSON
 from sqlalchemy.orm import relationship
 
@@ -14,7 +18,7 @@ class User(Base, TimestampMixin):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     
-    # Relations
+    # Relations existantes
     bridge_connections = relationship("BridgeConnection", back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("UserPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
     
@@ -26,6 +30,16 @@ class User(Base, TimestampMixin):
     bridge_insights = relationship("BridgeInsight", back_populates="user", cascade="all, delete-orphan")
     sync_tasks = relationship("SyncTask", back_populates="user", cascade="all, delete-orphan")
     sync_stats = relationship("SyncStat", back_populates="user", cascade="all, delete-orphan")
+    
+    # NOUVEAU : Relations conversations IA
+    conversations = relationship(
+        "Conversation", 
+        back_populates="user", 
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}')>"
 
 class BridgeConnection(Base, TimestampMixin):
     __tablename__ = "bridge_connections"

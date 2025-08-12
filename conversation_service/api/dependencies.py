@@ -87,7 +87,7 @@ async def get_team_manager() -> "MVPTeamManager":
         MVPTeamManager: Configured team manager with AutoGen agents
 
     Raises:
-        HTTPException: If team manager initialization fails
+        HTTPException: If team manager initialization or health check fails
     """
     global _team_manager
 
@@ -99,6 +99,8 @@ async def get_team_manager() -> "MVPTeamManager":
                 raise ImportError("MVPTeamManager not available")
             _team_manager = MVPTeamManager()
             await _team_manager.initialize_agents()
+            if not _team_manager.is_healthy():
+                raise RuntimeError("MVPTeamManager health check failed")
             logger.info("MVPTeamManager initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize MVPTeamManager: {e}")
@@ -106,6 +108,12 @@ async def get_team_manager() -> "MVPTeamManager":
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Conversation service temporarily unavailable",
             )
+    elif not _team_manager.is_healthy():
+        logger.error("MVPTeamManager is unhealthy")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversation service temporarily unavailable",
+        )
 
     return _team_manager
 

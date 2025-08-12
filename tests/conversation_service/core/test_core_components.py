@@ -119,28 +119,13 @@ sys.modules['openai.types'] = openai_types
 sys.modules['openai.types.chat'] = openai_chat
 
 # Stub httpx module required by deepseek_client
-httpx_mod = types.ModuleType("httpx")
-class HTTPStatusError(Exception):
-    pass
-class TimeoutException(Exception):
-    pass
-httpx_mod.HTTPStatusError = HTTPStatusError
-httpx_mod.TimeoutException = TimeoutException
-httpx_mod.RequestError = Exception
-sys.modules['httpx'] = httpx_mod
 
-# ---- Import the modules under test ---------------------------------------------
-from conversation_service.core.conversation_manager import ConversationManager
-from conversation_service.core.mvp_team_manager import MVPTeamManager, TeamConfiguration
-from conversation_service.core.deepseek_client import (
-    DeepSeekClient,
-    DeepSeekError,
-    DeepSeekTimeoutError,
-)
 
 # ---- Tests ---------------------------------------------------------------------
 
-def test_conversation_manager_creates_and_updates_context():
+def test_conversation_manager_creates_and_updates_context(httpx_stub):
+    from conversation_service.core.conversation_manager import ConversationManager
+
     async def run_test():
         manager = ConversationManager()
         await manager.initialize()
@@ -158,7 +143,9 @@ def test_conversation_manager_creates_and_updates_context():
     asyncio.run(run_test())
 
 
-def test_mvp_team_manager_initialization_and_recovery(monkeypatch):
+def test_mvp_team_manager_initialization_and_recovery(monkeypatch, httpx_stub):
+    from conversation_service.core.mvp_team_manager import MVPTeamManager
+
     async def run_test():
         manager = MVPTeamManager()
 
@@ -203,7 +190,9 @@ def test_mvp_team_manager_initialization_and_recovery(monkeypatch):
     asyncio.run(run_test())
 
 
-def test_deepseek_client_cache_and_timeout(monkeypatch):
+def test_deepseek_client_cache_and_timeout(monkeypatch, httpx_stub):
+    from conversation_service.core.deepseek_client import DeepSeekClient, DeepSeekTimeoutError
+
     async def run_test():
         monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
         monkeypatch.setenv("REDIS_CACHE_ENABLED", "false")

@@ -58,6 +58,7 @@ import conversation_service  # Ensure parent package is loaded for module stubbi
 _original_ds_module = sys.modules.get("conversation_service.core.deepseek_client")
 
 # Stub DeepSeekClient and related errors
+# Stub DeepSeekClient
 core_ds = types.ModuleType("conversation_service.core.deepseek_client")
 
 class DeepSeekClient:
@@ -230,8 +231,14 @@ agents_pkg.search_query_agent = search_query_module
 QueryOptimizer = search_query_module.QueryOptimizer
 SearchQueryAgent = search_query_module.SearchQueryAgent
 
+@pytest.fixture
+def search_query_classes(httpx_stub):
+    from conversation_service.agents.search_query_agent import QueryOptimizer, SearchQueryAgent
+    return QueryOptimizer, SearchQueryAgent
 
-def test_optimize_search_text_with_string_entities():
+
+def test_optimize_search_text_with_string_entities(search_query_classes):
+    QueryOptimizer, _ = search_query_classes
     optimizer = QueryOptimizer()
     entities = [
         SimpleNamespace(entity_type="MERCHANT", normalized_value="Amazon"),
@@ -243,7 +250,8 @@ def test_optimize_search_text_with_string_entities():
     assert "Shopping" in text
 
 
-def test_generate_search_contract_handles_string_entities():
+def test_generate_search_contract_handles_string_entities(search_query_classes):
+    QueryOptimizer, SearchQueryAgent = search_query_classes
     agent = SearchQueryAgent.__new__(SearchQueryAgent)
     agent.query_optimizer = QueryOptimizer()
     agent.name = "test_agent"

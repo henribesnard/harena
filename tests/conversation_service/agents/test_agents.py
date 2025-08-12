@@ -26,23 +26,6 @@ class AssistantAgent:  # minimal stub
 autogen_mod.AssistantAgent = AssistantAgent
 sys.modules["autogen"] = autogen_mod
 
-# Stub httpx
-httpx_stub = types.ModuleType("httpx")
-class AsyncClient:
-    def __init__(self, *args, **kwargs):
-        pass
-    async def post(self, *args, **kwargs):
-        class Resp:
-            def raise_for_status(self):
-                pass
-            def json(self):
-                return {}
-        return Resp()
-    async def aclose(self):
-        pass
-httpx_stub.AsyncClient = AsyncClient
-sys.modules["httpx"] = httpx_stub
-
 # Stub DeepSeekClient
 core_ds = types.ModuleType("conversation_service.core.deepseek_client")
 class DeepSeekClient: ...
@@ -219,11 +202,23 @@ sys.modules["conversation_service.utils.validators"] = validators_mod
 
 # -----------------------------------------------------------------
 
-from conversation_service.agents.hybrid_intent_agent import HybridIntentAgent
-from conversation_service.agents.search_query_agent import SearchQueryAgent
-from conversation_service.agents.response_agent import ResponseAgent
-from conversation_service.agents.orchestrator_agent import OrchestratorAgent, WorkflowExecutor
-from conversation_service.agents.base_financial_agent import BaseFinancialAgent
+
+@pytest.fixture
+def agent_classes(httpx_stub):
+    from conversation_service.agents.hybrid_intent_agent import HybridIntentAgent
+    from conversation_service.agents.search_query_agent import SearchQueryAgent
+    from conversation_service.agents.response_agent import ResponseAgent
+    from conversation_service.agents.orchestrator_agent import OrchestratorAgent, WorkflowExecutor
+    from conversation_service.agents.base_financial_agent import BaseFinancialAgent
+
+    return {
+        "HybridIntentAgent": HybridIntentAgent,
+        "SearchQueryAgent": SearchQueryAgent,
+        "ResponseAgent": ResponseAgent,
+        "OrchestratorAgent": OrchestratorAgent,
+        "WorkflowExecutor": WorkflowExecutor,
+        "BaseFinancialAgent": BaseFinancialAgent,
+    }
 
 
 class MockDeepSeekClient:
@@ -234,7 +229,8 @@ class MockDeepSeekClient:
         return SimpleNamespace(content="")
 
 
-def test_hybrid_intent_agent_ai_parsing():
+def test_hybrid_intent_agent_ai_parsing(agent_classes):
+    HybridIntentAgent = agent_classes["HybridIntentAgent"]
     agent = HybridIntentAgent.__new__(HybridIntentAgent)
     ai_content = (
         "Intention: TRANSACTION_SEARCH\n"
@@ -248,7 +244,8 @@ def test_hybrid_intent_agent_ai_parsing():
     assert ents[EntityType.AMOUNT].normalized_value == 23.5
 
 
-def test_search_query_agent_filters_generation():
+def test_search_query_agent_filters_generation(agent_classes):
+    SearchQueryAgent = agent_classes["SearchQueryAgent"]
     agent = SearchQueryAgent(MockDeepSeekClient(), "http://search.test")
 
     entities = [
@@ -279,7 +276,9 @@ def test_search_query_agent_filters_generation():
     assert query.filters.user_id == 5
 
 
-def test_response_agent_format_message(monkeypatch):
+def test_response_agent_format_message(agent_classes, monkeypatch):
+    ResponseAgent = agent_classes["ResponseAgent"]
+
     class FakeSearchServiceResponse:
         def __init__(self, **data):
             self.response_metadata = SimpleNamespace(**data.get("response_metadata", {}))
@@ -339,7 +338,9 @@ def test_response_agent_format_message(monkeypatch):
     assert "transactions trouvées" in response["metadata"]["formatted_results"]
 
 
-def test_orchestrator_agent_pipeline():
+def test_orchestrator_agent_pipeline(agent_classes):
+    OrchestratorAgent = agent_classes["OrchestratorAgent"]
+    WorkflowExecutor = agent_classes["WorkflowExecutor"]
     intent_result = IntentResult(
         intent_type="TRANSACTION_SEARCH",
         intent_category=IntentCategory.TRANSACTION_SEARCH,
@@ -421,7 +422,9 @@ def test_orchestrator_agent_pipeline():
     ]
 
 
-def test_base_financial_agent_metrics_and_health():
+def test_base_financial_agent_metrics_and_health(agent_classes):
+    BaseFinancialAgent = agent_classes["BaseFinancialAgent"]
+
     class DummyAgent(BaseFinancialAgent):
         def __init__(self):
             config = AgentConfig(

@@ -101,7 +101,12 @@ async def get_team_manager() -> "MVPTeamManager":
                 raise ImportError("MVPTeamManager not available")
             _team_manager = MVPTeamManager()
             await _team_manager.initialize_agents()
-            if not _team_manager.is_healthy():
+            team_health = getattr(_team_manager, "team_health", None)
+            if team_health is None:
+                logger.info(
+                    "Skipping health check: team health not yet verified"
+                )
+            elif not team_health.overall_healthy:
                 raise RuntimeError("MVPTeamManager health check failed")
             logger.info("MVPTeamManager initialized successfully")
         except Exception as e:
@@ -110,12 +115,18 @@ async def get_team_manager() -> "MVPTeamManager":
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Conversation service temporarily unavailable",
             )
-    elif not _team_manager.is_healthy():
-        logger.error("MVPTeamManager is unhealthy")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Conversation service temporarily unavailable",
-        )
+    else:
+        team_health = getattr(_team_manager, "team_health", None)
+        if team_health is None:
+            logger.info(
+                "Skipping health check: team health not yet verified"
+            )
+        elif not team_health.overall_healthy:
+            logger.error("MVPTeamManager is unhealthy")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Conversation service temporarily unavailable",
+            )
 
     return _team_manager
 

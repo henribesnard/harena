@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
 from search_service.models.request import SearchRequest
-from search_service.models.response import SearchResponse
 from search_service.core.search_engine import SearchEngine
 from config_service.config import settings
 
@@ -34,11 +33,11 @@ async def get_search_engine() -> SearchEngine:
     
     return search_engine
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search")
 async def search_transactions(
     request: SearchRequest,
     engine: SearchEngine = Depends(get_search_engine)
-) -> SearchResponse:
+) -> Dict[str, Any]:
     """
     Endpoint unique pour toutes les recherches de transactions
     
@@ -53,7 +52,7 @@ async def search_transactions(
         request: Requête de recherche unifiée
         
     Returns:
-        SearchResponse: Résultats avec métadonnées
+        Dict: Réponse structurée avec résultats et métadonnées
         
     Raises:
         HTTPException: En cas d'erreur de validation ou de recherche
@@ -74,13 +73,15 @@ async def search_transactions(
         
         # Recherche via moteur unifié
         results = await engine.search(request)
-        
+
         # Log des résultats
+        metadata = results.get("response_metadata", {})
         logger.info(
             f"Search completed for user {request.user_id}: "
-            f"{results.returned_hits}/{results.total_hits} results in {results.execution_time_ms}ms"
+            f"{metadata.get('returned_results', 0)}/{metadata.get('total_results', 0)} "
+            f"results in {metadata.get('processing_time_ms', 0)}ms"
         )
-        
+
         return results
         
     except HTTPException:

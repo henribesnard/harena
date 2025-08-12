@@ -317,7 +317,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         # Create search parameters based on intent
         search_params = SearchParameters(
             search_text=search_text,
-            size=20 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10,
+            max_results=20 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10,
             include_highlights=True,
             boost_recent=intent_result.intent_type in [
                 "BALANCE_CHECK",

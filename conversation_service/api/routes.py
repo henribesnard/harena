@@ -332,7 +332,7 @@ async def health_check(
             health_status["components"]["team_manager"] = {
                 "status": "healthy" if team_health.get("healthy") else "unhealthy",
                 "agents_loaded": len(details.get("agent_statuses", {})),
-                "last_activity": last_health_check.isoformat() if last_health_check else None
+                "last_activity": last_health_check if isinstance(last_health_check, str) else last_health_check.isoformat() if last_health_check else None
             }
             if not team_health.get("healthy"):
                 health_status["status"] = "degraded"

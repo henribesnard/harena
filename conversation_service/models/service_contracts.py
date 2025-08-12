@@ -116,6 +116,11 @@ class SearchParameters(BaseModel):
     result limits, sorting, and search strategy preferences.
     """
     
+    search_text: Optional[str] = Field(
+        default=None,
+        description="Text to search for in the Search Service",
+    )
+
     max_results: int = Field(
         default=50,
         description="Maximum number of results to return",
@@ -174,6 +179,7 @@ class SearchParameters(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "search_text": "restaurant paris",
                 "max_results": 20,
                 "offset": 0,
                 "sort_by": "date",
@@ -413,10 +419,10 @@ class SearchServiceQuery(BaseModel):
         filters_dict = self.filters.dict(exclude_none=True) if self.filters else {}
         return {
             "user_id": self.query_metadata.user_id,
-            "query": getattr(self.search_parameters, "search_text", ""),
+            "query": self.search_parameters.search_text or "",
             "filters": filters_dict,
-            "limit": getattr(self.search_parameters, "size", getattr(self.search_parameters, "max_results", 20)),
-            "offset": getattr(self.search_parameters, "offset", 0),
+            "limit": self.search_parameters.max_results,
+            "offset": self.search_parameters.offset,
             "metadata": {
                 "conversation_id": self.query_metadata.conversation_id,
                 "intent_type": self.query_metadata.intent_type,

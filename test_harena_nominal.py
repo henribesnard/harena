@@ -276,7 +276,7 @@ class HarenaTestClient:
         """Test 6: Health check conversation service."""
         self._print_step(6, "HEALTH CHECK CONVERSATION SERVICE")
 
-        response = self._make_request("GET", "/conversation/health")
+        response = self._make_request("GET", "/conversation/health", use_auth=False)
         success, json_data = self._print_response(response)
 
         if success and json_data:
@@ -296,7 +296,7 @@ class HarenaTestClient:
         """Test 7: Status conversation service."""
         self._print_step(7, "STATUS CONVERSATION SERVICE")
 
-        response = self._make_request("GET", "/conversation/status")
+        response = self._make_request("GET", "/conversation/status", use_auth=False)
         success, json_data = self._print_response(response)
 
         if success and json_data:
@@ -352,7 +352,7 @@ class HarenaTestClient:
             print("❌ user_id non disponible")
             return False
 
-        metrics_resp = self._make_request("GET", "/conversation/metrics")
+        metrics_resp = self._make_request("GET", "/conversation/metrics", use_auth=False)
         metrics_ok, metrics_json = self._print_response(metrics_resp)
         if metrics_ok and metrics_json:
             counters = metrics_json.get("service_metrics", {}).get("counters", {})

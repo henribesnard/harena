@@ -402,7 +402,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             logger.info(
                 f"Search query executed successfully: {returned_results} results"
             )
-            
+
             return search_response
             
         except httpx.HTTPStatusError as e:

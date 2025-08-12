@@ -117,7 +117,7 @@ async def chat_endpoint(
         background_tasks: FastAPI background tasks
         team_manager: AutoGen team manager dependency
         conversation_manager: Conversation context dependency
-        user: Authenticated user context
+        user: Authenticated user context derived from JWT claims
         metrics: Metrics collector dependency
         validated_request: Validated conversation request
         

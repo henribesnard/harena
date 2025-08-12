@@ -11,7 +11,7 @@ multi-agent conversation processing.
 Exports:
     Dependencies:
         - get_team_manager: Dependency for MVPTeamManager instance
-        - get_current_user: Authentication dependency (placeholder)
+        - get_current_user: Authentication dependency with JWT decoding fallback
         - validate_conversation_request: Request validation
     
     Router:

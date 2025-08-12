@@ -7,7 +7,7 @@ and request validation.
 
 Dependencies:
     - get_team_manager: Provides singleton MVPTeamManager instance
-    - get_current_user: Authentication and user context
+    - get_current_user: Authentication and user context (local JWT decoding with user service fallback)
     - validate_conversation_request: Request validation and enrichment
     - get_conversation_manager: Conversation context management
     - validate_request_rate_limit: Rate limiting validation
@@ -28,6 +28,7 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import httpx
+from jose import JWTError, jwt
 
 from db_service.session import SessionLocal
 from ..core import load_team_manager
@@ -61,6 +62,7 @@ _rate_limit_lock = asyncio.Lock()
 _RATE_LIMIT_TTL = 300
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+ALGORITHM = "HS256"
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -182,24 +184,52 @@ async def get_current_user(
     request: Request,
     token: Annotated[str, Depends(oauth2_scheme)]
 ) -> Dict[str, Any]:
-    """
-    Validate the provided Bearer token with the user service.
+    """Attempt to authenticate the request using the Bearer token.
+
+    The function first tries to decode the JWT locally using ``SECRET_KEY`` to
+    extract the user identifier and any embedded claims. If decoding succeeds
+    and the token contains the required profile information, this data is
+    returned immediately without contacting the user service.
+
+    When the token cannot be decoded or lacks necessary profile fields (such as
+    permissions), the function falls back to calling the user service to obtain
+    the full user profile.
 
     Args:
-        token: OAuth2 Bearer token extracted from the request
+        token: OAuth2 Bearer token extracted from the request.
 
     Returns:
-        Dict containing the authenticated user's profile information
+        Dict containing user information derived from the token or user service.
 
     Raises:
-        HTTPException: If authentication fails or the user service is unavailable
+        HTTPException: If authentication fails or the user service is unavailable.
     """
 
+    # First attempt: decode the JWT locally
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise JWTError("Missing subject")
+
+        user_data: Dict[str, Any] = dict(payload)
+        user_data["user_id"] = int(user_id) if str(user_id).isdigit() else user_id
+
+        # If the token already includes permissions and rate limits, use it
+        if "permissions" in user_data and "rate_limit_tier" in user_data:
+            logger.debug(
+                f"Authenticated user from token: {user_data.get('user_id')}"
+            )
+            return user_data
+    except JWTError as exc:
+        logger.debug(f"JWT decode failed, falling back to user service: {exc}")
+
+    # Fallback: contact the user service for full profile information
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/me",
-                headers={"Authorization": f"Bearer {token}"}
+                headers={"Authorization": f"Bearer {token}"},
             )
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -213,20 +243,19 @@ async def get_current_user(
         logger.error(f"User service returned error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="User service error"
+            detail="User service error",
         )
     except httpx.RequestError as exc:
         logger.error(f"Failed to contact user service: {exc}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="User service unavailable"
+            detail="User service unavailable",
         )
 
     user_data = response.json()
     user_data.setdefault("user_id", user_data.get("id"))
-    logger.debug(f"Authenticated user: {user_data.get('user_id')}")
+    logger.debug(f"Authenticated user via user service: {user_data.get('user_id')}")
     return user_data
-
 
 def validate_conversation_request(request: ConversationRequest) -> ConversationRequest:
     """

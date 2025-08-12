@@ -170,8 +170,8 @@ class WorkflowExecutor:
                             user_id,
                         )
                         if search_response.success:
-                            # Store complete search response instead of only metadata
-                            workflow_data["search_results"] = search_response.dict()
+                            # Store complete search response object for downstream agents
+                            workflow_data["search_results"] = search_response
                             search_step.status = WorkflowStepStatus.COMPLETED
                             search_step.result = search_response
                         else:
@@ -296,7 +296,7 @@ class WorkflowExecutor:
             processing_time_ms=0.0
         )
     
-    def _create_empty_search_results(self) -> Dict[str, Any]:
+    def _create_empty_search_results(self) -> AgentResponse:
         """Create empty search results for fallback."""
         empty_search_response = {
             "response_metadata": {
@@ -306,7 +306,7 @@ class WorkflowExecutor:
                 "total_hits": 0,
                 "has_more": False,
                 "cache_hit": False,
-                "search_strategy_used": "none"
+                "search_strategy_used": "none",
             },
             "results": [],
             "aggregations": None,
@@ -326,7 +326,7 @@ class WorkflowExecutor:
             metadata=metadata,
             execution_time_ms=0,
             success=True,
-        ).dict()
+        )
     
     def _create_conversation_context(
         self, conversation_id: str, user_message: str, user_id: int

@@ -248,8 +248,10 @@ class ContractValidator:
             else:
                 if "total_results" not in metadata:
                     errors.append("response_metadata missing: total_results")
-                if "execution_time_ms" not in metadata:
-                    errors.append("response_metadata missing: execution_time_ms")
+                if "returned_results" not in metadata:
+                    errors.append("response_metadata missing: returned_results")
+                if "processing_time_ms" not in metadata:
+                    errors.append("response_metadata missing: processing_time_ms")
         
         # Validation results
         if "results" in response:

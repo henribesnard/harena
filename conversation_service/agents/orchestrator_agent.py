@@ -301,10 +301,10 @@ class WorkflowExecutor:
         empty_search_response = {
             "response_metadata": {
                 "query_id": f"fallback_{int(time.time())}",
-                "execution_time_ms": 0,
-                "returned_hits": 0,
-                "total_hits": 0,
-                "has_more": False,
+                "processing_time_ms": 0,
+                "returned_results": 0,
+                "total_results": 0,
+                "has_more_results": False,
                 "cache_hit": False,
                 "search_strategy_used": "none",
             },
@@ -534,7 +534,7 @@ class OrchestratorAgent(BaseFinancialAgent):
             if search_results_count is None:
                 sr_meta = metadata.get("search_response", {}) if isinstance(metadata, dict) else {}
                 rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
-                search_results_count = rm.get("returned_hits", 0)
+                search_results_count = rm.get("returned_results", 0)
 
             entities_extracted = []
             intent_detected = None

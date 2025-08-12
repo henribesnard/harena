@@ -219,12 +219,12 @@ class SearchQueryAgent(BaseFinancialAgent):
             
             execution_time = (time.perf_counter() - start_time) * 1000
             
-            returned_hits = getattr(getattr(search_response, "response_metadata", {}), "returned_hits", 0)
+            returned_results = getattr(getattr(search_response, "response_metadata", {}), "returned_results", 0)
             if isinstance(getattr(search_response, "response_metadata", None), dict):
-                returned_hits = search_response.response_metadata.get("returned_hits", 0)
+                returned_results = search_response.response_metadata.get("returned_results", 0)
 
             return {
-                "content": f"Search completed: {returned_hits} results",
+                "content": f"Search completed: {returned_results} results",
                 "metadata": {
                     "search_query": search_query.dict(),
                     "search_response": search_response.dict(),
@@ -232,7 +232,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                         e.dict() for e in enhanced_entities
                     ] if enhanced_entities else [],
                     "execution_time_ms": execution_time,
-                    "search_results_count": returned_hits,
+                    "search_results_count": returned_results,
                 },
                 "confidence_score": min(intent_result.confidence + 0.1, 1.0),  # Boost confidence slightly
                 "token_usage": {
@@ -395,12 +395,12 @@ class SearchQueryAgent(BaseFinancialAgent):
             response_data = response.json()
             search_response = SearchServiceResponse(**response_data)
 
-            returned_hits = getattr(getattr(search_response, "response_metadata", {}), "returned_hits", 0)
+            returned_results = getattr(getattr(search_response, "response_metadata", {}), "returned_results", 0)
             if isinstance(getattr(search_response, "response_metadata", None), dict):
-                returned_hits = search_response.response_metadata.get("returned_hits", 0)
+                returned_results = search_response.response_metadata.get("returned_results", 0)
 
             logger.info(
-                f"Search query executed successfully: {returned_hits} results"
+                f"Search query executed successfully: {returned_results} results"
             )
             
             return search_response

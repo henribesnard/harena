@@ -242,8 +242,8 @@ class ResponseAgent(BaseFinancialAgent):
                 "metadata": {
                     "formatted_results": formatted_results,
                     "search_stats": {
-                        "total_results": search_response.response_metadata.returned_hits,
-                        "execution_time_ms": search_response.response_metadata.execution_time_ms
+                        "total_results": search_response.response_metadata.returned_results,
+                        "processing_time_ms": search_response.response_metadata.processing_time_ms
                     },
                     "response_generation_time_ms": execution_time,
                     "conversation_updated": context is not None

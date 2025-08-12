@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from conversation_service.api.dependencies import get_db
 from db_service.models.user import User
@@ -29,15 +29,18 @@ async def get_current_user(
             token, settings.SECRET_KEY, algorithms=[ALGORITHM]
         )
         user_id: Optional[str] = payload.get("sub")
+        permissions: List[str] = payload.get("permissions", [])
         if user_id is None:
             raise credentials_exception
-        token_data = TokenData(user_id=int(user_id))
+        token_data = TokenData(user_id=int(user_id), permissions=permissions)
     except JWTError:
         raise credentials_exception
     
     user = get_user_by_id(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
+    # attach permissions from token
+    setattr(user, "permissions", token_data.permissions)
     return user
 
 

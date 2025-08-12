@@ -164,13 +164,7 @@ async def chat_endpoint(
             )
 
         # Get conversation context
-        context = await conversation_manager.store.get_context(conversation_id)
-        if context is None:
-            log_unauthorized_access(user_id=user_id, conversation_id=conversation_id, reason="conversation not found")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found",
-            )
+        context = await conversation_manager.get_context(conversation_id, user_id)
         if getattr(context, "user_id", user_id) != user_id:
             log_unauthorized_access(user_id=user_id, conversation_id=conversation_id, reason="forbidden conversation access")
             raise HTTPException(

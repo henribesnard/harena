@@ -255,6 +255,8 @@ async def get_current_user(
         logger.debug(f"JWT decode failed, falling back to user service: {exc}")
         needs_profile = True
 
+    token_perms = user_data.get("permissions", [])
+
     # Fallback: contact the user service for full profile information
     if settings.USER_SERVICE_URL and needs_profile:
         try:
@@ -284,10 +286,13 @@ async def get_current_user(
             logger.error(f"Failed to contact user service: {exc}")
             return user_data
 
-        user_data = response.json()
+        resp = response.json()
+        user_data.update(resp)
         user_data.setdefault("user_id", user_data.get("id"))
-        user_data.setdefault("permissions", [])
+        user_data.setdefault("permissions", token_perms)
         user_data.setdefault("rate_limit_tier", "standard")
+        if "chat:write" in token_perms and "chat:write" not in user_data["permissions"]:
+            user_data["permissions"].append("chat:write")
         logger.debug(
             f"Authenticated user via user service: {user_data.get('user_id')}"
         )

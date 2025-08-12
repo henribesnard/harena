@@ -170,7 +170,8 @@ class WorkflowExecutor:
                             user_id,
                         )
                         if search_response.success:
-                            workflow_data["search_results"] = search_response.metadata
+                            # Store complete search response instead of only metadata
+                            workflow_data["search_results"] = search_response.dict()
                             search_step.status = WorkflowStepStatus.COMPLETED
                             search_step.result = search_response
                         else:
@@ -297,26 +298,35 @@ class WorkflowExecutor:
     
     def _create_empty_search_results(self) -> Dict[str, Any]:
         """Create empty search results for fallback."""
-        return {
-            "metadata": {
-                "search_response": {
-                    "response_metadata": {
-                        "query_id": f"fallback_{int(time.time())}",
-                        "execution_time_ms": 0,
-                        "returned_hits": 0,
-                        "total_hits": 0,
-                        "has_more": False,
-                        "cache_hit": False,
-                        "search_strategy_used": "none"
-                    },
-                    "results": [],
-                    "aggregations": None
-                },
-                "search_query": None,
-                "enhanced_entities": {},
-                "execution_time_ms": 0
-            }
+        empty_search_response = {
+            "response_metadata": {
+                "query_id": f"fallback_{int(time.time())}",
+                "execution_time_ms": 0,
+                "returned_hits": 0,
+                "total_hits": 0,
+                "has_more": False,
+                "cache_hit": False,
+                "search_strategy_used": "none"
+            },
+            "results": [],
+            "aggregations": None,
         }
+
+        metadata = {
+            "search_response": empty_search_response,
+            "search_query": None,
+            "enhanced_entities": {},
+            "execution_time_ms": 0,
+            "search_results_count": 0,
+        }
+
+        return AgentResponse(
+            agent_name=self.search_agent.name,
+            content="Search completed: 0 results",
+            metadata=metadata,
+            execution_time_ms=0,
+            success=True,
+        ).dict()
     
     def _create_conversation_context(
         self, conversation_id: str, user_message: str, user_id: int
@@ -502,13 +512,14 @@ class OrchestratorAgent(BaseFinancialAgent):
             workflow_data = workflow_result.get("workflow_data", {})
             intent_result = workflow_data.get("intent_result")
             search_metadata = workflow_data.get("search_results") or {}
-            search_results_count = search_metadata.get("search_results_count")
+            metadata = (
+                search_metadata.get("metadata", {})
+                if isinstance(search_metadata, dict)
+                else {}
+            )
+            search_results_count = metadata.get("search_results_count")
             if search_results_count is None:
-                sr_meta = (
-                    search_metadata.get("search_response", {})
-                    if isinstance(search_metadata, dict)
-                    else {}
-                )
+                sr_meta = metadata.get("search_response", {}) if isinstance(metadata, dict) else {}
                 rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
                 search_results_count = rm.get("returned_hits", 0)
 

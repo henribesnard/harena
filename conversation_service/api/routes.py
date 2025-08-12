@@ -171,6 +171,11 @@ async def chat_endpoint(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
+
+        context = await conversation_manager.get_context(conversation_id)
+        if getattr(context, "user_id", None) != user_id:
+            context.user_id = user_id
+            await conversation_manager.store.save_context(context)
         logger.debug(f"Retrieved context with {len(context.turns)} previous turns")
 
         # Process message through AutoGen team

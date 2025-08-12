@@ -565,10 +565,14 @@ class MVPTeamManager:
         """
         await self._perform_health_check()
 
+        details = self.team_health.__dict__.copy() if self.team_health else None
+        if details and details.get("last_health_check"):
+            details["last_health_check"] = details["last_health_check"].isoformat()
+
         return {
             "healthy": self.team_health.overall_healthy if self.team_health else False,
             "timestamp": datetime.utcnow().isoformat(),
-            "details": self.team_health.__dict__ if self.team_health else None
+            "details": details
         }
 
     async def get_health_status(self) -> Dict[str, Any]:

@@ -44,6 +44,8 @@ class TeamHealth:
     last_health_check: datetime
     issues: List[str]
     performance_summary: Dict[str, Any]
+    disabled_agents: List[str]
+    agent_failure_counts: Dict[str, int]
 
 
 @dataclass
@@ -104,6 +106,11 @@ class MVPTeamManager:
         self.last_health_check = datetime.utcnow()
         self._delayed_health_check_task: Optional[asyncio.Task] = None
         self._initial_health_check_pending = False
+
+        # Agent health tracking
+        self.agent_failure_counts: Dict[str, int] = {}
+        self.disabled_agents = set()
+        self.failure_threshold = int(self.config.get('AGENT_FAILURE_THRESHOLD', 3))
         
         # Performance tracking
         self.team_stats = {
@@ -214,8 +221,7 @@ class MVPTeamManager:
                 self._update_team_stats(True, execution_time)
                 logger.info(f"Successfully processed message for conversation {conversation_id}")
                 self._trigger_initial_health_check_if_needed()
-                if not user_message.strip():
-                    await self._perform_health_check()
+                await self._perform_health_check()
                 return response_data
             elif response_data.content:
                 # Workflow failure but a response was generated; keep team healthy
@@ -224,8 +230,7 @@ class MVPTeamManager:
                 )
                 self._update_team_stats(True, execution_time)
                 self._trigger_initial_health_check_if_needed()
-                if not user_message.strip():
-                    await self._perform_health_check()
+                await self._perform_health_check()
                 return response_data
             else:
                 # Handle orchestrator failure without response content
@@ -243,6 +248,7 @@ class MVPTeamManager:
 
                 # Return graceful error response while preserving metadata
                 response_data.content = self._generate_error_response(user_message, error_msg)
+                await self._perform_health_check()
                 return response_data
 
         except Exception as e:
@@ -395,7 +401,8 @@ class MVPTeamManager:
             'HEALTH_CHECK_INTERVAL_SECONDS': int(os.getenv('HEALTH_CHECK_INTERVAL_SECONDS', '300')),
             'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true',
             'INITIAL_HEALTH_CHECK_DELAY_SECONDS': int(os.getenv('INITIAL_HEALTH_CHECK_DELAY_SECONDS', '60')),
-            'INITIAL_HEALTH_CHECK': os.getenv('INITIAL_HEALTH_CHECK', 'false').lower() == 'true'
+            'INITIAL_HEALTH_CHECK': os.getenv('INITIAL_HEALTH_CHECK', 'false').lower() == 'true',
+            'AGENT_FAILURE_THRESHOLD': int(os.getenv('AGENT_FAILURE_THRESHOLD', '3'))
         }
     
     async def _initialize_deepseek_client(self) -> None:
@@ -475,56 +482,97 @@ class MVPTeamManager:
     async def _perform_health_check(self) -> None:
         """Perform comprehensive health check of all team components."""
         try:
-            agent_statuses = {}
-            issues = []
-            
+            agent_statuses: Dict[str, bool] = {}
+            issues: List[str] = []
+
             # Check each agent
             for agent_name, agent in self.agents.items():
                 try:
                     is_healthy = agent.is_healthy()
-                    agent_statuses[agent_name] = is_healthy
-                    if not is_healthy:
-                        issues.append(f"Agent {agent_name} is unhealthy")
                 except Exception as e:
-                    agent_statuses[agent_name] = False
+                    is_healthy = False
                     issues.append(f"Agent {agent_name} health check failed: {e}")
-            
-            # Check orchestrator
+
+                if is_healthy:
+                    self.agent_failure_counts[agent_name] = 0
+                    if agent_name in self.disabled_agents:
+                        self.disabled_agents.remove(agent_name)
+                        logger.info(f"Agent {agent_name} reactivated after health recovery")
+                    agent_statuses[agent_name] = True
+                else:
+                    count = self.agent_failure_counts.get(agent_name, 0) + 1
+                    self.agent_failure_counts[agent_name] = count
+                    if count >= self.failure_threshold:
+                        agent_statuses[agent_name] = False
+                        if agent_name not in self.disabled_agents:
+                            self.disabled_agents.add(agent_name)
+                            issues.append(
+                                f"Agent {agent_name} disabled after {count} consecutive failures"
+                            )
+                    else:
+                        agent_statuses[agent_name] = True
+                        issues.append(
+                            f"Agent {agent_name} failed health check ({count}/{self.failure_threshold})"
+                        )
+
+            # Check orchestrator separately
             if self.orchestrator:
                 try:
                     orchestrator_healthy = self.orchestrator.is_healthy()
-                    agent_statuses["orchestrator"] = orchestrator_healthy
-                    if not orchestrator_healthy:
-                        issues.append("Orchestrator is unhealthy")
                 except Exception as e:
-                    agent_statuses["orchestrator"] = False
+                    orchestrator_healthy = False
                     issues.append(f"Orchestrator health check failed: {e}")
-            
-            # Overall health
-            overall_healthy = all(agent_statuses.values()) and len(issues) == 0
-            
+
+                name = "orchestrator"
+                if orchestrator_healthy:
+                    self.agent_failure_counts[name] = 0
+                    if name in self.disabled_agents:
+                        self.disabled_agents.remove(name)
+                        logger.info("Orchestrator reactivated after health recovery")
+                    agent_statuses[name] = True
+                else:
+                    count = self.agent_failure_counts.get(name, 0) + 1
+                    self.agent_failure_counts[name] = count
+                    if count >= self.failure_threshold:
+                        agent_statuses[name] = False
+                        if name not in self.disabled_agents:
+                            self.disabled_agents.add(name)
+                            issues.append(
+                                f"Orchestrator disabled after {count} consecutive failures"
+                            )
+                    else:
+                        agent_statuses[name] = True
+                        issues.append(
+                            f"Orchestrator failed health check ({count}/{self.failure_threshold})"
+                        )
+
+            # Overall health determined by disabled agents
+            overall_healthy = len(self.disabled_agents) == 0
+
             # Performance summary
             performance_summary = {
                 "total_agents": len(self.agents),
                 "healthy_agents": sum(1 for status in agent_statuses.values() if status),
                 "response_time_ms": self.team_stats["avg_response_time_ms"]
             }
-            
+
             self.team_health = TeamHealth(
                 overall_healthy=overall_healthy,
                 agent_statuses=agent_statuses,
                 last_health_check=datetime.utcnow(),
                 issues=issues,
-                performance_summary=performance_summary
+                performance_summary=performance_summary,
+                disabled_agents=list(self.disabled_agents),
+                agent_failure_counts=dict(self.agent_failure_counts)
             )
-            
+
             self.last_health_check = datetime.utcnow()
-            
+
             if overall_healthy:
                 logger.info("Team health check passed")
             else:
                 logger.warning(f"Team health check failed with issues: {issues}")
-                
+
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             self.team_health = TeamHealth(
@@ -532,7 +580,9 @@ class MVPTeamManager:
                 agent_statuses={},
                 last_health_check=datetime.utcnow(),
                 issues=[f"Health check system error: {e}"],
-                performance_summary={}
+                performance_summary={},
+                disabled_agents=list(self.disabled_agents),
+                agent_failure_counts=dict(self.agent_failure_counts)
             )
     
     async def _delayed_health_check(self, delay_seconds: int) -> None:
@@ -587,6 +637,11 @@ class MVPTeamManager:
         details = self.team_health.__dict__.copy() if self.team_health else None
         if details and details.get("last_health_check"):
             details["last_health_check"] = details["last_health_check"].isoformat()
+            details["failure_threshold"] = self.failure_threshold
+            details["recovery_policy"] = (
+                f"Agents disabled after {self.failure_threshold} consecutive failures"
+                " and automatically reactivated when healthy."
+            )
 
         return {
             "healthy": self.team_health.overall_healthy if self.team_health else False,

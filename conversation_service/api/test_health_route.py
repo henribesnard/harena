@@ -19,7 +19,7 @@ class StubTeamManager:
             }
         }
 
-    def get_team_performance(self):
+    async def get_team_performance(self):
         return {}
 
 

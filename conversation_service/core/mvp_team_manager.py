@@ -268,7 +268,7 @@ class MVPTeamManager:
             },
         }
     
-    def get_team_performance(self) -> Dict[str, Any]:
+    async def get_team_performance(self) -> Dict[str, Any]:
         """
         Get comprehensive team performance metrics.
         
@@ -298,7 +298,7 @@ class MVPTeamManager:
         conversation_metrics = {}
         if self.conversation_manager:
             try:
-                conversation_metrics = self.conversation_manager.get_stats()
+                conversation_metrics = await self.conversation_manager.get_stats()
             except Exception as e:
                 conversation_metrics = {"error": str(e)}
         

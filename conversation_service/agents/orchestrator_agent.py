@@ -313,6 +313,20 @@ class WorkflowExecutor:
             results=[],
             aggregations=None,
         )
+        empty_search_response = {
+            "response_metadata": {
+                "query_id": f"fallback_{int(time.time())}",
+                "processing_time_ms": 0,
+                "returned_results": 0,
+                "total_results": 0,
+                "has_more_results": False,
+                "cache_hit": False,
+                "search_strategy_used": "none",
+            },
+            "results": [],
+            "aggregations": None,
+        }
+
         metadata = {
             "search_response": empty_search_response.dict(),
             "search_query": None,
@@ -535,6 +549,8 @@ class OrchestratorAgent(BaseFinancialAgent):
             if search_results_count is None:
                 sr_meta = metadata.get("search_response", {})
                 rm = sr_meta.get("response_metadata", {})
+                sr_meta = metadata.get("search_response", {}) if isinstance(metadata, dict) else {}
+                rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
                 search_results_count = rm.get("returned_results", 0)
 
             entities_extracted = []

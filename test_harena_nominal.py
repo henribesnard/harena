@@ -248,13 +248,13 @@ class HarenaTestClient:
 
         if success and json_data:
             metadata = json_data.get("response_metadata", {})
-            total_hits = metadata.get("total_results", 0)
-            returned_hits = metadata.get("returned_results", 0)
+            total_results = metadata.get("total_results", 0)
+            returned_results = metadata.get("returned_results", 0)
             processing_time = metadata.get("processing_time_ms", 0)
             es_took = metadata.get("elasticsearch_took", 0)
 
-            print(f"✅ Résultats trouvés: {total_hits}")
-            print(f"✅ Résultats retournés: {returned_hits}")
+            print(f"✅ Résultats trouvés: {total_results}")
+            print(f"✅ Résultats retournés: {returned_results}")
             print(f"✅ Temps de traitement: {processing_time}ms")
             print(f"✅ Temps Elasticsearch: {es_took}ms")
 

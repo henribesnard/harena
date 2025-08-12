@@ -104,9 +104,9 @@ def format_response_prompt(
     results_formatted = format_search_results_for_prompt(search_results)
     
     metadata = search_results.get("response_metadata", {})
-    total_results = metadata.get("total_count", "inconnu")
-    execution_time = metadata.get("execution_time_ms", "inconnu")
-    query_type = metadata.get("query_type", "inconnu")
+    total_results = metadata.get("total_results", "inconnu")
+    processing_time = metadata.get("processing_time_ms", "inconnu")
+    query_type = metadata.get("search_strategy_used", "inconnu")
     
     context_section = ""
     if context and context.strip():
@@ -116,7 +116,7 @@ def format_response_prompt(
         user_message=user_message.strip(),
         search_results=results_formatted,
         total_results=total_results,
-        execution_time=execution_time,
+        execution_time=processing_time,
         query_type=query_type,
         context_section=context_section
     )

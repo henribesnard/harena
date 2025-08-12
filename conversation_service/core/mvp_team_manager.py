@@ -119,7 +119,7 @@ class MVPTeamManager:
         Initialize all agents and team components.
         
         Raises:
-            Exception: If initialization fails
+            Exception: If initialization fails or health check reports issues
         """
         try:
             logger.info("Starting team initialization...")
@@ -138,7 +138,15 @@ class MVPTeamManager:
             
             # Step 5: Initial health check
             await self._perform_health_check()
-            
+
+            # Fail fast if any component is unhealthy
+            if not self.team_health or not self.team_health.overall_healthy:
+                issues = self.team_health.issues if self.team_health else ["Unknown health check failure"]
+                error_msg = f"Team health check failed: {issues}"
+                self.initialization_error = error_msg
+                logger.error(error_msg)
+                raise Exception(error_msg)
+
             self.is_initialized = True
             logger.info("Team initialization completed successfully")
             

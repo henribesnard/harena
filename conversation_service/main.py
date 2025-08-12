@@ -272,12 +272,12 @@ async def validate_configuration() -> None:
 async def pre_initialize_dependencies() -> None:
     """
     Pre-initialize critical dependencies to catch startup errors early.
-    
-    This helps identify configuration issues before the service starts
-    accepting requests.
+
+    Performs a full MVPTeamManager initialization and health check so that
+    the service fails fast if any agent is unhealthy.
     """
     logger.info("🔄 Pre-initializing dependencies")
-    
+
     try:
         # Test import of critical modules
         from .core import load_team_manager
@@ -288,13 +288,17 @@ async def pre_initialize_dependencies() -> None:
         if MVPTeamManager is None:
             raise ImportError("MVPTeamManager not available")
 
-        # Test basic initialization without full setup
-        logger.info("✅ Core modules loaded successfully")
-        
+        manager = MVPTeamManager()
+        try:
+            await manager.initialize_agents()
+            logger.info("✅ MVPTeamManager health check passed")
+        finally:
+            await manager.shutdown()
+
         # Test configuration loading
         environment = os.getenv("ENVIRONMENT", "development")
         logger.info(f"✅ Settings loaded for environment: {environment}")
-        
+
     except ImportError as e:
         logger.error(f"❌ Failed to import core modules: {e}")
         raise

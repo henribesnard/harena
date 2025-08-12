@@ -280,6 +280,17 @@ class ConversationOut(BaseModel):
     )
 
 
+class ConversationTurnsResponse(BaseModel):
+    """Response model for conversation turns retrieval."""
+
+    conversation_id: str = Field(
+        ..., description="Identifier of the conversation"
+    )
+    turns: List[ConversationTurn] = Field(
+        ..., description="List of conversation turns"
+    )
+
+
 class ConversationContext(BaseModel):
     """
     Complete conversation context with all turns and state management.

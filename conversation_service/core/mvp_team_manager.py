@@ -88,7 +88,7 @@ class MVPTeamManager:
         # Load configuration from environment variables
         self.config = config or self._load_config_from_env()
         self.team_config = team_config or TeamConfiguration(
-            search_service_url=self.config.get('SEARCH_SERVICE_URL', 'http://localhost:8000')
+            search_service_url=self.config.get('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search')
         )
         
         # Core components
@@ -370,7 +370,7 @@ class MVPTeamManager:
             'DEEPSEEK_API_KEY': os.getenv('DEEPSEEK_API_KEY', ''),
             'DEEPSEEK_BASE_URL': os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
             'DEEPSEEK_TIMEOUT': int(os.getenv('DEEPSEEK_TIMEOUT', '30')),
-            'SEARCH_SERVICE_URL': os.getenv('SEARCH_SERVICE_URL', 'http://localhost:8000'),
+            'SEARCH_SERVICE_URL': os.getenv('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search'),
             'MAX_CONVERSATION_HISTORY': int(os.getenv('MAX_CONVERSATION_HISTORY', '100')),
             'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '60')),
             'HEALTH_CHECK_INTERVAL_SECONDS': int(os.getenv('HEALTH_CHECK_INTERVAL_SECONDS', '300')),

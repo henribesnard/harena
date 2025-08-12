@@ -62,7 +62,7 @@ class QueryOptimizer:
         # Add entity-based keywords
         if intent_result.entities:
             for entity in intent_result.entities:
-                if entity.entity_type in {EntityType.MERCHANT, EntityType.CATEGORY}:
+                if entity.entity_type in {EntityType.MERCHANT, "MERCHANT", EntityType.CATEGORY, "CATEGORY"}:
                     if entity.normalized_value:
                         words.append(str(entity.normalized_value))
         
@@ -288,7 +288,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         categories = [
             str(e.normalized_value)
             for e in all_entities
-            if e.entity_type == EntityType.CATEGORY and e.normalized_value
+            if e.entity_type in {EntityType.CATEGORY, "CATEGORY"} and e.normalized_value
         ]
         if categories:
             search_filters["categories"] = categories
@@ -296,7 +296,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         merchants = [
             str(e.normalized_value)
             for e in all_entities
-            if e.entity_type == EntityType.MERCHANT and e.normalized_value
+            if e.entity_type in {EntityType.MERCHANT, "MERCHANT"} and e.normalized_value
         ]
         if merchants:
             search_filters["merchants"] = merchants
@@ -464,7 +464,9 @@ class SearchQueryAgent(BaseFinancialAgent):
             context += "Entités déjà détectées:\n"
             entities_by_type: Dict[str, List[str]] = {}
             for entity in existing_entities:
-                entities_by_type.setdefault(entity.entity_type.value, []).append(
+                entities_by_type.setdefault(
+                    getattr(entity.entity_type, "value", entity.entity_type), []
+                ).append(
                     str(entity.normalized_value)
                 )
             for entity_type, values in entities_by_type.items():

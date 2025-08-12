@@ -370,22 +370,29 @@ class BaseFinancialAgent(AssistantAgent):
     def is_healthy(self) -> bool:
         """
         Check if agent is healthy based on recent performance.
-        
+
+        The agent starts in a healthy state and remains so until it
+        completes its first successful operation. This avoids the agent
+        being marked as unhealthy immediately after startup before any
+        executions have occurred.
+
         Returns:
             True if agent is performing well, False otherwise
         """
         stats = self.metrics.get_performance_stats()
-        
+
+        # Consider the agent healthy until at least one operation succeeds
+        if stats["successful_operations"] == 0:
+            return True
+
         # Check basic health indicators
         recent_success_rate = 1.0 - stats["errors"]["recent_error_rate"]
         recent_avg_time = stats["execution_times"]["recent_average_ms"]
-        
+
         # Agent is healthy if:
         # - Recent success rate > 90%
         # - Recent average execution time < 10 seconds
-        # - Has performed at least one successful operation
         return (
             recent_success_rate > 0.9 and
-            recent_avg_time < 10000 and
-            stats["successful_operations"] > 0
+            recent_avg_time < 10000
         )

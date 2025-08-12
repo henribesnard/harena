@@ -50,7 +50,8 @@ from .conversation_models import (
     ConversationContext,
     ConversationRequest,
     ConversationResponse,
-    ConversationOut
+    ConversationOut,
+    ConversationTurnsResponse
 )
 
 # Import financial models
@@ -97,6 +98,7 @@ __all__ = [
     "ConversationTurn",
     "ConversationContext",
     "ConversationOut",
+    "ConversationTurnsResponse",
     
     # Financial Models
     "FinancialEntity",

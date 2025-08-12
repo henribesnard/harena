@@ -404,14 +404,15 @@ async def health_check(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=error_response
         )
-@health_router.get(
+@router.get(
     "/metrics",
     summary="Service performance metrics",
     description="Detailed performance metrics and agent statistics",
     responses={
         200: {"description": "Metrics retrieved successfully"},
         503: {"description": "Metrics service unavailable"}
-    }
+    },
+    tags=["monitoring"],
 )
 async def get_metrics(
     metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],

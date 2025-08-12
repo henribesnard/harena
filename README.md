@@ -19,3 +19,9 @@ python test_metrics_endpoint.py
 The conversation service now performs a full agent health check during
 startup. If any agent reports an unhealthy status, initialization fails and
 the process exits instead of running in a degraded state.
+
+## Environment Variables
+
+`SEARCH_SERVICE_URL` sets the base URL for the Search Service. It defaults to
+`http://localhost:8000/api/v1/search` and the service automatically appends
+`/search` when issuing queries.

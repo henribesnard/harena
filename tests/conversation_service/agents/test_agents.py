@@ -7,33 +7,16 @@ from types import SimpleNamespace
 from collections import deque
 import asyncio
 import os
-import importlib
 
 import pytest
 
-# Ensure repository root on path and import base package
+# Ensure repository root on path
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, ROOT_DIR)
-importlib.import_module("conversation_service")
 
-# --- Stub external dependencies to avoid heavy imports ---
 
-# Stub autogen
-autogen_mod = types.ModuleType("autogen")
-class AssistantAgent:  # minimal stub
-    def __init__(self, name=None, **kwargs):
-        self.name = name
-autogen_mod.AssistantAgent = AssistantAgent
-sys.modules["autogen"] = autogen_mod
+# --- Stub definitions used in tests ---
 
-# Stub DeepSeekClient
-core_ds = types.ModuleType("conversation_service.core.deepseek_client")
-class DeepSeekClient: ...
-core_ds.DeepSeekClient = DeepSeekClient
-sys.modules["conversation_service.core.deepseek_client"] = core_ds
-
-# Stub agent_models
-agent_models = types.ModuleType("conversation_service.models.agent_models")
 @dataclass
 class AgentConfig:
     name: str = ""
@@ -44,6 +27,8 @@ class AgentConfig:
     temperature: float = 0.0
     max_tokens: int = 0
     timeout_seconds: int = 0
+
+
 @dataclass
 class AgentResponse:
     agent_name: str = ""
@@ -55,17 +40,12 @@ class AgentResponse:
     token_usage: Optional[Dict[str, Any]] = None
     confidence_score: Optional[float] = None
 
+
 @dataclass
 class TeamWorkflow:
     agents: List[str] = field(default_factory=list)
 
-agent_models.AgentConfig = AgentConfig
-agent_models.AgentResponse = AgentResponse
-agent_models.TeamWorkflow = TeamWorkflow
-sys.modules["conversation_service.models.agent_models"] = agent_models
 
-# Stub financial_models
-financial_models = types.ModuleType("conversation_service.models.financial_models")
 class EntityType(str, Enum):
     MERCHANT = "MERCHANT"
     CATEGORY = "CATEGORY"
@@ -75,15 +55,21 @@ class EntityType(str, Enum):
     CURRENCY = "CURRENCY"
     DATE = "DATE"
     OTHER = "OTHER"
+
+
 class IntentCategory(str, Enum):
     TRANSACTION_SEARCH = "TRANSACTION_SEARCH"
     GENERAL_QUESTION = "GENERAL_QUESTION"
+
+
 class DetectionMethod(str, Enum):
     AI_DETECTION = "AI_DETECTION"
     FALLBACK = "FALLBACK"
     AI_ERROR_FALLBACK = "AI_ERROR_FALLBACK"
     AI_PARSE_FALLBACK = "AI_PARSE_FALLBACK"
     LLM_BASED = "LLM_BASED"
+
+
 @dataclass
 class FinancialEntity:
     entity_type: Any
@@ -93,6 +79,7 @@ class FinancialEntity:
     start_position: Optional[int] = None
     end_position: Optional[int] = None
     detection_method: Any = None
+
     def model_dump(self):
         return {
             "entity_type": getattr(self.entity_type, "value", self.entity_type),
@@ -103,6 +90,8 @@ class FinancialEntity:
             "end_position": self.end_position,
             "detection_method": getattr(self.detection_method, "value", self.detection_method),
         }
+
+
 @dataclass
 class IntentResult:
     intent_type: str
@@ -111,6 +100,7 @@ class IntentResult:
     entities: List[Any] = field(default_factory=list)
     method: Any = None
     processing_time_ms: float = 0.0
+
     def model_dump(self):
         return {
             "intent_type": self.intent_type,
@@ -120,15 +110,8 @@ class IntentResult:
             "method": getattr(self.method, "value", self.method),
             "processing_time_ms": self.processing_time_ms,
         }
-financial_models.EntityType = EntityType
-financial_models.IntentCategory = IntentCategory
-financial_models.DetectionMethod = DetectionMethod
-financial_models.FinancialEntity = FinancialEntity
-financial_models.IntentResult = IntentResult
-sys.modules["conversation_service.models.financial_models"] = financial_models
 
-# Stub conversation_models
-conv_models = types.ModuleType("conversation_service.models.conversation_models")
+
 @dataclass
 class ConversationContext:
     conversation_id: str
@@ -139,11 +122,8 @@ class ConversationContext:
     language: str = "fr"
     context_summary: Optional[str] = None
     active_entities: Optional[List[str]] = None
-conv_models.ConversationContext = ConversationContext
-sys.modules["conversation_service.models.conversation_models"] = conv_models
 
-# Stub service_contracts
-service_contracts = types.ModuleType("conversation_service.models.service_contracts")
+
 @dataclass
 class QueryMetadata:
     conversation_id: str
@@ -152,6 +132,8 @@ class QueryMetadata:
     language: str
     priority: str
     source_agent: Optional[str] = None
+
+
 @dataclass
 class SearchParameters:
     search_text: str
@@ -159,6 +141,8 @@ class SearchParameters:
     include_highlights: bool
     boost_recent: bool
     fuzzy_matching: bool
+
+
 @dataclass
 class SearchFilters:
     categories: List[str] = field(default_factory=list)
@@ -169,42 +153,89 @@ class SearchFilters:
     month_year: Any = None
     amount_min: Any = None
     amount_max: Any = None
+
+
 @dataclass
 class SearchServiceQuery:
     query_metadata: QueryMetadata
     search_parameters: SearchParameters
     filters: SearchFilters
+
     def dict(self):
         return {
             "query_metadata": self.query_metadata.__dict__,
             "search_parameters": self.search_parameters.__dict__,
             "filters": self.filters.__dict__,
         }
+
+
 @dataclass
 class SearchServiceResponse:
     response_metadata: Dict[str, Any] = field(default_factory=dict)
+
     def dict(self):
         return {"response_metadata": self.response_metadata}
-service_contracts.QueryMetadata = QueryMetadata
-service_contracts.SearchParameters = SearchParameters
-service_contracts.SearchFilters = SearchFilters
-service_contracts.SearchServiceQuery = SearchServiceQuery
-service_contracts.SearchServiceResponse = SearchServiceResponse
-sys.modules["conversation_service.models.service_contracts"] = service_contracts
 
-# Stub validators
-validators_mod = types.ModuleType("conversation_service.utils.validators")
+
 class ContractValidator:
     def validate_search_query(self, *args, **kwargs):
         return []
-validators_mod.ContractValidator = ContractValidator
-sys.modules["conversation_service.utils.validators"] = validators_mod
+
 
 # -----------------------------------------------------------------
 
 
 @pytest.fixture
-def agent_classes(httpx_stub):
+def agent_classes(monkeypatch, httpx_stub):
+    # Stub autogen
+    autogen_mod = types.ModuleType("autogen")
+    class AssistantAgent:
+        def __init__(self, name=None, **kwargs):
+            self.name = name
+    autogen_mod.AssistantAgent = AssistantAgent
+    monkeypatch.setitem(sys.modules, "autogen", autogen_mod)
+
+    # Stub DeepSeekClient
+    core_ds = types.ModuleType("conversation_service.core.deepseek_client")
+    class DeepSeekClient: ...
+    core_ds.DeepSeekClient = DeepSeekClient
+    monkeypatch.setitem(sys.modules, "conversation_service.core.deepseek_client", core_ds)
+
+    # Stub agent_models
+    agent_models = types.ModuleType("conversation_service.models.agent_models")
+    agent_models.AgentConfig = AgentConfig
+    agent_models.AgentResponse = AgentResponse
+    agent_models.TeamWorkflow = TeamWorkflow
+    monkeypatch.setitem(sys.modules, "conversation_service.models.agent_models", agent_models)
+
+    # Stub financial_models
+    financial_models = types.ModuleType("conversation_service.models.financial_models")
+    financial_models.EntityType = EntityType
+    financial_models.IntentCategory = IntentCategory
+    financial_models.DetectionMethod = DetectionMethod
+    financial_models.FinancialEntity = FinancialEntity
+    financial_models.IntentResult = IntentResult
+    monkeypatch.setitem(sys.modules, "conversation_service.models.financial_models", financial_models)
+
+    # Stub conversation_models
+    conv_models = types.ModuleType("conversation_service.models.conversation_models")
+    conv_models.ConversationContext = ConversationContext
+    monkeypatch.setitem(sys.modules, "conversation_service.models.conversation_models", conv_models)
+
+    # Stub service_contracts
+    service_contracts = types.ModuleType("conversation_service.models.service_contracts")
+    service_contracts.QueryMetadata = QueryMetadata
+    service_contracts.SearchParameters = SearchParameters
+    service_contracts.SearchFilters = SearchFilters
+    service_contracts.SearchServiceQuery = SearchServiceQuery
+    service_contracts.SearchServiceResponse = SearchServiceResponse
+    monkeypatch.setitem(sys.modules, "conversation_service.models.service_contracts", service_contracts)
+
+    # Stub validators
+    validators_mod = types.ModuleType("conversation_service.utils.validators")
+    validators_mod.ContractValidator = ContractValidator
+    monkeypatch.setitem(sys.modules, "conversation_service.utils.validators", validators_mod)
+
     from conversation_service.agents.hybrid_intent_agent import HybridIntentAgent
     from conversation_service.agents.search_query_agent import SearchQueryAgent
     from conversation_service.agents.response_agent import ResponseAgent
@@ -449,3 +480,4 @@ def test_base_financial_agent_metrics_and_health(agent_classes):
 
     agent.metrics.record_operation(31000, success=False, error_type="Timeout")
     assert agent.is_healthy() is False
+

@@ -129,6 +129,7 @@ class WorkflowExecutor:
         try:
             # Step 1: Intent Detection
             intent_step = steps[0]
+            logger.info("Starting intent_detection step")
             intent_step.status = WorkflowStepStatus.RUNNING
             intent_step.start_time = time.perf_counter()
             
@@ -154,6 +155,14 @@ class WorkflowExecutor:
             
             finally:
                 intent_step.end_time = time.perf_counter()
+                entities_count = 0
+                if workflow_data["intent_result"] and getattr(workflow_data["intent_result"], "entities", None):
+                    entities_count = len(workflow_data["intent_result"].entities)
+                logger.info(
+                    "Finished intent_detection step in %.2f ms with %d entities",
+                    intent_step.duration_ms,
+                    entities_count,
+                )
             
             # Step 2: Search Query (only if we have intent)
             search_step = steps[1]
@@ -162,6 +171,7 @@ class WorkflowExecutor:
             if intent_result:
                 search_required = getattr(intent_result, "search_required", True)
                 if search_required:
+                    logger.info("Starting search_query step")
                     search_step.status = WorkflowStepStatus.RUNNING
                     search_step.start_time = time.perf_counter()
                     try:
@@ -183,6 +193,14 @@ class WorkflowExecutor:
                         workflow_data["search_results"] = self._create_empty_search_results()
                     finally:
                         search_step.end_time = time.perf_counter()
+                        results_count = 0
+                        if search_step.result and getattr(search_step.result, "metadata", None):
+                            results_count = search_step.result.metadata.get("search_results_count", 0)
+                        logger.info(
+                            "Finished search_query step in %.2f ms with %d results",
+                            search_step.duration_ms,
+                            results_count,
+                        )
                 else:
                     search_step.status = WorkflowStepStatus.SKIPPED
                     search_step.error = "Search not required for intent"
@@ -197,13 +215,17 @@ class WorkflowExecutor:
                     response_step.error = "Search not required for intent"
                     response_step.start_time = time.perf_counter()
                     response_step.end_time = time.perf_counter()
+                    logger.info("Search_query step skipped")
+                    logger.info("Response_generation step skipped")
             else:
                 search_step.status = WorkflowStepStatus.SKIPPED
                 search_step.error = "No valid intent result"
                 workflow_data["search_results"] = self._create_empty_search_results()
+                logger.info("Search_query step skipped - no intent result")
 
             # Step 3: Response Generation
             if response_step.status == WorkflowStepStatus.PENDING:
+                logger.info("Starting response_generation step")
                 response_step.status = WorkflowStepStatus.RUNNING
                 response_step.start_time = time.perf_counter()
                 try:
@@ -231,6 +253,14 @@ class WorkflowExecutor:
                     workflow_data["final_response"] = self._create_fallback_response(user_message)
                 finally:
                     response_step.end_time = time.perf_counter()
+                    results_count = 0
+                    if workflow_data.get("search_results") and getattr(workflow_data["search_results"], "metadata", None):
+                        results_count = workflow_data["search_results"].metadata.get("search_results_count", 0)
+                    logger.info(
+                        "Finished response_generation step in %.2f ms using %d results",
+                        response_step.duration_ms,
+                        results_count,
+                    )
             
             # Compile workflow results
             workflow_end = time.perf_counter()

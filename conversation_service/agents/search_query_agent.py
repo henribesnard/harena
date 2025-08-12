@@ -267,6 +267,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         """
         # Optimize search text
         search_text = self.query_optimizer.optimize_search_text(user_message, intent_result)
+        logger.debug("Optimized search text: %s", search_text)
         
         # Extract filters from entities
         date_filters = self.query_optimizer.extract_date_filters(intent_result)
@@ -303,6 +304,7 @@ class SearchQueryAgent(BaseFinancialAgent):
 
         # Always filter by user_id for security and multi-tenant isolation
         search_filters["user_id"] = user_id
+        logger.debug("Calculated search filters: %s", search_filters)
 
         # Create query metadata
         query_metadata = QueryMetadata(

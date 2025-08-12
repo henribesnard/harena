@@ -3,7 +3,8 @@ Base Financial Agent class for AutoGen v0.4 integration.
 
 This module provides the foundational class for all specialized financial agents
 in the conversation service. It includes common functionality like metrics tracking,
-error handling, and DeepSeek client integration.
+error handling, and DeepSeek client integration. Performance monitoring now tracks
+percentile distributions (p95, p99) and uses a 30-second threshold for health checks.
 
 Classes:
     - BaseFinancialAgent: Base class extending AutoGen AssistantAgent
@@ -39,9 +40,10 @@ logger = logging.getLogger(__name__)
 class AgentMetrics:
     """
     Performance metrics tracking for financial agents.
-    
-    Tracks execution times, success rates, token usage, and error patterns
-    to enable monitoring and optimization of agent performance.
+
+    Tracks execution times, success rates, token usage, error patterns, and
+    distribution metrics (p95, p99) to enable monitoring and optimization of
+    agent performance.
     """
     
     def __init__(self, window_size: int = 1000):
@@ -53,7 +55,16 @@ class AgentMetrics:
         """
         self.window_size = window_size
         self.reset_metrics()
-    
+
+    @staticmethod
+    def _percentile(values: List[float], percentile: float) -> float:
+        """Compute a percentile value from a list of numbers."""
+        if not values:
+            return 0.0
+        sorted_vals = sorted(values)
+        k = int(round((len(sorted_vals) - 1) * percentile))
+        return sorted_vals[k]
+
     def reset_metrics(self) -> None:
         """Reset all metrics to initial state."""
         self.total_operations = 0
@@ -113,9 +124,10 @@ class AgentMetrics:
     def get_performance_stats(self) -> Dict[str, Any]:
         """
         Get comprehensive performance statistics.
-        
+
         Returns:
-            Dictionary containing all performance metrics
+            Dictionary containing all performance metrics, including
+            percentile distributions (p95, p99) of recent execution times.
         """
         uptime_seconds = (datetime.utcnow() - self.start_time).total_seconds()
         
@@ -134,6 +146,10 @@ class AgentMetrics:
             sum(self.recent_tokens) / len(self.recent_tokens)
             if self.recent_tokens else 0.0
         )
+
+        recent_times_list = list(self.recent_execution_times)
+        p95_ms = self._percentile(recent_times_list, 0.95)
+        p99_ms = self._percentile(recent_times_list, 0.99)
         
         success_rate = (
             self.successful_operations / self.total_operations
@@ -156,7 +172,9 @@ class AgentMetrics:
                 "average_ms": round(avg_execution_time, 2),
                 "recent_average_ms": round(recent_avg_time, 2),
                 "min_ms": round(self.min_execution_time, 2) if self.min_execution_time != float('inf') else 0.0,
-                "max_ms": round(self.max_execution_time, 2)
+                "max_ms": round(self.max_execution_time, 2),
+                "p95_ms": round(p95_ms, 2),
+                "p99_ms": round(p99_ms, 2)
             },
             "token_usage": {
                 "total_tokens": self.total_tokens_used,
@@ -377,7 +395,10 @@ class BaseFinancialAgent(AssistantAgent):
         executions have occurred.
 
         Returns:
-            True if agent is performing well, False otherwise
+            True if agent is performing well, False otherwise. An agent is
+            considered healthy when the recent success rate exceeds 90% and
+            both the average and 95th percentile execution times stay below
+            30 seconds.
         """
         stats = self.metrics.get_performance_stats()
 
@@ -388,11 +409,14 @@ class BaseFinancialAgent(AssistantAgent):
         # Check basic health indicators
         recent_success_rate = 1.0 - stats["errors"]["recent_error_rate"]
         recent_avg_time = stats["execution_times"]["recent_average_ms"]
+        p95_time = stats["execution_times"].get("p95_ms", recent_avg_time)
 
         # Agent is healthy if:
         # - Recent success rate > 90%
-        # - Recent average execution time < 10 seconds
+        # - Recent average execution time < 30 seconds
+        # - 95th percentile execution time < 30 seconds (ignores isolated spikes)
         return (
-            recent_success_rate > 0.9 and
-            recent_avg_time < 10000
+            recent_success_rate > 0.9
+            and recent_avg_time < 30000
+            and p95_time < 30000
         )

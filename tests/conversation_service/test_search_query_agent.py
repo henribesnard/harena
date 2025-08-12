@@ -8,9 +8,6 @@ import asyncio
 
 import pytest
 
-# Stub httpx to avoid dependency during import
-sys.modules.setdefault("httpx", types.ModuleType("httpx"))
-
 # Stub DeepSeekClient
 core_ds = types.ModuleType("conversation_service.core.deepseek_client")
 class DeepSeekClient: ...
@@ -118,10 +115,16 @@ class ContractValidator:
 validators_mod.ContractValidator = ContractValidator
 sys.modules["conversation_service.utils.validators"] = validators_mod
 
-from conversation_service.agents.search_query_agent import QueryOptimizer, SearchQueryAgent
 
 
-def test_optimize_search_text_with_string_entities():
+@pytest.fixture
+def search_query_classes(httpx_stub):
+    from conversation_service.agents.search_query_agent import QueryOptimizer, SearchQueryAgent
+    return QueryOptimizer, SearchQueryAgent
+
+
+def test_optimize_search_text_with_string_entities(search_query_classes):
+    QueryOptimizer, _ = search_query_classes
     optimizer = QueryOptimizer()
     entities = [
         SimpleNamespace(entity_type="MERCHANT", normalized_value="Amazon"),
@@ -133,7 +136,8 @@ def test_optimize_search_text_with_string_entities():
     assert "Shopping" in text
 
 
-def test_generate_search_contract_handles_string_entities():
+def test_generate_search_contract_handles_string_entities(search_query_classes):
+    QueryOptimizer, SearchQueryAgent = search_query_classes
     agent = SearchQueryAgent.__new__(SearchQueryAgent)
     agent.query_optimizer = QueryOptimizer()
     agent.name = "test_agent"

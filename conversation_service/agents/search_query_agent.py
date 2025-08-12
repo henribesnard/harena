@@ -16,6 +16,7 @@ Version: 1.0.0 MVP - Search Service Integration
 
 import time
 import logging
+import unicodedata
 import httpx
 from typing import Dict, Any, Optional, List
 
@@ -54,10 +55,23 @@ class QueryOptimizer:
         """
         # Start with clean user message
         search_text = user_message.lower().strip()
-        
-        # Remove common stop words that don't help search
-        stop_words = {'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'mon', 'ma', 'mes'}
+
+        # Remove accents for consistent search behavior
+        search_text = unicodedata.normalize('NFD', search_text)
+        search_text = ''.join(
+            ch for ch in search_text if unicodedata.category(ch) != 'Mn'
+        )
+
+        # Remove common stop words and generic terms that don't help search
+        stop_words = {
+            'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'mon', 'ma', 'mes',
+            'recherche', 'rechercher', 'depense', 'depenses', 'transaction',
+            'transactions'
+        }
         words = [word for word in search_text.split() if word not in stop_words]
+
+        # Remove basic verb forms (infinitives) for more aggressive normalization
+        words = [word for word in words if not word.endswith(('er', 'ir', 're'))]
         
         # Add entity-based keywords
         if intent_result.entities:
@@ -65,8 +79,9 @@ class QueryOptimizer:
                 if entity.entity_type in {EntityType.MERCHANT, "MERCHANT", EntityType.CATEGORY, "CATEGORY"}:
                     if entity.normalized_value:
                         words.append(str(entity.normalized_value))
-        
-        return " ".join(words)[:200]  # Limit search text length
+        optimized_text = " ".join(words)[:200]
+        logger.debug("Normalized search text: %s", optimized_text)
+        return optimized_text  # Limit search text length
     
     @staticmethod
     def extract_date_filters(intent_result: IntentResult) -> Dict[str, Any]:

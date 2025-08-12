@@ -33,7 +33,7 @@ from jose import JWTError, jwt
 from db_service.session import SessionLocal
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
-from ..models import ConversationRequest, ConversationResponse
+from ..models.conversation_models import ConversationRequest, ConversationResponse
 from ..utils.metrics import MetricsCollector
 from ..utils.logging import log_unauthorized_access
 from ..services.conversation_db import (

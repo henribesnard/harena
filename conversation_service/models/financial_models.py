@@ -19,6 +19,14 @@ from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
 
+__all__ = [
+    "EntityType",
+    "IntentCategory",
+    "DetectionMethod",
+    "FinancialEntity",
+    "IntentResult",
+]
+
 
 class EntityType(str, Enum):
     """Enumeration of supported financial entity types."""

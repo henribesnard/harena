@@ -424,7 +424,12 @@ class HarenaTestClient:
         # Contrôle persistance
         resp = self._make_request("GET", turns_endpoint)
         success, json_data = self._print_response(resp)
-        if not (success and json_data and isinstance(json_data.get("turns"), list)):
+        if not (
+            success
+            and json_data
+            and json_data.get("conversation_id") == conversation_id
+            and isinstance(json_data.get("turns"), list)
+        ):
             print("❌ Échec récupération des turns")
             return False
 

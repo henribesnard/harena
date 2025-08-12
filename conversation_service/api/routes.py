@@ -40,6 +40,7 @@ from ..models import (
     ConversationResponse,
     ConversationOut,
     ConversationTurn,
+    ConversationTurnsResponse,
 )
 import os
 
@@ -487,7 +488,7 @@ async def list_conversations(
 
 @conversations_router.get(
     "/{conversation_id}/turns",
-    response_model=List[ConversationTurn],
+    response_model=ConversationTurnsResponse,
     summary="Get conversation turns",
     description="Return turns of a conversation if it belongs to the user",
     responses={
@@ -502,7 +503,7 @@ async def get_conversation_turns(
     db_service: Annotated[ConversationDBService, Depends(get_conversation_service)],
     service: Annotated[ConversationService, Depends(get_conversation_read_service)],
     limit: int = Query(10, ge=1, le=50),
-) -> List[ConversationTurn]:
+) -> ConversationTurnsResponse:
     """Return the turns for a specific conversation."""
     _ = db_service  # dependency for potential future use
     conversation = service.get_conversation(conversation_id)
@@ -537,7 +538,7 @@ async def get_conversation_turns(
                 agent_chain=t.agent_chain,
             )
         )
-    return turns
+    return {"conversation_id": conversation_id, "turns": turns}
 
 
 @router.get(

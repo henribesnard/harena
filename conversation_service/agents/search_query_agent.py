@@ -17,6 +17,7 @@ Version: 1.0.0 MVP - Search Service Integration
 import time
 import logging
 import unicodedata
+import json
 import httpx
 from typing import Dict, Any, Optional, List
 
@@ -496,14 +497,45 @@ class SearchQueryAgent(BaseFinancialAgent):
     def _parse_entity_response(self, ai_content: str) -> List[FinancialEntity]:
         """Parse AI entity extraction response."""
         entities: List[FinancialEntity] = []
-        
+
         try:
-            # Simple parsing - enhance as needed
-            lines = ai_content.strip().split('\n')
-            
+            entities_idx = ai_content.lower().find("entities:")
+            if entities_idx != -1:
+                json_block = ai_content[entities_idx + len("entities:") :].strip()
+                logger.debug(f"Raw entities JSON block: {json_block}")
+                try:
+                    parsed = json.loads(json_block)
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, dict):
+                                for key, value in item.items():
+                                    if not value or (isinstance(value, str) and value.lower() == "aucune"):
+                                        continue
+                                    try:
+                                        entity_type = EntityType(key.upper())
+                                    except ValueError:
+                                        continue
+                                    entities.append(
+                                        FinancialEntity(
+                                            entity_type=entity_type,
+                                            raw_value=str(value),
+                                            normalized_value=str(value),
+                                            confidence=0.8,
+                                        )
+                                    )
+                        logger.debug(
+                            "Recognized entities: %s",
+                            [f"{e.entity_type.value}: {e.normalized_value}" for e in entities],
+                        )
+                        return entities
+                except json.JSONDecodeError as e:
+                    logger.debug(f"JSON parsing failed: {e}")
+
+            # Fallback to simple line-based parsing
+            lines = ai_content.strip().split("\n")
             for line in lines:
-                if ':' in line:
-                    parts = line.split(':', 1)
+                if ":" in line:
+                    parts = line.split(":", 1)
                     if len(parts) == 2:
                         entity_type_str = parts[0].strip().upper()
                         entity_value = parts[1].strip()
@@ -522,10 +554,15 @@ class SearchQueryAgent(BaseFinancialAgent):
                                     confidence=0.8,
                                 )
                             )
-        
+
+            logger.debug(
+                "Recognized entities: %s",
+                [f"{e.entity_type.value}: {e.normalized_value}" for e in entities],
+            )
+
         except Exception as e:
             logger.warning(f"Failed to parse entity response: {e}")
-        
+
         return entities
     
     def _get_system_message(self) -> str:

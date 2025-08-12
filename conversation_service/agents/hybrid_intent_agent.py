@@ -325,8 +325,9 @@ class HybridIntentAgent(BaseFinancialAgent):
         try:
             # Prepare context for AI
             context = self._prepare_ai_context(message, rule_backup)
-            
+
             # Call DeepSeek for intent detection
+            logger.debug("DeepSeek intent detection for user_id=%s", user_id)
             response = await self.deepseek_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_ai_detection_prompt()},
@@ -334,7 +335,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 ],
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
-                user_id=user_id,
+                user=str(user_id),
             )
             
             # Parse AI response into structured result

@@ -335,11 +335,12 @@ class WorkflowExecutor:
         try:
             from ..models.conversation_models import ConversationContext
             
+            turns = []
             return ConversationContext(
                 conversation_id=conversation_id,
                 user_id=user_id,
-                turns=[],
-                current_turn=1,
+                turns=turns,
+                current_turn=len(turns),
                 status="active",
                 language="fr",
             )

@@ -302,8 +302,7 @@ async def chat_endpoint(
 async def health_check(
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
-    metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
-    user: Annotated[Dict[str, Any], Depends(get_current_user)]
+    metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)]
 ) -> Dict[str, Any]:
     """
     Comprehensive health check for all service components.
@@ -412,8 +411,7 @@ async def health_check(
 )
 async def get_metrics(
     metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
-    team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
-    user: Annotated[Dict[str, Any], Depends(get_current_user)]
+    team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)]
 ) -> Dict[str, Any]:
     """
     Get detailed performance metrics and statistics.
@@ -422,13 +420,6 @@ async def get_metrics(
         Dict containing comprehensive service metrics
     """
     try:
-        # Check if user has metrics permission
-        if "view_metrics" not in user.get("permissions", []):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions to view metrics"
-            )
-        
         # Get metrics summary
         metrics_summary = metrics.get_summary()
         
@@ -550,9 +541,7 @@ async def get_conversation_turns(
     description="Basic service status and configuration",
     tags=["monitoring"]
 )
-async def get_status(
-    user: Annotated[Dict[str, Any], Depends(get_current_user)]
-) -> Dict[str, Any]:
+async def get_status() -> Dict[str, Any]:
     """
     Get basic service status and configuration information.
     

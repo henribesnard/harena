@@ -35,7 +35,7 @@ from .dependencies import (
     get_conversation_read_service,
 )
 from ..core.conversation_manager import ConversationManager
-from ..models import (
+from ..models.conversation_models import (
     ConversationRequest,
     ConversationResponse,
     ConversationOut,

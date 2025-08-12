@@ -16,6 +16,7 @@ sys.path.insert(0, ROOT_DIR)
 
 
 # --- Stub definitions used in tests ---
+conv_models = types.ModuleType("conversation_service.models.conversation_models")
 
 @dataclass
 class AgentConfig:
@@ -278,9 +279,9 @@ def agent_classes(monkeypatch, httpx_stub):
     monkeypatch.setitem(sys.modules, "conversation_service.models.financial_models", financial_models)
 
     # Stub conversation_models
-    conv_models = types.ModuleType("conversation_service.models.conversation_models")
-    conv_models.ConversationContext = ConversationContext
-    monkeypatch.setitem(sys.modules, "conversation_service.models.conversation_models", conv_models)
+    monkeypatch.setitem(
+        sys.modules, "conversation_service.models.conversation_models", conv_models
+    )
 
     # Stub service_contracts
     service_contracts = types.ModuleType("conversation_service.models.service_contracts")

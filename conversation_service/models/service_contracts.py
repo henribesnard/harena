@@ -27,6 +27,22 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from uuid import uuid4
 
+__all__ = [
+    "QueryMetadata",
+    "SearchParameters",
+    "SearchFilters",
+    "AggregationRequest",
+    "SearchServiceQuery",
+    "ResponseMetadata",
+    "TransactionResult",
+    "AggregationResult",
+    "SearchServiceResponse",
+    "validate_search_query_contract",
+    "validate_search_response_contract",
+    "create_minimal_query",
+    "create_error_response",
+]
+
 
 class QueryMetadata(BaseModel):
     """

@@ -371,6 +371,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 metadata.conversation_id,
                 metadata.query_id,
                 metadata.intent_type,
+            )
             logger.info(
                 (
                     "Sending search request to Search Service: user_id=%s, "

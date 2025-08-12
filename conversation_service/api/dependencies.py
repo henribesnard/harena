@@ -206,13 +206,12 @@ async def get_current_user(
     """Attempt to authenticate the request using the Bearer token.
 
     The function first tries to decode the JWT locally using ``SECRET_KEY`` to
-    extract the user identifier and any embedded claims. If decoding succeeds
-    and the token contains the required profile information, this data is
-    returned immediately without contacting the user service.
-
-    When the token cannot be decoded or lacks necessary profile fields (such as
-    permissions), the function falls back to calling the user service to obtain
-    the full user profile.
+    extract the user identifier and any embedded claims. If decoding succeeds,
+    default values for ``permissions`` and ``rate_limit_tier`` are applied when
+    absent. Only when these fields are missing and a user service URL is
+    configured does the function contact the user service to retrieve the full
+    profile. If the user service call fails (503 or network error), the locally
+    extracted information is returned.
 
     Args:
         token: OAuth2 Bearer token extracted from the request.
@@ -221,8 +220,12 @@ async def get_current_user(
         Dict containing user information derived from the token or user service.
 
     Raises:
-        HTTPException: If authentication fails or the user service is unavailable.
+        HTTPException: If authentication fails and no usable token information is
+            available.
     """
+
+    user_data: Dict[str, Any] = {}
+    needs_profile = False
 
     # First attempt: decode the JWT locally
     try:
@@ -231,50 +234,74 @@ async def get_current_user(
         if user_id is None:
             raise JWTError("Missing subject")
 
-        user_data: Dict[str, Any] = dict(payload)
+        user_data = dict(payload)
         user_data["user_id"] = int(user_id) if str(user_id).isdigit() else user_id
 
-        # If the token already includes permissions and rate limits, use it
-        if "permissions" in user_data and "rate_limit_tier" in user_data:
+        missing_permissions = "permissions" not in user_data
+        missing_rate_limit = "rate_limit_tier" not in user_data
+
+        if missing_permissions:
+            user_data["permissions"] = []
+        if missing_rate_limit:
+            user_data["rate_limit_tier"] = "standard"
+
+        needs_profile = missing_permissions or missing_rate_limit
+        if not needs_profile:
             logger.debug(
                 f"Authenticated user from token: {user_data.get('user_id')}"
             )
             return user_data
     except JWTError as exc:
         logger.debug(f"JWT decode failed, falling back to user service: {exc}")
+        needs_profile = True
 
     # Fallback: contact the user service for full profile information
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/me",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == status.HTTP_401_UNAUTHORIZED:
-            log_unauthorized_access(reason="invalid token")
+    if settings.USER_SERVICE_URL and needs_profile:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{settings.USER_SERVICE_URL}{settings.API_V1_STR}/users/me",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == status.HTTP_401_UNAUTHORIZED:
+                log_unauthorized_access(reason="invalid token")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication credentials",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            if exc.response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+                logger.error(f"User service unavailable: {exc}")
+                return user_data
+            logger.error(f"User service returned error: {exc}")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="User service error",
             )
-        logger.error(f"User service returned error: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="User service error",
-        )
-    except httpx.RequestError as exc:
-        logger.error(f"Failed to contact user service: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="User service unavailable",
-        )
+        except httpx.RequestError as exc:
+            logger.error(f"Failed to contact user service: {exc}")
+            return user_data
 
-    user_data = response.json()
-    user_data.setdefault("user_id", user_data.get("id"))
-    logger.debug(f"Authenticated user via user service: {user_data.get('user_id')}")
-    return user_data
+        user_data = response.json()
+        user_data.setdefault("user_id", user_data.get("id"))
+        user_data.setdefault("permissions", [])
+        user_data.setdefault("rate_limit_tier", "standard")
+        logger.debug(
+            f"Authenticated user via user service: {user_data.get('user_id')}"
+        )
+        return user_data
+
+    if user_data:
+        return user_data
+
+    log_unauthorized_access(reason="invalid token")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 def validate_conversation_request(request: ConversationRequest) -> ConversationRequest:
     """

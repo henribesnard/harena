@@ -470,7 +470,18 @@ class OrchestratorAgent(BaseFinancialAgent):
         conversation_id = input_data.get("conversation_id", f"conv_{int(time.time())}")
 
         if not user_message:
-            raise ValueError("user_message is required for workflow execution")
+            logger.warning(
+                "Received empty user message; returning validation error response"
+            )
+            return {
+                "content": "Je n'ai pas reçu de requête. Veuillez formuler votre demande.",
+                "metadata": {
+                    "workflow_success": False,
+                    "error": "empty_user_message",
+                    "conversation_id": conversation_id,
+                },
+                "confidence_score": 0.0,
+            }
 
         return await self.process_conversation(user_message, conversation_id, user_id)
 

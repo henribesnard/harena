@@ -214,11 +214,30 @@ class MVPTeamManager:
                 self._update_team_stats(True, execution_time)
                 logger.info(f"Successfully processed message for conversation {conversation_id}")
                 self._trigger_initial_health_check_if_needed()
+                if not user_message.strip():
+                    await self._perform_health_check()
+                return response_data
+            elif response_data.content:
+                # Workflow failure but a response was generated; keep team healthy
+                logger.warning(
+                    "Workflow reported failure but returned content; maintaining healthy state"
+                )
+                self._update_team_stats(True, execution_time)
+                self._trigger_initial_health_check_if_needed()
+                if not user_message.strip():
+                    await self._perform_health_check()
                 return response_data
             else:
-                # Handle orchestrator failure
+                # Handle orchestrator failure without response content
                 error_msg = response_data.error_message or "Orchestrator execution failed"
                 logger.error(f"Orchestrator failed: {error_msg}")
+
+                if not user_message.strip():
+                    # Empty request: reset health and avoid marking as failure
+                    self._update_team_stats(True, execution_time)
+                    response_data.content = self._generate_error_response(user_message, error_msg)
+                    await self._perform_health_check()
+                    return response_data
 
                 self._update_team_stats(False, execution_time)
 

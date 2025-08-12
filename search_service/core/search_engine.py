@@ -55,8 +55,8 @@ class SearchEngine:
             # Calcul temps d'exécution
             execution_time = int((time.time() - start_time) * 1000)
 
-            total_hits = self._get_total_hits(es_response)
-            returned_hits = len(results)
+            total_results = self._get_total_hits(es_response)
+            returned_results = len(results)
 
             response = {
                 "results": [r.model_dump() for r in results],
@@ -67,9 +67,9 @@ class SearchEngine:
                     "query_id": (request.metadata or {}).get("query_id", "unknown"),
                     "response_timestamp": datetime.utcnow().isoformat(),
                     "processing_time_ms": execution_time,
-                    "total_results": total_hits,
-                    "returned_results": returned_hits,
-                    "has_more_results": total_hits > (returned_hits + request.offset),
+                    "total_results": total_results,
+                    "returned_results": returned_results,
+                    "has_more_results": total_results > (returned_results + request.offset),
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"
                     ),
@@ -84,7 +84,7 @@ class SearchEngine:
                 )
 
             logger.info(
-                f"Search completed: {returned_hits}/{total_hits} results in {execution_time}ms"
+                f"Search completed: {returned_results}/{total_results} results in {execution_time}ms"
             )
             return response
 
@@ -356,8 +356,8 @@ class SearchEngine:
             # Calcul temps d'exécution
             execution_time = int((time.time() - start_time) * 1000)
 
-            total_hits = self._get_total_hits(es_response)
-            returned_hits = len(results)
+            total_results = self._get_total_hits(es_response)
+            returned_results = len(results)
 
             response = {
                 "results": [r.model_dump() for r in results],
@@ -368,9 +368,9 @@ class SearchEngine:
                     "query_id": (request.metadata or {}).get("query_id", "unknown"),
                     "response_timestamp": datetime.utcnow().isoformat(),
                     "processing_time_ms": execution_time,
-                    "total_results": total_hits,
-                    "returned_results": returned_hits,
-                    "has_more_results": total_hits > (returned_hits + request.offset),
+                    "total_results": total_results,
+                    "returned_results": returned_results,
+                    "has_more_results": total_results > (returned_results + request.offset),
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"
                     ),
@@ -385,7 +385,7 @@ class SearchEngine:
                 )
 
             logger.info(
-                f"Search completed: {returned_hits}/{total_hits} results in {execution_time}ms"
+                f"Search completed: {returned_results}/{total_results} results in {execution_time}ms"
             )
             return response
 

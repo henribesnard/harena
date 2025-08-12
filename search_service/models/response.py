@@ -37,9 +37,9 @@ class SearchResponse(BaseModel):
     results: List[SearchResult] = Field(default_factory=list, description="Liste des résultats")
     
     # Métadonnées de la recherche
-    total_hits: int = Field(..., description="Nombre total de résultats")
-    returned_hits: int = Field(..., description="Nombre de résultats retournés")
-    execution_time_ms: int = Field(..., description="Temps d'exécution en ms")
+    total_results: int = Field(..., description="Nombre total de résultats")
+    returned_results: int = Field(..., description="Nombre de résultats retournés")
+    processing_time_ms: int = Field(..., description="Temps de traitement en ms")
     
     # Informations Elasticsearch
     elasticsearch_took: Optional[int] = Field(None, description="Temps Elasticsearch en ms")
@@ -73,9 +73,9 @@ class SearchResponse(BaseModel):
                         "score": 1.0
                     }
                 ],
-                "total_hits": 156,
-                "returned_hits": 1,
-                "execution_time_ms": 45,
+                "total_results": 156,
+                "returned_results": 1,
+                "processing_time_ms": 45,
                 "elasticsearch_took": 23,
                 "cache_hit": False
             }

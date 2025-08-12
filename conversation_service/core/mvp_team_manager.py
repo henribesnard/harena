@@ -588,7 +588,9 @@ class MVPTeamManager:
             True if team is healthy, False otherwise
         """
         return (
-            self.is_initialized and 
-            self.team_health is not None and 
-            self.team_health.overall_healthy
+            self.is_initialized and
+            (
+                self.team_health is None or
+                self.team_health.overall_healthy
+            )
         )

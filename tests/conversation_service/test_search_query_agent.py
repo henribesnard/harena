@@ -108,10 +108,13 @@ class EntityType(str, Enum):
     CATEGORY = "CATEGORY"
     DATE_RANGE = "DATE_RANGE"
     AMOUNT = "AMOUNT"
+    TRANSACTION_TYPE = "TRANSACTION_TYPE"
 @dataclass
 class FinancialEntity:
     entity_type: Any
+    raw_value: Any
     normalized_value: Any
+    confidence: float = 0.0
 @dataclass
 class IntentResult:
     intent_type: str
@@ -264,3 +267,35 @@ def test_generate_search_contract_handles_string_entities(search_query_classes):
     query = asyncio.run(agent._generate_search_contract(intent_result, "message", user_id=1))
     assert query.filters.merchants == ["Amazon"]
     assert query.filters.categories == ["Shopping"]
+
+
+def test_parse_entity_response_json(search_query_classes):
+    _, SearchQueryAgent = search_query_classes
+    agent = SearchQueryAgent.__new__(SearchQueryAgent)
+    ai_content = (
+        "entities: [{\"merchant\": \"Amazon\", \"transaction_type\": \"purchase\"}]"
+    )
+    entities = agent._parse_entity_response(ai_content)
+    assert any(
+        e.entity_type == EntityType.MERCHANT and e.normalized_value == "Amazon"
+        for e in entities
+    )
+    assert any(
+        e.entity_type == EntityType.TRANSACTION_TYPE and e.normalized_value == "purchase"
+        for e in entities
+    )
+
+
+def test_parse_entity_response_fallback(search_query_classes):
+    _, SearchQueryAgent = search_query_classes
+    agent = SearchQueryAgent.__new__(SearchQueryAgent)
+    ai_content = "MERCHANT: Amazon\nCATEGORY: Shopping"
+    entities = agent._parse_entity_response(ai_content)
+    assert any(
+        e.entity_type == EntityType.MERCHANT and e.normalized_value == "Amazon"
+        for e in entities
+    )
+    assert any(
+        e.entity_type == EntityType.CATEGORY and e.normalized_value == "Shopping"
+        for e in entities
+    )

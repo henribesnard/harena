@@ -349,6 +349,7 @@ class ResponseAgent(BaseFinancialAgent):
         prompt = self._build_response_prompt(user_message, formatted_results, conversation_context)
 
         try:
+            logger.debug("Generating AI response for user_id=%s", user_id)
             response = await self.deepseek_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_response_generation_prompt()},
@@ -356,7 +357,7 @@ class ResponseAgent(BaseFinancialAgent):
                 ],
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
-                user_id=user_id,
+                user=str(user_id),
             )
 
             return response.content.strip()

@@ -95,6 +95,7 @@ class UserInDB(UserInDBBase):
 class User(UserInDBBase):
     preferences: Optional[UserPreferenceInDB] = None
     bridge_connections: List[BridgeConnectionInDB] = []
+    permissions: List[str] = []
 
 
 # Token
@@ -105,6 +106,7 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     user_id: Optional[int] = None
+    permissions: List[str] = []
 
 
 # Bridge API response schemas

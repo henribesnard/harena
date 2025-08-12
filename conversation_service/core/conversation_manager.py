@@ -309,35 +309,40 @@ class ConversationManager:
             logger.error(f"Failed to initialize ConversationManager: {e}")
             raise
     
-    async def get_context(self, conversation_id: str) -> ConversationContext:
-        """
-        Get conversation context, creating if it doesn't exist.
-        
+    async def get_context(
+        self, conversation_id: str, user_id: Optional[int] = None
+    ) -> ConversationContext:
+        """Get conversation context, creating if it doesn't exist.
+
         Args:
             conversation_id: Conversation identifier
-            
+            user_id: Optional user identifier
+
         Returns:
             ConversationContext object
         """
         self.manager_stats["context_retrievals"] += 1
-        
+
         context = await self.store.get_context(conversation_id)
-        
+
         if context is None:
             # Create new conversation context
             context = ConversationContext(
                 conversation_id=conversation_id,
-                user_id=1,  # Default for MVP
+                user_id=user_id if user_id is not None else 1,
                 turns=[],
                 current_turn=0,
                 status="active",
                 language="fr",
                 domain="financial"
             )
-            
+
             await self.store.save_context(context)
             logger.debug(f"Created new conversation context: {conversation_id}")
-        
+        elif user_id is not None and context.user_id != user_id:
+            context.user_id = user_id
+            await self.store.save_context(context)
+
         return context
     
     async def add_turn(self, conversation_id: str, user_id: int, user_msg: str,
@@ -363,25 +368,9 @@ class ConversationManager:
             confidence_score: Confidence score for the response (optional)
         """
         self.manager_stats["turns_added"] += 1
-        self.manager_stats["context_retrievals"] += 1
 
         # Get current context or create a new one with provided user_id
-        context = await self.store.get_context(conversation_id)
-
-        if context is None:
-            context = ConversationContext(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                turns=[],
-                current_turn=0,
-                status="active",
-                language="fr",
-                domain="financial"
-            )
-            await self.store.save_context(context)
-        elif context.user_id != user_id:
-            context.user_id = user_id
-            await self.store.save_context(context)
+        context = await self.get_context(conversation_id, user_id=user_id)
 
         # Create conversation turn
         metadata: Dict[str, Any] = {}
@@ -406,7 +395,7 @@ class ConversationManager:
 
         logger.debug(f"Added turn to conversation {conversation_id}")
     
-    async def update_user_context(self, conversation_id: str, user_id: int, 
+    async def update_user_context(self, conversation_id: str, user_id: int,
                                 user_message: str) -> None:
         """
         Update user context for a conversation.
@@ -416,7 +405,7 @@ class ConversationManager:
             user_id: User identifier
             user_message: Current user message
         """
-        context = await self.get_context(conversation_id)
+        context = await self.get_context(conversation_id, user_id=user_id)
         
         # Update user information
         context.user_id = user_id

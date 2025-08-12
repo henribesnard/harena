@@ -1,4 +1,5 @@
 import argparse
+import logging
 import sys
 from typing import Optional
 
@@ -127,13 +128,23 @@ def main() -> None:
     parser.add_argument("--password", required=True)
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler("harena_test.log", mode="w", encoding="utf-8"),
+        ],
+    )
+    logger = logging.getLogger(__name__)
+
     client = HarenaTestClient(args.base_url, args.username, args.password)
     try:
         client.run()
     except Exception as exc:  # noqa: BLE001
-        print(f"Test sequence failed: {exc}")
+        logger.error(f"Test sequence failed: {exc}")
         sys.exit(1)
-    print("All tests passed")
+    logger.info("All tests passed")
     sys.exit(0)
 
 

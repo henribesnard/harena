@@ -223,9 +223,14 @@ class HybridIntentAgent(BaseFinancialAgent):
         for entity_list in entities.values():
             for e in entity_list:
                 try:
+                    entity_type = EntityType(e.entity_type.upper())
+                except ValueError:
+                    logger.warning(f"Skipping unknown entity type: {e.entity_type}")
+                    continue
+                try:
                     financial_entities.append(
                         FinancialEntity(
-                            entity_type=EntityType(e.entity_type),
+                            entity_type=entity_type,
                             raw_value=e.raw_value,
                             normalized_value=e.normalized_value,
                             confidence=e.confidence,

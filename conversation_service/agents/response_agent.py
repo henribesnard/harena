@@ -217,9 +217,10 @@ class ResponseAgent(BaseFinancialAgent):
                 search_results_dict.get("metadata", {}).get("search_response", {})
             )
             search_response = SearchServiceResponse(**search_response_data)
-            
+
             # Format search results into readable text
             formatted_results = await self._format_search_results(search_response)
+            logger.debug("Formatted results preview: %s", formatted_results[:200])
             
             # Get conversation context
             conversation_context = await self._get_conversation_context(context)

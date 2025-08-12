@@ -338,9 +338,14 @@ class HybridIntentAgent(BaseFinancialAgent):
                 max_tokens=self.config.max_tokens,
                 user=str(user_id),
             )
-            
+            logger.debug("Raw AI response: %s", response.content)
+
             # Parse AI response into structured result
             result = self._parse_ai_response(response.content, message)
+            logger.debug(
+                "Interpreted entities: %s",
+                [e.model_dump() for e in result.entities]
+            )
             result.processing_time_ms = (time.perf_counter() - start_time) * 1000
 
             # If rule backup indicates no search is required, propagate that metadata

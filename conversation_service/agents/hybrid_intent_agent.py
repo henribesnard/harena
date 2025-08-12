@@ -161,24 +161,24 @@ class HybridIntentAgent(BaseFinancialAgent):
                 }
 
             # Stage 2: AI fallback for complex cases
-            ai_result = await self._ai_fallback_detection(user_message, rule_result, user_id)
+            ai_result = await self._ai_fallback_detection(user_message, user_id, rule_result)
             self.detection_stats.ai_fallback_uses += 1
             self._update_detection_stats(ai_time=time.perf_counter() - start_time)
 
-                return {
-                    "content": f"Intent detected: {ai_result.intent_type}",
-                    "metadata": {
-                        "intent_result": ai_result,
-                        "detection_method": DetectionMethod.AI_FALLBACK,
-                        "confidence": ai_result.confidence,
-                        "intent_type": ai_result.intent_type,
-                        "entities": [e.model_dump() for e in ai_result.entities],
-                        "intent_detected": ai_result.intent_type,
-                        "entities_extracted": [e.model_dump() for e in ai_result.entities],
-                        "rule_backup": rule_result.model_dump() if rule_result else None,
-                    },
-                    "confidence_score": ai_result.confidence,
-                }
+            return {
+                "content": f"Intent detected: {ai_result.intent_type}",
+                "metadata": {
+                    "intent_result": ai_result,
+                    "detection_method": DetectionMethod.AI_FALLBACK,
+                    "confidence": ai_result.confidence,
+                    "intent_type": ai_result.intent_type,
+                    "entities": [e.model_dump() for e in ai_result.entities],
+                    "intent_detected": ai_result.intent_type,
+                    "entities_extracted": [e.model_dump() for e in ai_result.entities],
+                    "rule_backup": rule_result.model_dump() if rule_result else None,
+                },
+                "confidence_score": ai_result.confidence,
+            }
             
         except Exception as e:
             logger.error(f"Intent detection failed for message: {user_message[:100]}... Error: {e}")
@@ -193,20 +193,20 @@ class HybridIntentAgent(BaseFinancialAgent):
                 processing_time_ms=(time.perf_counter() - start_time) * 1000,
             )
 
-                return {
-                    "content": "Intent detected: GENERAL (fallback)",
-                    "metadata": {
-                        "intent_result": fallback_result,
-                        "detection_method": DetectionMethod.FALLBACK,
-                        "confidence": 0.5,
-                        "intent_type": fallback_result.intent_type,
-                        "entities": [],
-                        "intent_detected": fallback_result.intent_type,
-                        "entities_extracted": [],
-                        "error": str(e),
-                    },
-                    "confidence_score": 0.5,
-                }
+            return {
+                "content": "Intent detected: GENERAL (fallback)",
+                "metadata": {
+                    "intent_result": fallback_result,
+                    "detection_method": DetectionMethod.FALLBACK,
+                    "confidence": 0.5,
+                    "intent_type": fallback_result.intent_type,
+                    "entities": [],
+                    "intent_detected": fallback_result.intent_type,
+                    "entities_extracted": [],
+                    "error": str(e),
+                },
+                "confidence_score": 0.5,
+            }
 
     def _map_rule_category(self, category: str) -> IntentCategory:
         """Map rule engine categories to IntentCategory values."""
@@ -300,8 +300,8 @@ class HybridIntentAgent(BaseFinancialAgent):
     async def _ai_fallback_detection(
         self,
         message: str,
-        rule_backup: Optional[IntentResult] = None,
         user_id: int,
+        rule_backup: Optional[IntentResult] = None,
     ) -> IntentResult:
         """
         AI-powered intent detection fallback using DeepSeek.

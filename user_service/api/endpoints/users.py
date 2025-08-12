@@ -73,6 +73,8 @@ async def read_users_me(
     """
     Get current user information.
     """
+    # Ensure permissions field is always present in response
+    current_user.permissions = getattr(current_user, "permissions", [])
     return current_user
 
 

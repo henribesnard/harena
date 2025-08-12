@@ -127,7 +127,12 @@ class HarenaTestClient:
             print(f"✅ User ID récupéré: {self.user_id}")
             print(f"✅ Email: {json_data.get('email', 'N/A')}")
             print(f"✅ Nom: {json_data.get('first_name', '')} {json_data.get('last_name', '')}")
-            return True
+            if 'permissions' in json_data:
+                print(f"✅ Permissions: {json_data['permissions']}")
+                return True
+            else:
+                print("❌ Permissions manquantes dans la réponse")
+                return False
         else:
             print("❌ Échec récupération profil")
             return False

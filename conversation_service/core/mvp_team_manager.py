@@ -96,12 +96,14 @@ class MVPTeamManager:
         self.agents: Dict[str, Any] = {}
         self.orchestrator: Optional["OrchestratorAgent"] = None
         self.conversation_manager: Optional[ConversationManager] = None
-        
+
         # Team status
         self.team_health: Optional[TeamHealth] = None
         self.is_initialized = False
         self.initialization_error: Optional[str] = None
         self.last_health_check = datetime.utcnow()
+        self._delayed_health_check_task: Optional[asyncio.Task] = None
+        self._initial_health_check_pending = False
         
         # Performance tracking
         self.team_stats = {
@@ -114,42 +116,58 @@ class MVPTeamManager:
         
         logger.info("Initialized MVPTeamManager")
     
-    async def initialize_agents(self) -> None:
+    async def initialize_agents(self, initial_health_check: Optional[bool] = None) -> None:
         """
         Initialize all agents and team components.
-        
+
+        Args:
+            initial_health_check: If ``True`` perform a health check at startup.
+                If ``None``, the value is taken from the ``INITIAL_HEALTH_CHECK``
+                environment variable (defaults to ``False``).
+
         Raises:
             Exception: If initialization fails or health check reports issues
         """
         try:
             logger.info("Starting team initialization...")
-            
+
             # Step 1: Initialize DeepSeek client
             await self._initialize_deepseek_client()
-            
+
             # Step 2: Initialize conversation manager
             await self._initialize_conversation_manager()
-            
+
             # Step 3: Initialize specialized agents
             await self._initialize_specialized_agents()
-            
+
             # Step 4: Initialize orchestrator
             await self._initialize_orchestrator()
-            
-            # Step 5: Initial health check
-            await self._perform_health_check()
 
-            # Fail fast if any component is unhealthy
-            if not self.team_health or not self.team_health.overall_healthy:
-                issues = self.team_health.issues if self.team_health else ["Unknown health check failure"]
-                error_msg = f"Team health check failed: {issues}"
-                self.initialization_error = error_msg
-                logger.error(error_msg)
-                raise Exception(error_msg)
+            if initial_health_check is None:
+                initial_health_check = os.getenv("INITIAL_HEALTH_CHECK", "false").lower() == "true"
+
+            if initial_health_check:
+                # Step 5: Initial health check
+                await self._perform_health_check()
+
+                # Fail fast if any component is unhealthy
+                if not self.team_health or not self.team_health.overall_healthy:
+                    issues = self.team_health.issues if self.team_health else ["Unknown health check failure"]
+                    error_msg = f"Team health check failed: {issues}"
+                    self.initialization_error = error_msg
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
+            else:
+                # Schedule health check after first successful operation or delay
+                self._initial_health_check_pending = True
+                delay = int(self.config.get("INITIAL_HEALTH_CHECK_DELAY_SECONDS", 60))
+                self._delayed_health_check_task = asyncio.create_task(
+                    self._delayed_health_check(delay)
+                )
 
             self.is_initialized = True
             logger.info("Team initialization completed successfully")
-            
+
         except Exception as e:
             self.initialization_error = str(e)
             logger.error(f"Team initialization failed: {e}")
@@ -195,6 +213,7 @@ class MVPTeamManager:
             if response_data.success:
                 self._update_team_stats(True, execution_time)
                 logger.info(f"Successfully processed message for conversation {conversation_id}")
+                self._trigger_initial_health_check_if_needed()
                 return response_data
             else:
                 # Handle orchestrator failure
@@ -325,6 +344,8 @@ class MVPTeamManager:
         logger.info("Starting team shutdown...")
         
         try:
+            if self._delayed_health_check_task:
+                self._delayed_health_check_task.cancel()
             # Close agents with async cleanup
             if self.agents.get("search_query_agent"):
                 await self.agents["search_query_agent"].close()
@@ -353,7 +374,9 @@ class MVPTeamManager:
             'MAX_CONVERSATION_HISTORY': int(os.getenv('MAX_CONVERSATION_HISTORY', '100')),
             'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '60')),
             'HEALTH_CHECK_INTERVAL_SECONDS': int(os.getenv('HEALTH_CHECK_INTERVAL_SECONDS', '300')),
-            'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true'
+            'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true',
+            'INITIAL_HEALTH_CHECK_DELAY_SECONDS': int(os.getenv('INITIAL_HEALTH_CHECK_DELAY_SECONDS', '60')),
+            'INITIAL_HEALTH_CHECK': os.getenv('INITIAL_HEALTH_CHECK', 'false').lower() == 'true'
         }
     
     async def _initialize_deepseek_client(self) -> None:
@@ -493,6 +516,26 @@ class MVPTeamManager:
                 performance_summary={}
             )
     
+    async def _delayed_health_check(self, delay_seconds: int) -> None:
+        """Run health check after a delay if still pending."""
+        try:
+            await asyncio.sleep(delay_seconds)
+            if self._initial_health_check_pending:
+                await self._perform_health_check()
+                self._initial_health_check_pending = False
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Delayed health check failed: {e}")
+
+    def _trigger_initial_health_check_if_needed(self) -> None:
+        """Trigger pending initial health check after first successful operation."""
+        if self._initial_health_check_pending:
+            self._initial_health_check_pending = False
+            if self._delayed_health_check_task:
+                self._delayed_health_check_task.cancel()
+            asyncio.create_task(self._perform_health_check())
+
     def _update_team_stats(self, success: bool, execution_time_ms: float) -> None:
         """Update team-level statistics."""
         self.team_stats["total_conversations"] += 1

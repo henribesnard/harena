@@ -16,7 +16,7 @@ Exports:
     
     Router:
         - chat_router: Main conversation endpoints router
-        - health_router: Health check and metrics endpoints
+        - health_router: Health check endpoints
     
     Models:
         - ConversationRequest: API request model

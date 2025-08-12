@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from .base_financial_agent import BaseFinancialAgent
-from ..models.agent_models import AgentConfig
+from ..models.agent_models import AgentConfig, AgentResponse
 from ..models.service_contracts import SearchServiceResponse
 from ..models.conversation_models import ConversationContext
 from ..core.deepseek_client import DeepSeekClient
@@ -185,7 +185,7 @@ class ResponseAgent(BaseFinancialAgent):
     async def generate_response(
         self,
         user_message: str,
-        search_results: Dict[str, Any],
+        search_results: Any,
         user_id: int,
         context: Optional[ConversationContext] = None,
     ) -> Dict[str, Any]:
@@ -194,7 +194,7 @@ class ResponseAgent(BaseFinancialAgent):
 
         Args:
             user_message: Original user message
-            search_results: Results from SearchQueryAgent
+            search_results: Results from SearchQueryAgent (AgentResponse or dict)
             user_id: ID of the requesting user
             context: Optional conversation context
 
@@ -204,8 +204,18 @@ class ResponseAgent(BaseFinancialAgent):
         start_time = time.perf_counter()
         
         try:
-            # Extract search response from results
-            search_response_data = search_results.get("metadata", {}).get("search_response", {})
+            # Normalize search results to dict for easier consumption
+            if isinstance(search_results, AgentResponse):
+                search_results_dict = search_results.dict()
+            elif isinstance(search_results, dict):
+                search_results_dict = search_results
+            else:
+                raise ValueError("search_results must be AgentResponse or dict")
+
+            # Extract search response from normalized results
+            search_response_data = (
+                search_results_dict.get("metadata", {}).get("search_response", {})
+            )
             search_response = SearchServiceResponse(**search_response_data)
             
             # Format search results into readable text
@@ -419,30 +429,44 @@ Génère une réponse naturelle et utile qui:
         except Exception as e:
             logger.warning(f"Failed to update conversation context: {e}")
     
-    def _generate_fallback_response(self, user_message: str, search_results: Dict[str, Any]) -> str:
+    def _generate_fallback_response(self, user_message: str, search_results: Any) -> str:
         """
         Generate a fallback response when AI generation fails.
-        
+
         Args:
             user_message: Original user message
-            search_results: Search results data
-            
+            search_results: Search results data or AgentResponse
+
         Returns:
             Fallback response string
         """
         try:
-            # Try to extract basic info from search results
-            metadata = search_results.get("metadata", {})
+            # Normalize search results for metadata access
+            if isinstance(search_results, AgentResponse):
+                metadata = search_results.metadata or {}
+            elif isinstance(search_results, dict):
+                metadata = search_results.get("metadata", {})
+            else:
+                metadata = {}
+
             search_stats = metadata.get("search_stats", {})
             total_results = search_stats.get("total_results", 0)
-            
+
             if total_results > 0:
-                return f"J'ai trouvé {total_results} résultats pour votre recherche. Les données sont disponibles mais je rencontre des difficultés pour générer une réponse détaillée. Pouvez-vous reformuler votre question ?"
+                return (
+                    f"J'ai trouvé {total_results} résultats pour votre recherche. Les données sont disponibles mais je "
+                    "rencontre des difficultés pour générer une réponse détaillée. Pouvez-vous reformuler votre question ?"
+                )
             else:
-                return "Je n'ai pas trouvé de résultats correspondant à votre recherche. Essayez de reformuler votre question ou d'utiliser d'autres termes."
-                
+                return (
+                    "Je n'ai pas trouvé de résultats correspondant à votre recherche. Essayez de reformuler votre question ou "
+                    "d'utiliser d'autres termes."
+                )
+
         except Exception:
-            return "Je rencontre des difficultés techniques pour traiter votre demande. Veuillez réessayer dans quelques instants."
+            return (
+                "Je rencontre des difficultés techniques pour traiter votre demande. Veuillez réessayer dans quelques instants."
+            )
     
     def _get_system_message(self) -> str:
         """Get system message for the agent."""

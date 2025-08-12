@@ -17,9 +17,10 @@ Version: 1.0.0 MVP - Multi-Agent Orchestration
 
 import time
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Deque
 from dataclasses import dataclass
 from enum import Enum
+from collections import deque
 
 from .base_financial_agent import BaseFinancialAgent
 from .hybrid_intent_agent import HybridIntentAgent
@@ -360,7 +361,8 @@ class OrchestratorAgent(BaseFinancialAgent):
     
     This agent manages the execution of specialized agents in sequence,
     handling failures gracefully and providing comprehensive workflow
-    tracking and metrics.
+    tracking and metrics with percentile distribution tracking. The default
+    performance threshold is 30 seconds.
     
     Attributes:
         intent_agent: Intent detection agent
@@ -368,13 +370,14 @@ class OrchestratorAgent(BaseFinancialAgent):
         response_agent: Response generation agent
         workflow_executor: Workflow execution helper
         workflow_stats: Workflow performance statistics
+            (includes p95 and p99 workflow duration metrics)
     """
     
     def __init__(self, intent_agent: HybridIntentAgent,
                  search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent,
                  config: Optional[AgentConfig] = None,
-                 performance_threshold_ms: int = 500):
+                 performance_threshold_ms: int = 30000):
         """
         Initialize the orchestrator agent.
         
@@ -384,6 +387,7 @@ class OrchestratorAgent(BaseFinancialAgent):
             response_agent: Response generation agent
             config: Optional agent configuration
             performance_threshold_ms: Maximum allowed workflow duration in milliseconds
+                (default 30000ms)
         """
         if config is None:
             try:
@@ -438,14 +442,17 @@ class OrchestratorAgent(BaseFinancialAgent):
         self.workflow_executor = WorkflowExecutor(intent_agent, search_agent, response_agent)
 
         # Performance monitoring
-        self.performance_threshold_ms = performance_threshold_ms
-        
+        self.performance_threshold_ms = performance_threshold_ms  # 30s default threshold
+        self.recent_workflow_times: Deque[float] = deque(maxlen=1000)
+
         # Workflow statistics
         self.workflow_stats = {
             "total_workflows": 0,
             "successful_workflows": 0,
             "failed_workflows": 0,
             "avg_workflow_time_ms": 0.0,
+            "p95_workflow_time_ms": 0.0,
+            "p99_workflow_time_ms": 0.0,
             "step_success_rates": {
                 "intent_detection": 0.0,
                 "search_query": 0.0,
@@ -600,9 +607,18 @@ class OrchestratorAgent(BaseFinancialAgent):
         return await self.workflow_executor.execute_workflow(
             user_message, conversation_id, user_id
         )
-    
+
+    @staticmethod
+    def _percentile(values: Deque[float], percentile: float) -> float:
+        """Compute a percentile for workflow durations."""
+        if not values:
+            return 0.0
+        sorted_vals = sorted(values)
+        k = int(round((len(sorted_vals) - 1) * percentile))
+        return sorted_vals[k]
+
     def _update_workflow_stats(self, workflow_result: Dict[str, Any], duration_seconds: float) -> None:
-        """Update workflow performance statistics."""
+        """Update workflow performance statistics and percentile metrics."""
         self.workflow_stats["total_workflows"] += 1
         
         if workflow_result["success"]:
@@ -614,9 +630,16 @@ class OrchestratorAgent(BaseFinancialAgent):
         total = self.workflow_stats["total_workflows"]
         current_avg = self.workflow_stats["avg_workflow_time_ms"]
         new_time_ms = duration_seconds * 1000
-        
+
         self.workflow_stats["avg_workflow_time_ms"] = (
             (current_avg * (total - 1) + new_time_ms) / total
+        )
+        self.recent_workflow_times.append(new_time_ms)
+        self.workflow_stats["p95_workflow_time_ms"] = round(
+            self._percentile(self.recent_workflow_times, 0.95), 2
+        )
+        self.workflow_stats["p99_workflow_time_ms"] = round(
+            self._percentile(self.recent_workflow_times, 0.99), 2
         )
         
         # Update step success rates

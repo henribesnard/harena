@@ -113,6 +113,21 @@ class IntentResult:
 
 
 @dataclass
+class ConversationTurn:
+    user_message: str = ""
+    assistant_response: str = ""
+    turn_number: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def model_dump(self):
+        return {
+            "user_message": self.user_message,
+            "assistant_response": self.assistant_response,
+            "turn_number": self.turn_number,
+            "metadata": self.metadata,
+        }
+
+@dataclass
 class ConversationContext:
     conversation_id: str
     user_id: int
@@ -122,6 +137,51 @@ class ConversationContext:
     language: str = "fr"
     context_summary: Optional[str] = None
     active_entities: Optional[List[str]] = None
+    def model_dump(self):
+        return {
+            "conversation_id": self.conversation_id,
+            "user_id": self.user_id,
+            "turns": [t.model_dump() if hasattr(t, "model_dump") else t for t in self.turns],
+            "current_turn": self.current_turn,
+            "status": self.status,
+            "language": self.language,
+            "context_summary": self.context_summary,
+            "active_entities": self.active_entities,
+        }
+
+@dataclass
+class ConversationOut:
+    conversation_id: str
+    title: Optional[str] = None
+    status: str = "active"
+    total_turns: int = 0
+    last_activity_at: Optional[Any] = None
+
+    def model_dump(self):
+        return {
+            "conversation_id": self.conversation_id,
+            "title": self.title,
+            "status": self.status,
+            "total_turns": self.total_turns,
+            "last_activity_at": self.last_activity_at,
+        }
+
+@dataclass
+class ConversationTurnsResponse:
+    conversation_id: str
+    turns: List[ConversationTurn] = field(default_factory=list)
+
+    def model_dump(self):
+        return {
+            "conversation_id": self.conversation_id,
+            "turns": [t.model_dump() for t in self.turns],
+        }
+
+conv_models.ConversationTurn = ConversationTurn
+conv_models.ConversationContext = ConversationContext
+conv_models.ConversationOut = ConversationOut
+conv_models.ConversationTurnsResponse = ConversationTurnsResponse
+sys.modules["conversation_service.models.conversation_models"] = conv_models
 
 
 @dataclass

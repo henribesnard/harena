@@ -336,11 +336,12 @@ class WorkflowExecutor:
             from ..models.conversation_models import ConversationContext
             
             turns = []
+            current_turn = 0 if not turns else len(turns)
             return ConversationContext(
                 conversation_id=conversation_id,
                 user_id=user_id,
                 turns=turns,
-                current_turn=len(turns),
+                current_turn=current_turn,
                 status="active",
                 language="fr",
             )

@@ -17,6 +17,7 @@ Version: 1.0.0 MVP - Hybrid Rules + DeepSeek AI
 
 import time
 import logging
+import json
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
@@ -388,6 +389,15 @@ class HybridIntentAgent(BaseFinancialAgent):
             confidence = 0.7
             entities: List[FinancialEntity] = []
 
+            entity_mapping = {
+                "merchant": EntityType.MERCHANT,
+                "transaction_type": EntityType.TRANSACTION_TYPE,
+                "amount": EntityType.AMOUNT,
+                "currency": EntityType.CURRENCY,
+                "date": EntityType.DATE,
+                "category": EntityType.CATEGORY,
+            }
+
             for line in lines:
                 lower = line.lower()
                 if lower.startswith('intention:') or lower.startswith('intent:'):
@@ -398,21 +408,43 @@ class HybridIntentAgent(BaseFinancialAgent):
                     except Exception:
                         confidence = 0.7
                 elif lower.startswith('entités:') or lower.startswith('entities:'):
-                    raw_entities = line.split(':', 1)[1].split(',')
-                    for raw in raw_entities:
-                        value = raw.strip()
-                        if value:
-                            entities.append(
-                                FinancialEntity(
-                                    entity_type=EntityType.OTHER,
-                                    raw_value=value,
-                                    normalized_value=value,
-                                    confidence=0.5,
-                                    detection_method=DetectionMethod.LLM_BASED,
-                                    start_position=None,
-                                    end_position=None,
+                    raw_part = line.split(':', 1)[1].strip()
+                    try:
+                        parsed = json.loads(raw_part)
+                        if isinstance(parsed, dict):
+                            for key, value in parsed.items():
+                                ent_type = entity_mapping.get(key.lower(), EntityType.OTHER)
+                                values = value if isinstance(value, list) else [value]
+                                for v in values:
+                                    entities.append(
+                                        FinancialEntity(
+                                            entity_type=ent_type,
+                                            raw_value=str(v),
+                                            normalized_value=v,
+                                            confidence=0.5,
+                                            detection_method=DetectionMethod.LLM_BASED,
+                                            start_position=None,
+                                            end_position=None,
+                                        )
+                                    )
+                        else:
+                            raise ValueError("Entities JSON is not an object")
+                    except Exception:
+                        raw_entities = raw_part.split(',')
+                        for raw in raw_entities:
+                            value = raw.strip()
+                            if value:
+                                entities.append(
+                                    FinancialEntity(
+                                        entity_type=EntityType.OTHER,
+                                        raw_value=value,
+                                        normalized_value=value,
+                                        confidence=0.5,
+                                        detection_method=DetectionMethod.LLM_BASED,
+                                        start_position=None,
+                                        end_position=None,
+                                    )
                                 )
-                            )
 
             # Determine category based on intent
             intent_upper = intent_type.upper()
@@ -509,7 +541,7 @@ Ton rôle est d'analyser les messages des utilisateurs et de déterminer leur in
 
 INTENTIONS FINANCIÈRES:
 - FINANCIAL_QUERY: Questions générales sur les finances
-- TRANSACTION_SEARCH: Recherche de transactions spécifiques  
+- TRANSACTION_SEARCH: Recherche de transactions spécifiques
 - BALANCE_CHECK: Vérification du solde
 - SPENDING_ANALYSIS: Analyse des dépenses
 - CATEGORY_ANALYSIS: Analyse par catégorie
@@ -524,7 +556,7 @@ INTENTIONS CONVERSATIONNELLES:
 Réponds toujours au format:
 Intention: [INTENTION]
 Confiance: [0.0-1.0]
-Entités: [liste des entités financières détectées]
+Entités: {"clé": "valeur"} (JSON des entités détectées)
 
 Privilégie la précision et la cohérence."""
     
@@ -553,4 +585,4 @@ Extrais également les entités financières (montants, dates, catégories, etc.
 Format de réponse:
 Intention: [INTENTION]
 Confiance: [0.0-1.0]
-Entités: [entités détectées si applicable]"""
+Entités: {"clé": "valeur"}"""

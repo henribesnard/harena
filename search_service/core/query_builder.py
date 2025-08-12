@@ -66,8 +66,10 @@ class QueryBuilder:
     def _build_additional_filters(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Construction des filtres additionnels"""
         filter_list = []
-        
+
         for field, value in filters.items():
+            if value is None:
+                continue
             if isinstance(value, dict):
                 # Filtre range (ex: {"amount": {"gte": -100, "lte": 0}})
                 filter_list.append({"range": {field: value}})
@@ -152,5 +154,5 @@ class QueryBuilder:
             base_query["aggs"] = aggregations
             # Limiter les résultats si on fait surtout des agrégations
             base_query["size"] = min(request.limit, 10)
-        
+
         return base_query

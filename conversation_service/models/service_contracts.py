@@ -410,7 +410,7 @@ class SearchServiceQuery(BaseModel):
 
     def to_search_request(self) -> Dict[str, Any]:
         """Convert this query to the simplified SearchRequest schema."""
-        filters_dict = self.filters.dict() if self.filters else {}
+        filters_dict = self.filters.dict(exclude_none=True) if self.filters else {}
         return {
             "user_id": self.query_metadata.user_id,
             "query": getattr(self.search_parameters, "search_text", ""),

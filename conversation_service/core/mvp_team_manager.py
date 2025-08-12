@@ -57,6 +57,7 @@ class TeamConfiguration:
     max_conversation_history: int = 100
     workflow_timeout_seconds: int = 60
     health_check_interval_seconds: int = 300
+    performance_threshold_ms: int = 30000
     auto_recovery_enabled: bool = True
 
 
@@ -90,7 +91,8 @@ class MVPTeamManager:
         # Load configuration from environment variables
         self.config = config or self._load_config_from_env()
         self.team_config = team_config or TeamConfiguration(
-            search_service_url=self.config.get('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search')
+            search_service_url=self.config.get('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search'),
+            performance_threshold_ms=self.config.get('ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS', 30000),
         )
         
         # Core components
@@ -402,7 +404,8 @@ class MVPTeamManager:
             'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true',
             'INITIAL_HEALTH_CHECK_DELAY_SECONDS': int(os.getenv('INITIAL_HEALTH_CHECK_DELAY_SECONDS', '60')),
             'INITIAL_HEALTH_CHECK': os.getenv('INITIAL_HEALTH_CHECK', 'false').lower() == 'true',
-            'AGENT_FAILURE_THRESHOLD': int(os.getenv('AGENT_FAILURE_THRESHOLD', '3'))
+            'AGENT_FAILURE_THRESHOLD': int(os.getenv('AGENT_FAILURE_THRESHOLD', '3')),
+            'ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS': int(os.getenv('ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS', '30000')),
         }
     
     async def _initialize_deepseek_client(self) -> None:
@@ -470,10 +473,14 @@ class MVPTeamManager:
             self.orchestrator = OrchestratorAgent(
                 intent_agent=self.agents["intent_agent"],
                 search_agent=self.agents["search_query_agent"],
-                response_agent=self.agents["response_agent"]
+                response_agent=self.agents["response_agent"],
+                performance_threshold_ms=self.team_config.performance_threshold_ms,
             )
 
-            logger.info("Orchestrator agent initialized successfully")
+            logger.info(
+                "Orchestrator agent initialized successfully with performance threshold %d ms",
+                self.team_config.performance_threshold_ms,
+            )
 
         except Exception as e:
             logger.error(f"Failed to initialize orchestrator: {e}")

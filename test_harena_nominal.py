@@ -245,18 +245,19 @@ class HarenaTestClient:
                                     data=json.dumps(search_payload))
 
         success, json_data = self._print_response(response)
-        
+
         if success and json_data:
-            total_hits = json_data.get('total_hits', 0)
-            returned_hits = json_data.get('returned_hits', 0)
-            execution_time = json_data.get('execution_time_ms', 0)
-            es_took = json_data.get('elasticsearch_took', 0)
-            
+            metadata = json_data.get("response_metadata", {})
+            total_hits = metadata.get("total_results", 0)
+            returned_hits = metadata.get("returned_results", 0)
+            processing_time = metadata.get("processing_time_ms", 0)
+            es_took = metadata.get("elasticsearch_took", 0)
+
             print(f"✅ Résultats trouvés: {total_hits}")
             print(f"✅ Résultats retournés: {returned_hits}")
-            print(f"✅ Temps d'exécution: {execution_time}ms")
+            print(f"✅ Temps de traitement: {processing_time}ms")
             print(f"✅ Temps Elasticsearch: {es_took}ms")
-            
+
             if total_hits > 0:
                 print("✅ Recherche fonctionnelle - Résultats trouvés")
                 

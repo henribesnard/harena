@@ -164,6 +164,14 @@ async def chat_endpoint(
             )
 
         # Get conversation context
+        context = await conversation_manager.get_context(conversation_id, user_id)
+        if getattr(context, "user_id", user_id) != user_id:
+            log_unauthorized_access(user_id=user_id, conversation_id=conversation_id, reason="forbidden conversation access")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+
         context = await conversation_manager.get_context(conversation_id)
         if getattr(context, "user_id", None) != user_id:
             context.user_id = user_id

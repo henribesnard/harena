@@ -250,15 +250,15 @@ class HarenaTestClient:
             metadata = json_data.get("response_metadata", {})
             total_results = metadata.get("total_results", 0)
             returned_results = metadata.get("returned_results", 0)
-            processing_time = metadata.get("processing_time_ms", 0)
-            es_took = metadata.get("elasticsearch_took", 0)
+            processing_time_ms = metadata.get("processing_time_ms", 0)
+            elasticsearch_took = metadata.get("elasticsearch_took", 0)
 
             print(f"✅ Résultats trouvés: {total_results}")
             print(f"✅ Résultats retournés: {returned_results}")
-            print(f"✅ Temps de traitement: {processing_time}ms")
-            print(f"✅ Temps Elasticsearch: {es_took}ms")
+            print(f"✅ Temps de traitement: {processing_time_ms}ms")
+            print(f"✅ Temps Elasticsearch: {elasticsearch_took}ms")
 
-            if total_hits > 0:
+            if total_results > 0:
                 print("✅ Recherche fonctionnelle - Résultats trouvés")
                 
                 # Afficher quelques détails des résultats

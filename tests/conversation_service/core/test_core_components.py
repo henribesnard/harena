@@ -81,6 +81,14 @@ for module_name, class_name in [
 # Stub openai module used by DeepSeekClient
 openai_mod = types.ModuleType("openai")
 
+
+class DeepSeekError(Exception):
+    pass
+
+
+class DeepSeekTimeoutError(DeepSeekError):
+    pass
+
 class _DummyOpenAI:
     handler = None  # set per test
 
@@ -93,7 +101,8 @@ class _DummyOpenAI:
         if _DummyOpenAI.handler is None:
             raise NotImplementedError("No handler set for AsyncOpenAI")
         return await _DummyOpenAI.handler(*args, **kwargs)
-
+openai_mod.DeepSeekError = DeepSeekError
+openai_mod.DeepSeekTimeoutError = DeepSeekTimeoutError
 openai_mod.AsyncOpenAI = _DummyOpenAI
 
 openai_types = types.ModuleType("openai.types")

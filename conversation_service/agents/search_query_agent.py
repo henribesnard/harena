@@ -432,8 +432,9 @@ class SearchQueryAgent(BaseFinancialAgent):
             # Prepare context for entity extraction
             existing_entities = intent_result.entities if intent_result.entities else []
             context = self._prepare_entity_extraction_context(message, existing_entities)
-            
+
             # Call DeepSeek for entity extraction
+            logger.debug("Extracting additional entities for user_id=%s", user_id)
             response = await self.deepseek_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_entity_extraction_prompt()},
@@ -441,7 +442,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 ],
                 temperature=0.1,
                 max_tokens=200,
-                user_id=user_id,
+                user=str(user_id),
             )
             
             # Parse AI response

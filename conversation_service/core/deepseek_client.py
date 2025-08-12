@@ -163,6 +163,14 @@ class CircuitBreakerState:
         return True
 
 
+@dataclass
+class DeepSeekResponse:
+    """Représente une réponse simplifiée de DeepSeek."""
+
+    content: str
+    raw: ChatCompletion
+
+
 class DeepSeekOptimizer:
     """Optimiseur statique pour prompts et requêtes DeepSeek."""
     
@@ -510,6 +518,21 @@ class DeepSeekClient:
             model=os.getenv('DEEPSEEK-CHAT-MODEL', 'deepseek-chat'),
             **kwargs
         )
+
+    async def generate_response(
+        self,
+        messages: List[Dict[str, str]],
+        **kwargs
+    ) -> DeepSeekResponse:
+        """Generate a response using DeepSeek chat completion."""
+
+        completion = await self.create_chat_completion(messages=messages, **kwargs)
+
+        content = ""
+        if completion.choices:
+            content = completion.choices[0].message.content
+
+        return DeepSeekResponse(content=content, raw=completion)
     
     async def create_reasoning_completion(
         self,
@@ -693,8 +716,6 @@ _default_client: Optional[DeepSeekClient] = None
 async def get_default_client() -> DeepSeekClient:
     """Retourne le client DeepSeek par défaut."""
     global _default_client
-    
     if _default_client is None:
         _default_client = DeepSeekClient()
-    
     return _default_client

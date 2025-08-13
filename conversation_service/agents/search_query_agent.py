@@ -406,6 +406,12 @@ class SearchQueryAgent(BaseFinancialAgent):
                 query.query_metadata.query_id,
             )
 
+            logger.info(
+                "Search parameters before request: text=%s filters=%s",
+                query.search_parameters.search_text,
+                query.filters,
+            )
+
             # Execute HTTP request
             response = await self.http_client.post(
                 url=url,
@@ -414,10 +420,18 @@ class SearchQueryAgent(BaseFinancialAgent):
             )
             
             response.raise_for_status()
-            
+
             # Parse response
             response_data = response.json()
             search_response = SearchServiceResponse(**response_data)
+
+            results_len = len(search_response.results or [])
+            logger.info(
+                "Search service returned %s results",
+                results_len,
+            )
+            if search_response.results:
+                logger.info("First search result: %s", search_response.results[0])
 
             total_results = getattr(
                 getattr(search_response, "response_metadata", {}), "total_results", 0
@@ -426,8 +440,6 @@ class SearchQueryAgent(BaseFinancialAgent):
                 "Search service returned %s total results",
                 total_results,
             )
-            if search_response.results:
-                logger.info("First search result: %s", search_response.results[0])
 
             returned_results = getattr(getattr(search_response, "response_metadata", {}), "returned_results", 0)
             if isinstance(getattr(search_response, "response_metadata", None), dict):

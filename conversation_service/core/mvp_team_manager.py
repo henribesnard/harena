@@ -55,7 +55,7 @@ class TeamConfiguration:
     enable_intent_caching: bool = True
     enable_response_caching: bool = True
     max_conversation_history: int = 100
-    workflow_timeout_seconds: int = 60
+    workflow_timeout_seconds: int = 45
     health_check_interval_seconds: int = 300
     performance_threshold_ms: int = 30000
     auto_recovery_enabled: bool = True
@@ -399,7 +399,7 @@ class MVPTeamManager:
             'DEEPSEEK_TIMEOUT': int(os.getenv('DEEPSEEK_TIMEOUT', '30')),
             'SEARCH_SERVICE_URL': os.getenv('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search'),
             'MAX_CONVERSATION_HISTORY': int(os.getenv('MAX_CONVERSATION_HISTORY', '100')),
-            'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '60')),
+            'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '45')),
             'HEALTH_CHECK_INTERVAL_SECONDS': int(os.getenv('HEALTH_CHECK_INTERVAL_SECONDS', '300')),
             'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true',
             'INITIAL_HEALTH_CHECK_DELAY_SECONDS': int(os.getenv('INITIAL_HEALTH_CHECK_DELAY_SECONDS', '60')),
@@ -414,7 +414,8 @@ class MVPTeamManager:
             self.deepseek_client = DeepSeekClient(
                 api_key=self.config['DEEPSEEK_API_KEY'],
                 base_url=self.config['DEEPSEEK_BASE_URL'],
-                timeout=self.config['DEEPSEEK_TIMEOUT']
+                timeout=self.config['DEEPSEEK_TIMEOUT'],
+                cache_enabled=True
             )
             
             # Test connection

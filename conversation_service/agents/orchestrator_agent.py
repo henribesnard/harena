@@ -433,8 +433,8 @@ class OrchestratorAgent(BaseFinancialAgent):
                     max_consecutive_auto_reply=1,
                     description="Multi-agent workflow orchestration agent",
                     temperature=0.1,
-                    max_tokens=200,
-                    timeout_seconds=60,  # Higher timeout for workflow coordination
+                    max_tokens=150,
+                    timeout_seconds=30,  # Higher timeout for workflow coordination
                 )
             except TypeError:
                 # Fallback for environments with simplified AgentConfig stubs
@@ -449,8 +449,8 @@ class OrchestratorAgent(BaseFinancialAgent):
                     max_consecutive_auto_reply=1,
                     description="Multi-agent workflow orchestration agent",
                     temperature=0.1,
-                    max_tokens=200,
-                    timeout_seconds=60,
+                    max_tokens=150,
+                    timeout_seconds=30,
                 )
 
         try:

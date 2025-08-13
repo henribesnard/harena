@@ -73,14 +73,25 @@ class QueryOptimizer:
 
         # Remove basic verb forms (infinitives) for more aggressive normalization
         words = [word for word in words if not word.endswith(('er', 'ir', 're'))]
-        
-        # Add entity-based keywords
+
+        # Add entity-based keywords without duplicating existing terms
+        seen_words = set(words)
         if intent_result.entities:
             for entity in intent_result.entities:
                 if entity.entity_type in {EntityType.MERCHANT, "MERCHANT", EntityType.CATEGORY, "CATEGORY"}:
                     if entity.normalized_value:
-                        words.append(str(entity.normalized_value))
-        optimized_text = " ".join(words)[:200]
+                        value = str(entity.normalized_value).lower()
+                        if value not in seen_words:
+                            words.append(value)
+                            seen_words.add(value)
+
+        # Remove any remaining duplicates while preserving order and limit length
+        unique_words: List[str] = []
+        for word in words:
+            if word not in unique_words:
+                unique_words.append(word)
+
+        optimized_text = " ".join(unique_words)[:200]
         logger.debug("Normalized search text: %s", optimized_text)
         return optimized_text  # Limit search text length
     

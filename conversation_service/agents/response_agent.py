@@ -23,7 +23,7 @@ from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig, AgentResponse
 from ..models.service_contracts import SearchServiceResponse
 from ..models.conversation_models import ConversationContext
-from ..core.deepseek_client import DeepSeekClient
+from ..core.deepseek_client import DeepSeekClient, DeepSeekResponse
 
 logger = logging.getLogger(__name__)
 
@@ -221,25 +221,43 @@ class ResponseAgent(BaseFinancialAgent):
             # Format search results into readable text
             formatted_results = await self._format_search_results(search_response)
             logger.debug("Formatted results preview: %s", formatted_results[:200])
-            
+
             # Get conversation context
             conversation_context = await self._get_conversation_context(context)
-            
+
+            # Log context summary and search results count
+            logger.info(
+                "Generating response with context: %s | returned results: %s",
+                conversation_context,
+                search_response.response_metadata.returned_results,
+            )
+
             # Generate contextual response using AI
             ai_response = await self._generate_ai_response(
                 user_message, formatted_results, conversation_context, user_id
             )
-            
+
+            # Extract token usage if available and log generated response
+            usage = getattr(getattr(ai_response.raw, "usage", None), "__dict__", {})
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", 0)
+            logger.info(
+                "Generated response: %s | total tokens used: %s",
+                ai_response.content,
+                total_tokens,
+            )
+
             # Update conversation context
             if context:
                 await self._update_conversation_context(
-                    context.conversation_id, user_message, ai_response
+                    context.conversation_id, user_message, ai_response.content
                 )
-            
+
             execution_time = (time.perf_counter() - start_time) * 1000
-            
+
             return {
-                "content": ai_response,
+                "content": ai_response.content,
                 "metadata": {
                     "formatted_results": formatted_results,
                     "search_stats": {
@@ -251,9 +269,9 @@ class ResponseAgent(BaseFinancialAgent):
                 },
                 "confidence_score": 0.85,  # Base confidence for response generation
                 "token_usage": {
-                    "prompt_tokens": 150,  # Estimated
-                    "completion_tokens": 80,
-                    "total_tokens": 230
+                    "prompt_tokens": prompt_tokens or 150,
+                    "completion_tokens": completion_tokens or 80,
+                    "total_tokens": total_tokens or 230,
                 }
             }
             
@@ -343,7 +361,7 @@ class ResponseAgent(BaseFinancialAgent):
         formatted_results: str,
         conversation_context: str,
         user_id: int,
-    ) -> str:
+    ) -> DeepSeekResponse:
         """
         Generate AI response using DeepSeek.
 
@@ -354,7 +372,7 @@ class ResponseAgent(BaseFinancialAgent):
             user_id: ID of the requesting user
 
         Returns:
-            Generated response string
+            DeepSeekResponse containing response and raw completion
         """
         # Prepare prompt for response generation
         prompt = self._build_response_prompt(user_message, formatted_results, conversation_context)
@@ -371,11 +389,15 @@ class ResponseAgent(BaseFinancialAgent):
                 user=str(user_id),
             )
 
-            return response.content.strip()
+            response.content = response.content.strip()
+            return response
 
         except Exception as e:
             logger.error(f"AI response generation failed: {e}")
-            return self._generate_fallback_response(user_message, {"formatted_results": formatted_results})
+            fallback = self._generate_fallback_response(
+                user_message, {"formatted_results": formatted_results}
+            )
+            return DeepSeekResponse(content=fallback, raw=None)
     
     def _build_response_prompt(self, user_message: str, formatted_results: str, 
                               conversation_context: str) -> str:

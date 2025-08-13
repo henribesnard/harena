@@ -17,6 +17,7 @@ Version: 1.0.0 MVP - Search Service Integration
 import time
 import logging
 import unicodedata
+import re
 import json
 import httpx
 from typing import Dict, Any, Optional, List
@@ -63,11 +64,17 @@ class QueryOptimizer:
             ch for ch in search_text if unicodedata.category(ch) != 'Mn'
         )
 
-        # Remove common stop words and generic terms that don't help search
+        # Remove punctuation
+        search_text = re.sub(r"[^\w\s]", " ", search_text)
+
+        # Remove common stop words, question words, and generic terms
         stop_words = {
             'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'mon', 'ma', 'mes',
             'recherche', 'rechercher', 'depense', 'depenses', 'transaction',
-            'transactions'
+            'transactions',
+            'combien', 'pourquoi', 'pour', 'quel', 'quelle', 'quels', 'quelles',
+            'qui', 'que', 'quoi', 'ou', 'quand', 'comment', 'ce', 'cet', 'cette',
+            'ces', 'mois', 'je', 'j', 'ai', 'jai'
         }
         words = [word for word in search_text.split() if word not in stop_words]
 
@@ -188,6 +195,9 @@ class SearchQueryAgent(BaseFinancialAgent):
             config=config,
             deepseek_client=deepseek_client
         )
+
+        # Ensure name is always set even when AutoGen isn't fully available
+        self.name = config.name
         
         self.search_service_url = search_service_url.rstrip('/')
         self.http_client = httpx.AsyncClient(timeout=30.0)

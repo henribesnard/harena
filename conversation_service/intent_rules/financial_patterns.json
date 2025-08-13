@@ -584,12 +584,12 @@
       "priority": 2,
       "patterns": [
         {
-          "regex": "\\b(combien|nombre)\\s+(d'opérations?|de\\s+transactions?|d'achats?)\\b",
+          "regex": "\\b(combien|nombre)\\s+(d'opérations?|de\\s+transactions?|d'achats?|de\\s+mouvements?)\\b",
           "case_sensitive": false,
           "weight": 1.0
         },
         {
-          "regex": "\\b(comptage|décompte)\\s+(opérations?|transactions?)\\b",
+          "regex": "\\b(comptage|décompte)\\s+(opérations?|transactions?|mouvements?|achats?)\\b",
           "case_sensitive": false,
           "weight": 0.9
         }
@@ -598,7 +598,9 @@
         "combien d'opérations",
         "nombre de transactions",
         "combien d'achats",
-        "comptage opérations"
+        "comptage opérations",
+        "nombre de mouvements",
+        "comptage mouvements"
       ],
       "search_parameters": {
         "query_type": "count_aggregation",
@@ -615,7 +617,9 @@
       "examples": [
         "combien d'opérations ce mois",
         "nombre de transactions restaurant",
-        "combien d'achats Amazon"
+        "combien d'achats Amazon",
+        "nombre de mouvements ce mois",
+        "compter mes transactions"
       ]
     }
   },

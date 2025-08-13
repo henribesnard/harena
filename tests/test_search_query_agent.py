@@ -41,7 +41,6 @@ def test_generate_search_contract_deduplicates_terms():
         deepseek_client=DummyDeepSeekClient(),
         search_service_url="http://search.example.com",
     )
-    agent.name = "search_query_agent"
     intent_result = IntentResult(
         intent_type="TRANSACTION_SEARCH",
         intent_category=IntentCategory.TRANSACTION_SEARCH,

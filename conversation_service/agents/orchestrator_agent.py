@@ -138,9 +138,19 @@ class WorkflowExecutor:
                 intent_response = await self.intent_agent.execute_with_metrics(
                     {"user_message": user_message}, user_id
                 )
-                
+                intent_result = (
+                    intent_response.metadata.get("intent_result")
+                    if intent_response.metadata
+                    else None
+                )
+                logger.info(
+                    "Intent detection result: %s entities=%s",
+                    getattr(intent_result, "intent_type", None),
+                    [e.model_dump() for e in getattr(intent_result, "entities", [])],
+                )
+
                 if intent_response.success:
-                    workflow_data["intent_result"] = intent_response.metadata.get("intent_result")
+                    workflow_data["intent_result"] = intent_result
                     intent_step.status = WorkflowStepStatus.COMPLETED
                     intent_step.result = intent_response
                 else:

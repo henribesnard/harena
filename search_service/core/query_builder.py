@@ -53,13 +53,15 @@ class QueryBuilder:
     
     def _build_text_query(self, query_text: str) -> Dict[str, Any]:
         """Construction de la requête textuelle optimisée"""
+        terms_count = len(query_text.split())
+        minimum_should_match = "50%" if terms_count > 2 else "100%"
         return {
             "multi_match": {
                 "query": query_text,
                 "fields": self.search_fields,
                 "type": "best_fields",
                 "fuzziness": "AUTO",
-                "minimum_should_match": "75%"
+                "minimum_should_match": minimum_should_match
             }
         }
     

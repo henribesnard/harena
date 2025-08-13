@@ -168,8 +168,8 @@ class SearchQueryAgent(BaseFinancialAgent):
                 max_consecutive_auto_reply=1,
                 description="Search query generation and execution agent",
                 temperature=0.2,  # Low temperature for consistent entity extraction
-                max_tokens=300,
-                timeout_seconds=15
+                max_tokens=250,
+                timeout_seconds=12
             )
         
         super().__init__(
@@ -487,8 +487,9 @@ class SearchQueryAgent(BaseFinancialAgent):
                     {"role": "user", "content": context}
                 ],
                 temperature=0.1,
-                max_tokens=150,
+                max_tokens=120,
                 user=str(user_id),
+                use_cache=True,
             )
             
             # Parse AI response

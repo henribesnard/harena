@@ -86,8 +86,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                 max_consecutive_auto_reply=1,
                 description="Hybrid intent detection agent for financial conversations",
                 temperature=0.1,  # Low temperature for consistent intent detection
-                max_tokens=200,   # Small response for intent classification
-                timeout_seconds=10
+                max_tokens=150,   # Smaller responses for faster detection
+                timeout_seconds=8
             )
         
         super().__init__(
@@ -337,6 +337,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
                 user=str(user_id),
+                use_cache=True,
             )
             logger.debug("Raw AI response: %s", response.content)
 

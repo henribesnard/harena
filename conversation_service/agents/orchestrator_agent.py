@@ -139,9 +139,8 @@ class WorkflowExecutor:
                     else None
                 )
                 logger.info(
-                    "Intent detection result: %s entities=%s",
-                    getattr(intent_result, "intent_type", None),
-                    [e.model_dump() for e in getattr(intent_result, "entities", [])],
+                    f"Intent: {intent_result.intent_type}, "
+                    f"Entities: {[e.model_dump() for e in getattr(intent_result, 'entities', [])]}"
                 )
 
                 if intent_response.success:

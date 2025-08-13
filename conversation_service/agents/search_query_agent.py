@@ -196,8 +196,8 @@ class SearchQueryAgent(BaseFinancialAgent):
             deepseek_client=deepseek_client
         )
 
-        # Ensure name is always set even when AutoGen isn't fully available
-        self.name = config.name
+        # Ensure a local name attribute exists without overriding base class behavior
+        self._name = config.name
         
         self.search_service_url = search_service_url.rstrip('/')
         self.http_client = httpx.AsyncClient(timeout=30.0)

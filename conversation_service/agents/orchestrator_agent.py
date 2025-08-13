@@ -235,7 +235,7 @@ class WorkflowExecutor:
                 response_step.start_time = time.perf_counter()
                 try:
                     context = await self._create_conversation_context(
-                        conversation_id, user_message, user_id
+                        conversation_id
                     )
                     logger.info(
                         "Conversation context size before response: %d",
@@ -368,13 +368,11 @@ class WorkflowExecutor:
         )
     
     async def _create_conversation_context(
-        self, conversation_id: str, user_message: str, user_id: int
+        self, conversation_id: str
     ) -> Optional[ConversationContext]:
         """Retrieve conversation context using ConversationManager."""
         try:
-            context = await self.conversation_manager.get_context(
-                conversation_id, user_id=user_id
-            )
+            context = await self.conversation_manager.get_context(conversation_id)
             return context
         except Exception as e:
             logger.warning(f"Failed to create conversation context: {e}")

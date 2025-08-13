@@ -28,7 +28,8 @@ import uuid
 
 # ===== CONFIGURATION INITIALE =====
 DEFAULT_BASE_URL = "http://localhost:8000/api/v1"
-DEFAULT_USERNAME = "test2@example.com"
+# Utilise par défaut l'utilisateur 34 pour interroger le jeu de données réel
+DEFAULT_USERNAME = "test34@example.com"
 DEFAULT_PASSWORD = "password123"
 
 # Timeout pour les requêtes
@@ -358,6 +359,47 @@ class HarenaTestClient:
         if returned_conv_id != conversation_id:
             self.logger.error("❌ conversation_id incohérent")
             return False
+
+        # Vérifications supplémentaires sur la réponse
+        metadata = json_data.get("metadata", {})
+        search_count = metadata.get("search_results_count")
+
+        # Assert que des résultats ont été trouvés
+        if not isinstance(search_count, int) or search_count <= 0:
+            self.logger.error(
+                f"❌ search_results_count attendu >0, reçu: {search_count}"
+            )
+            return False
+
+        expected_count = 2
+        if search_count != expected_count:
+            self.logger.error(
+                f"⚠️ search_results_count attendu {expected_count}, reçu {search_count}"
+            )
+
+        message_text = json_data.get("message", "")
+        lower_msg = message_text.lower()
+        if "je n'ai pas trouvé" in lower_msg:
+            self.logger.error("❌ Le message indique qu'aucun résultat n'a été trouvé")
+            return False
+
+        expected_transactions = [
+            ("2025-05-09", "-17.99"),
+            ("2025-06-09", "-17.99"),
+        ]
+
+        missing_details = []
+        for date_str, amount in expected_transactions:
+            if date_str not in message_text or amount not in message_text:
+                missing_details.append(f"{date_str} {amount}")
+
+        if missing_details:
+            self.logger.error(
+                "⚠️ Transactions attendues manquantes ou incorrectes: %s",
+                ", ".join(missing_details),
+            )
+        else:
+            self.logger.info("✅ Transactions attendues présentes dans la réponse")
 
         # 3) Vérification cohérence user_id via métriques
         if not self.user_id:

@@ -87,14 +87,14 @@ class AgentConfig(BaseModel):
     )
     
     max_tokens: int = Field(
-        default=1000,
+        default=500,
         description="Maximum tokens for response generation",
         gt=0,
         le=4000
     )
-    
+
     timeout_seconds: int = Field(
-        default=30,
+        default=20,
         description="Request timeout in seconds",
         gt=0,
         le=120

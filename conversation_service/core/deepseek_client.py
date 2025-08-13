@@ -190,6 +190,8 @@ class DeepSeekOptimizer:
             return prompt
         
         optimized = prompt.strip()
+
+        max_chars = int(os.getenv("DEEPSEEK_MAX_PROMPT_CHARS", "2000"))
         
         # Optimisations spécifiques DeepSeek Chat
         if model_type == DeepSeekModelType.CHAT:
@@ -206,7 +208,10 @@ class DeepSeekOptimizer:
             # Reasoner bénéficie d'instructions explicites sur le raisonnement
             if "étapes" not in optimized.lower() and "raisonnement" not in optimized.lower():
                 optimized = f"Analysez étape par étape :\n\n{optimized}"
-        
+
+        if len(optimized) > max_chars:
+            optimized = optimized[:max_chars] + "..."
+
         return optimized
     
     @staticmethod
@@ -226,17 +231,12 @@ class DeepSeekOptimizer:
         optimized = []
         
         for msg in messages:
-            if msg.get("role") == "system":
-                # Optimise le system message
-                content = msg.get("content", "")
-                optimized_content = DeepSeekOptimizer.optimize_prompt(content)
-                optimized.append({
-                    "role": "system",
-                    "content": optimized_content
-                })
-            else:
-                # Garde les autres messages tels quels
-                optimized.append(msg.copy())
+            content = msg.get("content", "")
+            optimized_content = DeepSeekOptimizer.optimize_prompt(content)
+            optimized.append({
+                "role": msg.get("role"),
+                "content": optimized_content
+            })
         
         return optimized
     
@@ -290,7 +290,7 @@ class DeepSeekClient:
         # Configuration depuis env vars
         self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
         self.base_url = base_url or os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-        self.timeout = timeout or int(os.getenv('DEEPSEEK_TIMEOUT', '60'))
+        self.timeout = timeout or int(os.getenv('DEEPSEEK_TIMEOUT', '30'))
         
         if not self.api_key:
             raise ValueError("DeepSeek API key is required")
@@ -333,7 +333,7 @@ class DeepSeekClient:
             "messages": messages,
             "model": kwargs.get("model", "deepseek-chat"),
             "temperature": kwargs.get("temperature", 1.0),
-            "max_tokens": kwargs.get("max_tokens", 8192),
+            "max_tokens": kwargs.get("max_tokens", 2048),
             "top_p": kwargs.get("top_p", 0.95)
         }
         
@@ -399,7 +399,9 @@ class DeepSeekClient:
         # Paramètres par défaut depuis env vars
         model = model or os.getenv('DEEPSEEK-CHAT-MODEL', 'deepseek-chat')
         temperature = temperature if temperature is not None else float(os.getenv('DEEPSEEK_TEMPERATURE', '1.0'))
-        max_tokens = max_tokens or int(os.getenv('DEEPSEEK_MAX_TOKENS', '8192'))
+        max_allowed = int(os.getenv('DEEPSEEK_MAX_TOKENS', '2048'))
+        max_tokens = max_tokens or max_allowed
+        max_tokens = min(max_tokens, max_allowed)
         top_p = top_p if top_p is not None else float(os.getenv('DEEPSEEK_TOP_P', '0.95'))
         
         # Optimisation des messages
@@ -553,7 +555,7 @@ class DeepSeekClient:
         reasoner_params = {
             "model": os.getenv('DEEPSEEK-REASONER-MODEL', 'deepseek-reasoner'),
             "temperature": 0.1,  # Plus déterministe pour le raisonnement
-            "max_tokens": 4000,  # Reasoner génère plus de texte
+            "max_tokens": 2000,  # Reasoner génère plus de texte
             **kwargs
         }
         
@@ -707,6 +709,7 @@ def create_deepseek_client(**kwargs) -> DeepSeekClient:
     Returns:
         Instance DeepSeekClient configurée
     """
+    kwargs.setdefault("cache_enabled", True)
     return DeepSeekClient(**kwargs)
 
 
@@ -717,5 +720,5 @@ async def get_default_client() -> DeepSeekClient:
     """Retourne le client DeepSeek par défaut."""
     global _default_client
     if _default_client is None:
-        _default_client = DeepSeekClient()
+        _default_client = DeepSeekClient(cache_enabled=True)
     return _default_client

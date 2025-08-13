@@ -86,8 +86,8 @@ class HybridIntentAgent(BaseFinancialAgent):
                 max_consecutive_auto_reply=1,
                 description="Hybrid intent detection agent for financial conversations",
                 temperature=0.1,  # Low temperature for consistent intent detection
-                max_tokens=300,   # Small response for intent classification
-                timeout_seconds=15
+                max_tokens=200,   # Small response for intent classification
+                timeout_seconds=10
             )
         
         super().__init__(

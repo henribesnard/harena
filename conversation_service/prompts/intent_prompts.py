@@ -153,7 +153,7 @@ def format_intent_prompt(user_message: str, context: str = "") -> str:
     
     return user_prompt
 
-def build_context_summary(conversation_history: List[Dict[str, Any]], max_tokens: int = 1000) -> str:
+def build_context_summary(conversation_history: List[Dict[str, Any]], max_tokens: int = 500) -> str:
     """
     Construit un résumé du contexte conversationnel en respectant la limite de tokens.
     

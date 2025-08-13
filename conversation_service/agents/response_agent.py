@@ -147,8 +147,8 @@ class ResponseAgent(BaseFinancialAgent):
                 max_consecutive_auto_reply=1,
                 description="Contextual response generation agent for financial conversations",
                 temperature=0.3,  # Slightly higher for more natural responses
-                max_tokens=600,   # Larger for complete responses
-                timeout_seconds=25
+                max_tokens=400,   # Larger for complete responses
+                timeout_seconds=20
             )
         
         super().__init__(

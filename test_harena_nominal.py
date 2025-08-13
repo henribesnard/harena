@@ -418,7 +418,9 @@ class HarenaTestClient:
             )
 
         # Vérification cloisonnement
+        # Test de sécurité : une requête sans token doit être refusée (401)
         turns_endpoint = f"/conversation/conversations/{conversation_id}/turns"
+        # utilisation volontaire d'une requête non authentifiée
         resp = self._make_request("GET", turns_endpoint, use_auth=False)
         success, _ = self._print_response(resp, expected_status=401)
         if not success:

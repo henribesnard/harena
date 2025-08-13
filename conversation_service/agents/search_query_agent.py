@@ -229,7 +229,13 @@ class SearchQueryAgent(BaseFinancialAgent):
             search_query = await self._generate_search_contract(
                 intent_result, user_message, user_id, enhanced_entities
             )
-            
+
+            logger.info(
+                "Search query generated: text=%s filters=%s",
+                search_query.search_parameters.search_text,
+                search_query.filters,
+            )
+
             # Step 3: Execute search query
             search_response = await self._execute_search_query(search_query)
             
@@ -412,6 +418,16 @@ class SearchQueryAgent(BaseFinancialAgent):
             # Parse response
             response_data = response.json()
             search_response = SearchServiceResponse(**response_data)
+
+            total_results = getattr(
+                getattr(search_response, "response_metadata", {}), "total_results", 0
+            )
+            logger.info(
+                "Search service returned %s total results",
+                total_results,
+            )
+            if search_response.results:
+                logger.info("First search result: %s", search_response.results[0])
 
             returned_results = getattr(getattr(search_response, "response_metadata", {}), "returned_results", 0)
             if isinstance(getattr(search_response, "response_metadata", None), dict):

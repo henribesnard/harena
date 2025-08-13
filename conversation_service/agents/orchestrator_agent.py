@@ -30,6 +30,7 @@ from ..models.agent_models import AgentConfig, AgentResponse
 from types import SimpleNamespace
 from ..models.conversation_models import ConversationContext
 from ..core.deepseek_client import DeepSeekClient
+from ..core.conversation_manager import ConversationManager
 
 logger = logging.getLogger(__name__)
 
@@ -68,17 +69,11 @@ class WorkflowExecutor:
     def __init__(self, intent_agent: HybridIntentAgent,
                  search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent):
-        """
-        Initialize workflow executor.
-        
-        Args:
-            intent_agent: Intent detection agent
-            search_agent: Search query agent
-            response_agent: Response generation agent
-        """
+        """Initialize workflow executor."""
         self.intent_agent = intent_agent
         self.search_agent = search_agent
         self.response_agent = response_agent
+        self.conversation_manager = ConversationManager()
 
     def _build_performance_summary(self, steps: List[WorkflowStep]) -> Dict[str, int]:
         """Create a performance summary from workflow steps."""
@@ -240,8 +235,12 @@ class WorkflowExecutor:
                 response_step.status = WorkflowStepStatus.RUNNING
                 response_step.start_time = time.perf_counter()
                 try:
-                    context = self._create_conversation_context(
+                    context = await self._create_conversation_context(
                         conversation_id, user_message, user_id
+                    )
+                    logger.info(
+                        "Conversation context size before response: %d",
+                        len(context.turns) if context else 0,
                     )
                     response_response = await self.response_agent.execute_with_metrics(
                         {
@@ -369,23 +368,15 @@ class WorkflowExecutor:
             success=True,
         )
     
-    def _create_conversation_context(
+    async def _create_conversation_context(
         self, conversation_id: str, user_message: str, user_id: int
     ) -> Optional[ConversationContext]:
-        """Create basic conversation context."""
+        """Retrieve conversation context using ConversationManager."""
         try:
-            from ..models.conversation_models import ConversationContext
-            
-            turns = []
-            current_turn = 0 if not turns else len(turns)
-            return ConversationContext(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                turns=turns,
-                current_turn=current_turn,
-                status="active",
-                language="fr",
+            context = await self.conversation_manager.get_context(
+                conversation_id, user_id=user_id
             )
+            return context
         except Exception as e:
             logger.warning(f"Failed to create conversation context: {e}")
             return None

@@ -31,6 +31,7 @@ from types import SimpleNamespace
 from ..models.conversation_models import ConversationContext
 from ..core.deepseek_client import DeepSeekClient
 from ..core.conversation_manager import ConversationManager
+from ..utils.metrics import get_default_metrics_collector
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ class WorkflowExecutor:
                   entirely.
         """
         workflow_start = time.perf_counter()
+        metrics = get_default_metrics_collector()
         
         # Initialize workflow steps
         steps = [
@@ -128,6 +130,7 @@ class WorkflowExecutor:
             logger.info("Starting intent_detection step")
             intent_step.status = WorkflowStepStatus.RUNNING
             intent_step.start_time = time.perf_counter()
+            intent_timer = metrics.performance_monitor.start_timer("intent_detection")
             
             try:
                 intent_response = await self.intent_agent.execute_with_metrics(
@@ -160,6 +163,10 @@ class WorkflowExecutor:
             
             finally:
                 intent_step.end_time = time.perf_counter()
+                duration_ms = metrics.performance_monitor.end_timer(intent_timer)
+                metrics.record_timer("intent_detection_duration_ms", duration_ms)
+                for alert in metrics.performance_monitor.check_performance_alerts("intent_detection"):
+                    logger.warning(alert.message)
                 entities_count = 0
                 if workflow_data["intent_result"] and getattr(workflow_data["intent_result"], "entities", None):
                     entities_count = len(workflow_data["intent_result"].entities)
@@ -179,6 +186,7 @@ class WorkflowExecutor:
                     logger.info("Starting search_query step")
                     search_step.status = WorkflowStepStatus.RUNNING
                     search_step.start_time = time.perf_counter()
+                    search_timer = metrics.performance_monitor.start_timer("search_query")
                     try:
                         search_response = await self.search_agent.execute_with_metrics(
                             {"intent_result": intent_result, "user_message": user_message},
@@ -198,6 +206,10 @@ class WorkflowExecutor:
                         workflow_data["search_results"] = self._create_empty_search_results()
                     finally:
                         search_step.end_time = time.perf_counter()
+                        duration_ms = metrics.performance_monitor.end_timer(search_timer)
+                        metrics.record_timer("search_query_duration_ms", duration_ms)
+                        for alert in metrics.performance_monitor.check_performance_alerts("search_query"):
+                            logger.warning(alert.message)
                         results_count = 0
                         if search_step.result and getattr(search_step.result, "metadata", None):
                             results_count = search_step.result.metadata.get("search_results_count", 0)
@@ -233,6 +245,7 @@ class WorkflowExecutor:
                 logger.info("Starting response_generation step")
                 response_step.status = WorkflowStepStatus.RUNNING
                 response_step.start_time = time.perf_counter()
+                response_timer = metrics.performance_monitor.start_timer("response_generation")
                 try:
                     context = await self._create_conversation_context(
                         conversation_id
@@ -262,6 +275,10 @@ class WorkflowExecutor:
                     workflow_data["final_response"] = self._create_fallback_response(user_message)
                 finally:
                     response_step.end_time = time.perf_counter()
+                    duration_ms = metrics.performance_monitor.end_timer(response_timer)
+                    metrics.record_timer("response_generation_duration_ms", duration_ms)
+                    for alert in metrics.performance_monitor.check_performance_alerts("response_generation"):
+                        logger.warning(alert.message)
                     results_count = 0
                     if workflow_data.get("search_results") and getattr(workflow_data["search_results"], "metadata", None):
                         results_count = workflow_data["search_results"].metadata.get("search_results_count", 0)

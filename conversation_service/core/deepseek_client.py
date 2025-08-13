@@ -36,6 +36,7 @@ from openai.types.chat import ChatCompletion
 
 # Imports locaux
 from ..utils.cache import MultiLevelCache, generate_cache_key
+from ..utils.metrics import get_default_metrics_collector
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +291,7 @@ class DeepSeekClient:
         # Configuration depuis env vars
         self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
         self.base_url = base_url or os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-        self.timeout = timeout or int(os.getenv('DEEPSEEK_TIMEOUT', '30'))
+        self.timeout = timeout or int(os.getenv('DEEPSEEK_TIMEOUT', '15'))
         
         if not self.api_key:
             raise ValueError("DeepSeek API key is required")
@@ -395,11 +396,12 @@ class DeepSeekClient:
             DeepSeekRateLimitError: Rate limit atteint
         """
         start_time = time.time()
+        metrics = get_default_metrics_collector()
         
         # Paramètres par défaut depuis env vars
         model = model or os.getenv('DEEPSEEK-CHAT-MODEL', 'deepseek-chat')
         temperature = temperature if temperature is not None else float(os.getenv('DEEPSEEK_TEMPERATURE', '1.0'))
-        max_allowed = int(os.getenv('DEEPSEEK_MAX_TOKENS', '2048'))
+        max_allowed = int(os.getenv('DEEPSEEK_MAX_TOKENS', '1024'))
         max_tokens = max_tokens or max_allowed
         max_tokens = min(max_tokens, max_allowed)
         top_p = top_p if top_p is not None else float(os.getenv('DEEPSEEK_TOP_P', '0.95'))
@@ -426,6 +428,14 @@ class DeepSeekClient:
                     response_time_ms=response_time,
                     from_cache=True,
                     success=True
+                )
+                metrics.record_deepseek_usage(
+                    model=model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=response_time,
+                    cost_usd=0.0,
+                    success=True,
                 )
                 logger.debug(f"Cache hit for DeepSeek request: {response_time:.1f}ms")
                 return cached_response
@@ -476,9 +486,27 @@ class DeepSeekClient:
                 output_tokens=usage.completion_tokens if usage else 0,
                 success=True
             )
-            
-            logger.debug(f"DeepSeek API call successful: {response_time:.1f}ms, {usage.total_tokens if usage else 0} tokens")
-            
+            input_cost = float(os.getenv('COST_PER_1K_INPUT_TOKENS', '0.0005'))
+            output_cost = float(os.getenv('COST_PER_1K_OUTPUT_TOKENS', '0.0015'))
+            cost_usd = 0.0
+            if usage:
+                cost_usd = (
+                    usage.prompt_tokens * input_cost / 1000
+                    + usage.completion_tokens * output_cost / 1000
+                )
+            metrics.record_deepseek_usage(
+                model=model,
+                input_tokens=usage.prompt_tokens if usage else 0,
+                output_tokens=usage.completion_tokens if usage else 0,
+                duration_ms=response_time,
+                cost_usd=cost_usd,
+                success=True,
+            )
+
+            logger.debug(
+                f"DeepSeek API call successful: {response_time:.1f}ms, {usage.total_tokens if usage else 0} tokens"
+            )
+
             return response
             
         except asyncio.TimeoutError:
@@ -487,7 +515,15 @@ class DeepSeekClient:
             
             response_time = (time.time() - start_time) * 1000
             self.stats.add_request(response_time_ms=response_time, success=False)
-            
+            metrics.record_deepseek_usage(
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                duration_ms=response_time,
+                cost_usd=0.0,
+                success=False,
+            )
+
             raise DeepSeekTimeoutError("DeepSeek API call timed out")
             
         except Exception as e:
@@ -496,7 +532,15 @@ class DeepSeekClient:
             
             response_time = (time.time() - start_time) * 1000
             self.stats.add_request(response_time_ms=response_time, success=False)
-            
+            metrics.record_deepseek_usage(
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                duration_ms=response_time,
+                cost_usd=0.0,
+                success=False,
+            )
+
             logger.error(f"DeepSeek API error: {str(e)}")
             raise DeepSeekError(f"DeepSeek API error: {str(e)}")
     

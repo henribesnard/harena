@@ -101,10 +101,11 @@ class HybridIntentAgent(BaseFinancialAgent):
         
         # Detection statistics
         self.detection_stats = DetectionStats()
-        
+
         # Configuration parameters
         self.ai_confidence_threshold = 0.7
-        self.rule_confidence_threshold = 0.8
+        # Slightly lower threshold to favor rule matches before using the LLM
+        self.rule_confidence_threshold = 0.75
         
         logger.info("Initialized HybridIntentAgent with rule engine and AI fallback")
     

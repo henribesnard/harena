@@ -24,6 +24,7 @@ import sys
 from datetime import datetime
 from typing import Dict, Any, Optional
 import logging
+import uuid
 
 # ===== CONFIGURATION INITIALE =====
 DEFAULT_BASE_URL = "http://localhost:8000/api/v1"
@@ -324,7 +325,7 @@ class HarenaTestClient:
         self._print_step(8, "CHAT CONVERSATION")
 
         headers = {"Content-Type": "application/json"}
-        conversation_id = "test-conversation"
+        conversation_id = f"test-conversation-{uuid.uuid4()}"
 
         # 1) Appel sans jeton - doit retourner 401
         payload = {"conversation_id": conversation_id, "message": "Test sans token"}
@@ -380,7 +381,7 @@ class HarenaTestClient:
         self._print_step(9, "CONVERSATION INTENTS")
 
         headers = {"Content-Type": "application/json"}
-        conversation_id = "test-conversation-intents"
+        conversation_id = f"test-conversation-intents-{uuid.uuid4()}"
 
         intents = [
             ("recherche pizza", "SEARCH_BY_TEXT"),

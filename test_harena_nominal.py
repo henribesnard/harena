@@ -327,7 +327,10 @@ class HarenaTestClient:
         headers = {"Content-Type": "application/json"}
         conversation_id = f"test-conversation-{uuid.uuid4()}"
 
-        # 1) Appel sans jeton - doit retourner 401
+        # 1) Appel sans jeton - test volontaire d'accès non autorisé, doit retourner 401
+        self.logger.info(
+            "🔒 Test d'accès sans jeton: une requête non authentifiée doit renvoyer 401"
+        )
         payload = {"conversation_id": conversation_id, "message": "Test sans token"}
         response = self._make_request(
             "POST", "/conversation/chat", headers=headers, data=json.dumps(payload), use_auth=False

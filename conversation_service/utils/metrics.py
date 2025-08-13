@@ -155,7 +155,7 @@ class PerformanceMonitor:
         self._lock = threading.RLock()
         
         # Seuils d'alerte depuis env vars
-        self.performance_threshold_ms = float(os.getenv('PERFORMANCE_ALERT_THRESHOLD_MS', '2000'))
+        self.performance_threshold_ms = float(os.getenv('PERFORMANCE_ALERT_THRESHOLD_MS', '1000'))
         self.error_rate_threshold = float(os.getenv('ERROR_RATE_ALERT_THRESHOLD', '0.05'))
         
         logger.debug(f"PerformanceMonitor initialized: window={window_size}, threshold={self.performance_threshold_ms}ms")

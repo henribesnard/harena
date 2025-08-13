@@ -1,4 +1,5 @@
 import time
+import uuid
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI
@@ -159,7 +160,8 @@ class HarenaTestClient:
         self.headers = {"Authorization": "Bearer test-token"}
 
     def test_conversation_chat(self):
-        payload = {"message": "Bonjour", "conversation_id": "conv-1"}
+        conversation_id = f"conv-{uuid.uuid4()}"
+        payload = {"message": "Bonjour", "conversation_id": conversation_id}
         response = self.client.post("/conversation/chat", json=payload, headers=self.headers)
         assert response.status_code == 200
 

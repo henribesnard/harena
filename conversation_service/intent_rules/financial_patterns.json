@@ -68,6 +68,12 @@
           "entity_extract": {"type": "merchant", "extract_group": 3, "normalize": "uppercase"}
         },
         {
+          "regex": "\\bd[ée]pens[ée]s?\\s+pour\\s+(amazon|netflix|carrefour|uber|sncf|mcdo|mcdonald|apple|google)\\b",
+          "case_sensitive": false,
+          "weight": 0.9,
+          "entity_extract": {"type": "merchant", "extract_group": 1, "normalize": "uppercase"}
+        },
+        {
           "regex": "\\b(chez|à)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)\\b",
           "case_sensitive": false,
           "weight": 0.7,

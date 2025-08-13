@@ -541,7 +541,10 @@ class SearchQueryAgent(BaseFinancialAgent):
                                     )
                         logger.debug(
                             "Recognized entities: %s",
-                            [f"{e.entity_type.value}: {e.normalized_value}" for e in entities],
+                            [
+                                f"{getattr(e.entity_type, 'value', e.entity_type)}: {e.normalized_value}"
+                                for e in entities
+                            ],
                         )
                         return entities
                 except json.JSONDecodeError as e:
@@ -573,7 +576,10 @@ class SearchQueryAgent(BaseFinancialAgent):
 
             logger.debug(
                 "Recognized entities: %s",
-                [f"{e.entity_type.value}: {e.normalized_value}" for e in entities],
+                [
+                    f"{getattr(e.entity_type, 'value', e.entity_type)}: {e.normalized_value}"
+                    for e in entities
+                ],
             )
 
         except Exception as e:

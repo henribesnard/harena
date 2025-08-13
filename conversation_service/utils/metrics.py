@@ -615,6 +615,10 @@ class MetricsCollector:
             counters_summary = dict(self._counters)
             gauges_summary = dict(self._gauges)
             histograms_summary: Dict[str, Dict[str, float]] = {}
+
+            total_requests = 0.0
+            response_times: List[float] = []
+
             for key, values in self._histograms.items():
                 if values:
                     histograms_summary[key] = {
@@ -624,12 +628,21 @@ class MetricsCollector:
                         "avg": statistics.mean(values)
                     }
 
+                    if key.startswith("response_time_ms"):
+                        response_times.extend(values)
+
+            for key, value in self._counters.items():
+                if key.startswith("requests_total"):
+                    total_requests += value
+
+        avg_response_time = statistics.mean(response_times) if response_times else 0
+
         return {
             "counters": counters_summary,
             "gauges": gauges_summary,
             "histograms": histograms_summary,
-            "total_requests": counters_summary.get("requests_total", 0),
-            "avg_response_time": histograms_summary.get("request_duration_ms", {}).get("avg", 0)
+            "total_requests": total_requests,
+            "avg_response_time": avg_response_time
         }
 
     def get_memory_usage(self) -> Dict[str, float]:

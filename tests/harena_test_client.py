@@ -3,7 +3,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Depends, HTTPException
     from fastapi.testclient import TestClient
 
     from conversation_service.api.routes import router
@@ -132,8 +132,16 @@ if FastAPI is not None:
         async def override_rate_limit(*args, **kwargs):
             pass
 
-        async def override_current_user():
-            return {"user_id": 1, "permissions": ["chat:write"], "rate_limit_tier": "standard"}
+        async def override_current_user(
+            token: str = Depends(dependencies.oauth2_scheme),
+        ) -> Dict[str, Any]:
+            if token != "test-token":
+                raise HTTPException(status_code=401, detail="Invalid token")
+            return {
+                "user_id": 1,
+                "permissions": ["chat:write"],
+                "rate_limit_tier": "standard",
+            }
 
         def override_get_db():
             yield None
@@ -169,8 +177,9 @@ if FastAPI is not None:
 
         def __init__(self):
             self.client = TestClient(create_app())
-            self._token: str = "test-token"
-            self._token_expiry: float = time.time() + 60
+            self._token: str = ""
+            self._token_expiry: float = 0
+            self._refresh_token()
 
         def _refresh_token(self) -> None:
             self._token = "test-token"
@@ -206,6 +215,21 @@ if FastAPI is not None:
     def test_run_full() -> None:
         run_full_test()
 
+    def test_conversation_chat_requires_token() -> None:
+        app = create_app()
+        client = TestClient(app)
+        payload = {"message": "Bonjour", "conversation_id": "conv-1"}
+
+        response = client.post("/conversation/chat", json=payload)
+        assert response.status_code == 401
+
+        response = client.post(
+            "/conversation/chat",
+            json=payload,
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        assert response.status_code == 401
+
 
 REQUEST_TIMEOUT = 5
 
@@ -216,8 +240,9 @@ class HarenaTestClient:
     def __init__(self, base_url: str, session: Any):
         self.base_url = base_url.rstrip("/")
         self.session = session
-        self._token: str = "test-token"
-        self._token_expiry: float = time.time() + 60
+        self._token: str = ""
+        self._token_expiry: float = 0
+        self._refresh_token()
 
     def _refresh_token(self) -> None:
         self._token = "test-token"

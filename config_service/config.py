@@ -97,30 +97,31 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     DEEPSEEK_CHAT_MODEL: str = os.environ.get("DEEPSEEK_CHAT_MODEL", "deepseek-chat")
     DEEPSEEK_REASONER_MODEL: str = os.environ.get("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner")
-    DEEPSEEK_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_MAX_TOKENS", "8192"))
+    DEEPSEEK_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_MAX_TOKENS", "2048"))
     DEEPSEEK_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_TEMPERATURE", "1.0"))
     DEEPSEEK_TOP_P: float = float(os.environ.get("DEEPSEEK_TOP_P", "0.95"))
-    DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "60"))
+    DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "30"))
+    DEEPSEEK_MAX_PROMPT_CHARS: int = int(os.environ.get("DEEPSEEK_MAX_PROMPT_CHARS", "2000"))
     
     # Configuration DeepSeek par tâche - Conversation Service
-    DEEPSEEK_INTENT_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_INTENT_MAX_TOKENS", "100"))
+    DEEPSEEK_INTENT_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_INTENT_MAX_TOKENS", "80"))
     DEEPSEEK_INTENT_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_INTENT_TEMPERATURE", "0.1"))
-    DEEPSEEK_INTENT_TIMEOUT: int = int(os.environ.get("DEEPSEEK_INTENT_TIMEOUT", "8"))
+    DEEPSEEK_INTENT_TIMEOUT: int = int(os.environ.get("DEEPSEEK_INTENT_TIMEOUT", "6"))
     DEEPSEEK_INTENT_TOP_P: float = float(os.environ.get("DEEPSEEK_INTENT_TOP_P", "0.9"))
-    
-    DEEPSEEK_ENTITY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_ENTITY_MAX_TOKENS", "80"))
+
+    DEEPSEEK_ENTITY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_ENTITY_MAX_TOKENS", "60"))
     DEEPSEEK_ENTITY_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_ENTITY_TEMPERATURE", "0.05"))
-    DEEPSEEK_ENTITY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_ENTITY_TIMEOUT", "6"))
+    DEEPSEEK_ENTITY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_ENTITY_TIMEOUT", "5"))
     DEEPSEEK_ENTITY_TOP_P: float = float(os.environ.get("DEEPSEEK_ENTITY_TOP_P", "0.8"))
-    
-    DEEPSEEK_QUERY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_QUERY_MAX_TOKENS", "300"))
+
+    DEEPSEEK_QUERY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_QUERY_MAX_TOKENS", "200"))
     DEEPSEEK_QUERY_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_QUERY_TEMPERATURE", "0.2"))
-    DEEPSEEK_QUERY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_QUERY_TIMEOUT", "10"))
+    DEEPSEEK_QUERY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_QUERY_TIMEOUT", "8"))
     DEEPSEEK_QUERY_TOP_P: float = float(os.environ.get("DEEPSEEK_QUERY_TOP_P", "0.9"))
-    
-    DEEPSEEK_RESPONSE_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_RESPONSE_MAX_TOKENS", "500"))
+
+    DEEPSEEK_RESPONSE_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_RESPONSE_MAX_TOKENS", "300"))
     DEEPSEEK_RESPONSE_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_RESPONSE_TEMPERATURE", "0.7"))
-    DEEPSEEK_RESPONSE_TIMEOUT: int = int(os.environ.get("DEEPSEEK_RESPONSE_TIMEOUT", "15"))
+    DEEPSEEK_RESPONSE_TIMEOUT: int = int(os.environ.get("DEEPSEEK_RESPONSE_TIMEOUT", "12"))
     DEEPSEEK_RESPONSE_TOP_P: float = float(os.environ.get("DEEPSEEK_RESPONSE_TOP_P", "0.95"))
     
     # ==========================================

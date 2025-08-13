@@ -617,7 +617,7 @@ def validate_workflow_constraints(
         violations.append(f"Timeout trop élevé: {decision_timeout}ms > {max_timeout}ms")
     
     # Validation du budget tokens
-    max_tokens = constraints.get("max_tokens", 3000)
+    max_tokens = constraints.get("max_tokens", 2000)
     estimated_cost = decision.get("estimated_cost", "0 tokens")
     
     if "tokens" in estimated_cost:

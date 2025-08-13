@@ -226,9 +226,12 @@ class ResponseAgent(BaseFinancialAgent):
             conversation_context = await self._get_conversation_context(context)
 
             # Log context summary and search results count
+            context_summary = (
+                conversation_context[:200] if conversation_context else ""
+            )
             logger.info(
-                "Generating response with context: %s | returned results: %s",
-                conversation_context,
+                "Generating response with context summary: %s | returned results: %s",
+                context_summary,
                 search_response.response_metadata.returned_results,
             )
 
@@ -243,8 +246,9 @@ class ResponseAgent(BaseFinancialAgent):
             completion_tokens = usage.get("completion_tokens", 0)
             total_tokens = usage.get("total_tokens", 0)
             logger.info(
-                "Generated response: %s | total tokens used: %s",
+                "Generated response: %s | transactions used: %s | total tokens used: %s",
                 ai_response.content,
+                search_response.response_metadata.returned_results,
                 total_tokens,
             )
 

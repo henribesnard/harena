@@ -1,4 +1,5 @@
 import time
+import uuid
 from typing import Any, Dict, Optional
 
 try:
@@ -155,8 +156,13 @@ if FastAPI is not None:
         for dep, override in overrides.items():
             app.dependency_overrides[dep] = override
 
-        return app
+    def test_conversation_chat(self):
+        conversation_id = f"conv-{uuid.uuid4()}"
+        payload = {"message": "Bonjour", "conversation_id": conversation_id}
+        response = self.client.post("/conversation/chat", json=payload, headers=self.headers)
+        assert response.status_code == 200
 
+        return app
 
     class ConversationServiceTestClient:
         """HTTP client for testing the conversation service."""

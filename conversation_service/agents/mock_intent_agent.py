@@ -714,7 +714,9 @@ class MockIntentAgent(LLMIntentAgent):
             "confidence": intent_result.confidence,
             "entities": [
                 {
-                    "entity_type": e.entity_type.value,
+                    "entity_type": e.entity_type.value
+                    if isinstance(e.entity_type, EntityType)
+                    else e.entity_type,
                     "value": e.normalized_value,
                     "confidence": e.confidence,
                 }

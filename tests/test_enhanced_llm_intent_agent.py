@@ -46,6 +46,8 @@ class FallbackAgent:
             confidence=1.0,
             entities=[],
             method=DetectionMethod.AI_FALLBACK,
+
+            method=DetectionMethod.FALLBACK,
             processing_time_ms=0.0,
         )
         return {
@@ -53,6 +55,8 @@ class FallbackAgent:
             "metadata": {
                 "intent_result": intent_result,
                 "detection_method": DetectionMethod.AI_FALLBACK,
+
+                "detection_method": DetectionMethod.FALLBACK,
                 "confidence": intent_result.confidence,
                 "intent_type": intent_result.intent_type,
                 "entities": [],
@@ -76,7 +80,7 @@ def test_fallback_when_llm_errors():
     result = asyncio.run(agent.detect_intent("Bonjour", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "FALLBACK_INTENT"
-    assert intent_result.method == DetectionMethod.AI_ERROR_FALLBACK
+    assert intent_result.method == DetectionMethod.FALLBACK
 
 
 def test_latency_measurement(monkeypatch):

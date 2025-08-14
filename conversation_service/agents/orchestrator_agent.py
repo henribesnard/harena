@@ -608,13 +608,9 @@ class OrchestratorAgent(BaseFinancialAgent):
                 rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
                 search_results_count = rm.get("returned_results", 0)
 
-            entities_extracted = []
-            intent_detected = None
+            intent_result_dump = None
             if intent_result is not None:
-                intent_detected = getattr(intent_result, "intent_type", None)
-                entities_extracted = [
-                    e.model_dump() for e in getattr(intent_result, "entities", [])
-                ]
+                intent_result_dump = intent_result.model_dump()
 
             steps = execution_details.get("steps", []) if isinstance(execution_details, dict) else []
             agent_chain = [
@@ -635,8 +631,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "execution_details": execution_details,
                     "performance_summary": performance_summary,
                     "conversation_id": conversation_id,
-                    "intent_detected": intent_detected,
-                    "entities_extracted": entities_extracted,
+                    "intent_result": intent_result_dump,
                     "agent_chain": agent_chain,
                     "search_results_count": search_results_count,
                 },
@@ -657,8 +652,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "error": str(e),
                     "execution_time_ms": execution_time,
                     "conversation_id": conversation_id,
-                    "intent_detected": None,
-                    "entities_extracted": [],
+                    "intent_result": None,
                     "agent_chain": ["orchestrator_agent"],
                     "search_results_count": 0,
                 },

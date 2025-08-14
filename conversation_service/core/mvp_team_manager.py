@@ -288,8 +288,7 @@ class MVPTeamManager:
             "confidence_score": response.confidence_score,
             "error_message": response.error_message,
             "metadata": {
-                "intent_detected": response.metadata.get("intent_detected"),
-                "entities_extracted": response.metadata.get("entities_extracted"),
+                "intent_result": response.metadata.get("intent_result"),
                 "agent_chain": response.metadata.get("agent_chain"),
                 "search_results_count": response.metadata.get("search_results_count"),
             },

@@ -238,7 +238,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                             confidence=e.confidence,
                             start_position=e.position[0],
                             end_position=e.position[1],
-                            detection_method=DetectionMethod.RULE_BASED,
+                            detection_method=DetectionMethod.AI_DETECTION,
                         )
                     )
                 except Exception as err:
@@ -272,7 +272,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                     intent_category=self._map_rule_category(exact_match.intent_category),
                     confidence=exact_match.confidence,
                     entities=entities,
-                    method=DetectionMethod.EXACT_RULE,
+                    method=DetectionMethod.AI_DETECTION,
                     processing_time_ms=execution_time,
                     suggested_actions=suggestions,
                     search_required=not no_search_needed,
@@ -292,7 +292,7 @@ class HybridIntentAgent(BaseFinancialAgent):
                     intent_category=self._map_rule_category(pattern_match.intent_category),
                     confidence=pattern_match.confidence,
                     entities=entities,
-                    method=DetectionMethod.PATTERN_RULE,
+                    method=DetectionMethod.AI_DETECTION,
                     processing_time_ms=execution_time,
                     suggested_actions=suggestions,
                     search_required=not no_search_needed,

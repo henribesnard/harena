@@ -416,7 +416,12 @@ class SearchQueryAgent(BaseFinancialAgent):
         if merchants:
             search_filters["merchants"] = merchants
 
-            search_filters["merchant_name"] = merchants
+            has_index_merchant = any(
+                e.entity_type in {EntityType.MERCHANT, "MERCHANT"} and e.normalized_value
+                for e in (enhanced_entities or [])
+            )
+            if has_index_merchant:
+                search_filters["merchant_name"] = merchants
 
         # Always filter by user_id for security and multi-tenant isolation
         search_filters["user_id"] = user_id

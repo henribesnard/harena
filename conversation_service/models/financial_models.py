@@ -103,7 +103,6 @@ class IntentCategory(str, Enum):
 class DetectionMethod(str, Enum):
     """Method used for entity detection or intent classification."""
 
-    RULE_BASED = "rule_based"
     LLM_BASED = "llm_based"
     PATTERN_MATCHING = "pattern_matching"
     NER_MODEL = "ner_model"
@@ -111,8 +110,6 @@ class DetectionMethod(str, Enum):
     AI_FALLBACK = "ai_fallback"
     AI_ERROR_FALLBACK = "ai_error_fallback"
     AI_PARSE_FALLBACK = "ai_parse_fallback"
-    EXACT_RULE = "exact_rule"
-    PATTERN_RULE = "pattern_rule"
     AI_DETECTION = "ai_detection"
 
 
@@ -258,7 +255,7 @@ class FinancialEntity(BaseModel):
                 "metadata": {
                     "currency": "EUR",
                     "original_currency": "euros",
-                    "extraction_rule": "amount_with_currency"
+                    "extraction_hint": "amount_with_currency"
                 }
             }
         }
@@ -452,14 +449,14 @@ class IntentResult(BaseModel):
                         "raw_value": "500 euros",
                         "normalized_value": 500.0,
                         "confidence": 0.95,
-                        "detection_method": "rule_based"
+                        "detection_method": "llm_based"
                     },
                     {
                         "entity_type": "DATE_RANGE",
                         "raw_value": "janvier 2024",
                         "normalized_value": {"start": "2024-01-01", "end": "2024-01-31"},
                         "confidence": 0.89,
-                        "detection_method": "pattern_matching"
+                        "detection_method": "llm_based"
                     }
                 ],
                 "alternative_intents": [

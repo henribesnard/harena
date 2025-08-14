@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 import os
 import hashlib
+import re
 
 import httpx
 from openai import AsyncOpenAI
@@ -174,7 +175,32 @@ class DeepSeekResponse:
 
 class DeepSeekOptimizer:
     """Optimiseur statique pour prompts et requêtes DeepSeek."""
-    
+
+    @staticmethod
+    def compress_prompt(prompt: str) -> str:
+        """Compresse et nettoie un prompt en supprimant les redondances.
+
+        - Supprime les espaces et tabulations multiples
+        - Élimine les lignes vides consécutives
+        - Retire les lignes dupliquées consécutives
+        """
+        if not prompt:
+            return prompt
+
+        # Réduction des espaces et tabulations multiples
+        text = re.sub(r"[ \t]+", " ", prompt)
+
+        # Suppression des lignes vides consécutives
+        text = re.sub(r"\n{2,}", "\n", text)
+
+        # Suppression des lignes dupliquées consécutives
+        lines = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not lines or stripped != lines[-1]:
+                lines.append(stripped)
+        return "\n".join(lines).strip()
+
     @staticmethod
     def optimize_prompt(prompt: str, model_type: DeepSeekModelType = DeepSeekModelType.CHAT) -> str:
         """
@@ -189,8 +215,8 @@ class DeepSeekOptimizer:
         """
         if not prompt or not prompt.strip():
             return prompt
-        
-        optimized = prompt.strip()
+
+        optimized = DeepSeekOptimizer.compress_prompt(prompt)
 
         max_chars = int(os.getenv("DEEPSEEK_MAX_PROMPT_CHARS", "2000"))
         
@@ -254,10 +280,14 @@ class DeepSeekOptimizer:
         """
         if not requests:
             return requests
-        
-        # Pour l'instant, retourne les requêtes telles quelles
-        # Future optimisation : grouper par paramètres similaires
-        return requests
+
+        optimized_requests = []
+        for req in requests:
+            req_copy = req.copy()
+            msgs = req_copy.get("messages", [])
+            req_copy["messages"] = DeepSeekOptimizer.optimize_messages(msgs)
+            optimized_requests.append(req_copy)
+        return optimized_requests
 
 
 class DeepSeekClient:
@@ -610,8 +640,28 @@ class DeepSeekClient:
             "max_tokens": 2000,  # Reasoner génère plus de texte
             **kwargs
         }
-        
+
         return await self.create_completion(messages=messages, **reasoner_params)
+
+    async def create_batch_completions(
+        self,
+        requests: List[Dict[str, Any]],
+    ) -> List[ChatCompletion]:
+        """Traite plusieurs requêtes DeepSeek en parallèle.
+
+        Args:
+            requests: Liste de dictionnaires de paramètres pour
+                ``create_completion``.
+
+        Returns:
+            Liste des réponses ``ChatCompletion`` correspondant aux requêtes.
+        """
+        if not requests:
+            return []
+
+        optimized = DeepSeekOptimizer.batch_requests(requests)
+        tasks = [self.create_completion(**req) for req in optimized]
+        return await asyncio.gather(*tasks)
     
     def get_usage_stats(self) -> Dict[str, Any]:
         """
@@ -655,8 +705,16 @@ class DeepSeekClient:
                     base_stats["cache"] = {"note": "Cache stats require async call"}
             except Exception:
                 base_stats["cache"] = {"error": "Cache stats unavailable"}
-        
+
         return base_stats
+
+    def get_cost_summary(self) -> Dict[str, float]:
+        """Retourne un résumé simple des coûts et tokens utilisés."""
+        return {
+            "input_tokens": self.stats.total_input_tokens,
+            "output_tokens": self.stats.total_output_tokens,
+            "total_cost_usd": round(self.stats.total_cost_usd, 6),
+        }
     
     async def get_usage_stats_async(self) -> Dict[str, Any]:
         """

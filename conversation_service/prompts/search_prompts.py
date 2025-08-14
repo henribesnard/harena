@@ -63,10 +63,10 @@ FORMAT DE RÉPONSE OBLIGATOIRE (JSON) :
 {
   "query_type": "lexical|semantic|aggregation",
   "search_text": "texte pour recherche BM25",
-  "filters": {
+    "filters": {
     "user_id": "OBLIGATOIRE",
-    "date_range": {"gte": "2024-01-01", "lte": "2024-01-31"},
-    "amount_range": {"gte": 0, "lte": 1000},
+    "date": {"gte": "2024-01-01", "lte": "2024-01-31"},
+    "amount": {"gte": 0, "lte": 1000},
     "categories": ["alimentation", "transport"],
     "merchants": ["carrefour", "amazon"],
     "transaction_types": ["debit"]
@@ -130,7 +130,7 @@ REQUÊTE GÉNÉRÉE:
   "search_text": "Carrefour",
   "filters": {
     "user_id": "USER_ID_PLACEHOLDER",
-    "date_range": {"gte": "2024-12-01", "lte": "2024-12-31"},
+    "date": {"gte": "2024-12-01", "lte": "2024-12-31"},
     "merchants": ["carrefour"]
   },
   "sorting": [{"date": "desc"}],
@@ -150,7 +150,7 @@ REQUÊTE GÉNÉRÉE:
   "search_text": "",
   "filters": {
     "user_id": "USER_ID_PLACEHOLDER",
-    "date_range": {"gte": "2024-10-01", "lte": "2024-12-31"},
+    "date": {"gte": "2024-10-01", "lte": "2024-12-31"},
     "categories": ["restaurant"],
     "transaction_types": ["debit"]
   },
@@ -175,7 +175,7 @@ REQUÊTE GÉNÉRÉE:
   "search_text": "",
   "filters": {
     "user_id": "USER_ID_PLACEHOLDER",
-    "date_range": {"gte": "2024-01-01", "lte": "2024-12-31"},
+    "date": {"gte": "2024-01-01", "lte": "2024-12-31"},
     "transaction_types": ["debit"]
   },
   "aggregations": {
@@ -199,7 +199,7 @@ REQUÊTE GÉNÉRÉE:
   "search_text": "pharmacie",
   "filters": {
     "user_id": "USER_ID_PLACEHOLDER",
-    "date_range": {"gte": "2024-12-23", "lte": "2024-12-29"}
+    "date": {"gte": "2024-12-23", "lte": "2024-12-29"}
   },
   "sorting": [{"date": "desc"}, {"amount_abs": "desc"}],
   "size": 20,
@@ -521,7 +521,7 @@ def parse_search_response(response: str, user_id: str) -> Dict[str, Any]:
             "search_text": "",
             "filters": {
                 "user_id": user_id,
-                "date_range": build_date_range_from_period("ce mois")
+                "date": build_date_range_from_period("ce mois")
             },
             "sorting": [{"date": "desc"}],
             "size": 20,
@@ -544,19 +544,19 @@ def optimize_query_for_performance(query: Dict[str, Any]) -> Dict[str, Any]:
     optimized = query.copy()
     
     # Optimisation 1: Limiter les plages de dates trop larges
-    if "filters" in optimized and "date_range" in optimized["filters"]:
-        date_range = optimized["filters"]["date_range"]
-        if "gte" in date_range and "lte" in date_range:
+    if "filters" in optimized and "date" in optimized["filters"]:
+        date_filter = optimized["filters"]["date"]
+        if "gte" in date_filter and "lte" in date_filter:
             try:
-                start_date = datetime.strptime(date_range["gte"], "%Y-%m-%d")
-                end_date = datetime.strptime(date_range["lte"], "%Y-%m-%d")
+                start_date = datetime.strptime(date_filter["gte"], "%Y-%m-%d")
+                end_date = datetime.strptime(date_filter["lte"], "%Y-%m-%d")
                 days_diff = (end_date - start_date).days
                 
                 # Si plus de 2 ans, limiter à 1 an
                 if days_diff > 730:
                     logger.info("Limitation de la plage de dates pour performance")
                     new_start = end_date - datetime.timedelta(days=365)
-                    optimized["filters"]["date_range"]["gte"] = new_start.strftime("%Y-%m-%d")
+                    optimized["filters"]["date"]["gte"] = new_start.strftime("%Y-%m-%d")
             except ValueError:
                 pass  # Ignore les erreurs de parsing de dates
     

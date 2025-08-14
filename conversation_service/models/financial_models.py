@@ -230,7 +230,7 @@ class FinancialEntity(BaseModel):
         filter_map = {
             EntityType.AMOUNT: {"field": "amount", "value": self.normalized_value},
             EntityType.DATE: {"field": "date", "value": self.normalized_value},
-            EntityType.DATE_RANGE: {"field": "date_range", "value": self.normalized_value},
+            EntityType.DATE_RANGE: {"field": "date", "value": self.normalized_value},
             EntityType.CATEGORY: {"field": "category", "value": self.normalized_value},
             EntityType.MERCHANT: {"field": "merchant", "value": self.normalized_value},
             EntityType.TRANSACTION_TYPE: {"field": "transaction_type", "value": self.normalized_value}
@@ -469,7 +469,7 @@ class IntentResult(BaseModel):
                     "apply_amount_filter",
                     "apply_date_filter"
                 ],
-                "normalized_query": "Find transactions with amount=500 EUR in date_range=2024-01",
+                "normalized_query": "Find transactions with amount=500 EUR in date=2024-01",
                 "search_required": True,
             }
         }

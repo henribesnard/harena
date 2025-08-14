@@ -1,3 +1,5 @@
+"""Tests for the SearchServiceQuery contract."""
+
 from conversation_service.models.service_contracts import (
     SearchServiceQuery,
     QueryMetadata,

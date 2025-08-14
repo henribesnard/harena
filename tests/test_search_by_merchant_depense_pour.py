@@ -1,25 +1,33 @@
-from conversation_service.intent_rules import create_rule_engine
-from conversation_service.agents.hybrid_intent_agent import HybridIntentAgent
+import asyncio
+import conversation_service.agents.base_financial_agent as base_financial_agent
+base_financial_agent.AUTOGEN_AVAILABLE = True
+
+from conversation_service.agents.llm_intent_agent import LLMIntentAgent
 from conversation_service.models.financial_models import EntityType
 
 
-def test_depense_pour_netflix_matches_rule_and_entity():
-    engine = create_rule_engine()
-    message = "Combien j'ai dépensé pour Netflix ce mois ?"
+class DummyDeepSeekClient:
+    api_key = "test-key"
+    base_url = "http://api.example.com"
 
-    # Verify RuleMatch intent and normalized entity
-    match = engine.match_intent(message, confidence_threshold=0.3)
-    assert match is not None
-    assert match.intent == "SEARCH_BY_MERCHANT"
-    merchants = match.entities.get("merchant")
-    assert merchants
-    assert merchants[0].normalized_value.get("merchant") == "NETFLIX"
+    async def generate_response(self, messages, temperature, max_tokens, user, use_cache):
+        class Response:
+            content = (
+                '{"intent": "SEARCH_BY_MERCHANT", '
+                '"entities": [{"type": "MERCHANT", "value": "Netflix"}]}'
+            )
 
-    # Convert to FinancialEntity via HybridIntentAgent without full initialization
-    agent = HybridIntentAgent.__new__(HybridIntentAgent)
-    entities = agent._convert_rule_entities(match.entities)
-    assert any(
-        e.entity_type == EntityType.MERCHANT and e.normalized_value.get("merchant") == "NETFLIX"
-        for e in entities
+        return Response()
+
+
+def test_depense_pour_netflix_matches_llm_entity():
+    agent = LLMIntentAgent(deepseek_client=DummyDeepSeekClient())
+    result = asyncio.run(
+        agent.detect_intent("Combien j'ai dépensé pour Netflix ce mois ?", user_id=1)
     )
-
+    intent_result = result["metadata"]["intent_result"]
+    assert intent_result.intent_type == "SEARCH_BY_MERCHANT"
+    merchant = next(
+        e for e in intent_result.entities if e.entity_type == EntityType.MERCHANT
+    )
+    assert merchant.normalized_value == "Netflix"

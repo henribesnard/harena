@@ -1,10 +1,31 @@
+import asyncio
 import pytest
+import conversation_service.agents.base_financial_agent as base_financial_agent
+base_financial_agent.AUTOGEN_AVAILABLE = True
 
-from conversation_service.intent_rules import create_rule_engine
+from conversation_service.agents.llm_intent_agent import LLMIntentAgent
 
 
-# Create a single rule engine instance for all tests
-engine = create_rule_engine()
+class DummyDeepSeekClient:
+    api_key = "test-key"
+    base_url = "http://api.example.com"
+    mapping = {
+        "recherche pizza": "SEARCH_BY_TEXT",
+        "combien d'opérations ce mois": "COUNT_TRANSACTIONS",
+        "nombre de mouvements ce mois": "COUNT_TRANSACTIONS",
+        "tendance budget 2025": "ANALYZE_TRENDS",
+        "bonjour": "GREETING",
+    }
+
+    async def generate_response(self, messages, temperature, max_tokens, user, use_cache):
+        text = messages[-1]["content"]
+        intent = self.mapping.get(text, "OUT_OF_SCOPE")
+        class Response:
+            content = f'{{"intent": "{intent}", "entities": []}}'
+        return Response()
+
+
+agent = LLMIntentAgent(deepseek_client=DummyDeepSeekClient())
 
 
 @pytest.mark.parametrize(
@@ -17,9 +38,7 @@ engine = create_rule_engine()
         ("bonjour", "GREETING"),
     ],
 )
-def test_rule_engine_detects_intents(text: str, expected_intent: str) -> None:
-    """Verify that the rule engine matches user text to the correct intent."""
-    match = engine.match_intent(text, confidence_threshold=0.3)
-    assert match is not None, f"No intent detected for '{text}'"
-    assert match.intent == expected_intent
-
+def test_llm_agent_detects_intents(text: str, expected_intent: str) -> None:
+    result = asyncio.run(agent.detect_intent(text, user_id=1))
+    intent_result = result["metadata"]["intent_result"]
+    assert intent_result.intent_type == expected_intent

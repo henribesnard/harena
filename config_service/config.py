@@ -123,6 +123,16 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_RESPONSE_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_RESPONSE_TEMPERATURE", "0.7"))
     DEEPSEEK_RESPONSE_TIMEOUT: int = int(os.environ.get("DEEPSEEK_RESPONSE_TIMEOUT", "12"))
     DEEPSEEK_RESPONSE_TOP_P: float = float(os.environ.get("DEEPSEEK_RESPONSE_TOP_P", "0.95"))
+
+    # ==========================================
+    # CONFIGURATION LLM-ONLY
+    # ==========================================
+    LLM_TIMEOUT: int = int(os.environ.get("LLM_TIMEOUT", "10"))
+    MAX_RETRIES: int = int(os.environ.get("MAX_RETRIES", "3"))
+    LLM_CACHE_ENABLED: bool = os.environ.get("LLM_CACHE_ENABLED", "True").lower() == "true"
+    LLM_CACHE_TTL: int = int(os.environ.get("LLM_CACHE_TTL", "300"))
+    LLM_CACHE_MAX_SIZE: int = int(os.environ.get("LLM_CACHE_MAX_SIZE", "1000"))
+    DEEPSEEK_EXPECTED_LATENCY_MS: int = int(os.environ.get("DEEPSEEK_EXPECTED_LATENCY_MS", "1500"))
     
     # ==========================================
     # CONFIGURATION OPENAI POUR LES EMBEDDINGS
@@ -509,7 +519,6 @@ class GlobalSettings(BaseSettings):
     QUERY_CACHE_SIZE: int = int(os.environ.get("QUERY_CACHE_SIZE", "1000"))
     
     # Variables de configuration manquantes pour compatibilité
-    ENABLE_CACHE: bool = os.environ.get("ENABLE_CACHE", "True").lower() == "true"
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod

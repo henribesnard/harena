@@ -486,7 +486,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         self, message: str, intent_result: IntentResult, user_id: int
     ) -> List[FinancialEntity]:
         """
-        Extract additional entities using AI that weren't caught by rules.
+        Extract additional entities using AI that weren't detected previously.
         
         Args:
             message: User message

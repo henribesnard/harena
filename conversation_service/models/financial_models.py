@@ -255,7 +255,7 @@ class FinancialEntity(BaseModel):
                 "metadata": {
                     "currency": "EUR",
                     "original_currency": "euros",
-                    "extraction_rule": "amount_with_currency"
+                    "extraction_hint": "amount_with_currency"
                 }
             }
         }
@@ -456,7 +456,7 @@ class IntentResult(BaseModel):
                         "raw_value": "janvier 2024",
                         "normalized_value": {"start": "2024-01-01", "end": "2024-01-31"},
                         "confidence": 0.89,
-                        "detection_method": "pattern_matching"
+                        "detection_method": "llm_based"
                     }
                 ],
                 "alternative_intents": [

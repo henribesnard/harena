@@ -242,11 +242,33 @@ class SearchFilters(BaseModel):
     @classmethod
     def validate_date(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
         """Validate date filter has proper gte/lte."""
+        if v is None:
+            return v
+        # Ensure both bounds are provided
+        if "gte" not in v or "lte" not in v:
+            raise ValueError("date filter must contain both 'gte' and 'lte'")
+
+        try:
+            gte = datetime.fromisoformat(v["gte"])
+            lte = datetime.fromisoformat(v["lte"])
+        except ValueError as exc:  # pragma: no cover - pydantic already validates format
+            raise ValueError("invalid date format") from exc
+
+        if gte > lte:
+            raise ValueError("'gte' must be less than or equal to 'lte'")
+        return v
 
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
         """Validate amount filter has proper gte/lte."""
+        if v is None:
+            return v
+        if "gte" not in v or "lte" not in v:
+            raise ValueError("amount filter must contain both 'gte' and 'lte'")
+        if v["gte"] > v["lte"]:
+            raise ValueError("'gte' must be less than or equal to 'lte'")
+        return v
 
     model_config = {
         "populate_by_name": True,
@@ -356,6 +378,8 @@ class SearchServiceQuery(BaseModel):
                     },
                     "category_name": ["food", "transport"]
                 },
+                "categories": ["food", "transport"]
+
 
                     "categories": ["food", "transport"]
 

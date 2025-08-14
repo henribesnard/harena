@@ -376,6 +376,8 @@ class SearchServiceQuery(BaseModel):
                         "gte": 100.0,
                         "lte": 1000.0,
                     },
+                    "category_name": ["food", "transport"]
+                }
                     "category_name": ["food", "transport"],
                 },
                 "aggregations": {

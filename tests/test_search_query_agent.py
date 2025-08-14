@@ -53,7 +53,7 @@ def test_generate_search_contract_deduplicates_terms():
                 confidence=0.8,
             )
         ],
-        method=DetectionMethod.RULE_BASED,
+        method=DetectionMethod.LLM_BASED,
         processing_time_ms=1.0,
     )
 

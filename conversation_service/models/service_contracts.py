@@ -165,9 +165,9 @@ class SearchParameters(BaseModel):
         description="Whether to include result highlights"
     )
     
-    search_strategy: Literal["exact", "fuzzy", "semantic", "hybrid"] = Field(
-        default="hybrid",
-        description="Strategy for search execution"
+    search_strategy: Literal["exact", "fuzzy", "semantic"] = Field(
+        default="semantic",
+        description="Strategy for search execution",
     )
     
     boost_recent: bool = Field(
@@ -201,7 +201,7 @@ class SearchParameters(BaseModel):
                 "sort_by": "date",
                 "sort_order": "desc",
                 "include_highlights": True,
-                "search_strategy": "hybrid",
+                "search_strategy": "semantic",
                 "boost_recent": True,
                 "fuzzy_matching": True,
                 "min_score": 0.1
@@ -417,7 +417,7 @@ class SearchServiceQuery(BaseModel):
                     "max_results": 20,
                     "sort_by": "date",
                     "sort_order": "desc",
-                    "search_strategy": "hybrid"
+                    "search_strategy": "semantic"
                 },
                 "filters": {
                     "date_range": {
@@ -798,7 +798,7 @@ class SearchServiceResponse(BaseModel):
                     "total_results": 47,
                     "returned_results": 20,
                     "has_more_results": True,
-                    "search_strategy_used": "hybrid",
+                    "search_strategy_used": "semantic",
                     "cache_hit": False
                 },
                 "results": [

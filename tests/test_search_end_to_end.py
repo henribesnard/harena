@@ -72,7 +72,7 @@ def test_netflix_month_question_returns_transactions():
                 confidence=0.9,
             )
         ],
-        method=DetectionMethod.RULE_BASED,
+        method=DetectionMethod.LLM_BASED,
         processing_time_ms=1.0,
     )
     user_message = "Combien j’ai dépensé pour Netflix ce mois ?"

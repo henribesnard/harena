@@ -524,6 +524,20 @@ class SearchQueryAgent(BaseFinancialAgent):
 
             # Parse response
             response_data = response.json()
+
+            # Normalize field names from Search Service before model validation
+            for result in response_data.get("results", []):
+                if "currency_code" in result and "currency" not in result:
+                    result["currency"] = result.pop("currency_code")
+                if "primary_description" in result and "description" not in result:
+                    result["description"] = result.pop("primary_description")
+                if "merchant_name" in result and "merchant" not in result:
+                    result["merchant"] = result.pop("merchant_name")
+                if "category_name" in result and "category" not in result:
+                    result["category"] = result.pop("category_name")
+                if "account_id" in result and isinstance(result["account_id"], int):
+                    result["account_id"] = str(result["account_id"])
+
             search_response = SearchServiceResponse(**response_data)
 
             results_len = len(search_response.results or [])

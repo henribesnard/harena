@@ -186,13 +186,6 @@ class SearchFilters(BaseModel):
     amount: Optional[Dict[str, float]] = Field(
         default=None,
         description="Amount filter with 'gte' and 'lte' keys"
-
-    date_range: Optional[Dict[str, str]] = Field(
-        default=None, description="Date range filter with 'start' and 'end' keys"
-    )
-
-    amount_range: Optional[Dict[str, float]] = Field(
-        default=None, description="Amount range filter with 'min' and 'max' keys"
     )
 
     category_name: Optional[List[str]] = Field(
@@ -250,34 +243,10 @@ class SearchFilters(BaseModel):
     def validate_date(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
         """Validate date filter has proper gte/lte."""
 
-    def validate_date_range(
-        cls, v: Optional[Dict[str, str]]
-    ) -> Optional[Dict[str, str]]:
-        """Validate date range has proper start and end."""
-        if v is not None:
-            if "gte" not in v and "lte" not in v:
-                raise ValueError("date must have at least 'gte' or 'lte' key")
-            if "gte" in v and "lte" in v and v["gte"] > v["lte"]:
-                raise ValueError("date gte cannot be after lte")
-        return v
-
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
         """Validate amount filter has proper gte/lte."""
-
-    @field_validator("amount_range")
-    @classmethod
-    def validate_amount_range(
-        cls, v: Optional[Dict[str, float]]
-    ) -> Optional[Dict[str, float]]:
-        """Validate amount range has proper min and max."""
-        if v is not None:
-            if "gte" not in v and "lte" not in v:
-                raise ValueError("amount must have at least 'gte' or 'lte' key")
-            if "gte" in v and "lte" in v and v["gte"] > v["lte"]:
-                raise ValueError("amount gte cannot be greater than lte")
-        return v
 
     model_config = {
         "populate_by_name": True,
@@ -293,9 +262,6 @@ class SearchFilters(BaseModel):
                 },
                 "categories": ["food", "transport"],
                 "merchants": ["Carrefour", "SNCF"],
-
-                "date_range": {"start": "2024-01-01", "end": "2024-01-31"},
-                "amount_range": {"min": 100.0, "max": 1000.0},
                 "category_name": ["food", "transport"],
                 "merchant_name": ["Carrefour", "SNCF"],
                 "transaction_types": ["debit"],
@@ -303,7 +269,6 @@ class SearchFilters(BaseModel):
             }
         },
     }
-
 
 class AggregationRequest(BaseModel):
     """
@@ -387,9 +352,6 @@ class SearchServiceQuery(BaseModel):
                     },
                     "categories": ["food", "transport"]
                 }
-                    "date_range": {"start": "2024-01-01", "end": "2024-01-31"},
-                    "category_name": ["food", "transport"],
-                },
             }
         }
     }
@@ -571,10 +533,6 @@ class AggregationResult(BaseModel):
                     "date": "2024-01-01 to 2024-01-31",
                     "currency": "EUR"
                 }
-
-                    "date_range": "2024-01-01 to 2024-01-31",
-                    "currency": "EUR",
-                },
             }
         }
     }
@@ -635,8 +593,7 @@ class SearchServiceResponse(BaseModel):
                 "avg_amount": 0.0,
                 "date": None,
                 "categories": [],
-                "merchants": []
-                "date_range": None,
+                "merchants": [],
                 "category_name": [],
                 "merchant_name": [],
             }
@@ -655,9 +612,8 @@ class SearchServiceResponse(BaseModel):
                 "end": max(dates)
             } if dates else None,
             "categories": categories,
-            "merchants": merchants
+            "merchants": merchants,
 
-            "date_range": {"start": min(dates), "end": max(dates)} if dates else None,
             "category_name": categories,
             "merchant_name": merchants,
         }

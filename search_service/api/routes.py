@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
 from search_service.models.request import SearchRequest
-from search_service.core.search_engine import SearchEngine
+from search_service.core.search_engine import SearchEngine, RateLimitExceeded
 from config_service.config import settings
 
 logger = logging.getLogger(__name__)
@@ -84,8 +84,9 @@ async def search_transactions(
 
         return results
         
+    except RateLimitExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except HTTPException:
-        # Re-raise les erreurs HTTP sans les modifier
         raise
         
     except Exception as e:
@@ -172,6 +173,11 @@ async def health_check() -> Dict[str, Any]:
     
     return health_status
 
+@router.get("/metrics")
+async def metrics() -> Dict[str, Any]:
+    """Expose cache and rate limiting metrics."""
+    return search_engine.get_stats()
+
 @router.get("/debug/config")
 async def debug_config() -> Dict[str, Any]:
     """
@@ -186,7 +192,7 @@ async def debug_config() -> Dict[str, Any]:
             detail="Endpoint disponible uniquement en mode debug"
         )
     
-    return {
+    debug_info = {
         "settings": {
             "bonsai_url_configured": bool(settings.BONSAI_URL),
             "elasticsearch_index": settings.ELASTICSEARCH_INDEX,
@@ -196,9 +202,12 @@ async def debug_config() -> Dict[str, Any]:
         },
         "search_engine": {
             "client_initialized": search_engine.elasticsearch_client is not None,
-            "index_name": search_engine.index_name
+            "index_name": search_engine.index_name,
+            "rate_limit_per_minute": search_engine.requests_per_minute,
+            "cache_stats": search_engine.get_stats()["cache"],
         }
     }
+    return debug_info
 
 # Fonction d'initialisation pour le moteur de recherche
 def initialize_search_engine(elasticsearch_client):

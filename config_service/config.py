@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
 import secrets
 import os
@@ -233,7 +233,7 @@ class GlobalSettings(BaseSettings):
     SEARCH_CACHE_SIZE: int = int(os.environ.get("SEARCH_CACHE_SIZE", "1000"))
     
     # Configuration de la recherche hybride
-    DEFAULT_SEARCH_TYPE: str = os.environ.get("DEFAULT_SEARCH_TYPE", "hybrid")
+    DEFAULT_SEARCH_TYPE: str = os.environ.get("DEFAULT_SEARCH_TYPE", "semantic")
     MIN_LEXICAL_SCORE: float = float(os.environ.get("MIN_LEXICAL_SCORE", "1.0"))
     MIN_SEMANTIC_SCORE: float = float(os.environ.get("MIN_SEMANTIC_SCORE", "0.5"))
     MAX_RESULTS_PER_ENGINE: int = int(os.environ.get("MAX_RESULTS_PER_ENGINE", "50"))
@@ -1004,10 +1004,11 @@ class GlobalSettings(BaseSettings):
             "warnings": warnings
         }
     
-    class Config:
-        case_sensitive = True
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_file=".env",
+        extra="ignore",
+    )
 
 
 # Initialisation du singleton de configuration globale

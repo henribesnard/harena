@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, model_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, field_validator, FieldValidationInfo
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -15,11 +16,15 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     confirm_password: str
 
-    @validator('confirm_password')
-    def passwords_match(cls, v, values, **kwargs):
-        if 'password' in values and v != values['password']:
+    @model_validator(mode="after")
+    def passwords_match(cls, values):
+        if values.password != values.confirm_password:
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v: str, info: FieldValidationInfo):
+        if info.data.get('password') and v != info.data['password']:
             raise ValueError('Passwords do not match')
-        return v
+        return values
 
 
 # Mise à jour d'utilisateur
@@ -51,8 +56,7 @@ class UserPreferenceInDB(UserPreferenceBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Bridge connections
@@ -73,8 +77,7 @@ class BridgeConnectionInDB(BridgeConnectionBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # User in DB
@@ -84,8 +87,7 @@ class UserInDBBase(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserInDB(UserInDBBase):

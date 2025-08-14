@@ -472,6 +472,7 @@ class MetricsCollector:
 
         Args:
             method: Méthode utilisée (llm_based, ai_fallback)
+            method: Méthode utilisée (llm_based, pattern_matching, ner_model)
             confidence: Score de confiance
             success: Succès de la détection
             **labels: Labels additionnels

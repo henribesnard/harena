@@ -94,6 +94,7 @@ class IntentCategory(str, Enum):
     EXPORT_REQUEST = "EXPORT_REQUEST"
     FILTER_REQUEST = "FILTER_REQUEST"
     SORT_REQUEST = "SORT_REQUEST"
+    GOAL_TRACKING = "GOAL_TRACKING"
     
     # Error handling
     UNCLEAR_INTENT = "UNCLEAR_INTENT"

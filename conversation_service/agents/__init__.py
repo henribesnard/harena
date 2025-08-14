@@ -32,6 +32,7 @@ if TYPE_CHECKING or AUTOGEN_AVAILABLE:
     from .base_financial_agent import BaseFinancialAgent
     from .llm_intent_agent import LLMIntentAgent
     from .enhanced_llm_intent_agent import EnhancedLLMIntentAgent
+    from .mock_intent_agent import MockIntentAgent
     from .search_query_agent import SearchQueryAgent
     from .response_agent import ResponseAgent
     from .orchestrator_agent import OrchestratorAgent
@@ -40,6 +41,7 @@ __all__ = [
     "BaseFinancialAgent",
     "LLMIntentAgent",
     "EnhancedLLMIntentAgent",
+    "MockIntentAgent",
     "SearchQueryAgent",
     "ResponseAgent",
     "OrchestratorAgent"

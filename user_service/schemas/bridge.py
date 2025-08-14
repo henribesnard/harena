@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+from typing import Optional
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
@@ -12,6 +14,8 @@ class ConnectSessionRequest(BaseModel):
     provider_id: Optional[int] = None
     item_id: Optional[int] = None
 
+    class Config:
+        schema_extra = {
     @field_validator('context')
     def context_length(cls, v):
     @classmethod

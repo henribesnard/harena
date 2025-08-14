@@ -464,14 +464,29 @@ class TransactionResult(BaseModel):
     amount: float = Field(..., description="Transaction amount")
 
     currency: str = Field(
-        ..., description="Transaction currency", pattern=r"^[A-Z]{3}$"
+        ...,
+        description="Transaction currency",
+        pattern=r"^[A-Z]{3}$",
+        validation_alias="currency_code",
     )
 
-    description: str = Field(..., description="Transaction description")
+    description: str = Field(
+        ...,
+        description="Transaction description",
+        validation_alias="primary_description",
+    )
 
-    merchant: Optional[str] = Field(default=None, description="Merchant name")
+    merchant: Optional[str] = Field(
+        default=None,
+        description="Merchant name",
+        validation_alias="merchant_name",
+    )
 
-    category: Optional[str] = Field(default=None, description="Transaction category")
+    category: Optional[str] = Field(
+        default=None,
+        description="Transaction category",
+        validation_alias="category_name",
+    )
 
     account_id: str = Field(..., description="Account identifier")
 
@@ -499,7 +514,16 @@ class TransactionResult(BaseModel):
         default=None, description="Highlighted text matches"
     )
 
+    @field_validator("account_id", mode="before")
+    @classmethod
+    def convert_account_id(cls, v: Any) -> str:
+        """Ensure account_id is always stored as a string."""
+        if isinstance(v, int):
+            return str(v)
+        return v
+
     model_config = {
+        "populate_by_name": True,
         "json_schema_extra": {
             "example": {
                 "transaction_id": "txn_123456789",
@@ -519,7 +543,7 @@ class TransactionResult(BaseModel):
                     "merchant": ["<em>Carrefour</em>"],
                 },
             }
-        }
+        },
     }
 
 

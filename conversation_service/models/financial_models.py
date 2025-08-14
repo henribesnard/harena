@@ -105,7 +105,6 @@ class DetectionMethod(str, Enum):
 
     RULE_BASED = "rule_based"
     LLM_BASED = "llm_based"
-    HYBRID = "hybrid"
     PATTERN_MATCHING = "pattern_matching"
     NER_MODEL = "ner_model"
     FALLBACK = "fallback"
@@ -175,7 +174,7 @@ class FinancialEntity(BaseModel):
     )
     
     detection_method: DetectionMethod = Field(
-        default=DetectionMethod.HYBRID,
+        default=DetectionMethod.LLM_BASED,
         description="Method used for entity detection"
     )
     
@@ -254,7 +253,7 @@ class FinancialEntity(BaseModel):
                 "confidence": 0.95,
                 "start_position": 15,
                 "end_position": 25,
-                "detection_method": "hybrid",
+                "detection_method": "llm_based",
                 "validation_status": "valid",
                 "metadata": {
                     "currency": "EUR",
@@ -445,7 +444,7 @@ class IntentResult(BaseModel):
                 "intent_type": "TRANSACTION_SEARCH_BY_AMOUNT_AND_DATE",
                 "intent_category": "TRANSACTION_SEARCH",
                 "confidence": 0.92,
-                "method": "hybrid",
+                "method": "llm_based",
                 "processing_time_ms": 245.7,
                 "entities": [
                     {

@@ -1,6 +1,9 @@
 from conversation_service.intent_rules import create_rule_engine
-from conversation_service.agents.hybrid_intent_agent import HybridIntentAgent
-from conversation_service.models.financial_models import EntityType
+from conversation_service.models.financial_models import (
+    DetectionMethod,
+    EntityType,
+    FinancialEntity,
+)
 
 
 def test_depense_pour_netflix_matches_rule_and_entity():
@@ -15,9 +18,25 @@ def test_depense_pour_netflix_matches_rule_and_entity():
     assert merchants
     assert merchants[0].normalized_value.get("merchant") == "NETFLIX"
 
-    # Convert to FinancialEntity via HybridIntentAgent without full initialization
-    agent = HybridIntentAgent.__new__(HybridIntentAgent)
-    entities = agent._convert_rule_entities(match.entities)
+    # Convert rule-engine entities to FinancialEntity without HybridIntentAgent
+    entities = []
+    for entity_list in match.entities.values():
+        for e in entity_list:
+            try:
+                entity_type = EntityType(e.entity_type.upper())
+            except ValueError:
+                continue
+            entities.append(
+                FinancialEntity(
+                    entity_type=entity_type,
+                    raw_value=e.raw_value,
+                    normalized_value=e.normalized_value,
+                    confidence=e.confidence,
+                    start_position=e.position[0],
+                    end_position=e.position[1],
+                    detection_method=DetectionMethod.RULE_BASED,
+                )
+            )
     assert any(
         e.entity_type == EntityType.MERCHANT and e.normalized_value.get("merchant") == "NETFLIX"
         for e in entities

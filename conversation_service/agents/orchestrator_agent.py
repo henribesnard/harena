@@ -17,6 +17,8 @@ Version: 1.0.0 MVP - Multi-Agent Orchestration
 
 import time
 import logging
+import asyncio
+import os
 from typing import Dict, Any, Optional, List, Deque
 from dataclasses import dataclass
 from enum import Enum
@@ -131,11 +133,39 @@ class WorkflowExecutor:
             intent_step.status = WorkflowStepStatus.RUNNING
             intent_step.start_time = time.perf_counter()
             intent_timer = metrics.performance_monitor.start_timer("intent_detection")
-            
+
+            timeout = float(os.getenv("INTENT_AGENT_TIMEOUT_SECONDS", "10"))
+            max_retries = int(os.getenv("INTENT_AGENT_MAX_RETRIES", "2"))
+
             try:
-                intent_response = await self.intent_agent.execute_with_metrics(
-                    {"user_message": user_message}, user_id
-                )
+                intent_response: Optional[AgentResponse] = None
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        intent_response = await asyncio.wait_for(
+                            self.intent_agent.execute_with_metrics(
+                                {"user_message": user_message}, user_id
+                            ),
+                            timeout=timeout,
+                        )
+                        break
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Intent detection timeout on attempt %d after %.2f s",
+                            attempt,
+                            timeout,
+                        )
+                        if attempt == max_retries:
+                            raise
+                    except Exception as e:
+                        logger.error(
+                            "Intent detection attempt %d failed: %s", attempt, e
+                        )
+                        if attempt == max_retries:
+                            raise
+
+                if intent_response is None:
+                    raise Exception("Intent detection failed after retries")
+
                 intent_result = (
                     intent_response.metadata.get("intent_result")
                     if intent_response.metadata
@@ -151,16 +181,25 @@ class WorkflowExecutor:
                     intent_step.status = WorkflowStepStatus.COMPLETED
                     intent_step.result = intent_response
                 else:
-                    raise Exception(intent_response.error_message or "Intent detection failed")
-                    
+                    raise Exception(
+                        intent_response.error_message or "Intent detection failed"
+                    )
+
+            except asyncio.TimeoutError as e:
+                intent_step.status = WorkflowStepStatus.FAILED
+                intent_step.error = f"Timeout after {timeout} s"
+                logger.error("Intent detection step timed out: %s", e)
+
+                workflow_data["intent_result"] = self._create_fallback_intent()
+
             except Exception as e:
                 intent_step.status = WorkflowStepStatus.FAILED
                 intent_step.error = str(e)
                 logger.error(f"Intent detection step failed: {e}")
-                
+
                 # Try to continue with fallback intent
                 workflow_data["intent_result"] = self._create_fallback_intent()
-            
+
             finally:
                 intent_step.end_time = time.perf_counter()
                 duration_ms = metrics.performance_monitor.end_timer(intent_timer)

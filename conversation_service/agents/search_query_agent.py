@@ -408,20 +408,13 @@ class SearchQueryAgent(BaseFinancialAgent):
         if categories:
             search_filters["category_name"] = categories
 
-        merchants = [
-            str(e.normalized_value)
-            for e in all_entities
-            if e.entity_type in {EntityType.MERCHANT, "MERCHANT"} and e.normalized_value
-        ]
-        if merchants:
-            search_filters["merchants"] = merchants
-
-            has_index_merchant = any(
-                e.entity_type in {EntityType.MERCHANT, "MERCHANT"} and e.normalized_value
-                for e in (enhanced_entities or [])
-            )
-            if has_index_merchant:
-                search_filters["merchant_name"] = merchants
+        # Merchant name filtering is intentionally avoided. Some databases may
+        # store transactions with an empty ``merchant_name`` field. Adding a
+        # ``merchant_name`` filter would exclude those records, even though the
+        # merchant can still be matched via full-text search on
+        # ``primary_description``/``searchable_text``. Merchant entities are
+        # still extracted earlier to enrich ``search_text``, so relying on the
+        # text search is sufficient here.
 
         # Always filter by user_id for security and multi-tenant isolation
         search_filters["user_id"] = user_id

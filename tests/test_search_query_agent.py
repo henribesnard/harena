@@ -12,6 +12,14 @@ from conversation_service.models.financial_models import (
     DetectionMethod,
 )
 import asyncio
+import pytest
+
+try:
+    from search_service.core.search_engine import SearchEngine
+    from search_service.models.request import SearchRequest
+except Exception:  # pragma: no cover - skip if deps missing
+    SearchEngine = None
+    SearchRequest = None
 
 
 class DummyDeepSeekClient:
@@ -63,7 +71,67 @@ def test_generate_search_contract_deduplicates_terms():
 
     request = search_query.to_search_request()
     assert request["query"].split().count("carrefour") == 1
-    assert request["filters"].get("merchants") == ["carrefour"]
+    assert "merchants" not in request["filters"]
     assert "merchant_name" not in request["filters"]
     assert "user_id" not in request["filters"]
     assert request["user_id"] == 1
+
+
+class DummyElasticsearchClientNoMerchant:
+    async def search(self, index, body, size, from_):
+        return {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_score": 1.0,
+                        "_source": {
+                            "transaction_id": "t1",
+                            "user_id": 1,
+                            "amount": -15.99,
+                            "amount_abs": 15.99,
+                            "currency_code": "EUR",
+                            "transaction_type": "debit",
+                            "date": "2025-02-01",
+                            "primary_description": "Netflix abonnement",
+                            "category_name": "Streaming",
+                            "operation_type": "card",
+                        },
+                    }
+                ],
+            }
+        }
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_netflix_search_returns_results_without_merchant_name():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.MERCHANT,
+                raw_value="Netflix",
+                normalized_value="netflix",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    user_message = "Combien j’ai dépensé pour Netflix ce mois ?"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    assert request_dict["query"] == "netflix"
+    assert "merchant_name" not in request_dict["filters"]
+
+    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientNoMerchant())
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert response["results"]

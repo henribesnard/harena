@@ -359,14 +359,7 @@ class SearchServiceQuery(BaseModel):
                         "gte": "2024-01-01",
                         "lte": "2024-01-31"
                     },
-                    "category_name": ["food", "transport"],
-                    "date_range": {
-                        "start": "2024-01-01",
-                        "end": "2024-01-31"
-                    }
-                },
-
-                    "categories": ["food", "transport"]
+                    "category_name": ["food", "transport"]
                 }
             }
         }

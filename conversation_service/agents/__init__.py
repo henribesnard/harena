@@ -60,7 +60,7 @@ def get_available_agents():
     """Get list of available agent classes."""
     if not AUTOGEN_AVAILABLE:
         return []
-    
+
     return [
         "BaseFinancialAgent",
         "LLMIntentAgent",

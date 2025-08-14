@@ -16,9 +16,10 @@ import re
 import logging
 from typing import Dict, List, Optional, Any, Tuple, NamedTuple, Set
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 import hashlib
+import os
 
 # Imports locaux
 from .rule_loader import RuleLoader, IntentRule, IntentCategory, RuleMatch as LoaderRuleMatch
@@ -96,6 +97,14 @@ class MatchingContext:
             user_id=user_id,
             conversation_id=conversation_id
         )
+
+
+@dataclass
+class CachedResult:
+    """Entrée de cache avec métadonnées."""
+    result: RuleMatch
+    expires_at: datetime
+    semantic_key: str
 
 
 class ExactMatcher:
@@ -488,14 +497,15 @@ class RuleEngine:
         self.pattern_matcher = RulePatternMatcher(self.all_rules, entity_matcher)  # CORRECTION
         
         # Cache des résultats
-        self._result_cache: Dict[str, RuleMatch] = {}
+        self._result_cache: Dict[str, CachedResult] = {}
         self._cache_hits = 0
         self._cache_misses = 0
-        
+
         # Configuration
         self.default_confidence_threshold = 0.7
         self.max_pattern_matches = 5
         self.enable_cache = True
+        self.base_cache_ttl = int(os.getenv("RULE_ENGINE_CACHE_TTL", "300"))
         
         logger.info(f"RuleEngine initialized with {len(self.all_rules)} rules")
     
@@ -525,13 +535,18 @@ class RuleEngine:
         
         # Vérification cache
         cache_key = f"{context.text_hash}_{threshold}"
-        if self.enable_cache and cache_key in self._result_cache:
-            self._cache_hits += 1
-            cached_result = self._result_cache[cache_key]
-            logger.debug(f"Cache hit for: {text[:50]}")
-            return cached_result
-        
-        self._cache_misses += 1
+        if self.enable_cache:
+            entry = self._result_cache.get(cache_key)
+            if entry and entry.expires_at > datetime.now():
+                self._cache_hits += 1
+                logger.debug(f"Cache hit for: {text[:50]}")
+                return entry.result
+            if entry:
+                # Expired entry
+                del self._result_cache[cache_key]
+            self._cache_misses += 1
+        else:
+            self._cache_misses += 1
         
         # 1. Tentative exact match (ultra-rapide)
         exact_match = self.exact_matcher.find_exact_match(context)
@@ -551,7 +566,7 @@ class RuleEngine:
             final_match = exact_match._replace(execution_time_ms=execution_time)
             
             # Mise en cache
-            self._cache_result(cache_key, final_match)
+            self._cache_result(cache_key, final_match, context.text_hash)
             
             logger.debug(f"Exact match found for: {text[:50]} -> {exact_match.intent}")
             return final_match
@@ -569,7 +584,7 @@ class RuleEngine:
             final_match = best_match._replace(execution_time_ms=execution_time)
             
             # Mise en cache
-            self._cache_result(cache_key, final_match)
+            self._cache_result(cache_key, final_match, context.text_hash)
             
             logger.debug(f"Pattern match found for: {text[:50]} -> {best_match.intent} (score: {best_match.confidence:.3f})")
             return final_match
@@ -679,13 +694,12 @@ class RuleEngine:
     def get_performance_stats(self) -> Dict[str, Any]:
         """
         Retourne les statistiques complètes de performance
-        
+
         Returns:
             Dictionnaire avec toutes les métriques
         """
-        total_requests = self._cache_hits + self._cache_misses
-        cache_hit_rate = (self._cache_hits / total_requests * 100) if total_requests > 0 else 0
-        
+        cache_stats = self.get_cache_metrics()
+
         return {
             "engine_info": {
                 "total_rules": len(self.all_rules),
@@ -693,18 +707,29 @@ class RuleEngine:
                 "conversational_rules": len(self.conversational_rules),
                 "default_confidence_threshold": self.default_confidence_threshold
             },
-            "cache_stats": {
-                "enabled": self.enable_cache,
-                "hits": self._cache_hits,
-                "misses": self._cache_misses,
-                "hit_rate_percent": round(cache_hit_rate, 2),
-                "cache_size": len(self._result_cache)
-            },
+            "cache_stats": {"enabled": self.enable_cache, **cache_stats},
             "matcher_stats": {
                 "exact_matcher": self.exact_matcher.get_stats(),
                 "pattern_matcher": self.pattern_matcher.get_stats()
             },
             "entity_matcher_stats": self.entity_matcher.get_performance_stats()
+        }
+
+    def get_cache_metrics(self) -> Dict[str, Any]:
+        """Retourne les métriques du cache."""
+        # Nettoyage des entrées expirées
+        now = datetime.now()
+        expired = [k for k, v in self._result_cache.items() if v.expires_at <= now]
+        for k in expired:
+            del self._result_cache[k]
+
+        total_requests = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total_requests * 100) if total_requests > 0 else 0.0
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate_percent": round(hit_rate, 2),
+            "cache_size": len(self._result_cache),
         }
     
     def clear_cache(self) -> None:
@@ -736,19 +761,26 @@ class RuleEngine:
         
         logger.info(f"Rules reloaded: {len(self.all_rules)} total rules")
     
-    def _cache_result(self, cache_key: str, result: RuleMatch) -> None:
-        """Met en cache un résultat (avec limite de taille)"""
+    def _cache_result(self, cache_key: str, result: RuleMatch, semantic_key: str) -> None:
+        """Met en cache un résultat (avec TTL adaptatif)."""
         if not self.enable_cache:
             return
-        
+
         # Limite du cache pour éviter la surcharge mémoire
         if len(self._result_cache) >= 1000:
             # Suppression des plus anciens (stratégie FIFO simple)
             oldest_keys = list(self._result_cache.keys())[:100]
             for key in oldest_keys:
                 del self._result_cache[key]
-        
-        self._result_cache[cache_key] = result
+
+        ttl = max(1, int(self.base_cache_ttl * max(0.1, min(1.0, result.confidence))))
+        expires_at = datetime.now() + timedelta(seconds=ttl)
+
+        self._result_cache[cache_key] = CachedResult(
+            result=result,
+            expires_at=expires_at,
+            semantic_key=semantic_key,
+        )
 
 
 # Factory function pour faciliter l'utilisation

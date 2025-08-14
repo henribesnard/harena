@@ -694,7 +694,7 @@ class MockIntentAgent(LLMIntentAgent):
                     confidence=ent["confidence"],
                     start_position=start_pos,
                     end_position=end_pos,
-                    detection_method=DetectionMethod.LLM_BASED,
+                    detection_method=DetectionMethod.RULE_BASED,
                 )
             )
 
@@ -703,7 +703,7 @@ class MockIntentAgent(LLMIntentAgent):
             intent_category=IntentCategory(data["intent_category"]),
             confidence=data["confidence"],
             entities=entities,
-            method=DetectionMethod.LLM_BASED,
+            method=DetectionMethod.RULE_BASED,
             processing_time_ms=data.get("processing_time_ms", (time.perf_counter() - start) * 1000),
             requires_clarification=data.get("requires_clarification", False),
             suggested_actions=data.get("suggested_actions", []),
@@ -728,7 +728,7 @@ class MockIntentAgent(LLMIntentAgent):
             "content": json.dumps(result_payload),
             "metadata": {
                 "intent_result": intent_result,
-                "detection_method": DetectionMethod.LLM_BASED,
+                "detection_method": DetectionMethod.RULE_BASED,
                 "confidence": intent_result.confidence,
                 "intent_type": intent_result.intent_type,
                 "entities": [

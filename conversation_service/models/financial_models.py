@@ -105,7 +105,11 @@ class DetectionMethod(str, Enum):
 
     LLM_BASED = "llm_based"
     FALLBACK = "fallback"
-
+    RULE_BASED = "rule_based"
+    AI_FALLBACK = "ai_fallback"
+    AI_ERROR_FALLBACK = "ai_error_fallback"
+    AI_PARSE_FALLBACK = "ai_parse_fallback"
+    AI_DETECTION = "ai_detection"
 
 class FinancialEntity(BaseModel):
     """

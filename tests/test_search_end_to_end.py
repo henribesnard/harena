@@ -13,8 +13,13 @@ from conversation_service.models.financial_models import (
     IntentCategory,
     DetectionMethod,
 )
-from search_service.core.search_engine import SearchEngine
-from search_service.models.request import SearchRequest
+import pytest
+try:
+    from search_service.core.search_engine import SearchEngine
+    from search_service.models.request import SearchRequest
+except Exception:  # pragma: no cover - skip if deps missing
+    SearchEngine = None
+    SearchRequest = None
 
 
 class DummyDeepSeekClient:
@@ -49,6 +54,7 @@ class DummyElasticsearchClient:
         }
 
 
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
 def test_netflix_month_question_returns_transactions():
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),

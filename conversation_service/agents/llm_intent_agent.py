@@ -107,28 +107,17 @@ class LLMIntentAgent(BaseFinancialAgent):
         )
 
     # ------------------------------------------------------------------
-    async def detect_intent(self, user_message: str, user_id: int) -> Dict[str, Any]:
-        """Detect the intent of ``user_message``.
-
-        The DeepSeek client is expected to return a JSON document containing the
-        intent and a list of extracted entities.  The method converts this output
-        into an :class:`IntentResult` instance and wraps it in the structure used
-        by the rest of the service.
-        """
-
-        start = time.perf_counter()
-
-    async def _execute_operation(
-        self, input_data: Dict[str, Any], user_id: int
-    ) -> Dict[str, Any]:
-        user_message = input_data.get("user_message", "")
-        if not user_message:
-            raise ValueError("user_message is required for intent detection")
-        return await self.detect_intent(user_message, user_id)
-
     async def detect_intent(
         self, user_message: str, user_id: int
     ) -> Dict[str, Any]:
+        """Detect the intent of ``user_message``.
+
+        The DeepSeek client returns a JSON document describing the intent and any
+        extracted entities.  This method converts that JSON into an
+        :class:`IntentResult` and wraps it in the structure used by the rest of
+        the service.
+        """
+
         start_time = time.perf_counter()
         response = await self.deepseek_client.generate_response(
             messages=[
@@ -171,7 +160,7 @@ class LLMIntentAgent(BaseFinancialAgent):
             confidence=data.get("confidence", 0.0),
             entities=entities,
             method=DetectionMethod.LLM_BASED,
-            processing_time_ms=(time.perf_counter() - start) * 1000,
+            processing_time_ms=(time.perf_counter() - start_time) * 1000,
         )
 
         return {
@@ -183,24 +172,6 @@ class LLMIntentAgent(BaseFinancialAgent):
                 "intent_type": intent_result.intent_type,
                 "entities": [
                     e.model_dump() if hasattr(e, "model_dump") else e.__dict__
-        intent_result = self._parse_llm_output(response.content)
-        intent_result.processing_time_ms = (time.perf_counter() - start_time) * 1000
-
-        return {
-            "content": response.content,
-            "metadata": {
-                "intent_result": intent_result,
-                "detection_method": intent_result.method,
-                "confidence": intent_result.confidence,
-                "intent_type": intent_result.intent_type,
-                "entities": [
-                    e.model_dump() if hasattr(e, "model_dump") else e.dict()
-                    for e in intent_result.entities
-                ],
-                "intent_detected": intent_result.intent_type,
-                "entities_extracted": [
-                    e.model_dump() if hasattr(e, "model_dump") else e.__dict__
-                    e.model_dump() if hasattr(e, "model_dump") else e.dict()
                     for e in intent_result.entities
                 ],
             },

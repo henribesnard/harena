@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from uuid import uuid4
 
+from .financial_models import IntentResult
+from ..utils.validators import validate_intent_result_contract
+
 __all__ = [
     "ConversationRequest",
     "ConversationResponse",
@@ -148,8 +151,7 @@ class ConversationTurn(BaseModel):
         metadata: Additional metadata about the turn
         turn_number: Sequential number of this turn in conversation
         processing_time_ms: Time taken to process and respond
-        intent_detected: Detected intent from user message
-        entities_extracted: Entities extracted from user message
+        intent_result: Complete intent detection result
         confidence_score: Confidence in the response quality
         error_occurred: Whether any errors occurred during processing
         agent_chain: Chain of agents involved in processing this turn
@@ -195,15 +197,10 @@ class ConversationTurn(BaseModel):
         description="Time taken to process and respond",
         ge=0.0
     )
-    
-    intent_detected: Optional[str] = Field(
+
+    intent_result: Optional[IntentResult] = Field(
         default=None,
-        description="Detected intent from user message"
-    )
-    
-    entities_extracted: Optional[List[Dict[str, Any]]] = Field(
-        default=None,
-        description="Entities extracted from user message"
+        description="Complete intent detection result"
     )
     
     confidence_score: Optional[float] = Field(
@@ -231,9 +228,21 @@ class ConversationTurn(BaseModel):
             raise ValueError("Message content cannot be empty")
         return v.strip()
 
+    @field_validator("intent_result")
+    @classmethod
+    def validate_intent_result_field(cls, v: Optional[IntentResult]) -> Optional[IntentResult]:
+        """Validate intent_result using contract validator."""
+        if v is None:
+            return v
+        errors = validate_intent_result_contract(v)
+        if errors:
+            raise ValueError("; ".join(errors))
+        return v
+
     model_config = {
         "json_encoders": {
-            datetime: lambda v: v.isoformat()
+            datetime: lambda v: v.isoformat(),
+            IntentResult: lambda v: v.model_dump()
         },
         "json_schema_extra": {
             "example": {
@@ -242,15 +251,21 @@ class ConversationTurn(BaseModel):
                 "assistant_response": "Voici vos transactions de janvier 2024...",
                 "turn_number": 1,
                 "processing_time_ms": 1250.5,
-                "intent_detected": "FINANCIAL_QUERY",
-                "entities_extracted": [
-                    {
-                        "entity_type": "DATE_RANGE",
-                        "raw_value": "janvier 2024",
-                        "normalized_value": "2024-01",
-                        "confidence": 0.95
-                    }
-                ],
+                "intent_result": {
+                    "intent_type": "FINANCIAL_QUERY",
+                    "intent_category": "ACCOUNT_INFO",
+                    "confidence": 0.92,
+                    "entities": [
+                        {
+                            "entity_type": "DATE_RANGE",
+                            "raw_value": "janvier 2024",
+                            "normalized_value": "2024-01",
+                            "confidence": 0.95
+                        }
+                    ],
+                    "method": "llm_based",
+                    "processing_time_ms": 120.5
+                },
                 "confidence_score": 0.92,
                 "error_occurred": False,
                 "agent_chain": [
@@ -322,7 +337,6 @@ class ConversationContext(BaseModel):
         language: Language of the conversation
         domain: Domain context (e.g., "financial", "general")
         last_intent: Last detected intent for continuity
-        active_entities: Currently active entities in context
     """
     
     conversation_id: str = Field(
@@ -400,11 +414,6 @@ class ConversationContext(BaseModel):
     last_intent: Optional[str] = Field(
         default=None,
         description="Last detected intent for continuity"
-    )
-    
-    active_entities: Optional[List[Dict[str, Any]]] = Field(
-        default_factory=list,
-        description="Currently active entities in context"
     )
 
     @model_validator(mode='after')
@@ -509,13 +518,6 @@ class ConversationContext(BaseModel):
                 "language": "fr",
                 "domain": "financial",
                 "last_intent": "FINANCIAL_QUERY",
-                "active_entities": [
-                    {
-                        "entity_type": "DATE_RANGE",
-                        "value": "2024-01",
-                        "confidence": 0.95
-                    }
-                ],
                 "user_preferences": {
                     "currency": "EUR",
                     "date_format": "DD/MM/YYYY",

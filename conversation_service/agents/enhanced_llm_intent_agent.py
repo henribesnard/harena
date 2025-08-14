@@ -49,6 +49,13 @@ class EnhancedLLMIntentAgent(LLMIntentAgent):
             intent_result.processing_time_ms = (
                 time.perf_counter() - start_time
             ) * 1000
+            # If LLM failed and fallback is available, use fallback result
+            if (
+                self.fallback_agent
+                and intent_result.intent_type == "OUT_OF_SCOPE"
+                and intent_result.confidence == 0.0
+            ):
+                raise RuntimeError("LLM intent detection failed")
             return result
         except Exception as exc:  # pragma: no cover - tested via fallback
             logger.warning("LLM call failed, falling back: %s", exc)

@@ -498,7 +498,8 @@ class HarenaRealDataTestClient:
             # Analyser la réponse
             conversation_response = json_data.get("message", "")
             metadata = json_data.get("metadata", {})
-            detected_intent = metadata.get("intent_detected", "UNKNOWN")
+            intent_result = metadata.get("intent_result", {}) or {}
+            detected_intent = intent_result.get("intent_type", "UNKNOWN")
             search_results_count = metadata.get("search_results_count", 0)
             processing_time = json_data.get("processing_time_ms", 0)
             

@@ -344,9 +344,6 @@ class SearchQueryAgent(BaseFinancialAgent):
         ]
         if merchants:
             search_filters["merchants"] = merchants
-
-        # Always filter by user_id for security and multi-tenant isolation
-        search_filters["user_id"] = user_id
         logger.debug("Calculated search filters: %s", search_filters)
 
         # Create query metadata

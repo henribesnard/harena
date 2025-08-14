@@ -186,6 +186,7 @@ class SearchFilters(BaseModel):
     amount: Optional[Dict[str, float]] = Field(
         default=None,
         description="Amount filter with 'gte' and 'lte' keys"
+    )
 
     date_range: Optional[Dict[str, str]] = Field(
         default=None, description="Date range filter with 'start' and 'end' keys"
@@ -385,10 +386,11 @@ class SearchServiceQuery(BaseModel):
                         "gte": "2024-01-01",
                         "lte": "2024-01-31"
                     },
-                    "categories": ["food", "transport"]
-                }
-                    "date_range": {"start": "2024-01-01", "end": "2024-01-31"},
                     "category_name": ["food", "transport"],
+                    "date_range": {
+                        "start": "2024-01-01",
+                        "end": "2024-01-31"
+                    }
                 },
             }
         }
@@ -397,8 +399,9 @@ class SearchServiceQuery(BaseModel):
     def to_search_request(self) -> Dict[str, Any]:
         """Convert this query to the simplified SearchRequest schema."""
         filters_dict = (
-            self.filters.model_dump(exclude_none=True) if self.filters else {}
+            self.filters.dict(exclude_none=True) if self.filters else {}
         )
+        filters_dict.pop("user_id", None)
         return {
             "user_id": self.query_metadata.user_id,
             "query": self.search_parameters.search_text or "",
@@ -571,10 +574,6 @@ class AggregationResult(BaseModel):
                     "date": "2024-01-01 to 2024-01-31",
                     "currency": "EUR"
                 }
-
-                    "date_range": "2024-01-01 to 2024-01-31",
-                    "currency": "EUR",
-                },
             }
         }
     }
@@ -635,11 +634,11 @@ class SearchServiceResponse(BaseModel):
                 "avg_amount": 0.0,
                 "date": None,
                 "categories": [],
-                "merchants": []
+                "merchants": [],
                 "date_range": None,
                 "category_name": [],
                 "merchant_name": [],
-            }
+        }
 
         amounts = [r.amount for r in self.results]
         dates = [r.date for r in self.results]
@@ -655,8 +654,7 @@ class SearchServiceResponse(BaseModel):
                 "end": max(dates)
             } if dates else None,
             "categories": categories,
-            "merchants": merchants
-
+            "merchants": merchants,
             "date_range": {"start": min(dates), "end": max(dates)} if dates else None,
             "category_name": categories,
             "merchant_name": merchants,

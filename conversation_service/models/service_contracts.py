@@ -377,17 +377,10 @@ class SearchServiceQuery(BaseModel):
                         "lte": 1000.0
                     },
                     "category_name": ["food", "transport"]
-                },
-                "categories": ["food", "transport"]
-
-
-                    "categories": ["food", "transport"]
-
-                    "category_name": ["food", "transport"]
-
                 }
             }
         }
+    }
 
     def to_search_request(self) -> Dict[str, Any]:
         """Convert this query to the simplified SearchRequest schema."""

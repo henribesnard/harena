@@ -23,7 +23,7 @@ from enum import Enum
 from collections import deque
 
 from .base_financial_agent import BaseFinancialAgent
-from .hybrid_intent_agent import HybridIntentAgent
+from .llm_intent_agent import LLMIntentAgent
 from .search_query_agent import SearchQueryAgent
 from .response_agent import ResponseAgent
 from ..models.agent_models import AgentConfig, AgentResponse
@@ -67,7 +67,7 @@ class WorkflowStep:
 class WorkflowExecutor:
     """Helper class for executing multi-agent workflows."""
 
-    def __init__(self, intent_agent: HybridIntentAgent,
+    def __init__(self, intent_agent: LLMIntentAgent,
                  search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent):
         """Initialize workflow executor."""
@@ -418,7 +418,7 @@ class OrchestratorAgent(BaseFinancialAgent):
             (includes p95 and p99 workflow duration metrics)
     """
     
-    def __init__(self, intent_agent: HybridIntentAgent,
+    def __init__(self, intent_agent: LLMIntentAgent,
                  search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent,
                  config: Optional[AgentConfig] = None,

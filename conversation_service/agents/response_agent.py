@@ -348,14 +348,12 @@ class ResponseAgent(BaseFinancialAgent):
             
             for turn in recent_turns:
                 context_parts.append(f"- Utilisateur: {turn.user_message[:100]}...")
-                if turn.intent_detected:
-                    context_parts.append(f"  Intent: {turn.intent_detected}")
+                if turn.intent_result and turn.intent_result.intent_type:
+                    context_parts.append(f"  Intent: {turn.intent_result.intent_type}")
         
         if context.context_summary:
             context_parts.append(f"Résumé: {context.context_summary}")
         
-        if context.active_entities:
-            context_parts.append(f"Entités actives: {context.active_entities}")
         
         return "\n".join(context_parts) if context_parts else "Contexte minimal disponible."
     

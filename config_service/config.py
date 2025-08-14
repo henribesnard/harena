@@ -178,8 +178,6 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     # PARAMÈTRES DE RECHERCHE PAR DÉFAUT
     # ==========================================
-    DEFAULT_LEXICAL_WEIGHT: float = float(os.environ.get("DEFAULT_LEXICAL_WEIGHT", "0.6"))
-    DEFAULT_SEMANTIC_WEIGHT: float = float(os.environ.get("DEFAULT_SEMANTIC_WEIGHT", "0.4"))
     DEFAULT_TOP_K_INITIAL: int = int(os.environ.get("DEFAULT_TOP_K_INITIAL", "50"))
     DEFAULT_TOP_K_FINAL: int = int(os.environ.get("DEFAULT_TOP_K_FINAL", "10"))
     
@@ -231,12 +229,6 @@ class GlobalSettings(BaseSettings):
     SEARCH_CACHE_TTL: int = int(os.environ.get("SEARCH_CACHE_TTL", "300"))
     SEARCH_CACHE_MAX_SIZE: int = int(os.environ.get("SEARCH_CACHE_MAX_SIZE", "1000"))
     SEARCH_CACHE_SIZE: int = int(os.environ.get("SEARCH_CACHE_SIZE", "1000"))
-    
-    # Configuration de la recherche hybride
-    DEFAULT_SEARCH_TYPE: str = os.environ.get("DEFAULT_SEARCH_TYPE", "semantic")
-    MIN_LEXICAL_SCORE: float = float(os.environ.get("MIN_LEXICAL_SCORE", "1.0"))
-    MIN_SEMANTIC_SCORE: float = float(os.environ.get("MIN_SEMANTIC_SCORE", "0.5"))
-    MAX_RESULTS_PER_ENGINE: int = int(os.environ.get("MAX_RESULTS_PER_ENGINE", "50"))
     
     # Limites de recherche principales
     MAX_SEARCH_RESULTS: int = int(os.environ.get("MAX_SEARCH_RESULTS", "1000"))
@@ -596,11 +588,6 @@ class GlobalSettings(BaseSettings):
                 "embedding_enabled": self.EMBEDDING_CACHE_ENABLED,
                 "embedding_ttl": self.EMBEDDING_CACHE_TTL
             },
-            "hybrid_search": {
-                "default_type": self.DEFAULT_SEARCH_TYPE,
-                "lexical_weight": self.DEFAULT_LEXICAL_WEIGHT,
-                "semantic_weight": self.DEFAULT_SEMANTIC_WEIGHT
-            },
             "limits": {
                 "default_search": self.DEFAULT_SEARCH_LIMIT,
                 "max_search": self.MAX_SEARCH_LIMIT,
@@ -622,8 +609,6 @@ class GlobalSettings(BaseSettings):
                 "max_search_fields": self.MAX_SEARCH_FIELDS
             },
             "min_scores": {
-                "lexical": self.MIN_LEXICAL_SCORE,
-                "semantic": self.MIN_SEMANTIC_SCORE,
                 "threshold": self.MIN_SCORE_THRESHOLD
             },
             "quality_thresholds": {
@@ -642,12 +627,6 @@ class GlobalSettings(BaseSettings):
     def validate_search_config(self) -> dict:
         """Valide la cohérence de la configuration de recherche."""
         validation = {"valid": True, "warnings": [], "errors": []}
-        
-        # Validation des poids hybrides
-        total_weight = self.DEFAULT_LEXICAL_WEIGHT + self.DEFAULT_SEMANTIC_WEIGHT
-        if abs(total_weight - 1.0) > 0.01:
-            validation["errors"].append(f"Lexical + semantic weights must equal 1.0, got {total_weight}")
-            validation["valid"] = False
         
         # Validation des seuils de similarité
         if self.SIMILARITY_THRESHOLD_LOOSE > self.SIMILARITY_THRESHOLD_DEFAULT:
@@ -776,8 +755,6 @@ class GlobalSettings(BaseSettings):
             "HIGHLIGHT_MAX_FRAGMENTS": self.HIGHLIGHT_MAX_FRAGMENTS,
             
             # Scores minimums
-            "MIN_LEXICAL_SCORE": self.MIN_LEXICAL_SCORE,
-            "MIN_SEMANTIC_SCORE": self.MIN_SEMANTIC_SCORE,
             "MIN_SCORE_THRESHOLD": self.MIN_SCORE_THRESHOLD,
             
             # Timeouts spécialisés
@@ -830,7 +807,7 @@ class GlobalSettings(BaseSettings):
             "DIVERSITY_FACTOR": self.DIVERSITY_FACTOR,
             "MAX_SAME_MERCHANT": self.MAX_SAME_MERCHANT,
             
-            # Configuration fusion hybride
+            # Configuration fusion
             "DEFAULT_FUSION_STRATEGY": self.DEFAULT_FUSION_STRATEGY,
             "SCORE_NORMALIZATION_METHOD": self.SCORE_NORMALIZATION_METHOD,
             "RRF_K": self.RRF_K,

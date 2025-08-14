@@ -138,6 +138,9 @@ class LLMIntentAgent(BaseFinancialAgent):
                 await asyncio.sleep(2 ** attempt)
         if response is None:
             raise RuntimeError("LLM did not return a response")
+            raise RuntimeError("LLM response unavailable")
+
+            raise RuntimeError("LLM intent detection failed")
         try:
             data = json.loads(response.content)
         except Exception as err:  # pragma: no cover - defensive fallback
@@ -226,7 +229,7 @@ class LLMIntentAgent(BaseFinancialAgent):
                 intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.0,
                 entities=[],
-                method=DetectionMethod.AI_PARSE_FALLBACK,
+                method=DetectionMethod.FALLBACK,
                 processing_time_ms=0.0,
             )
 

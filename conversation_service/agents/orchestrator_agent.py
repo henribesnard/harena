@@ -17,6 +17,8 @@ Version: 1.0.0 MVP - Multi-Agent Orchestration
 
 import time
 import logging
+import asyncio
+import os
 from typing import Dict, Any, Optional, List, Deque
 from dataclasses import dataclass
 from enum import Enum
@@ -34,6 +36,11 @@ from ..core.conversation_manager import ConversationManager
 from ..utils.metrics import get_default_metrics_collector
 
 logger = logging.getLogger(__name__)
+
+
+INTENT_TIMEOUT_SECONDS = float(os.getenv("INTENT_TIMEOUT_SECONDS", "10"))
+INTENT_MAX_RETRIES = int(os.getenv("INTENT_MAX_RETRIES", "3"))
+INTENT_BACKOFF_BASE = float(os.getenv("INTENT_BACKOFF_BASE", "1"))
 
 
 class WorkflowStepStatus(Enum):
@@ -133,31 +140,43 @@ class WorkflowExecutor:
             intent_timer = metrics.performance_monitor.start_timer("intent_detection")
             
             try:
-                intent_response = await self.intent_agent.execute_with_metrics(
-                    {"user_message": user_message}, user_id
-                )
-                intent_result = (
-                    intent_response.metadata.get("intent_result")
-                    if intent_response.metadata
-                    else None
-                )
-                logger.info(
-                    f"Intent: {intent_result.intent_type}, "
-                    f"Entities: {[e.model_dump() for e in getattr(intent_result, 'entities', [])]}"
-                )
-
-                if intent_response.success:
-                    workflow_data["intent_result"] = intent_result
-                    intent_step.status = WorkflowStepStatus.COMPLETED
-                    intent_step.result = intent_response
-                else:
-                    raise Exception(intent_response.error_message or "Intent detection failed")
-                    
+                intent_response = None
+                for attempt in range(1, INTENT_MAX_RETRIES + 1):
+                    try:
+                        intent_response = await asyncio.wait_for(
+                            self.intent_agent.execute_with_metrics({"user_message": user_message}, user_id),
+                            timeout=INTENT_TIMEOUT_SECONDS,
+                        )
+                        if intent_response.success:
+                            intent_result = (
+                                intent_response.metadata.get("intent_result")
+                                if intent_response.metadata
+                                else None
+                            )
+                            logger.info(
+                                f"Intent: {intent_result.intent_type}, "
+                                f"Entities: {[e.model_dump() for e in getattr(intent_result, 'entities', [])]}"
+                            )
+                            workflow_data["intent_result"] = intent_result
+                            intent_step.status = WorkflowStepStatus.COMPLETED
+                            intent_step.result = intent_response
+                            break
+                        raise Exception(intent_response.error_message or "Intent detection failed")
+                    except Exception as e:
+                        logger.error(
+                            f"Intent detection attempt {attempt}/{INTENT_MAX_RETRIES} failed: {e}"
+                        )
+                        if attempt < INTENT_MAX_RETRIES:
+                            backoff = INTENT_BACKOFF_BASE * (2 ** (attempt - 1))
+                            if backoff > 0:
+                                await asyncio.sleep(backoff)
+                        else:
+                            raise
             except Exception as e:
                 intent_step.status = WorkflowStepStatus.FAILED
                 intent_step.error = str(e)
-                logger.error(f"Intent detection step failed: {e}")
-                
+                logger.error(f"Intent detection step failed after retries: {e}")
+
                 # Try to continue with fallback intent
                 workflow_data["intent_result"] = self._create_fallback_intent()
             
@@ -349,7 +368,8 @@ class WorkflowExecutor:
             confidence=0.3,
             entities=[],
             method=DetectionMethod.FALLBACK,
-            processing_time_ms=0.0
+            processing_time_ms=0.0,
+            search_required=True
         )
     
     def _create_empty_search_results(self) -> AgentResponse:
@@ -588,13 +608,9 @@ class OrchestratorAgent(BaseFinancialAgent):
                 rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
                 search_results_count = rm.get("returned_results", 0)
 
-            entities_extracted = []
-            intent_detected = None
+            intent_result_dump = None
             if intent_result is not None:
-                intent_detected = getattr(intent_result, "intent_type", None)
-                entities_extracted = [
-                    e.model_dump() for e in getattr(intent_result, "entities", [])
-                ]
+                intent_result_dump = intent_result.model_dump()
 
             steps = execution_details.get("steps", []) if isinstance(execution_details, dict) else []
             agent_chain = [
@@ -615,8 +631,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "execution_details": execution_details,
                     "performance_summary": performance_summary,
                     "conversation_id": conversation_id,
-                    "intent_detected": intent_detected,
-                    "entities_extracted": entities_extracted,
+                    "intent_result": intent_result_dump,
                     "agent_chain": agent_chain,
                     "search_results_count": search_results_count,
                 },
@@ -637,8 +652,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "error": str(e),
                     "execution_time_ms": execution_time,
                     "conversation_id": conversation_id,
-                    "intent_detected": None,
-                    "entities_extracted": [],
+                    "intent_result": None,
                     "agent_chain": ["orchestrator_agent"],
                     "search_results_count": 0,
                 },

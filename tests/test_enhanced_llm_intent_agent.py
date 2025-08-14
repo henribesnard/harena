@@ -76,7 +76,7 @@ def test_fallback_when_llm_errors():
     result = asyncio.run(agent.detect_intent("Bonjour", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "FALLBACK_INTENT"
-    assert intent_result.method == DetectionMethod.AI_ERROR_FALLBACK
+    assert intent_result.method == DetectionMethod.FALLBACK
 
 
 def test_latency_measurement(monkeypatch):

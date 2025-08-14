@@ -9,7 +9,7 @@ try:
     from conversation_service.api.routes import router
     from conversation_service.api import dependencies
     from conversation_service.models.conversation_models import ConversationRequest
-except ModuleNotFoundError:  # pragma: no cover - fastapi is optional in tests
+except Exception:  # pragma: no cover - fastapi is optional in tests
     FastAPI = None  # type: ignore
     TestClient = None  # type: ignore
 

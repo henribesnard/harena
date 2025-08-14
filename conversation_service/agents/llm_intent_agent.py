@@ -27,6 +27,7 @@ from ..models.financial_models import (
     IntentCategory,
     IntentResult,
 )
+from ..utils.intent_cache import IntentResultCache
 from ..prompts.intent_prompts import (
     INTENT_FALLBACK_SYSTEM_PROMPT,
     INTENT_EXAMPLES_FEW_SHOT,
@@ -60,8 +61,7 @@ class LLMIntentAgent(BaseFinancialAgent):
             )
 
         super().__init__(name=config.name, config=config, deepseek_client=deepseek_client)
-        self._intent_cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_limit = 100
+        self._intent_cache = IntentResultCache(max_size=100)
         self._max_retries = 3
 
     # ------------------------------------------------------------------
@@ -96,8 +96,25 @@ class LLMIntentAgent(BaseFinancialAgent):
         the service.
         """
 
-        if user_message in self._intent_cache:
-            return self._intent_cache[user_message]
+        cached = self._intent_cache.get(user_message)
+        if cached is not None:
+            data = {
+                "intent": cached.intent_type,
+                "confidence": cached.confidence,
+                "entities": [e.model_dump() for e in cached.entities],
+            }
+            return {
+                "content": json.dumps(data),
+                "metadata": {
+                    "intent_result": cached,
+                    "detection_method": DetectionMethod.LLM_BASED,
+                    "confidence": cached.confidence,
+                    "intent_type": cached.intent_type,
+                    "entities": [e.model_dump() for e in cached.entities],
+                    "cache_hit": True,
+                },
+                "confidence_score": cached.confidence,
+            }
 
         start_time = time.perf_counter()
         messages = [
@@ -120,13 +137,12 @@ class LLMIntentAgent(BaseFinancialAgent):
                 logger.warning("DeepSeek call failed (attempt %s): %s", attempt + 1, err)
                 await asyncio.sleep(2 ** attempt)
         if response is None:
+            raise RuntimeError("LLM did not return a response")
+        try:
+            data = json.loads(response.content)
+        except Exception as err:  # pragma: no cover - defensive fallback
+            logger.warning("Failed to parse LLM output: %s", err)
             data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
-        else:
-            try:
-                data = json.loads(response.content)
-            except Exception as err:  # pragma: no cover - defensive fallback
-                logger.warning("Failed to parse LLM output: %s", err)
-                data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
 
         intent_type = data.get("intent", "OUT_OF_SCOPE")
         entities: List[FinancialEntity] = []
@@ -171,10 +187,7 @@ class LLMIntentAgent(BaseFinancialAgent):
             "confidence_score": intent_result.confidence,
         }
 
-        self._intent_cache[user_message] = result
-        if len(self._intent_cache) > self._cache_limit:
-            # remove oldest inserted item
-            self._intent_cache.pop(next(iter(self._intent_cache)))
+        self._intent_cache.set(user_message, intent_result)
 
         return result
 
@@ -196,6 +209,11 @@ class LLMIntentAgent(BaseFinancialAgent):
         if intent == "GREETING":
             return IntentCategory.GREETING
         return IntentCategory.GENERAL_QUESTION
+
+    # ------------------------------------------------------------------
+    def get_cache_metrics(self) -> Dict[str, int]:
+        """Expose intent cache metrics for monitoring."""
+        return self._intent_cache.get_metrics()
 
     def _parse_llm_output(self, llm_output: str) -> IntentResult:
         """Parse LLM JSON output into IntentResult."""

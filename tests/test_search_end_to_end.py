@@ -54,6 +54,31 @@ class DummyElasticsearchClient:
         }
 
 
+class DummyElasticsearchClientNoMerchant:
+    async def search(self, index, body, size, from_):
+        return {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_score": 1.0,
+                        "_source": {
+                            "transaction_id": "t1",
+                            "user_id": 1,
+                            "amount": -15.99,
+                            "amount_abs": 15.99,
+                            "currency_code": "EUR",
+                            "transaction_type": "debit",
+                            "date": "2025-02-01",
+                            "primary_description": "Netflix abonnement",
+                            "category_name": "Streaming",
+                            "operation_type": "card",
+                        },
+                    }
+                ],
+            }
+        }
+
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
 def test_netflix_month_question_returns_transactions():
     agent = SearchQueryAgent(
@@ -85,4 +110,40 @@ def test_netflix_month_question_returns_transactions():
     engine = SearchEngine(elasticsearch_client=DummyElasticsearchClient())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["merchant_name"] == "Netflix"
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_text_search_returns_results_without_merchant_name():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.MERCHANT,
+                raw_value="Netflix",
+                normalized_value="netflix",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    user_message = "Combien j’ai dépensé pour Netflix ce mois ?"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    assert request_dict["query"] == "netflix"
+    assert "merchant_name" not in request_dict["filters"]
+
+    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientNoMerchant())
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert response["results"]
+    assert response["results"][0]["merchant_name"] is None
+    assert "netflix" in response["results"][0]["primary_description"].lower()
 

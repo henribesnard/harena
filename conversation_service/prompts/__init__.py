@@ -40,6 +40,13 @@ from .orchestrator_prompts import (
     format_orchestrator_prompt
 )
 
+from .intent_templates import (
+    IntentPromptTemplate,
+    INTENT_PROMPT_TEMPLATES,
+    get_intent_prompt_template,
+    build_intent_prompt,
+)
+
 # Import des utilitaires de formatage
 from .intent_prompts import build_context_summary
 from .response_prompts import truncate_search_results
@@ -52,6 +59,12 @@ __all__ = [
     "INTENT_EXAMPLES_FEW_SHOT",
     "format_intent_prompt",
     "build_context_summary",
+
+    # Intent Templates
+    "IntentPromptTemplate",
+    "INTENT_PROMPT_TEMPLATES",
+    "get_intent_prompt_template",
+    "build_intent_prompt",
     
     # Search Generation
     "SEARCH_GENERATION_SYSTEM_PROMPT",

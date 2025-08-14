@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 
 class SearchResult(BaseModel):
@@ -51,8 +51,8 @@ class SearchResponse(BaseModel):
     # Debug et contexte
     query_info: Optional[Dict[str, Any]] = Field(None, description="Informations de debug")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "results": [
                     {
@@ -80,3 +80,4 @@ class SearchResponse(BaseModel):
                 "cache_hit": False
             }
         }
+    )

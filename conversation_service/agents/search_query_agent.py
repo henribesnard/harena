@@ -113,20 +113,30 @@ class QueryOptimizer:
         for entity in intent_result.entities:
             if entity.entity_type == EntityType.DATE_RANGE and entity.normalized_value:
                 normalized_date = entity.normalized_value
+                date: Dict[str, Any] = {}
+
                 if isinstance(normalized_date, dict):
-                    if "start_date" in normalized_date:
-                        date_filters["date_from"] = normalized_date["start_date"]
-                    if "end_date" in normalized_date:
-                        date_filters["date_to"] = normalized_date["end_date"]
+                    start_date = normalized_date.get("start_date")
+                    end_date = normalized_date.get("end_date")
+                    if start_date:
+                        date["gte"] = start_date
+                    if end_date:
+                        date["lte"] = end_date
                 elif isinstance(normalized_date, str):
                     try:
                         if len(normalized_date) == 7:  # YYYY-MM format
-                            date_filters["month_year"] = normalized_date
+                            start = f"{normalized_date}-01"
+                            date["gte"] = start
+                            date["lte"] = start
                         elif len(normalized_date) == 10:  # YYYY-MM-DD format
-                            date_filters["date_from"] = normalized_date
-                            date_filters["date_to"] = normalized_date
+                            date["gte"] = normalized_date
+                            date["lte"] = normalized_date
                     except Exception:
                         pass
+
+                if date:
+                    date_filters["date"] = date
+                    break
 
         return date_filters
     
@@ -140,10 +150,13 @@ class QueryOptimizer:
 
         for entity in intent_result.entities:
             if entity.entity_type == EntityType.AMOUNT and isinstance(entity.normalized_value, (int, float)):
-                normalized_amount = entity.normalized_value
+                normalized_amount = float(entity.normalized_value)
                 tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
-                amount_filters["amount_min"] = normalized_amount - tolerance
-                amount_filters["amount_max"] = normalized_amount + tolerance
+                amount_filters["amount"] = {
+                    "gte": normalized_amount - tolerance,
+                    "lte": normalized_amount + tolerance,
+                }
+                break
 
         return amount_filters
 
@@ -430,8 +443,10 @@ class SearchQueryAgent(BaseFinancialAgent):
             logger.info(
                 "Search parameters before request: text=%s filters=%s",
                 query.search_parameters.search_text,
-                query.filters,
+                query.filters.model_dump(exclude_none=True),
             )
+
+            logger.debug("Search request payload: %s", request_payload)
 
             # Execute HTTP request
             response = await self.http_client.post(

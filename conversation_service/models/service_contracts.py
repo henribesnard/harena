@@ -218,14 +218,14 @@ class SearchFilters(BaseModel):
     search results based on transaction attributes, dates, amounts, etc.
     """
     
-    date_range: Optional[Dict[str, str]] = Field(
+    date: Optional[Dict[str, str]] = Field(
         default=None,
-        description="Date range filter with 'start' and 'end' keys"
+        description="Date filter with 'gte' and 'lte' keys"
     )
-    
-    amount_range: Optional[Dict[str, float]] = Field(
+
+    amount: Optional[Dict[str, float]] = Field(
         default=None,
-        description="Amount range filter with 'min' and 'max' keys"
+        description="Amount filter with 'gte' and 'lte' keys"
     )
     
     categories: Optional[List[str]] = Field(
@@ -285,36 +285,38 @@ class SearchFilters(BaseModel):
         gt=0
     )
 
-    @field_validator("date_range")
+    @field_validator("date")
     @classmethod
-    def validate_date_range(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
-        """Validate date range has proper start and end."""
+    def validate_date(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        """Validate date filter has proper gte/lte."""
         if v is not None:
-            if "start" not in v or "end" not in v:
-                raise ValueError("date_range must have 'start' and 'end' keys")
+            if "gte" not in v and "lte" not in v:
+                raise ValueError("date must have at least 'gte' or 'lte' key")
+            if "gte" in v and "lte" in v and v["gte"] > v["lte"]:
+                raise ValueError("date gte cannot be after lte")
         return v
-    
-    @field_validator("amount_range")
+
+    @field_validator("amount")
     @classmethod
-    def validate_amount_range(cls, v: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
-        """Validate amount range has proper min and max."""
+    def validate_amount(cls, v: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
+        """Validate amount filter has proper gte/lte."""
         if v is not None:
-            if "min" not in v and "max" not in v:
-                raise ValueError("amount_range must have at least 'min' or 'max' key")
-            if "min" in v and "max" in v and v["min"] > v["max"]:
-                raise ValueError("amount_range min cannot be greater than max")
+            if "gte" not in v and "lte" not in v:
+                raise ValueError("amount must have at least 'gte' or 'lte' key")
+            if "gte" in v and "lte" in v and v["gte"] > v["lte"]:
+                raise ValueError("amount gte cannot be greater than lte")
         return v
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "date_range": {
-                    "start": "2024-01-01",
-                    "end": "2024-01-31"
+                "date": {
+                    "gte": "2024-01-01",
+                    "lte": "2024-01-31"
                 },
-                "amount_range": {
-                    "min": 100.0,
-                    "max": 1000.0
+                "amount": {
+                    "gte": 100.0,
+                    "lte": 1000.0
                 },
                 "categories": ["food", "transport"],
                 "merchants": ["Carrefour", "SNCF"],
@@ -420,9 +422,9 @@ class SearchServiceQuery(BaseModel):
                     "search_strategy": "semantic"
                 },
                 "filters": {
-                    "date_range": {
-                        "start": "2024-01-01",
-                        "end": "2024-01-31"
+                    "date": {
+                        "gte": "2024-01-01",
+                        "lte": "2024-01-31"
                     },
                     "categories": ["food", "transport"]
                 }
@@ -676,7 +678,7 @@ class AggregationResult(BaseModel):
                 },
                 "total_count": 37,
                 "metadata": {
-                    "date_range": "2024-01-01 to 2024-01-31",
+                    "date": "2024-01-01 to 2024-01-31",
                     "currency": "EUR"
                 }
             }
@@ -743,7 +745,7 @@ class SearchServiceResponse(BaseModel):
                 "total_transactions": 0,
                 "total_amount": 0.0,
                 "avg_amount": 0.0,
-                "date_range": None,
+                "date": None,
                 "categories": [],
                 "merchants": []
             }
@@ -757,7 +759,7 @@ class SearchServiceResponse(BaseModel):
             "total_transactions": len(self.results),
             "total_amount": sum(amounts),
             "avg_amount": sum(amounts) / len(amounts),
-            "date_range": {
+            "date": {
                 "start": min(dates),
                 "end": max(dates)
             } if dates else None,

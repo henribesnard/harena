@@ -64,3 +64,5 @@ def test_generate_search_contract_deduplicates_terms():
     request = search_query.to_search_request()
     assert request["query"].split().count("carrefour") == 1
     assert request["filters"].get("merchants") == ["carrefour"]
+    assert "user_id" not in request["filters"]
+    assert request["user_id"] == 1

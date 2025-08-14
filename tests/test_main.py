@@ -1,7 +1,17 @@
 import pytest
 import time
+import sys
+import os
 
-from .harena_test_client import HarenaTestClient, REQUEST_TIMEOUT
+# Ajouter le répertoire parent au path pour permettre les imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import absolu au lieu de relatif
+try:
+    from tests.harena_test_client import HarenaTestClient, REQUEST_TIMEOUT
+except ImportError:
+    # Fallback si l'import absolu échoue
+    from harena_test_client import HarenaTestClient, REQUEST_TIMEOUT
 
 
 class TimeoutException(Exception):

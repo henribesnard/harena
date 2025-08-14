@@ -188,15 +188,6 @@ class SearchFilters(BaseModel):
         description="Amount filter with 'gte' and 'lte' keys"
     )
 
-    date_range: Optional[Dict[str, str]] = Field(
-        default=None, description="Date range filter with 'start' and 'end' keys"
-    )
-
-    amount_range: Optional[Dict[str, float]] = Field(
-        default=None, description="Amount range filter with 'min' and 'max' keys"
-
-    )
-
     category_name: Optional[List[str]] = Field(
         default=None,
         description="List of transaction categories to include",
@@ -381,16 +372,22 @@ class SearchServiceQuery(BaseModel):
                         "gte": "2024-01-01",
                         "lte": "2024-01-31"
                     },
-                    "category_name": ["food", "transport"],
-                    "date_range": {
-                        "start": "2024-01-01",
-                        "end": "2024-01-31"
-                    }
+                    "amount": {
+                        "gte": 100.0,
+                        "lte": 1000.0
+                    },
+                    "category_name": ["food", "transport"]
                 },
                 "categories": ["food", "transport"]
+
+
+                    "categories": ["food", "transport"]
+
+                    "category_name": ["food", "transport"]
+
+                }
             }
         }
-    }
 
     def to_search_request(self) -> Dict[str, Any]:
         """Convert this query to the simplified SearchRequest schema."""
@@ -631,8 +628,6 @@ class SearchServiceResponse(BaseModel):
                 "date": None,
                 "categories": [],
                 "merchants": [],
-                "date_range": None,
-
                 "category_name": [],
                 "merchant_name": [],
         }
@@ -652,8 +647,6 @@ class SearchServiceResponse(BaseModel):
             } if dates else None,
             "categories": categories,
             "merchants": merchants,
-            "date_range": {"start": min(dates), "end": max(dates)} if dates else None,
-
             "category_name": categories,
             "merchant_name": merchants,
         }

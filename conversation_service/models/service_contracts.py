@@ -368,16 +368,8 @@ class SearchServiceQuery(BaseModel):
                     "search_strategy": "semantic",
                 },
                 "filters": {
-                    "date": {
-                        "gte": "2024-01-01",
-                        "lte": "2024-01-31",
-                    },
-                    "amount": {
-                        "gte": 100.0,
-                        "lte": 1000.0,
-                    },
-                    "category_name": ["food", "transport"]
-
+                    "date": {"gte": "2024-01-01", "lte": "2024-01-31"},
+                    "amount": {"gte": 100.0, "lte": 1000.0},
                     "category_name": ["food", "transport"],
                 },
                 "aggregations": {

@@ -69,10 +69,14 @@ def main() -> None:
         None,
     )
 
+    # Le filtre ``merchant_name`` est volontairement omis lors de l'appel direct
+    # au Search Service. Certaines bases de données peuvent ne pas renseigner ce
+    # champ pour toutes les transactions, ce qui exclurait à tort des résultats
+    # pertinents si le filtre était appliqué. Le texte de recherche reste
+    # suffisant pour trouver les transactions correspondantes.
     search_payload = {
         "user_id": user_id,
         "query": merchant or QUESTION,
-        "filters": {"merchant_name": [merchant]} if merchant else {},
         "limit": 20,
         "offset": 0,
     }

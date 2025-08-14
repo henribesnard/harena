@@ -120,6 +120,8 @@ class LLMIntentAgent(BaseFinancialAgent):
                 logger.warning("DeepSeek call failed (attempt %s): %s", attempt + 1, err)
                 await asyncio.sleep(2 ** attempt)
         if response is None:
+            raise RuntimeError("LLM response unavailable")
+
             raise RuntimeError("LLM intent detection failed")
         try:
             data = json.loads(response.content)

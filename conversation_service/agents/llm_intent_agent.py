@@ -208,7 +208,7 @@ class LLMIntentAgent(BaseFinancialAgent):
                 intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.0,
                 entities=[],
-                method=DetectionMethod.AI_PARSE_FALLBACK,
+                method=DetectionMethod.FALLBACK,
                 processing_time_ms=0.0,
             )
 

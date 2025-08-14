@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Dict, Any, Optional
 
 class SearchRequest(BaseModel):
@@ -54,8 +54,8 @@ class SearchRequest(BaseModel):
         
         return v
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": 34,
                 "query": "restaurant italien",
@@ -69,3 +69,4 @@ class SearchRequest(BaseModel):
                 "metadata": {"debug": True}
             }
         }
+    )

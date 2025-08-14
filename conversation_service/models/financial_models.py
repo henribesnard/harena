@@ -104,6 +104,7 @@ class DetectionMethod(str, Enum):
     """Method used for entity detection or intent classification."""
 
     LLM_BASED = "llm_based"
+    PATTERN_MATCHING = "pattern_matching"
     NER_MODEL = "ner_model"
     FALLBACK = "fallback"
     AI_FALLBACK = "ai_fallback"

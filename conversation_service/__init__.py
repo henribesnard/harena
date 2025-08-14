@@ -3,6 +3,7 @@ Conversation Service MVP Package
 
 Service de conversation intelligent basé sur AutoGen v0.4 et DeepSeek
 pour le domaine financier avec détection d'intentions LLM-only.
+pour le domaine financier avec détection d'intentions assistée par LLM.
 """
 
 __version__ = "1.0.0"

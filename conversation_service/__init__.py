@@ -7,6 +7,14 @@ pour le domaine financier avec détection d'intentions hybride.
 
 __version__ = "1.0.0"
 __author__ = "Conversation Service Team"
+from . import agents
 
-# Export only public metadata; submodules remain discoverable.
-__all__ = ["__version__", "__author__"]
+# Expose commonly used subpackages when available
+__all__ = ["__version__", "__author__", "agents"]
+for _mod in ["api", "core", "models", "services", "utils"]:
+    try:
+        globals()[_mod] = __import__(f"{__name__}.{_mod}", fromlist=["*"])
+    except Exception:
+        continue
+    else:
+        __all__.append(_mod)

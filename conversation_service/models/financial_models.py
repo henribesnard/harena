@@ -107,6 +107,7 @@ class DetectionMethod(str, Enum):
     PATTERN_MATCHING = "pattern_matching"
     NER_MODEL = "ner_model"
     FALLBACK = "fallback"
+    RULE_BASED = "rule_based"
     AI_FALLBACK = "ai_fallback"
     AI_ERROR_FALLBACK = "ai_error_fallback"
     AI_PARSE_FALLBACK = "ai_parse_fallback"

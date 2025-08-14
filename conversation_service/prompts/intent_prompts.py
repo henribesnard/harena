@@ -1,8 +1,8 @@
 """
-🧠 Intent Detection Prompts - Fallback IA pour Classification
+🧠 Intent Detection Prompts
 
 Ce module contient les prompts optimisés DeepSeek pour la détection d'intention
-en mode fallback quand les règles pattern-based échouent.
+dans les conversations financières.
 
 Responsabilité :
 - Classification précise des intentions utilisateur
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # PROMPTS SYSTÈME PRINCIPAUX
 # =============================================================================
 
-INTENT_FALLBACK_SYSTEM_PROMPT = """Vous êtes un expert en classification d'intentions pour un assistant financier personnel.
+INTENT_SYSTEM_PROMPT = """Vous êtes un expert en classification d'intentions pour un assistant financier personnel.
 
 VOTRE MISSION :
 Analyser les messages utilisateur et identifier précisément leur intention financière, même quand le message est ambigu, conversationnel, ou complexe.
@@ -49,11 +49,13 @@ ENTITÉS FINANCIÈRES À EXTRAIRE :
 - **périodes** : mensuel, hebdomadaire, ce trimestre
 
 FORMAT DE RÉPONSE OBLIGATOIRE :
-```
-INTENT: [intention_identifiée]
-CONFIDENCE: [0.0-1.0]
-ENTITIES: {json_des_entités_extraites}
-REASONING: [explication_courte_du_raisonnement]
+```json
+{
+  "intent": "[intention_identifiée]",
+  "confidence": [0.0-1.0],
+  "entities": {json_des_entités_extraites},
+  "reasoning": "[explication_courte_du_raisonnement]"
+}
 ```
 
 RÈGLES IMPORTANTES :
@@ -68,7 +70,7 @@ RÈGLES IMPORTANTES :
 # TEMPLATE UTILISATEUR AVEC CONTEXTE
 # =============================================================================
 
-INTENT_FALLBACK_USER_TEMPLATE = """Analysez ce message utilisateur et identifiez son intention financière :
+INTENT_USER_TEMPLATE = """Analysez ce message utilisateur et identifiez son intention financière :
 
 MESSAGE: "{user_message}"
 
@@ -116,7 +118,28 @@ MESSAGE: "Est-ce que je dépense plus que 500€ par mois en moyenne ?"
 INTENT: trend_analysis
 CONFIDENCE: 0.88
 ENTITIES: {"amounts": ["500€"], "periods": ["par mois"], "analysis_type": ["average", "comparison"]}
-REASONING: Analyse comparative des dépenses avec seuil monétaire."""
+REASONING: Analyse comparative des dépenses avec seuil monétaire.
+
+**Exemple 6 - Merchant Inquiry avec Salutation :**
+MESSAGE: "Salut, combien ai-je dépensé chez Amazon cette semaine ?"
+INTENT: merchant_inquiry
+CONFIDENCE: 0.92
+ENTITIES: {"merchants": ["Amazon"], "periods": ["cette semaine"]}
+REASONING: Recherche de dépenses pour un marchand spécifique après salutation.
+
+**Exemple 7 - Balance Inquiry :**
+MESSAGE: "Quel est le solde de mon compte épargne ?"
+INTENT: balance_inquiry
+CONFIDENCE: 0.93
+ENTITIES: {"accounts": ["compte épargne"]}
+REASONING: Demande directe de consultation de solde.
+
+**Exemple 8 - Goal Tracking :**
+MESSAGE: "Suis-je proche de mon objectif d'épargne de 5000€ ?"
+INTENT: goal_tracking
+CONFIDENCE: 0.89
+ENTITIES: {"amounts": ["5000€"], "goal_type": ["épargne"]}
+REASONING: Vérification de la progression vers un objectif financier."""
 
 # =============================================================================
 # FONCTIONS DE FORMATAGE
@@ -146,7 +169,7 @@ def format_intent_prompt(user_message: str, context: str = "") -> str:
         context_section = f"\nCONTEXTE CONVERSATIONNEL:\n{context.strip()}\n"
     
     # Formatage du prompt utilisateur
-    user_prompt = INTENT_FALLBACK_USER_TEMPLATE.format(
+    user_prompt = INTENT_USER_TEMPLATE.format(
         user_message=user_message.strip(),
         context_section=context_section
     )
@@ -206,69 +229,55 @@ def build_context_summary(conversation_history: List[Dict[str, Any]], max_tokens
 
 def parse_intent_response(response: str) -> Dict[str, Any]:
     """
-    Parse la réponse formatée de DeepSeek pour extraire les composants structurés.
-    
+    Parse la réponse JSON de DeepSeek pour extraire les composants structurés.
+
     Args:
         response: Réponse brute de DeepSeek
-        
+
     Returns:
         Dict avec intent, confidence, entities, reasoning
-        
+
     Raises:
         ValueError: Si le format de réponse est invalide
-        
+
     Example:
-        >>> response = "INTENT: transaction_query\\nCONFIDENCE: 0.9\\n..."
+        >>> response = '{"intent": "transaction_query", "confidence": 0.9, "entities": {}, "reasoning": "ok"}'
         >>> parsed = parse_intent_response(response)
         >>> print(parsed["intent"])  # "transaction_query"
     """
     if not response or not response.strip():
         raise ValueError("Réponse vide de DeepSeek")
-    
+
     try:
-        lines = response.strip().split('\n')
+        cleaned = response.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            cleaned = "\n".join(lines)
+        data = json.loads(cleaned)
         result = {
-            "intent": None,
-            "confidence": 0.0,
-            "entities": {},
-            "reasoning": ""
+            "intent": data.get("intent"),
+            "confidence": float(data.get("confidence", 0.0)),
+            "entities": data.get("entities", {}),
+            "reasoning": data.get("reasoning", ""),
         }
-        
-        for line in lines:
-            line = line.strip()
-            if line.startswith("INTENT:"):
-                result["intent"] = line.replace("INTENT:", "").strip()
-            elif line.startswith("CONFIDENCE:"):
-                confidence_str = line.replace("CONFIDENCE:", "").strip()
-                result["confidence"] = float(confidence_str)
-            elif line.startswith("ENTITIES:"):
-                entities_str = line.replace("ENTITIES:", "").strip()
-                if entities_str:
-                    result["entities"] = json.loads(entities_str)
-            elif line.startswith("REASONING:"):
-                result["reasoning"] = line.replace("REASONING:", "").strip()
-        
-        # Validation des champs obligatoires
         if not result["intent"]:
             raise ValueError("Intent manquant dans la réponse")
-        
         if not 0.0 <= result["confidence"] <= 1.0:
             raise ValueError(f"Confidence invalide: {result['confidence']}")
-            
         return result
-        
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
         logger.error(f"Erreur parsing réponse intent: {e}")
         logger.error(f"Réponse brute: {response}")
-        
-        # Fallback gracieux
         return {
             "intent": "other",
             "confidence": 0.1,
             "entities": {},
-            "reasoning": f"Erreur parsing: {str(e)}"
+            "reasoning": f"Erreur parsing: {str(e)}",
         }
-
 # =============================================================================
 # CONSTANTES UTILES
 # =============================================================================
@@ -288,8 +297,8 @@ FINANCIAL_ENTITY_TYPES = {
 
 # Export des éléments principaux
 __all__ = [
-    "INTENT_FALLBACK_SYSTEM_PROMPT",
-    "INTENT_FALLBACK_USER_TEMPLATE", 
+    "INTENT_SYSTEM_PROMPT",
+    "INTENT_USER_TEMPLATE",
     "INTENT_EXAMPLES_FEW_SHOT",
     "format_intent_prompt",
     "build_context_summary",

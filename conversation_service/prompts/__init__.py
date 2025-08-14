@@ -6,7 +6,7 @@ d'agents AutoGen financiers. Chaque module expose des prompts spécialisés
 et des fonctions de formatage pour maximiser la précision des réponses.
 
 Modules:
-    intent_prompts: Prompts fallback détection d'intention
+    intent_prompts: Prompts de détection d'intention
     search_prompts: Prompts génération requêtes Search Service  
     response_prompts: Prompts génération réponses contextuelles
     orchestrator_prompts: Prompts orchestrateur principal
@@ -14,8 +14,8 @@ Modules:
 
 # Import des prompts système principaux
 from .intent_prompts import (
-    INTENT_FALLBACK_SYSTEM_PROMPT,
-    INTENT_FALLBACK_USER_TEMPLATE,
+    INTENT_SYSTEM_PROMPT,
+    INTENT_USER_TEMPLATE,
     INTENT_EXAMPLES_FEW_SHOT,
     format_intent_prompt
 )
@@ -47,8 +47,8 @@ from .orchestrator_prompts import build_workflow_state
 
 __all__ = [
     # Intent Detection
-    "INTENT_FALLBACK_SYSTEM_PROMPT",
-    "INTENT_FALLBACK_USER_TEMPLATE", 
+    "INTENT_SYSTEM_PROMPT",
+    "INTENT_USER_TEMPLATE",
     "INTENT_EXAMPLES_FEW_SHOT",
     "format_intent_prompt",
     "build_context_summary",

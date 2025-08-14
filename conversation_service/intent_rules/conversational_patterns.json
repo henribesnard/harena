@@ -358,13 +358,8 @@
       "maintain_history": true,
       "max_turns": 10,
       "context_timeout_minutes": 30
-    },
-    "fallback_behavior": {
-      "confidence_threshold": 0.7,
-      "use_ai_fallback": true,
-      "suggest_alternatives": true
-    },
-    "response_personalization": {
+      },
+      "response_personalization": {
       "use_user_name": false,
       "adapt_formality": true,
       "remember_preferences": true

@@ -1,9 +1,9 @@
 """
 🔧 Intent Rules Package - Module de détection d'intentions hybride
 
-Ce package implémente un système de détection d'intentions à deux niveaux :
-- Niveau 0 : Règles et patterns configurables (ultra-rapide, 0 coût)
-- Niveau 1 : Fallback IA via DeepSeek (intelligent, coût optimisé)
+ Ce package implémente un système de détection d'intentions à deux niveaux :
+ - Niveau 0 : Règles et patterns configurables (ultra-rapide, 0 coût)
+ - Niveau 1 : Détection IA via DeepSeek (intelligent, coût optimisé)
 
 Architecture :
 - rule_loader.py : Chargement et validation des fichiers de configuration ✅
@@ -98,7 +98,6 @@ DEFAULT_RULES_DIR = Path(__file__).parent
 DEFAULT_CONFIG = {
     "cache_size": 1000,
     "confidence_threshold": 0.7,
-    "enable_ai_fallback": True,
     "max_patterns_per_intent": 50,
     "validation_strict": True,
     "performance_monitoring": True

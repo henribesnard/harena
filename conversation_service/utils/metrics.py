@@ -471,6 +471,8 @@ class MetricsCollector:
         Enregistre une détection d'intention.
 
         Args:
+            method: Méthode utilisée (llm_based, ai_error_fallback)
+
             method: Méthode utilisée (llm_based, fallback)
             confidence: Score de confiance
             success: Succès de la détection

@@ -277,7 +277,8 @@ class DeepSeekClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         cache_enabled: bool = None,
-        timeout: int = None
+        timeout: int = None,
+        max_retries: int = None
     ):
         """
         Initialise le client DeepSeek.
@@ -285,13 +286,16 @@ class DeepSeekClient:
         Args:
             api_key: Clé API DeepSeek (défaut: DEEPSEEK_API_KEY env var)
             base_url: URL de base (défaut: DEEPSEEK_BASE_URL env var)
-            cache_enabled: Active le cache (défaut: ENABLE_CACHE env var)
-            timeout: Timeout en secondes (défaut: DEEPSEEK_TIMEOUT env var)
+            cache_enabled: Active le cache (défaut: LLM_CACHE_ENABLED env var)
+            timeout: Timeout en secondes (défaut: LLM_TIMEOUT env var)
+            max_retries: Nombre maximum de tentatives (défaut: MAX_RETRIES env var)
         """
         # Configuration depuis env vars
         self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
         self.base_url = base_url or os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-        self.timeout = timeout or int(os.getenv('DEEPSEEK_TIMEOUT', '15'))
+        self.timeout = timeout or int(os.getenv('LLM_TIMEOUT', os.getenv('DEEPSEEK_TIMEOUT', '15')))
+        self.max_retries = max_retries or int(os.getenv('MAX_RETRIES', '3'))
+        self.expected_latency_ms = int(os.getenv('DEEPSEEK_EXPECTED_LATENCY_MS', '1500'))
         
         if not self.api_key:
             raise ValueError("DeepSeek API key is required")
@@ -304,11 +308,15 @@ class DeepSeekClient:
         )
         
         # Cache et état
-        cache_enabled_env = os.getenv('ENABLE_CACHE', 'True').lower() == 'true'
+        cache_enabled_env = os.getenv('LLM_CACHE_ENABLED', 'True').lower() == 'true'
         self.cache_enabled = cache_enabled if cache_enabled is not None else cache_enabled_env
-        
+
         if self.cache_enabled:
-            self.cache = MultiLevelCache()
+            self.cache = MultiLevelCache(
+                l1_size=int(os.getenv('LLM_CACHE_MAX_SIZE', '1000')),
+                l1_ttl=int(os.getenv('LLM_CACHE_TTL', '300')),
+                l2_ttl=int(os.getenv('CACHE_TTL', '3600'))
+            )
         else:
             self.cache = None
         
@@ -395,9 +403,8 @@ class DeepSeekClient:
             DeepSeekTimeoutError: Timeout
             DeepSeekRateLimitError: Rate limit atteint
         """
-        start_time = time.time()
         metrics = get_default_metrics_collector()
-        
+
         # Paramètres par défaut depuis env vars
         model = model or os.getenv('DEEPSEEK-CHAT-MODEL', 'deepseek-chat')
         temperature = temperature if temperature is not None else float(os.getenv('DEEPSEEK_TEMPERATURE', '1.0'))
@@ -405,10 +412,10 @@ class DeepSeekClient:
         max_tokens = max_tokens or max_allowed
         max_tokens = min(max_tokens, max_allowed)
         top_p = top_p if top_p is not None else float(os.getenv('DEEPSEEK_TOP_P', '0.95'))
-        
+
         # Optimisation des messages
         optimized_messages = DeepSeekOptimizer.optimize_messages(messages)
-        
+
         # Vérification cache
         cache_key = None
         if self.cache_enabled and use_cache and self.cache:
@@ -419,8 +426,8 @@ class DeepSeekClient:
                 max_tokens=max_tokens,
                 top_p=top_p
             )
-            
-            # CORRECTION: Appel async du cache
+
+            start_time = time.time()
             cached_response = await self.cache.get(cache_key)
             if cached_response:
                 response_time = (time.time() - start_time) * 1000
@@ -439,110 +446,111 @@ class DeepSeekClient:
                 )
                 logger.debug(f"Cache hit for DeepSeek request: {response_time:.1f}ms")
                 return cached_response
-        
-        # Vérification circuit breaker
-        if self.circuit_breaker_enabled and not self.circuit_breaker.can_attempt_request():
-            self.stats.circuit_breaker_trips += 1
-            raise DeepSeekError("Circuit breaker is OPEN - too many failures")
-        
-        # Vérification rate limit
-        if not self._check_rate_limit():
-            raise DeepSeekRateLimitError("Rate limit exceeded")
-        
-        try:
-            # Enregistre la requête
-            self._record_request()
-            
-            # Appel API DeepSeek
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=optimized_messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=top_p,
-                **kwargs
-            )
-            
-            # Succès - mise à jour circuit breaker
-            if self.circuit_breaker_enabled:
-                self.circuit_breaker.record_success()
-            
-            # Cache la réponse
-            if self.cache_enabled and cache_key and self.cache:
-                # TTL basé sur la temperature (plus stable = cache plus long)
-                cache_ttl = int(os.getenv('CACHE_TTL_RESPONSE', '60'))
-                if temperature < 0.3:
-                    cache_ttl *= 3  # Réponses déterministes cachées plus longtemps
-                
-                # CORRECTION: Appel async du cache
-                await self.cache.set(cache_key, response, ttl=cache_ttl)
-            
-            # Statistiques
-            response_time = (time.time() - start_time) * 1000
-            usage = response.usage
-            self.stats.add_request(
-                response_time_ms=response_time,
-                input_tokens=usage.prompt_tokens if usage else 0,
-                output_tokens=usage.completion_tokens if usage else 0,
-                success=True
-            )
-            input_cost = float(os.getenv('COST_PER_1K_INPUT_TOKENS', '0.0005'))
-            output_cost = float(os.getenv('COST_PER_1K_OUTPUT_TOKENS', '0.0015'))
-            cost_usd = 0.0
-            if usage:
-                cost_usd = (
-                    usage.prompt_tokens * input_cost / 1000
-                    + usage.completion_tokens * output_cost / 1000
+
+        for attempt in range(self.max_retries):
+            if self.circuit_breaker_enabled and not self.circuit_breaker.can_attempt_request():
+                self.stats.circuit_breaker_trips += 1
+                raise DeepSeekError("Circuit breaker is OPEN - too many failures")
+
+            if not self._check_rate_limit():
+                raise DeepSeekRateLimitError("Rate limit exceeded")
+
+            start_time = time.time()
+            try:
+                # Enregistre la requête
+                self._record_request()
+
+                # Appel API DeepSeek
+                response = await self.client.chat.completions.create(
+                    model=model,
+                    messages=optimized_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    top_p=top_p,
+                    **kwargs
                 )
-            metrics.record_deepseek_usage(
-                model=model,
-                input_tokens=usage.prompt_tokens if usage else 0,
-                output_tokens=usage.completion_tokens if usage else 0,
-                duration_ms=response_time,
-                cost_usd=cost_usd,
-                success=True,
-            )
 
-            logger.debug(
-                f"DeepSeek API call successful: {response_time:.1f}ms, {usage.total_tokens if usage else 0} tokens"
-            )
+                if self.circuit_breaker_enabled:
+                    self.circuit_breaker.record_success()
 
-            return response
-            
-        except asyncio.TimeoutError:
-            if self.circuit_breaker_enabled:
-                self.circuit_breaker.record_failure()
-            
-            response_time = (time.time() - start_time) * 1000
-            self.stats.add_request(response_time_ms=response_time, success=False)
-            metrics.record_deepseek_usage(
-                model=model,
-                input_tokens=0,
-                output_tokens=0,
-                duration_ms=response_time,
-                cost_usd=0.0,
-                success=False,
-            )
+                if self.cache_enabled and cache_key and self.cache:
+                    cache_ttl = int(os.getenv('LLM_CACHE_TTL', '300'))
+                    if temperature < 0.3:
+                        cache_ttl *= 3
+                    await self.cache.set(cache_key, response, ttl=cache_ttl)
 
-            raise DeepSeekTimeoutError("DeepSeek API call timed out")
-            
-        except Exception as e:
-            if self.circuit_breaker_enabled:
-                self.circuit_breaker.record_failure()
-            
-            response_time = (time.time() - start_time) * 1000
-            self.stats.add_request(response_time_ms=response_time, success=False)
-            metrics.record_deepseek_usage(
-                model=model,
-                input_tokens=0,
-                output_tokens=0,
-                duration_ms=response_time,
-                cost_usd=0.0,
-                success=False,
-            )
+                response_time = (time.time() - start_time) * 1000
+                usage = response.usage
+                self.stats.add_request(
+                    response_time_ms=response_time,
+                    input_tokens=usage.prompt_tokens if usage else 0,
+                    output_tokens=usage.completion_tokens if usage else 0,
+                    success=True
+                )
+                input_cost = float(os.getenv('COST_PER_1K_INPUT_TOKENS', '0.0005'))
+                output_cost = float(os.getenv('COST_PER_1K_OUTPUT_TOKENS', '0.0015'))
+                cost_usd = 0.0
+                if usage:
+                    cost_usd = (
+                        usage.prompt_tokens * input_cost / 1000
+                        + usage.completion_tokens * output_cost / 1000
+                    )
+                metrics.record_deepseek_usage(
+                    model=model,
+                    input_tokens=usage.prompt_tokens if usage else 0,
+                    output_tokens=usage.completion_tokens if usage else 0,
+                    duration_ms=response_time,
+                    cost_usd=cost_usd,
+                    success=True,
+                )
 
-            logger.error(f"DeepSeek API error: {str(e)}")
-            raise DeepSeekError(f"DeepSeek API error: {str(e)}")
+                logger.debug(
+                    f"DeepSeek API call successful: {response_time:.1f}ms, {usage.total_tokens if usage else 0} tokens"
+                )
+
+                return response
+
+            except asyncio.TimeoutError:
+                if self.circuit_breaker_enabled:
+                    self.circuit_breaker.record_failure()
+
+                response_time = (time.time() - start_time) * 1000
+                self.stats.add_request(response_time_ms=response_time, success=False)
+                metrics.record_deepseek_usage(
+                    model=model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=response_time,
+                    cost_usd=0.0,
+                    success=False,
+                )
+
+                if attempt == self.max_retries - 1:
+                    raise DeepSeekTimeoutError("DeepSeek API call timed out")
+
+                await asyncio.sleep(1)
+
+            except Exception as e:
+                if self.circuit_breaker_enabled:
+                    self.circuit_breaker.record_failure()
+
+                response_time = (time.time() - start_time) * 1000
+                self.stats.add_request(response_time_ms=response_time, success=False)
+                metrics.record_deepseek_usage(
+                    model=model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=response_time,
+                    cost_usd=0.0,
+                    success=False,
+                )
+
+                logger.error(f"DeepSeek API error: {str(e)}")
+
+                if attempt == self.max_retries - 1:
+                    raise DeepSeekError(f"DeepSeek API error: {str(e)}")
+
+                await asyncio.sleep(1)
     
     async def create_chat_completion(
         self,

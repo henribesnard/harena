@@ -47,78 +47,68 @@ class HarenaRealDataTestClient:
         self.session.timeout = REQUEST_TIMEOUT
         self.logger = logger or logging.getLogger(__name__)
         
-        # Questions basées sur les vraies données de l'utilisateur 34
+        # Questions basées sur le jeu de données du MockIntentAgent
         self.real_data_questions = [
-            # Netflix - Nous savons qu'il y a 3 transactions Netflix dans les données
             {
-                "question": "Combien j'ai dépensé pour Netflix ce mois ?",
-                "expected_intent": "SEARCH_BY_MERCHANT",
-                "expected_data": "3 transactions Netflix -17.99€ chacune (avril, mai, juin 2025)",
-                "should_find": True
+                "question": "Mes transactions Netflix ce mois",
+                "expected_intent": "TRANSACTION_SEARCH",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Salaire ACME - 2302.2€ mensuel
             {
-                "question": "Quel est le montant de mon salaire ACME ?",
-                "expected_intent": "SEARCH_BY_MERCHANT", 
-                "expected_data": "2302.2€ par mois (avril, mai 2025)",
-                "should_find": True
+                "question": "Combien j'ai dépensé chez Carrefour ?",
+                "expected_intent": "SPENDING_ANALYSIS",
+                "expected_data": None,
+                "should_find": True,
             },
-            # McDonald's - Transactions multiples
             {
-                "question": "Mes dépenses McDonald's récentes",
-                "expected_intent": "SEARCH_BY_MERCHANT",
-                "expected_data": "McDonald's 3.7€ (juin), Maroc 5.71€ x2 (avril, mai)",
-                "should_find": True
+                "question": "Mes achats Amazon janvier 2025",
+                "expected_intent": "TRANSACTION_SEARCH",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Uber Eats - Livraisons
             {
-                "question": "Combien j'ai dépensé en livraison Uber Eats ?", 
-                "expected_intent": "SEARCH_BY_MERCHANT",
-                "expected_data": "25.12€ x2 (mai, juin 2025)",
-                "should_find": True
+                "question": "Transactions supérieures à 100 euros",
+                "expected_intent": "TRANSACTION_SEARCH",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Orange - Forfait télé
             {
-                "question": "Mes factures Orange télécom",
-                "expected_intent": "SEARCH_BY_MERCHANT",
-                "expected_data": "19.99€ et 29.99€ par mois (prélèvements)",
-                "should_find": True
+                "question": "Mes dépenses restaurant cette semaine",
+                "expected_intent": "SPENDING_ANALYSIS",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Virement important John Doe
             {
-                "question": "Les gros virements vers John Doe",
-                "expected_intent": "SEARCH_BY_PERSON",
-                "expected_data": "Virement 3000€ (avril, mai 2025)",
-                "should_find": True
+                "question": "Analyse mes courses alimentaires",
+                "expected_intent": "SPENDING_ANALYSIS",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Carrefour/courses
             {
-                "question": "Budget courses alimentaires",
-                "expected_intent": "SEARCH_BY_CATEGORY",
-                "expected_data": "Carrefour, E.Leclerc, Franprix, Naturalia, Monoprix",
-                "should_find": True
+                "question": "Combien je dépense en transport par mois ?",
+                "expected_intent": "SPENDING_ANALYSIS",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Air France - Voyage
             {
-                "question": "Billets d'avion Air France",
-                "expected_intent": "SEARCH_BY_MERCHANT",
-                "expected_data": "248.71€ (avril, mai 2025)",
-                "should_find": True
+                "question": "Évolution de mes dépenses ces 3 derniers mois",
+                "expected_intent": "TREND_ANALYSIS",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Retraits DAB
             {
-                "question": "Combien je retire au distributeur par mois ?",
-                "expected_intent": "SEARCH_BY_TYPE",
-                "expected_data": "40€-140€ par mois en retraits",
-                "should_find": True
+                "question": "Tendance dépenses loisirs depuis janvier",
+                "expected_intent": "TREND_ANALYSIS",
+                "expected_data": None,
+                "should_find": True,
             },
-            # Recherche qui ne devrait rien donner
             {
-                "question": "Mes dépenses chez Tesla",
-                "expected_intent": "SEARCH_BY_MERCHANT", 
-                "expected_data": "Aucune transaction Tesla",
-                "should_find": False
-            }
+                "question": "Bonjour, comment ça va ?",
+                "expected_intent": "CONVERSATIONAL",
+                "expected_data": None,
+                "should_find": False,
+            },
         ]
     
     def _make_request(self, method: str, endpoint: str, use_auth: bool = True, **kwargs) -> requests.Response:

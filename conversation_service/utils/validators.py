@@ -175,7 +175,7 @@ class ContractValidator:
             
             if "search_strategy" in params:
                 strategy = params["search_strategy"]
-                valid_strategies = ["lexical", "semantic", "hybrid"]
+                valid_strategies = ["lexical", "semantic"]
                 if strategy not in valid_strategies:
                     errors.append(f"search_strategy must be one of: {valid_strategies}")
         

@@ -11,6 +11,12 @@ from conversation_service.models.financial_models import (
     IntentCategory,
     DetectionMethod,
 )
+from conversation_service.models.service_contracts import (
+    SearchServiceQuery,
+    QueryMetadata,
+    SearchParameters,
+    SearchFilters,
+)
 import asyncio
 import pytest
 
@@ -25,6 +31,25 @@ except Exception:  # pragma: no cover - skip if deps missing
 class DummyDeepSeekClient:
     api_key = "test-key"
     base_url = "http://api.example.com"
+
+
+class DummyHTTPResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def json(self):
+        return self._data
+
+    def raise_for_status(self):
+        pass
+
+
+class DummyHTTPClient:
+    def __init__(self, data):
+        self._data = data
+
+    async def post(self, url, json, headers):
+        return DummyHTTPResponse(self._data)
 
 
 def test_prepare_entity_context_with_string_entity_type():
@@ -75,6 +100,58 @@ def test_generate_search_contract_deduplicates_terms():
     assert "merchant_name" not in request["filters"]
     assert "user_id" not in request["filters"]
     assert request["user_id"] == 1
+
+
+def test_execute_search_query_converts_fields():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    if not hasattr(agent, "name"):
+        agent.name = agent._name
+
+    response_data = {
+        "response_metadata": {
+            "query_id": "q1",
+            "processing_time_ms": 1.0,
+            "total_results": 1,
+            "returned_results": 1,
+            "has_more_results": False,
+            "search_strategy_used": "semantic",
+        },
+        "results": [
+            {
+                "transaction_id": "t1",
+                "date": "2024-01-01T00:00:00Z",
+                "amount": 20.5,
+                "currency_code": "EUR",
+                "primary_description": "Coffee shop",
+                "merchant_name": "Starbucks",
+                "category_name": "Food",
+                "account_id": 987,
+                "transaction_type": "debit",
+            }
+        ],
+        "success": True,
+    }
+
+    agent.http_client = DummyHTTPClient(response_data)
+
+    query = SearchServiceQuery(
+        query_metadata=QueryMetadata(
+            conversation_id="conv1", user_id=1, intent_type="TEST_INTENT"
+        ),
+        search_parameters=SearchParameters(),
+        filters=SearchFilters(),
+    )
+
+    response = asyncio.run(agent._execute_search_query(query))
+    result = response.results[0]
+    assert result["currency"] == "EUR"
+    assert result["description"] == "Coffee shop"
+    assert result["merchant"] == "Starbucks"
+    assert result["category"] == "Food"
+    assert result["account_id"] == "987"
 
 
 class DummyElasticsearchClientNoMerchant:

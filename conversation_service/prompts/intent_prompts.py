@@ -1,14 +1,14 @@
 """
-🧠 Intent Detection Prompts - Fallback IA pour Classification
+🧠 Intent Detection Prompts - IA Principale pour Classification
 
 Ce module contient les prompts optimisés DeepSeek pour la détection d'intention
-en mode fallback quand les règles pattern-based échouent.
+en mode LLM principal sans recours au pattern matching.
 
 Responsabilité :
 - Classification précise des intentions utilisateur
 - Extraction des entités financières associées
 - Gestion du contexte conversationnel
-- Format de sortie standardisé pour les agents AutoGen
+- Format de sortie strict pour les agents DeepSeek
 """
 
 from typing import Dict, List, Optional, Any
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # PROMPTS SYSTÈME PRINCIPAUX
 # =============================================================================
 
-INTENT_FALLBACK_SYSTEM_PROMPT = """Vous êtes un expert en classification d'intentions pour un assistant financier personnel.
+INTENT_SYSTEM_PROMPT = """Vous êtes un expert en classification d'intentions pour un assistant financier personnel.
 
 VOTRE MISSION :
 Analyser les messages utilisateur et identifier précisément leur intention financière, même quand le message est ambigu, conversationnel, ou complexe.
@@ -48,7 +48,7 @@ ENTITÉS FINANCIÈRES À EXTRAIRE :
 - **comptes** : compte courant, épargne, carte
 - **périodes** : mensuel, hebdomadaire, ce trimestre
 
-FORMAT DE RÉPONSE OBLIGATOIRE :
+FORMAT DE SORTIE STRICT :
 ```
 INTENT: [intention_identifiée]
 CONFIDENCE: [0.0-1.0]
@@ -56,7 +56,7 @@ ENTITIES: {json_des_entités_extraites}
 REASONING: [explication_courte_du_raisonnement]
 ```
 
-RÈGLES IMPORTANTES :
+INSTRUCTIONS IMPORTANTES :
 - Soyez précis mais pas trop restrictif dans la classification
 - Si l'intention est ambiguë, choisissez la plus probable et réduisez la confidence
 - Extrayez TOUTES les entités financières même approximatives
@@ -68,7 +68,7 @@ RÈGLES IMPORTANTES :
 # TEMPLATE UTILISATEUR AVEC CONTEXTE
 # =============================================================================
 
-INTENT_FALLBACK_USER_TEMPLATE = """Analysez ce message utilisateur et identifiez son intention financière :
+INTENT_USER_TEMPLATE = """Analysez ce message utilisateur et identifiez son intention financière :
 
 MESSAGE: "{user_message}"
 
@@ -116,7 +116,42 @@ MESSAGE: "Est-ce que je dépense plus que 500€ par mois en moyenne ?"
 INTENT: trend_analysis
 CONFIDENCE: 0.88
 ENTITIES: {"amounts": ["500€"], "periods": ["par mois"], "analysis_type": ["average", "comparison"]}
-REASONING: Analyse comparative des dépenses avec seuil monétaire."""
+REASONING: Analyse comparative des dépenses avec seuil monétaire.
+
+**Exemple 6 - Merchant Inquiry :**
+MESSAGE: "J'ai dépensé combien chez Amazon l'année dernière ?"
+INTENT: merchant_inquiry
+CONFIDENCE: 0.92
+ENTITIES: {"merchants": ["Amazon"], "periods": ["l'année dernière"]}
+REASONING: Question sur dépenses liées à un marchand spécifique.
+
+**Exemple 7 - Balance Inquiry :**
+MESSAGE: "Quel est le solde de mon compte épargne ?"
+INTENT: balance_inquiry
+CONFIDENCE: 0.93
+ENTITIES: {"accounts": ["compte épargne"]}
+REASONING: Demande explicite de solde d'un compte.
+
+**Exemple 8 - Goal Tracking :**
+MESSAGE: "Où en est mon objectif d'épargne de 5000€ ?"
+INTENT: goal_tracking
+CONFIDENCE: 0.88
+ENTITIES: {"categories": ["épargne"], "amounts": ["5000€"]}
+REASONING: Suivi d'un objectif financier défini.
+
+**Exemple 9 - Alert Management :**
+MESSAGE: "Préviens-moi si mes dépenses resto dépassent 200€."
+INTENT: alert_management
+CONFIDENCE: 0.90
+ENTITIES: {"categories": ["resto"], "amounts": ["200€"]}
+REASONING: Configuration d'une alerte basée sur un seuil de dépense.
+
+**Exemple 10 - Comparison Query :**
+MESSAGE: "Ai-je dépensé plus en transport ce mois-ci que le mois dernier ?"
+INTENT: comparison_query
+CONFIDENCE: 0.87
+ENTITIES: {"categories": ["transport"], "periods": ["ce mois-ci", "mois dernier"], "analysis_type": ["comparison"]}
+REASONING: Comparaison de dépenses entre deux périodes."""
 
 # =============================================================================
 # FONCTIONS DE FORMATAGE
@@ -146,7 +181,7 @@ def format_intent_prompt(user_message: str, context: str = "") -> str:
         context_section = f"\nCONTEXTE CONVERSATIONNEL:\n{context.strip()}\n"
     
     # Formatage du prompt utilisateur
-    user_prompt = INTENT_FALLBACK_USER_TEMPLATE.format(
+    user_prompt = INTENT_USER_TEMPLATE.format(
         user_message=user_message.strip(),
         context_section=context_section
     )
@@ -261,7 +296,7 @@ def parse_intent_response(response: str) -> Dict[str, Any]:
         logger.error(f"Erreur parsing réponse intent: {e}")
         logger.error(f"Réponse brute: {response}")
         
-        # Fallback gracieux
+        # Gestion d'erreur par défaut
         return {
             "intent": "other",
             "confidence": 0.1,
@@ -288,8 +323,8 @@ FINANCIAL_ENTITY_TYPES = {
 
 # Export des éléments principaux
 __all__ = [
-    "INTENT_FALLBACK_SYSTEM_PROMPT",
-    "INTENT_FALLBACK_USER_TEMPLATE", 
+    "INTENT_SYSTEM_PROMPT",
+    "INTENT_USER_TEMPLATE",
     "INTENT_EXAMPLES_FEW_SHOT",
     "format_intent_prompt",
     "build_context_summary",

@@ -45,14 +45,14 @@ class FallbackAgent:
             intent_category=IntentCategory.GENERAL_QUESTION,
             confidence=1.0,
             entities=[],
-            method=DetectionMethod.RULE_BASED,
+            method=DetectionMethod.AI_DETECTION,
             processing_time_ms=0.0,
         )
         return {
             "content": "{}",
             "metadata": {
                 "intent_result": intent_result,
-                "detection_method": DetectionMethod.RULE_BASED,
+                "detection_method": DetectionMethod.AI_DETECTION,
                 "confidence": intent_result.confidence,
                 "intent_type": intent_result.intent_type,
                 "entities": [],

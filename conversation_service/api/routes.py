@@ -42,6 +42,7 @@ from ..models.conversation_models import (
     ConversationTurn,
     ConversationTurnsResponse,
 )
+from ..models.financial_models import IntentResult
 import os
 
 from ..utils.logging import log_unauthorized_access
@@ -223,8 +224,7 @@ async def chat_endpoint(
             team_result["content"],
             int((time.time() - start_time) * 1000),
             metrics,
-            intent_detected=team_result["metadata"].get("intent_detected"),
-            entities_extracted=team_result["metadata"].get("entities_extracted"),
+            intent_result=team_result["metadata"].get("intent_result"),
             agent_chain=team_result["metadata"].get("agent_chain"),
             search_results_count=team_result["metadata"].get("search_results_count"),
             confidence_score=team_result.get("confidence_score"),
@@ -240,8 +240,7 @@ async def chat_endpoint(
                 user_message=validated_request.message,
                 assistant_response=team_result["content"],
                 processing_time_ms=processing_time,
-                intent_detected=team_result["metadata"].get("intent_detected"),
-                entities_extracted=team_result["metadata"].get("entities_extracted"),
+                intent_result=team_result["metadata"].get("intent_result"),
                 confidence_score=team_result.get("confidence_score"),
                 agent_chain=team_result["metadata"].get("agent_chain"),
                 search_results_count=team_result["metadata"].get(
@@ -531,8 +530,7 @@ async def get_conversation_turns(
                 metadata=t.turn_metadata or {},
                 turn_number=t.turn_number,
                 processing_time_ms=t.processing_time_ms or 0.0,
-                intent_detected=t.intent_detected,
-                entities_extracted=t.entities_extracted,
+                intent_result=t.intent_result,
                 confidence_score=t.confidence_score,
                 error_occurred=t.error_occurred,
                 agent_chain=t.agent_chain,
@@ -583,8 +581,7 @@ async def store_conversation_turn(
     assistant_message: str,
     processing_time_ms: int,
     metrics: MetricsCollector,
-    intent_detected: Optional[str] = None,
-    entities_extracted: Optional[List[Dict[str, Any]]] = None,
+    intent_result: Optional[Dict[str, Any]] = None,
     agent_chain: Optional[List[str]] = None,
     search_results_count: Optional[int] = None,
     confidence_score: Optional[float] = None,
@@ -600,21 +597,20 @@ async def store_conversation_turn(
         assistant_message: Assistant's response
         processing_time_ms: Processing time in milliseconds
         metrics: Metrics collector
-        intent_detected: Detected user intent
-        entities_extracted: Entities extracted from the user message
+        intent_result: Result of intent detection
         agent_chain: Chain of agents involved in processing
         search_results_count: Number of results returned by search
         confidence_score: Confidence score of the response
     """
     try:
+        intent_obj = IntentResult(**intent_result) if intent_result else None
         await conversation_manager.add_turn(
             conversation_id=conversation_id,
             user_id=user_id,
             user_msg=user_message,
             assistant_msg=assistant_message,
             processing_time_ms=float(processing_time_ms),
-            intent_detected=intent_detected,
-            entities_extracted=entities_extracted,
+            intent_result=intent_obj,
             agent_chain=agent_chain,
             search_results_count=search_results_count,
             confidence_score=confidence_score,

@@ -137,8 +137,7 @@ class ConversationTurn(Base, TimestampMixin):
     error_message = Column(Text, nullable=True)
     
     # Intelligence artificielle - métadonnées
-    intent_detected = Column(String(100), nullable=True, index=True)
-    entities_extracted = Column(JSON, default=list, nullable=False)
+    intent_result = Column(JSON, nullable=True)
     agent_chain = Column(JSON, default=list, nullable=False)  # Séquence d'agents utilisés
     
     # Recherche et résultats

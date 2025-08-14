@@ -76,8 +76,7 @@ def upgrade() -> None:
     sa.Column('confidence_score', sa.Float(), nullable=True),
     sa.Column('error_occurred', sa.Boolean(), nullable=False),
     sa.Column('error_message', sa.Text(), nullable=True),
-    sa.Column('intent_detected', sa.String(length=100), nullable=True),
-    sa.Column('entities_extracted', sa.JSON(), nullable=False),
+    sa.Column('intent_result', sa.JSON(), nullable=True),
     sa.Column('agent_chain', sa.JSON(), nullable=False),
     sa.Column('search_query_used', sa.Text(), nullable=True),
     sa.Column('search_results_count', sa.Integer(), nullable=False),
@@ -91,7 +90,6 @@ def upgrade() -> None:
     with op.batch_alter_table('conversation_turns', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_conversation_turns_conversation_id'), ['conversation_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_conversation_turns_id'), ['id'], unique=False)
-        batch_op.create_index(batch_op.f('ix_conversation_turns_intent_detected'), ['intent_detected'], unique=False)
         batch_op.create_index(batch_op.f('ix_conversation_turns_turn_id'), ['turn_id'], unique=True)
         batch_op.create_index(batch_op.f('ix_conversation_turns_turn_number'), ['turn_number'], unique=False)
 
@@ -104,7 +102,6 @@ def downgrade() -> None:
     with op.batch_alter_table('conversation_turns', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_conversation_turns_turn_number'))
         batch_op.drop_index(batch_op.f('ix_conversation_turns_turn_id'))
-        batch_op.drop_index(batch_op.f('ix_conversation_turns_intent_detected'))
         batch_op.drop_index(batch_op.f('ix_conversation_turns_id'))
         batch_op.drop_index(batch_op.f('ix_conversation_turns_conversation_id'))
 

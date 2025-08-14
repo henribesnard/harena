@@ -42,16 +42,16 @@ audit_logger = logging.getLogger("audit")
 
 class QueryOptimizer:
     """Helper class for optimizing search queries."""
-    
+
     @staticmethod
     def optimize_search_text(user_message: str, intent_result: IntentResult) -> str:
         """
         Optimize search text based on intent and entities.
-        
+
         Args:
             user_message: Original user message
             intent_result: Detected intent with entities
-            
+
         Returns:
             Optimized search text
         """
@@ -59,9 +59,9 @@ class QueryOptimizer:
         search_text = user_message.lower().strip()
 
         # Remove accents for consistent search behavior
-        search_text = unicodedata.normalize('NFD', search_text)
-        search_text = ''.join(
-            ch for ch in search_text if unicodedata.category(ch) != 'Mn'
+        search_text = unicodedata.normalize("NFD", search_text)
+        search_text = "".join(
+            ch for ch in search_text if unicodedata.category(ch) != "Mn"
         )
 
         # Remove punctuation
@@ -69,23 +69,61 @@ class QueryOptimizer:
 
         # Remove common stop words, question words, and generic terms
         stop_words = {
-            'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'mon', 'ma', 'mes',
-            'recherche', 'rechercher', 'depense', 'depenses', 'transaction',
-            'transactions',
-            'combien', 'pourquoi', 'pour', 'quel', 'quelle', 'quels', 'quelles',
-            'qui', 'que', 'quoi', 'ou', 'quand', 'comment', 'ce', 'cet', 'cette',
-            'ces', 'mois', 'je', 'j', 'ai', 'jai'
+            "le",
+            "la",
+            "les",
+            "de",
+            "du",
+            "des",
+            "un",
+            "une",
+            "mon",
+            "ma",
+            "mes",
+            "recherche",
+            "rechercher",
+            "depense",
+            "depenses",
+            "transaction",
+            "transactions",
+            "combien",
+            "pourquoi",
+            "pour",
+            "quel",
+            "quelle",
+            "quels",
+            "quelles",
+            "qui",
+            "que",
+            "quoi",
+            "ou",
+            "quand",
+            "comment",
+            "ce",
+            "cet",
+            "cette",
+            "ces",
+            "mois",
+            "je",
+            "j",
+            "ai",
+            "jai",
         }
         words = [word for word in search_text.split() if word not in stop_words]
 
         # Remove basic verb forms (infinitives) for more aggressive normalization
-        words = [word for word in words if not word.endswith(('er', 'ir', 're'))]
+        words = [word for word in words if not word.endswith(("er", "ir", "re"))]
 
         # Add entity-based keywords without duplicating existing terms
         seen_words = set(words)
         if intent_result.entities:
             for entity in intent_result.entities:
-                if entity.entity_type in {EntityType.MERCHANT, "MERCHANT", EntityType.CATEGORY, "CATEGORY"}:
+                if entity.entity_type in {
+                    EntityType.MERCHANT,
+                    "MERCHANT",
+                    EntityType.CATEGORY,
+                    "CATEGORY",
+                }:
                     if entity.normalized_value:
                         value = str(entity.normalized_value).lower()
                         if value not in seen_words:
@@ -101,7 +139,7 @@ class QueryOptimizer:
         optimized_text = " ".join(unique_words)[:200]
         logger.debug("Normalized search text: %s", optimized_text)
         return optimized_text  # Limit search text length
-    
+
     @staticmethod
     def extract_date_filters(intent_result: IntentResult) -> Dict[str, Any]:
         """Extract date range filters from intent entities."""
@@ -139,7 +177,7 @@ class QueryOptimizer:
                     break
 
         return date_filters
-    
+
     @staticmethod
     def extract_amount_filters(intent_result: IntentResult) -> Dict[str, Any]:
         """Extract amount range filters from intent entities."""
@@ -151,6 +189,10 @@ class QueryOptimizer:
         for entity in intent_result.entities:
             if entity.entity_type == EntityType.AMOUNT and isinstance(entity.normalized_value, (int, float)):
                 normalized_amount = float(entity.normalized_value)
+            if entity.entity_type == EntityType.AMOUNT and isinstance(
+                entity.normalized_value, (int, float)
+            ):
+                normalized_amount = entity.normalized_value
                 tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
                 amount_filters["amount"] = {
                     "gte": normalized_amount - tolerance,
@@ -164,24 +206,28 @@ class QueryOptimizer:
 class SearchQueryAgent(BaseFinancialAgent):
     """
     Agent for generating and executing search queries.
-    
+
     This agent takes intent detection results and user messages, then:
     1. Extracts additional entities using AI
     2. Generates optimized SearchServiceQuery contracts
     3. Executes queries against the Search Service
     4. Returns structured search results
-    
+
     Attributes:
         search_service_url: Base URL for the Search Service
         http_client: HTTP client for service communication
         query_optimizer: Helper for query optimization
     """
-    
-    def __init__(self, deepseek_client: DeepSeekClient, search_service_url: str, 
-                 config: Optional[AgentConfig] = None):
+
+    def __init__(
+        self,
+        deepseek_client: DeepSeekClient,
+        search_service_url: str,
+        config: Optional[AgentConfig] = None,
+    ):
         """
         Initialize the search query agent.
-        
+
         Args:
             deepseek_client: Configured DeepSeek client
             search_service_url: Base URL for Search Service
@@ -193,32 +239,34 @@ class SearchQueryAgent(BaseFinancialAgent):
                 model_client_config={
                     "model": "deepseek-chat",
                     "api_key": deepseek_client.api_key,
-                    "base_url": deepseek_client.base_url
+                    "base_url": deepseek_client.base_url,
                 },
                 system_message=self._get_system_message(),
                 max_consecutive_auto_reply=1,
                 description="Search query generation and execution agent",
                 temperature=0.2,  # Low temperature for consistent entity extraction
                 max_tokens=250,
-                timeout_seconds=12
+                timeout_seconds=12,
             )
-        
+
         super().__init__(
-            name=config.name,
-            config=config,
-            deepseek_client=deepseek_client
+            name=config.name, config=config, deepseek_client=deepseek_client
         )
 
         # Ensure a local name attribute exists without overriding base class behavior
         self._name = config.name
-        
-        self.search_service_url = search_service_url.rstrip('/')
+
+        self.search_service_url = search_service_url.rstrip("/")
         self.http_client = httpx.AsyncClient(timeout=30.0)
         self.query_optimizer = QueryOptimizer()
-        
-        logger.info(f"Initialized SearchQueryAgent with service URL: {search_service_url}")
-    
-    async def _execute_operation(self, input_data: Dict[str, Any], user_id: int) -> Dict[str, Any]:
+
+        logger.info(
+            f"Initialized SearchQueryAgent with service URL: {search_service_url}"
+        )
+
+    async def _execute_operation(
+        self, input_data: Dict[str, Any], user_id: int
+    ) -> Dict[str, Any]:
         """
         Execute search query operation.
 
@@ -242,17 +290,17 @@ class SearchQueryAgent(BaseFinancialAgent):
     ) -> Dict[str, Any]:
         """
         Process a search request end-to-end.
-        
+
         Args:
             intent_result: Detected intent with entities
             user_message: Original user message
             user_id: ID of the requesting user
-            
+
         Returns:
             Dictionary containing search results and metadata
         """
         start_time = time.perf_counter()
-        
+
         try:
             # Step 1: Extract additional entities using AI
             enhanced_entities = await self._extract_additional_entities(
@@ -272,36 +320,44 @@ class SearchQueryAgent(BaseFinancialAgent):
 
             # Step 3: Execute search query
             search_response = await self._execute_search_query(search_query)
-            
+
             execution_time = (time.perf_counter() - start_time) * 1000
-            
-            returned_results = getattr(getattr(search_response, "response_metadata", {}), "returned_results", 0)
+
+            returned_results = getattr(
+                getattr(search_response, "response_metadata", {}), "returned_results", 0
+            )
             if isinstance(getattr(search_response, "response_metadata", None), dict):
-                returned_results = search_response.response_metadata.get("returned_results", 0)
+                returned_results = search_response.response_metadata.get(
+                    "returned_results", 0
+                )
 
             return {
                 "content": f"Search completed: {returned_results} results",
                 "metadata": {
                     "search_query": search_query.dict(),
                     "search_response": search_response.dict(),
-                    "enhanced_entities": [
-                        e.dict() for e in enhanced_entities
-                    ] if enhanced_entities else [],
+                    "enhanced_entities": (
+                        [e.dict() for e in enhanced_entities]
+                        if enhanced_entities
+                        else []
+                    ),
                     "execution_time_ms": execution_time,
                     "search_results_count": returned_results,
                 },
-                "confidence_score": min(intent_result.confidence + 0.1, 1.0),  # Boost confidence slightly
+                "confidence_score": min(
+                    intent_result.confidence + 0.1, 1.0
+                ),  # Boost confidence slightly
                 "token_usage": {
                     "prompt_tokens": 50,  # Estimated
                     "completion_tokens": 20,
-                    "total_tokens": 70
-                }
+                    "total_tokens": 70,
+                },
             }
-            
+
         except Exception as e:
             logger.error(f"Search request processing failed: {e}")
             raise
-    
+
     async def _generate_search_contract(
         self,
         intent_result: IntentResult,
@@ -311,24 +367,26 @@ class SearchQueryAgent(BaseFinancialAgent):
     ) -> SearchServiceQuery:
         """
         Generate a SearchServiceQuery contract from intent and message.
-        
+
         Args:
             intent_result: Detected intent with entities
             user_message: Original user message
             user_id: ID of the requesting user
             enhanced_entities: Additional entities from AI extraction
-            
+
         Returns:
             SearchServiceQuery contract for the Search Service
         """
         # Optimize search text
-        search_text = self.query_optimizer.optimize_search_text(user_message, intent_result)
+        search_text = self.query_optimizer.optimize_search_text(
+            user_message, intent_result
+        )
         logger.debug("Optimized search text: %s", search_text)
-        
+
         # Extract filters from entities
         date_filters = self.query_optimizer.extract_date_filters(intent_result)
         amount_filters = self.query_optimizer.extract_amount_filters(intent_result)
-        
+
         # Combine all entities
         all_entities: List[FinancialEntity] = (
             intent_result.entities.copy() if intent_result.entities else []
@@ -348,7 +406,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             if e.entity_type in {EntityType.CATEGORY, "CATEGORY"} and e.normalized_value
         ]
         if categories:
-            search_filters["categories"] = categories
+            search_filters["category_name"] = categories
 
         merchants = [
             str(e.normalized_value)
@@ -356,7 +414,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             if e.entity_type in {EntityType.MERCHANT, "MERCHANT"} and e.normalized_value
         ]
         if merchants:
-            search_filters["merchants"] = merchants
+            search_filters["merchant_name"] = merchants
 
         # Always filter by user_id for security and multi-tenant isolation
         search_filters["user_id"] = user_id
@@ -369,45 +427,50 @@ class SearchQueryAgent(BaseFinancialAgent):
             intent_type=intent_result.intent_type,
             language="fr",
             priority="normal",
-            source_agent=self.name
+            source_agent=self.name,
         )
-        
+
         # Create search parameters based on intent
         search_params = SearchParameters(
             search_text=search_text,
             max_results=20 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10,
             include_highlights=True,
-            boost_recent=intent_result.intent_type in [
+            boost_recent=intent_result.intent_type
+            in [
                 "BALANCE_CHECK",
                 "SPENDING_ANALYSIS",
             ],
-            fuzzy_matching=True if len(search_text.split()) > 1 else False
+            fuzzy_matching=True if len(search_text.split()) > 1 else False,
         )
-        
+
         # Create complete search query
-        filters_obj = SearchFilters(**search_filters) if search_filters else SearchFilters()
+        filters_obj = (
+            SearchFilters(**search_filters) if search_filters else SearchFilters()
+        )
 
         search_query = SearchServiceQuery(
             query_metadata=query_metadata,
             search_parameters=search_params,
-            filters=filters_obj
+            filters=filters_obj,
         )
-        
+
         # Validate the query
         validator = ContractValidator()
         validation_errors = validator.validate_search_query(search_query.dict())
         if validation_errors:
             logger.warning(f"Search query validation warnings: {validation_errors}")
-        
+
         return search_query
-    
-    async def _execute_search_query(self, query: SearchServiceQuery) -> SearchServiceResponse:
+
+    async def _execute_search_query(
+        self, query: SearchServiceQuery
+    ) -> SearchServiceResponse:
         """
         Execute search query against the Search Service.
-        
+
         Args:
             query: SearchServiceQuery contract
-            
+
         Returns:
             SearchServiceResponse from the service
         """
@@ -416,10 +479,14 @@ class SearchQueryAgent(BaseFinancialAgent):
             url = f"{self.search_service_url}/search"
             headers = {
                 "Content-Type": "application/json",
-                "User-Agent": f"ConversationService/{self.name}"
+                "User-Agent": f"ConversationService/{self.name}",
             }
 
-            request_payload = query.to_search_request() if hasattr(query, "to_search_request") else query.dict()
+            request_payload = (
+                query.to_search_request()
+                if hasattr(query, "to_search_request")
+                else query.dict()
+            )
 
             # Audit logging for search execution
             metadata = query.query_metadata
@@ -450,11 +517,9 @@ class SearchQueryAgent(BaseFinancialAgent):
 
             # Execute HTTP request
             response = await self.http_client.post(
-                url=url,
-                json=request_payload,
-                headers=headers
+                url=url, json=request_payload, headers=headers
             )
-            
+
             response.raise_for_status()
 
             # Parse response
@@ -477,18 +542,24 @@ class SearchQueryAgent(BaseFinancialAgent):
                 total_results,
             )
 
-            returned_results = getattr(getattr(search_response, "response_metadata", {}), "returned_results", 0)
+            returned_results = getattr(
+                getattr(search_response, "response_metadata", {}), "returned_results", 0
+            )
             if isinstance(getattr(search_response, "response_metadata", None), dict):
-                returned_results = search_response.response_metadata.get("returned_results", 0)
+                returned_results = search_response.response_metadata.get(
+                    "returned_results", 0
+                )
 
             logger.info(
                 f"Search query executed successfully: {returned_results} results"
             )
 
             return search_response
-            
+
         except httpx.HTTPStatusError as e:
-            logger.error(f"Search service HTTP error: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"Search service HTTP error: {e.response.status_code} - {e.response.text}"
+            )
             raise Exception(f"Search service error: {e.response.status_code}")
         except httpx.RequestError as e:
             logger.error(f"Search service request error: {e}")
@@ -496,43 +567,45 @@ class SearchQueryAgent(BaseFinancialAgent):
         except Exception as e:
             logger.error(f"Search query execution failed: {e}")
             raise
-    
+
     async def _extract_additional_entities(
         self, message: str, intent_result: IntentResult, user_id: int
     ) -> List[FinancialEntity]:
         """
         Extract additional entities using AI that weren't detected previously.
-        
+
         Args:
             message: User message
             intent_result: Intent with existing entities
-            
+
         Returns:
             List of additional entities found
         """
         try:
             # Prepare context for entity extraction
             existing_entities = intent_result.entities if intent_result.entities else []
-            context = self._prepare_entity_extraction_context(message, existing_entities)
+            context = self._prepare_entity_extraction_context(
+                message, existing_entities
+            )
 
             # Call DeepSeek for entity extraction
             logger.debug("Extracting additional entities for user_id=%s", user_id)
             response = await self.deepseek_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_entity_extraction_prompt()},
-                    {"role": "user", "content": context}
+                    {"role": "user", "content": context},
                 ],
                 temperature=0.1,
                 max_tokens=120,
                 user=str(user_id),
                 use_cache=True,
             )
-            
+
             # Parse AI response
             additional_entities = self._parse_entity_response(response.content)
 
             return additional_entities
-            
+
         except Exception as e:
             logger.warning(f"Additional entity extraction failed: {e}")
             return []
@@ -541,24 +614,24 @@ class SearchQueryAgent(BaseFinancialAgent):
         self, message: str, existing_entities: List[FinancialEntity]
     ) -> str:
         """Prepare context for AI entity extraction."""
-        context = f"Message: \"{message}\"\n\n"
-        
+        context = f'Message: "{message}"\n\n'
+
         if existing_entities:
             context += "Entités déjà détectées:\n"
             entities_by_type: Dict[str, List[str]] = {}
             for entity in existing_entities:
                 entities_by_type.setdefault(
                     getattr(entity.entity_type, "value", entity.entity_type), []
-                ).append(
-                    str(entity.normalized_value)
-                )
+                ).append(str(entity.normalized_value))
             for entity_type, values in entities_by_type.items():
                 context += f"- {entity_type}: {values}\n"
             context += "\n"
-        
-        context += "Extrais toutes les entités financières supplémentaires non détectées."
+
+        context += (
+            "Extrais toutes les entités financières supplémentaires non détectées."
+        )
         return context
-    
+
     def _parse_entity_response(self, ai_content: str) -> List[FinancialEntity]:
         """Parse AI entity extraction response."""
         entities: List[FinancialEntity] = []
@@ -574,7 +647,10 @@ class SearchQueryAgent(BaseFinancialAgent):
                         for item in parsed:
                             if isinstance(item, dict):
                                 for key, value in item.items():
-                                    if not value or (isinstance(value, str) and value.lower() == "aucune"):
+                                    if not value or (
+                                        isinstance(value, str)
+                                        and value.lower() == "aucune"
+                                    ):
                                         continue
                                     try:
                                         entity_type = EntityType(key.upper())
@@ -635,7 +711,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             logger.warning(f"Failed to parse entity response: {e}")
 
         return entities
-    
+
     def _get_system_message(self) -> str:
         """Get system message for the agent."""
         return """Tu es un agent spécialisé dans la génération de requêtes de recherche pour les données financières.
@@ -654,7 +730,7 @@ Types d'entités à extraire:
 - TRANSACTION_TYPE: Types de transactions (débit/crédit)
 
 Optimise les requêtes pour la pertinence et la performance."""
-    
+
     def _get_entity_extraction_prompt(self) -> str:
         """Get entity extraction prompt for DeepSeek."""
         return """Extrais toutes les entités financières du message utilisateur.
@@ -671,7 +747,7 @@ TYPE_ENTITE: valeur_trouvée
 TYPE_ENTITE: autre_valeur
 
 Si aucune entité supplémentaire n'est trouvée, réponds: "aucune"."""
-    
+
     async def close(self) -> None:
         """Close HTTP client resources."""
         await self.http_client.aclose()

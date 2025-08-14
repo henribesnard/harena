@@ -51,11 +51,17 @@ def main() -> None:
     # ----- VÉRIFICATION DU MOCK ---------------------------------------------
     metrics_resp = session.get(f"{BASE_URL}/conversation/metrics")
     metrics_resp.raise_for_status()
-    intent_agent_type = metrics_resp.json()["agent_metrics"]["intent_agent"]["agent_type"]
-    if intent_agent_type == "MockIntentAgent":
-        print("✅ Ok si mock utilisé")
+    metrics_data = metrics_resp.json()
+    if "intent_agent" in metrics_data["agent_metrics"]["agent_performance"]:
+        intent_agent_type = metrics_data["agent_metrics"]["agent_performance"]["intent_agent"][
+            "agent_type"
+        ]
+        if intent_agent_type == "MockIntentAgent":
+            print("✅ Ok si mock utilisé")
+        else:
+            print(f"❌ Mock non utilisé (agent_type={intent_agent_type})")
     else:
-        print(f"❌ Mock non utilisé (agent_type={intent_agent_type})")
+        print("❌ Mock non utilisé (agent_type inconnu)")
 
     # ----- RECHERCHE EFFECTUÉE PAR L’AGENT ----------------------------------
     merchant = next(

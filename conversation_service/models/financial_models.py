@@ -104,15 +104,12 @@ class DetectionMethod(str, Enum):
     """Method used for entity detection or intent classification."""
 
     LLM_BASED = "llm_based"
-    PATTERN_MATCHING = "pattern_matching"
-    NER_MODEL = "ner_model"
     FALLBACK = "fallback"
     RULE_BASED = "rule_based"
     AI_FALLBACK = "ai_fallback"
     AI_ERROR_FALLBACK = "ai_error_fallback"
     AI_PARSE_FALLBACK = "ai_parse_fallback"
     AI_DETECTION = "ai_detection"
-
 
 class FinancialEntity(BaseModel):
     """
@@ -312,7 +309,7 @@ class IntentResult(BaseModel):
     )
     
     method: DetectionMethod = Field(
-        ...,
+        default=DetectionMethod.LLM_BASED,
         description="Method used for intent classification"
     )
     

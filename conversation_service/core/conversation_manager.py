@@ -19,10 +19,11 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
-from collections import defaultdict, deque
+from collections import defaultdict
 from abc import ABC, abstractmethod
 
 from ..models.conversation_models import ConversationContext, ConversationTurn
+from ..models.financial_models import IntentResult
 
 logger = logging.getLogger(__name__)
 
@@ -184,20 +185,24 @@ class MemoryStore(ConversationStore):
         
         recent_turns = context.turns[-3:]  # Last 3 turns
         summary_parts = []
-        
+
         # Extract key topics and intents
-        intents = [turn.intent_detected for turn in recent_turns if turn.intent_detected]
+        intents = [
+            turn.intent_result.intent_type
+            for turn in recent_turns
+            if turn.intent_result and turn.intent_result.intent_type
+        ]
         if intents:
             summary_parts.append(f"Intentions: {', '.join(set(intents))}")
-        
+
         # Extract entities if available
         entities = []
         for turn in recent_turns:
-            if turn.entities_extracted:
-                for entity in turn.entities_extracted:
-                    if entity.get('entity_type') and entity.get('normalized_value'):
-                        entities.append(f"{entity['entity_type']}:{entity['normalized_value']}")
-        
+            if turn.intent_result:
+                for entity in turn.intent_result.entities:
+                    if getattr(entity, 'entity_type', None) and getattr(entity, 'normalized_value', None):
+                        entities.append(f"{entity.entity_type}:{entity.normalized_value}")
+
         if entities:
             summary_parts.append(f"Entités: {', '.join(entities[:5])}")  # Limit to 5 entities
         
@@ -346,8 +351,7 @@ class ConversationManager:
         return context
     
     async def add_turn(self, conversation_id: str, user_id: int, user_msg: str,
-                      assistant_msg: str, intent_detected: Optional[str] = None,
-                      entities_extracted: Optional[List[Dict]] = None,
+                      assistant_msg: str, intent_result: Optional[IntentResult] = None,
                       processing_time_ms: Optional[float] = None,
                       agent_chain: Optional[List[str]] = None,
                       search_results_count: Optional[int] = None,
@@ -360,8 +364,7 @@ class ConversationManager:
             user_id: User identifier
             user_msg: User's message
             assistant_msg: Assistant's response
-            intent_detected: Detected intent (optional)
-            entities_extracted: Extracted entities (optional)
+            intent_result: Result of intent detection (optional)
             processing_time_ms: Processing time (optional)
             agent_chain: Chain of agents involved (optional)
             search_results_count: Number of search results returned (optional)
@@ -382,8 +385,7 @@ class ConversationManager:
             assistant_response=assistant_msg,
             turn_number=context.current_turn + 1,
             processing_time_ms=processing_time_ms or 0.0,
-            intent_detected=intent_detected,
-            entities_extracted=entities_extracted or [],
+            intent_result=intent_result,
             confidence_score=confidence_score or 0.8,
             error_occurred=False,
             agent_chain=agent_chain or ["orchestrator_agent"],
@@ -392,6 +394,9 @@ class ConversationManager:
 
         # Add turn to storage
         await self.store.add_turn(conversation_id, turn)
+
+        if intent_result and intent_result.intent_type:
+            context.last_intent = intent_result.intent_type
 
         logger.debug(f"Added turn to conversation {conversation_id}")
     
@@ -425,10 +430,7 @@ class ConversationManager:
         session = self.user_sessions[conversation_id]
         session["last_activity"] = datetime.utcnow()
         session["message_count"] += 1
-        
-        # Update active entities based on current message
-        context.active_entities = self._extract_active_entities(user_message, context)
-        
+
         # Save updated context
         await self.store.save_context(context)
     
@@ -476,8 +478,8 @@ class ConversationManager:
             summary_lines.append(f"{i}. Utilisateur: {user_preview}")
             summary_lines.append(f"   Assistant: {assistant_preview}")
             
-            if turn.intent_detected:
-                summary_lines.append(f"   Intent: {turn.intent_detected}")
+            if turn.intent_result and turn.intent_result.intent_type:
+                summary_lines.append(f"   Intent: {turn.intent_result.intent_type}")
         
         return "\n".join(summary_lines)
     
@@ -561,48 +563,6 @@ class ConversationManager:
             }
         }
     
-    def _extract_active_entities(self, user_message: str, 
-                               context: ConversationContext) -> Dict[str, Any]:
-        """
-        Extract entities that should remain active in context.
-        
-        Args:
-            user_message: Current user message
-            context: Current conversation context
-            
-        Returns:
-            Dictionary of active entities
-        """
-        active_entities = {}
-        
-        # Simple entity extraction - in production, use more sophisticated methods
-        message_lower = user_message.lower()
-        
-        # Look for date references
-        date_keywords = ["janvier", "février", "mars", "avril", "mai", "juin",
-                        "juillet", "août", "septembre", "octobre", "novembre", "décembre",
-                        "mois", "année", "semaine", "jour", "hier", "aujourd'hui", "demain"]
-        
-        for keyword in date_keywords:
-            if keyword in message_lower:
-                active_entities["date_context"] = keyword
-                break
-        
-        # Look for amount references
-        if any(char.isdigit() for char in user_message):
-            active_entities["amount_mentioned"] = True
-        
-        # Look for category references
-        category_keywords = ["alimentation", "transport", "logement", "shopping", 
-                           "restaurant", "essence", "courses", "factures"]
-        
-        for keyword in category_keywords:
-            if keyword in message_lower:
-                active_entities["category_context"] = keyword
-                break
-        
-        return active_entities
-    
     async def _background_cleanup(self) -> None:
         """Background task for periodic cleanup."""
         while True:
@@ -670,7 +630,11 @@ class ConversationManager:
             "statistics": {
                 "total_turns": len(context.turns),
                 "conversation_duration": (context.updated_at - context.created_at).total_seconds() if context.updated_at else 0,
-                "intents_detected": [turn.intent_detected for turn in context.turns if turn.intent_detected],
+                "intents_detected": [
+                    turn.intent_result.intent_type
+                    for turn in context.turns
+                    if turn.intent_result and turn.intent_result.intent_type
+                ],
                 "average_processing_time": sum(turn.processing_time_ms for turn in context.turns) / len(context.turns) if context.turns else 0
             }
         }

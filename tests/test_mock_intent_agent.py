@@ -9,6 +9,7 @@ from conversation_service.agents.mock_intent_agent import (
     MockIntentAgent,
     MOCK_INTENT_RESPONSES,
 )
+from conversation_service.models.financial_models import IntentResult
 
 
 @pytest.mark.parametrize("question,expected", list(MOCK_INTENT_RESPONSES.items()))
@@ -30,3 +31,9 @@ def test_mock_intent_agent_returns_predefined_results(question, expected):
         if "position" in exp_entity:
             assert entity.start_position == exp_entity["position"][0]
             assert entity.end_position == exp_entity["position"][1]
+
+
+def test_detect_intent_returns_intent_result_for_known_question():
+    agent = MockIntentAgent()
+    result = asyncio.run(agent.detect_intent("Mes transactions Netflix ce mois", user_id=1))
+    assert isinstance(result["metadata"]["intent_result"], IntentResult)

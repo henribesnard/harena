@@ -120,13 +120,12 @@ class LLMIntentAgent(BaseFinancialAgent):
                 logger.warning("DeepSeek call failed (attempt %s): %s", attempt + 1, err)
                 await asyncio.sleep(2 ** attempt)
         if response is None:
+            raise RuntimeError("LLM intent detection failed")
+        try:
+            data = json.loads(response.content)
+        except Exception as err:  # pragma: no cover - defensive fallback
+            logger.warning("Failed to parse LLM output: %s", err)
             data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
-        else:
-            try:
-                data = json.loads(response.content)
-            except Exception as err:  # pragma: no cover - defensive fallback
-                logger.warning("Failed to parse LLM output: %s", err)
-                data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
 
         intent_type = data.get("intent", "OUT_OF_SCOPE")
         entities: List[FinancialEntity] = []
@@ -208,7 +207,7 @@ class LLMIntentAgent(BaseFinancialAgent):
                 intent_category=IntentCategory.GENERAL_QUESTION,
                 confidence=0.0,
                 entities=[],
-                method=DetectionMethod.AI_PARSE_FALLBACK,
+                method=DetectionMethod.FALLBACK,
                 processing_time_ms=0.0,
             )
 

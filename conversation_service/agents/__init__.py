@@ -30,7 +30,6 @@ except ImportError:
 # Conditional imports based on availability
 if TYPE_CHECKING or AUTOGEN_AVAILABLE:
     from .base_financial_agent import BaseFinancialAgent
-
     from .llm_intent_agent import LLMIntentAgent
     from .search_query_agent import SearchQueryAgent
     from .response_agent import ResponseAgent
@@ -61,7 +60,7 @@ def get_available_agents():
     """Get list of available agent classes."""
     if not AUTOGEN_AVAILABLE:
         return []
-    
+
     return [
         "BaseFinancialAgent",
         "LLMIntentAgent",

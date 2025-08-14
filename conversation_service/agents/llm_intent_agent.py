@@ -11,6 +11,7 @@ the detected intent.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import logging
@@ -26,27 +27,12 @@ from ..models.financial_models import (
     IntentCategory,
     IntentResult,
 )
+from ..prompts.intent_prompts import (
+    INTENT_FALLBACK_SYSTEM_PROMPT,
+    INTENT_EXAMPLES_FEW_SHOT,
+)
 
 logger = logging.getLogger(__name__)
-
-
-ALLOWED_INTENTS = [
-    "SEARCH_BY_TEXT",
-    "SEARCH_BY_MERCHANT",
-    "SEARCH_BY_CATEGORY",
-    "SEARCH_BY_AMOUNT",
-    "SEARCH_BY_DATE",
-    "SEARCH_BY_OPERATION_TYPE",
-    "ANALYZE_SPENDING",
-    "ANALYZE_TRENDS",
-    "COUNT_TRANSACTIONS",
-    "TRANSACTION_SEARCH",
-    "SPENDING_ANALYSIS",
-    "BALANCE_INQUIRY",
-    "GENERAL_QUESTION",
-    "GREETING",
-    "OUT_OF_SCOPE",
-]
 
 
 class LLMIntentAgent(BaseFinancialAgent):
@@ -74,6 +60,9 @@ class LLMIntentAgent(BaseFinancialAgent):
             )
 
         super().__init__(name=config.name, config=config, deepseek_client=deepseek_client)
+        self._intent_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_limit = 100
+        self._max_retries = 3
 
     # ------------------------------------------------------------------
     # Operation API
@@ -90,18 +79,9 @@ class LLMIntentAgent(BaseFinancialAgent):
     def _build_system_message() -> str:
         """Construct the system prompt given to the LLM."""
 
-        intents = ", ".join(ALLOWED_INTENTS)
-        entity_types = ", ".join(e.value for e in EntityType)
         return (
-            "Tu es un classificateur d'intentions financières."
-            "\nIntents autorisés : "
-            + intents
-            + "\nTypes d'entités autorisés : "
-            + entity_types
-            + "\nIgnore toute autre catégorie."
-            + "\nRéponds uniquement avec un JSON strict au format :"
-            ' {"intent": "INTENT", "confidence": 0-1,'
-            ' "entities": [{"type": "TYPE", "value": "VALEUR"}]}.'
+            f"{INTENT_FALLBACK_SYSTEM_PROMPT}\n\n{INTENT_EXAMPLES_FEW_SHOT}"
+            "\n\nRéponds uniquement avec un JSON strict."
         )
 
     # ------------------------------------------------------------------
@@ -116,22 +96,37 @@ class LLMIntentAgent(BaseFinancialAgent):
         the service.
         """
 
+        if user_message in self._intent_cache:
+            return self._intent_cache[user_message]
+
         start_time = time.perf_counter()
-        response = await self.deepseek_client.generate_response(
-            messages=[
-                {"role": "system", "content": self.config.system_message},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
-            user=str(user_id),
-            use_cache=True,
-        )
-        try:
-            data = json.loads(response.content)
-        except Exception as err:  # pragma: no cover - defensive fallback
-            logger.warning("Failed to parse LLM output: %s", err)
+        messages = [
+            {"role": "system", "content": self.config.system_message},
+            {"role": "user", "content": user_message},
+        ]
+
+        response = None
+        for attempt in range(self._max_retries):
+            try:
+                response = await self.deepseek_client.generate_response(
+                    messages=messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                    user=str(user_id),
+                    use_cache=True,
+                )
+                break
+            except Exception as err:
+                logger.warning("DeepSeek call failed (attempt %s): %s", attempt + 1, err)
+                await asyncio.sleep(2 ** attempt)
+        if response is None:
             data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
+        else:
+            try:
+                data = json.loads(response.content)
+            except Exception as err:  # pragma: no cover - defensive fallback
+                logger.warning("Failed to parse LLM output: %s", err)
+                data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
 
         intent_type = data.get("intent", "OUT_OF_SCOPE")
         entities: List[FinancialEntity] = []
@@ -161,7 +156,7 @@ class LLMIntentAgent(BaseFinancialAgent):
             processing_time_ms=(time.perf_counter() - start_time) * 1000,
         )
 
-        return {
+        result = {
             "content": json.dumps(data),
             "metadata": {
                 "intent_result": intent_result,
@@ -175,6 +170,13 @@ class LLMIntentAgent(BaseFinancialAgent):
             },
             "confidence_score": intent_result.confidence,
         }
+
+        self._intent_cache[user_message] = result
+        if len(self._intent_cache) > self._cache_limit:
+            # remove oldest inserted item
+            self._intent_cache.pop(next(iter(self._intent_cache)))
+
+        return result
 
     # ------------------------------------------------------------------
     @staticmethod

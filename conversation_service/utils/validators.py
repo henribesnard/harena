@@ -183,18 +183,26 @@ class ContractValidator:
         if "filters" in query:
             filters = query["filters"]
             
-            # Validation date_range si présent
-            if "date_range" in filters:
-                date_range = filters["date_range"]
-                if isinstance(date_range, dict):
-                    if "start" in date_range and "end" in date_range:
+            # Validation date si présent
+            if "date" in filters:
+                date_filter = filters["date"]
+                if isinstance(date_filter, dict):
+                    if "gte" in date_filter and "lte" in date_filter:
                         try:
-                            start = datetime.fromisoformat(date_range["start"].replace('Z', '+00:00'))
-                            end = datetime.fromisoformat(date_range["end"].replace('Z', '+00:00'))
-                            if start >= end:
-                                errors.append("date_range: start must be before end")
+                            start = datetime.fromisoformat(date_filter["gte"].replace('Z', '+00:00'))
+                            end = datetime.fromisoformat(date_filter["lte"].replace('Z', '+00:00'))
+                            if start > end:
+                                errors.append("date: gte must be before lte")
                         except (ValueError, TypeError):
-                            errors.append("date_range: invalid date format (use ISO 8601)")
+                            errors.append("date: invalid date format (use ISO 8601)")
+
+            # Validation amount si présent
+            if "amount" in filters:
+                amount_filter = filters["amount"]
+                if isinstance(amount_filter, dict):
+                    if "gte" in amount_filter and "lte" in amount_filter:
+                        if amount_filter["gte"] > amount_filter["lte"]:
+                            errors.append("amount: gte must be <= lte")
         
         return errors
     

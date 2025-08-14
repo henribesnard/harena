@@ -12,6 +12,7 @@ the detected intent.
 from __future__ import annotations
 
 import json
+import time
 import logging
 import time
 from typing import Any, Dict, List, Optional
@@ -51,6 +52,7 @@ ALLOWED_INTENTS = [
 
 class LLMIntentAgent(BaseFinancialAgent):
     """Intent detection agent that relies solely on the DeepSeek LLM."""
+    """Intent detection agent relying solely on DeepSeek LLM."""
 
     def __init__(
         self,
@@ -115,6 +117,19 @@ class LLMIntentAgent(BaseFinancialAgent):
         """
 
         start = time.perf_counter()
+
+    async def _execute_operation(
+        self, input_data: Dict[str, Any], user_id: int
+    ) -> Dict[str, Any]:
+        user_message = input_data.get("user_message", "")
+        if not user_message:
+            raise ValueError("user_message is required for intent detection")
+        return await self.detect_intent(user_message, user_id)
+
+    async def detect_intent(
+        self, user_message: str, user_id: int
+    ) -> Dict[str, Any]:
+        start_time = time.perf_counter()
         response = await self.deepseek_client.generate_response(
             messages=[
                 {"role": "system", "content": self.config.system_message},
@@ -125,7 +140,6 @@ class LLMIntentAgent(BaseFinancialAgent):
             user=str(user_id),
             use_cache=True,
         )
-
         try:
             data = json.loads(response.content)
         except Exception as err:  # pragma: no cover - defensive fallback
@@ -169,11 +183,24 @@ class LLMIntentAgent(BaseFinancialAgent):
                 "intent_type": intent_result.intent_type,
                 "entities": [
                     e.model_dump() if hasattr(e, "model_dump") else e.__dict__
+        intent_result = self._parse_llm_output(response.content)
+        intent_result.processing_time_ms = (time.perf_counter() - start_time) * 1000
+
+        return {
+            "content": response.content,
+            "metadata": {
+                "intent_result": intent_result,
+                "detection_method": intent_result.method,
+                "confidence": intent_result.confidence,
+                "intent_type": intent_result.intent_type,
+                "entities": [
+                    e.model_dump() if hasattr(e, "model_dump") else e.dict()
                     for e in intent_result.entities
                 ],
                 "intent_detected": intent_result.intent_type,
                 "entities_extracted": [
                     e.model_dump() if hasattr(e, "model_dump") else e.__dict__
+                    e.model_dump() if hasattr(e, "model_dump") else e.dict()
                     for e in intent_result.entities
                 ],
             },
@@ -198,4 +225,66 @@ class LLMIntentAgent(BaseFinancialAgent):
         if intent == "GREETING":
             return IntentCategory.GREETING
         return IntentCategory.GENERAL_QUESTION
+
+    def _parse_llm_output(self, llm_output: str) -> IntentResult:
+        """Parse LLM JSON output into IntentResult."""
+        try:
+            data = json.loads(llm_output)
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to parse LLM output: %s", exc)
+            return IntentResult(
+                intent_type="GENERAL",
+                intent_category=IntentCategory.GENERAL_QUESTION,
+                confidence=0.0,
+                entities=[],
+                method=DetectionMethod.AI_PARSE_FALLBACK,
+                processing_time_ms=0.0,
+            )
+
+        intent_type = data.get("intent", "GENERAL").upper()
+        entities_data = data.get("entities", [])
+        entities: List[FinancialEntity] = []
+        for ent in entities_data:
+            ent_type_str = str(ent.get("entity_type") or ent.get("type", "OTHER")).upper()
+            value = ent.get("value")
+            try:
+                entity_type = EntityType(ent_type_str)
+            except ValueError:
+                entity_type = EntityType.OTHER
+            entities.append(
+                FinancialEntity(
+                    entity_type=entity_type,
+                    raw_value=str(value),
+                    normalized_value=value,
+                    confidence=0.9,
+                    start_position=None,
+                    end_position=None,
+                    detection_method=DetectionMethod.LLM_BASED,
+                )
+            )
+
+        if intent_type in {
+            "SEARCH_BY_MERCHANT",
+            "SEARCH_BY_CATEGORY",
+            "SEARCH_BY_TEXT",
+            "COUNT_TRANSACTIONS",
+        }:
+            category = IntentCategory.TRANSACTION_SEARCH
+        elif intent_type in {"SPENDING_ANALYSIS", "CATEGORY_ANALYSIS"}:
+            category = IntentCategory.SPENDING_ANALYSIS
+        elif intent_type in {"BALANCE_CHECK", "BALANCE_INQUIRY"}:
+            category = IntentCategory.BALANCE_INQUIRY
+        elif intent_type == "GREETING":
+            category = IntentCategory.GREETING
+        else:
+            category = IntentCategory.GENERAL_QUESTION
+
+        return IntentResult(
+            intent_type=intent_type,
+            intent_category=category,
+            confidence=data.get("confidence", 0.9),
+            entities=entities,
+            method=DetectionMethod.LLM_BASED,
+            processing_time_ms=0.0,
+        )
 

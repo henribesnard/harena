@@ -31,6 +31,7 @@ except ImportError:
 if TYPE_CHECKING or AUTOGEN_AVAILABLE:
     from .base_financial_agent import BaseFinancialAgent
     from .llm_intent_agent import LLMIntentAgent
+    from .enhanced_llm_intent_agent import EnhancedLLMIntentAgent
     from .advanced_llm_intent_agent import AdvancedLLMIntentAgent
     from .search_query_agent import SearchQueryAgent
     from .response_agent import ResponseAgent
@@ -39,6 +40,7 @@ if TYPE_CHECKING or AUTOGEN_AVAILABLE:
 __all__ = [
     "BaseFinancialAgent",
     "LLMIntentAgent",
+    "EnhancedLLMIntentAgent",
     "AdvancedLLMIntentAgent",
     "SearchQueryAgent",
     "ResponseAgent",
@@ -66,6 +68,7 @@ def get_available_agents():
     return [
         "BaseFinancialAgent",
         "LLMIntentAgent",
+        "EnhancedLLMIntentAgent",
         "AdvancedLLMIntentAgent",
         "SearchQueryAgent",
         "ResponseAgent",

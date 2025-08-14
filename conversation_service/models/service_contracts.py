@@ -358,6 +358,9 @@ class SearchServiceQuery(BaseModel):
                 },
 
                     "categories": ["food", "transport"]
+
+                    "category_name": ["food", "transport"]
+
                 }
             }
         }

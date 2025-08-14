@@ -29,7 +29,7 @@ from ..models.financial_models import (
 )
 from ..utils.intent_cache import IntentResultCache
 from ..prompts.intent_prompts import (
-    INTENT_FALLBACK_SYSTEM_PROMPT,
+    INTENT_SYSTEM_PROMPT,
     INTENT_EXAMPLES_FEW_SHOT,
 )
 
@@ -80,7 +80,7 @@ class LLMIntentAgent(BaseFinancialAgent):
         """Construct the system prompt given to the LLM."""
 
         return (
-            f"{INTENT_FALLBACK_SYSTEM_PROMPT}\n\n{INTENT_EXAMPLES_FEW_SHOT}"
+            f"{INTENT_SYSTEM_PROMPT}\n\n{INTENT_EXAMPLES_FEW_SHOT}"
             "\n\nRéponds uniquement avec un JSON strict."
         )
 
@@ -137,6 +137,11 @@ class LLMIntentAgent(BaseFinancialAgent):
                 logger.warning("DeepSeek call failed (attempt %s): %s", attempt + 1, err)
                 await asyncio.sleep(2 ** attempt)
         if response is None:
+            raise RuntimeError("LLM call failed")
+        try:
+            data = json.loads(response.content)
+        except Exception as err:  # pragma: no cover - defensive handling
+
             raise RuntimeError("LLM did not return a response")
             raise RuntimeError("LLM response unavailable")
 

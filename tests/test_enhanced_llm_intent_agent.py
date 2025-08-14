@@ -45,6 +45,7 @@ class FallbackAgent:
             intent_category=IntentCategory.GENERAL_QUESTION,
             confidence=1.0,
             entities=[],
+            method=DetectionMethod.AI_DETECTION,
             method=DetectionMethod.AI_FALLBACK,
 
             method=DetectionMethod.FALLBACK,
@@ -54,6 +55,7 @@ class FallbackAgent:
             "content": "{}",
             "metadata": {
                 "intent_result": intent_result,
+                "detection_method": DetectionMethod.AI_DETECTION,
                 "detection_method": DetectionMethod.AI_FALLBACK,
 
                 "detection_method": DetectionMethod.FALLBACK,

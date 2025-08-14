@@ -1,5 +1,11 @@
-from pydantic import BaseModel, EmailStr, Field, model_validator, ConfigDict
-from pydantic import BaseModel, EmailStr, Field, field_validator, FieldValidationInfo
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    FieldValidationInfo,
+    ConfigDict,
+    field_validator,
+)
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -16,15 +22,12 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     confirm_password: str
 
-    @model_validator(mode="after")
-    def passwords_match(cls, values):
-        if values.password != values.confirm_password:
-    @field_validator('confirm_password')
+    @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v: str, info: FieldValidationInfo):
-        if info.data.get('password') and v != info.data['password']:
-            raise ValueError('Passwords do not match')
-        return values
+        if info.data.get("password") and v != info.data["password"]:
+            raise ValueError("Passwords do not match")
+        return v
 
 
 # Mise à jour d'utilisateur

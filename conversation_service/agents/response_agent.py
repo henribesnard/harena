@@ -216,7 +216,10 @@ class ResponseAgent(BaseFinancialAgent):
             search_response_data = (
                 search_results_dict.get("metadata", {}).get("search_response", {})
             )
-            search_response = SearchServiceResponse(**search_response_data)
+            if isinstance(search_response_data, SearchServiceResponse):
+                search_response = search_response_data
+            else:
+                search_response = SearchServiceResponse(**search_response_data)
 
             # Format search results into readable text
             formatted_results = await self._format_search_results(search_response)
@@ -315,7 +318,7 @@ class ResponseAgent(BaseFinancialAgent):
         
         # Transaction list
         if search_response.results:
-            transactions = [result.source for result in search_response.results]
+            transactions = [result.to_source() for result in search_response.results]
             transaction_list = self.formatter.format_transaction_list(transactions)
             sections.append(f"\n**Détail des transactions:**\n{transaction_list}")
         

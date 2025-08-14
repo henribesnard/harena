@@ -522,6 +522,13 @@ class TransactionResult(BaseModel):
             return str(v)
         return v
 
+    def to_source(self) -> Dict[str, Any]:
+        """Return transaction data using alias names for display."""
+        dump = getattr(self, "model_dump", None)
+        if callable(dump):
+            return dump(by_alias=True)
+        return self.dict(by_alias=True)
+
     model_config = {
         "populate_by_name": True,
         "json_schema_extra": {

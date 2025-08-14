@@ -112,8 +112,6 @@ class DetectionMethod(str, Enum):
     AI_FALLBACK = "ai_fallback"
     AI_ERROR_FALLBACK = "ai_error_fallback"
     AI_PARSE_FALLBACK = "ai_parse_fallback"
-    EXACT_RULE = "exact_rule"
-    PATTERN_RULE = "pattern_rule"
     AI_DETECTION = "ai_detection"
 
 
@@ -175,7 +173,7 @@ class FinancialEntity(BaseModel):
     )
     
     detection_method: DetectionMethod = Field(
-        default=DetectionMethod.HYBRID,
+        default=DetectionMethod.LLM_BASED,
         description="Method used for entity detection"
     )
     

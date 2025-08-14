@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List
+from pydantic import BaseModel, field_validator
+from typing import Optional
 
 
 class ConnectSessionRequest(BaseModel):
@@ -10,7 +10,8 @@ class ConnectSessionRequest(BaseModel):
     provider_id: Optional[int] = None
     item_id: Optional[int] = None
 
-    @validator('context')
+    @field_validator('context')
+    @classmethod
     def context_length(cls, v):
         if v and len(v) > 100:
             raise ValueError('context must be 100 characters or less')

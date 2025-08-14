@@ -469,8 +469,9 @@ class MetricsCollector:
     def record_intent_detection(self, method: str, confidence: float, success: bool = True, **labels) -> None:
         """
         Enregistre une détection d'intention.
-        
+
         Args:
+            method: Méthode utilisée (llm_based, ai_fallback)
             method: Méthode utilisée (llm_based, pattern_matching, ner_model)
             confidence: Score de confiance
             success: Succès de la détection

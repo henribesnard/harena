@@ -24,7 +24,7 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from ..core.deepseek_client import DeepSeekClient
-from ..agents.hybrid_intent_agent import HybridIntentAgent
+from ..agents.llm_intent_agent import LLMIntentAgent
 from ..agents.search_query_agent import SearchQueryAgent
 from ..agents.response_agent import ResponseAgent
 from .conversation_manager import ConversationManager
@@ -445,7 +445,7 @@ class MVPTeamManager:
         """Initialize all specialized agents."""
         try:
             # Intent detection agent
-            self.agents["intent_agent"] = HybridIntentAgent(
+            self.agents["intent_agent"] = LLMIntentAgent(
                 deepseek_client=self.deepseek_client
             )
             

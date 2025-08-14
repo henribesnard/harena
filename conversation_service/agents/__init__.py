@@ -7,7 +7,7 @@ generation. All agents are optimized for DeepSeek LLM integration.
 
 Agents:
     - BaseFinancialAgent: Base class for all financial agents
-    - HybridIntentAgent: Hybrid intent detection (rules + AI fallback)
+    - LLMIntentAgent: Intent detection powered by DeepSeek LLM
     - SearchQueryAgent: Search service interface + entity extraction
     - ResponseAgent: Contextual response generation
     - OrchestratorAgent: Multi-agent workflow coordination
@@ -31,6 +31,7 @@ except ImportError:
 if TYPE_CHECKING or AUTOGEN_AVAILABLE:
     from .base_financial_agent import BaseFinancialAgent
     from .hybrid_intent_agent import HybridIntentAgent
+
     from .llm_intent_agent import LLMIntentAgent
     from .search_query_agent import SearchQueryAgent
     from .response_agent import ResponseAgent

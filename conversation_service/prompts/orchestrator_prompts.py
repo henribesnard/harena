@@ -53,10 +53,10 @@ Coordonner intelligemment une équipe d'agents spécialisés pour traiter les de
 
 ÉQUIPE D'AGENTS DISPONIBLES :
 
-1. **HybridIntentAgent** - Détection d'intention hybride
+1. **LLMIntentAgent** - Détection d'intention via LLM
    - Spécialité : Classification intentions + extraction entités
-   - Mode : Règles prioritaires → Fallback IA DeepSeek
-   - Performance : <10ms (règles) / <200ms (IA)
+   - Mode : DeepSeek LLM uniquement
+   - Performance : <200ms (IA)
    - Fiabilité : 95%+ sur intentions financières courantes
 
 2. **SearchQueryAgent** - Génération requêtes Search Service
@@ -423,7 +423,7 @@ def parse_orchestrator_decision(response: str) -> Dict[str, Any]:
             "workflow_type": "standard",
             "next_step": "intent_detection",
             "agent_assignments": {
-                "primary_agent": "hybrid_intent_agent"
+                "primary_agent": "llm_intent_agent"
             },
             "parameters": {
                 "timeout_ms": 5000,
@@ -558,7 +558,7 @@ def create_workflow_decision(
         >>> decision = create_workflow_decision(
         ...     "standard",
         ...     WorkflowStep.INTENT_DETECTION,
-        ...     "hybrid_intent_agent",
+        ...     "llm_intent_agent",
         ...     "Message complexe nécessitant détection IA"
         ... )
     """
@@ -660,7 +660,7 @@ DÉCISION:
   "workflow_type": "standard",
   "next_step": "intent_detection",
   "agent_assignments": {
-    "primary_agent": "hybrid_intent_agent",
+    "primary_agent": "llm_intent_agent",
     "fallback_agent": "response_agent"
   },
   "parameters": {
@@ -756,7 +756,7 @@ WORKFLOW_TYPES = {
 }
 
 AGENT_CAPABILITIES = {
-    "hybrid_intent_agent": {
+    "llm_intent_agent": {
         "speciality": "Intent detection + entity extraction",
         "avg_duration_ms": 150,
         "success_rate": 0.95,

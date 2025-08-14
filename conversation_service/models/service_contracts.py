@@ -47,73 +47,51 @@ __all__ = [
 class QueryMetadata(BaseModel):
     """
     Metadata for search queries sent to Search Service.
-    
+
     This model contains contextual information about the search query,
     including origin, user context, and processing requirements.
     """
-    
+
     query_id: str = Field(
         default_factory=lambda: str(uuid4()),
-        description="Unique identifier for this query"
+        description="Unique identifier for this query",
     )
-    
-    conversation_id: str = Field(
-        ...,
-        description="ID of the originating conversation"
-    )
-    
-    user_id: int = Field(
-        ...,
-        description="ID of the requesting user",
-        gt=0
-    )
-    
+
+    conversation_id: str = Field(..., description="ID of the originating conversation")
+
+    user_id: int = Field(..., description="ID of the requesting user", gt=0)
+
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the query was created"
+        default_factory=datetime.utcnow, description="When the query was created"
     )
-    
+
     intent_type: str = Field(
-        ...,
-        description="Detected intent that triggered this query",
-        min_length=1
+        ..., description="Detected intent that triggered this query", min_length=1
     )
-    
+
     language: str = Field(
         default="fr",
         description="Language of the original user message",
-        pattern=r"^[a-z]{2}$"
-    )
-    
-    priority: Literal["low", "normal", "high", "urgent"] = Field(
-        default="normal",
-        description="Processing priority level"
-    )
-    
-    timeout_ms: int = Field(
-        default=5000,
-        description="Maximum processing time allowed",
-        gt=0,
-        le=30000
-    )
-    
-    retry_count: int = Field(
-        default=0,
-        description="Number of retries attempted",
-        ge=0,
-        le=3
-    )
-    
-    source_agent: Optional[str] = Field(
-        default=None,
-        description="Name of the agent that generated this query"
+        pattern=r"^[a-z]{2}$",
     )
 
-    model_config = {
-        "json_encoders": {
-            datetime: lambda v: v.isoformat()
-        }
-    }
+    priority: Literal["low", "normal", "high", "urgent"] = Field(
+        default="normal", description="Processing priority level"
+    )
+
+    timeout_ms: int = Field(
+        default=5000, description="Maximum processing time allowed", gt=0, le=30000
+    )
+
+    retry_count: int = Field(
+        default=0, description="Number of retries attempted", ge=0, le=3
+    )
+
+    source_agent: Optional[str] = Field(
+        default=None, description="Name of the agent that generated this query"
+    )
+
+    model_config = {"json_encoders": {datetime: lambda v: v.isoformat()}}
 
     @field_validator("user_id")
     @classmethod
@@ -127,69 +105,51 @@ class QueryMetadata(BaseModel):
 class SearchParameters(BaseModel):
     """
     Configuration parameters for search behavior.
-    
+
     This model defines how the search should be performed, including
     result limits, sorting, and search strategy preferences.
     """
-    
+
     search_text: Optional[str] = Field(
         default=None,
         description="Text to search for in the Search Service",
     )
 
     max_results: int = Field(
-        default=50,
-        description="Maximum number of results to return",
-        gt=0,
-        le=1000
+        default=50, description="Maximum number of results to return", gt=0, le=1000
     )
-    
-    offset: int = Field(
-        default=0,
-        description="Number of results to skip",
-        ge=0
-    )
-    
+
+    offset: int = Field(default=0, description="Number of results to skip", ge=0)
+
     sort_by: Optional[str] = Field(
-        default="relevance",
-        description="Field to sort results by"
+        default="relevance", description="Field to sort results by"
     )
-    
-    sort_order: Literal["asc", "desc"] = Field(
-        default="desc",
-        description="Sort order"
-    )
-    
+
+    sort_order: Literal["asc", "desc"] = Field(default="desc", description="Sort order")
+
     include_highlights: bool = Field(
-        default=True,
-        description="Whether to include result highlights"
+        default=True, description="Whether to include result highlights"
     )
-    
+
     search_strategy: Literal["exact", "fuzzy", "semantic"] = Field(
         default="semantic",
         description="Strategy for search execution",
     )
-    
+
     boost_recent: bool = Field(
-        default=True,
-        description="Whether to boost recent results"
+        default=True, description="Whether to boost recent results"
     )
-    
+
     include_aggregations: bool = Field(
-        default=False,
-        description="Whether to include aggregation data"
+        default=False, description="Whether to include aggregation data"
     )
-    
+
     fuzzy_matching: bool = Field(
-        default=True,
-        description="Whether to enable fuzzy matching"
+        default=True, description="Whether to enable fuzzy matching"
     )
-    
+
     min_score: Optional[float] = Field(
-        default=None,
-        description="Minimum relevance score for results",
-        ge=0.0,
-        le=1.0
+        default=None, description="Minimum relevance score for results", ge=0.0, le=1.0
     )
 
     model_config = {
@@ -204,7 +164,7 @@ class SearchParameters(BaseModel):
                 "search_strategy": "semantic",
                 "boost_recent": True,
                 "fuzzy_matching": True,
-                "min_score": 0.1
+                "min_score": 0.1,
             }
         }
     }
@@ -213,7 +173,7 @@ class SearchParameters(BaseModel):
 class SearchFilters(BaseModel):
     """
     Filter specifications for search queries.
-    
+
     This model defines various filters that can be applied to narrow
     search results based on transaction attributes, dates, amounts, etc.
     """
@@ -226,69 +186,74 @@ class SearchFilters(BaseModel):
     amount: Optional[Dict[str, float]] = Field(
         default=None,
         description="Amount filter with 'gte' and 'lte' keys"
+
+    date_range: Optional[Dict[str, str]] = Field(
+        default=None, description="Date range filter with 'start' and 'end' keys"
     )
-    
-    categories: Optional[List[str]] = Field(
+
+    amount_range: Optional[Dict[str, float]] = Field(
+        default=None, description="Amount range filter with 'min' and 'max' keys"
+    )
+
+    category_name: Optional[List[str]] = Field(
         default=None,
-        description="List of transaction categories to include"
+        description="List of transaction categories to include",
+        alias="categories",  # Backwards compatibility
     )
-    
-    merchants: Optional[List[str]] = Field(
+
+    merchant_name: Optional[List[str]] = Field(
         default=None,
-        description="List of merchants to include"
+        description="List of merchants to include",
+        alias="merchants",  # Backwards compatibility
     )
-    
+
     transaction_types: Optional[List[str]] = Field(
-        default=None,
-        description="List of transaction types to include"
+        default=None, description="List of transaction types to include"
     )
-    
+
     account_ids: Optional[List[str]] = Field(
-        default=None,
-        description="List of account IDs to include"
+        default=None, description="List of account IDs to include"
     )
-    
+
     currencies: Optional[List[str]] = Field(
-        default=None,
-        description="List of currencies to include"
+        default=None, description="List of currencies to include"
     )
-    
+
     tags: Optional[List[str]] = Field(
-        default=None,
-        description="List of tags to include"
+        default=None, description="List of tags to include"
     )
-    
+
     exclude_categories: Optional[List[str]] = Field(
-        default=None,
-        description="Categories to exclude"
+        default=None, description="Categories to exclude"
     )
-    
+
     exclude_merchants: Optional[List[str]] = Field(
-        default=None,
-        description="Merchants to exclude"
+        default=None, description="Merchants to exclude"
     )
-    
+
     text_query: Optional[str] = Field(
         default=None,
         description="Free text query for description matching",
-        max_length=500
+        max_length=500,
     )
-    
+
     custom_filters: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Additional custom filters"
+        default=None, description="Additional custom filters"
     )
 
     user_id: Optional[int] = Field(
-        default=None,
-        description="Identifier of the user executing the query",
-        gt=0
+        default=None, description="Identifier of the user executing the query", gt=0
     )
 
     @field_validator("date")
     @classmethod
     def validate_date(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
         """Validate date filter has proper gte/lte."""
+
+    def validate_date_range(
+        cls, v: Optional[Dict[str, str]]
+    ) -> Optional[Dict[str, str]]:
+        """Validate date range has proper start and end."""
         if v is not None:
             if "gte" not in v and "lte" not in v:
                 raise ValueError("date must have at least 'gte' or 'lte' key")
@@ -300,6 +265,13 @@ class SearchFilters(BaseModel):
     @classmethod
     def validate_amount(cls, v: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
         """Validate amount filter has proper gte/lte."""
+
+    @field_validator("amount_range")
+    @classmethod
+    def validate_amount_range(
+        cls, v: Optional[Dict[str, float]]
+    ) -> Optional[Dict[str, float]]:
+        """Validate amount range has proper min and max."""
         if v is not None:
             if "gte" not in v and "lte" not in v:
                 raise ValueError("amount must have at least 'gte' or 'lte' key")
@@ -308,6 +280,7 @@ class SearchFilters(BaseModel):
         return v
 
     model_config = {
+        "populate_by_name": True,
         "json_schema_extra": {
             "example": {
                 "date": {
@@ -320,44 +293,44 @@ class SearchFilters(BaseModel):
                 },
                 "categories": ["food", "transport"],
                 "merchants": ["Carrefour", "SNCF"],
+
+                "date_range": {"start": "2024-01-01", "end": "2024-01-31"},
+                "amount_range": {"min": 100.0, "max": 1000.0},
+                "category_name": ["food", "transport"],
+                "merchant_name": ["Carrefour", "SNCF"],
                 "transaction_types": ["debit"],
-                "text_query": "restaurant paris"
+                "text_query": "restaurant paris",
             }
-        }
+        },
     }
 
 
 class AggregationRequest(BaseModel):
     """
     Request for data aggregations (optional).
-    
+
     This model defines aggregation requests for analytical queries,
     such as grouping by category, calculating sums, averages, etc.
     """
-    
+
     group_by: Optional[List[str]] = Field(
-        default=None,
-        description="Fields to group aggregations by"
+        default=None, description="Fields to group aggregations by"
     )
-    
+
     metrics: Optional[List[str]] = Field(
-        default=None,
-        description="List of metrics to calculate (sum, avg, count, etc.)"
+        default=None, description="List of metrics to calculate (sum, avg, count, etc.)"
     )
-    
+
     date_histogram: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="Date histogram configuration"
+        default=None, description="Date histogram configuration"
     )
-    
+
     top_values: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Configuration for top values aggregation"
+        default=None, description="Configuration for top values aggregation"
     )
-    
+
     custom_aggregations: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Custom aggregation definitions"
+        default=None, description="Custom aggregation definitions"
     )
 
     model_config = {
@@ -365,14 +338,8 @@ class AggregationRequest(BaseModel):
             "example": {
                 "group_by": ["category"],
                 "metrics": ["sum", "count", "avg"],
-                "date_histogram": {
-                    "field": "date",
-                    "interval": "month"
-                },
-                "top_values": {
-                    "field": "merchant",
-                    "size": 10
-                }
+                "date_histogram": {"field": "date", "interval": "month"},
+                "top_values": {"field": "merchant", "size": 10},
             }
         }
     }
@@ -381,29 +348,21 @@ class AggregationRequest(BaseModel):
 class SearchServiceQuery(BaseModel):
     """
     Complete search service request contract.
-    
+
     This is the main contract for requests sent from Conversation Service
     to Search Service, containing all necessary information for processing.
     """
-    
-    query_metadata: QueryMetadata = Field(
-        ...,
-        description="Metadata about the query"
-    )
-    
+
+    query_metadata: QueryMetadata = Field(..., description="Metadata about the query")
+
     search_parameters: SearchParameters = Field(
-        ...,
-        description="Search behavior configuration"
+        ..., description="Search behavior configuration"
     )
-    
-    filters: SearchFilters = Field(
-        ...,
-        description="Search filters to apply"
-    )
-    
+
+    filters: SearchFilters = Field(..., description="Search filters to apply")
+
     aggregations: Optional[AggregationRequest] = Field(
-        default=None,
-        description="Optional aggregation requests"
+        default=None, description="Optional aggregation requests"
     )
 
     model_config = {
@@ -413,13 +372,13 @@ class SearchServiceQuery(BaseModel):
                     "conversation_id": "550e8400-e29b-41d4-a716-446655440001",
                     "user_id": 12345,
                     "intent_type": "TRANSACTION_SEARCH_BY_DATE",
-                    "source_agent": "search_query_agent"
+                    "source_agent": "search_query_agent",
                 },
                 "search_parameters": {
                     "max_results": 20,
                     "sort_by": "date",
                     "sort_order": "desc",
-                    "search_strategy": "semantic"
+                    "search_strategy": "semantic",
                 },
                 "filters": {
                     "date": {
@@ -428,13 +387,18 @@ class SearchServiceQuery(BaseModel):
                     },
                     "categories": ["food", "transport"]
                 }
+                    "date_range": {"start": "2024-01-01", "end": "2024-01-31"},
+                    "category_name": ["food", "transport"],
+                },
             }
         }
     }
 
     def to_search_request(self) -> Dict[str, Any]:
         """Convert this query to the simplified SearchRequest schema."""
-        filters_dict = self.filters.dict(exclude_none=True) if self.filters else {}
+        filters_dict = (
+            self.filters.model_dump(exclude_none=True) if self.filters else {}
+        )
         return {
             "user_id": self.query_metadata.user_id,
             "query": self.search_parameters.search_text or "",
@@ -452,156 +416,100 @@ class SearchServiceQuery(BaseModel):
 class ResponseMetadata(BaseModel):
     """
     Metadata for search service responses.
-    
+
     This model contains information about the search execution,
     performance metrics, and result statistics.
     """
-    
-    query_id: str = Field(
-        ...,
-        description="ID of the original query"
-    )
-    
+
+    query_id: str = Field(..., description="ID of the original query")
+
     response_timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the response was generated"
-    )
-    
-    processing_time_ms: float = Field(
-        ...,
-        description="Time taken to process the query",
-        ge=0.0
-    )
-    
-    total_results: int = Field(
-        ...,
-        description="Total number of matching results",
-        ge=0
-    )
-    
-    returned_results: int = Field(
-        ...,
-        description="Number of results returned",
-        ge=0
-    )
-    
-    has_more_results: bool = Field(
-        ...,
-        description="Whether more results are available"
-    )
-    
-    search_strategy_used: str = Field(
-        ...,
-        description="Actual search strategy used"
-    )
-    
-    elasticsearch_took: Optional[int] = Field(
-        default=None,
-        description="Time Elasticsearch took (internal)",
-        ge=0
-    )
-    
-    cache_hit: bool = Field(
-        default=False,
-        description="Whether the result was served from cache"
-    )
-    
-    warnings: Optional[List[str]] = Field(
-        default=None,
-        description="Any warnings during processing"
-    )
-    
-    debug_info: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Debug information (only in development)"
+        default_factory=datetime.utcnow, description="When the response was generated"
     )
 
-    model_config = {
-        "json_encoders": {
-            datetime: lambda v: v.isoformat()
-        }
-    }
+    processing_time_ms: float = Field(
+        ..., description="Time taken to process the query", ge=0.0
+    )
+
+    total_results: int = Field(
+        ..., description="Total number of matching results", ge=0
+    )
+
+    returned_results: int = Field(..., description="Number of results returned", ge=0)
+
+    has_more_results: bool = Field(
+        ..., description="Whether more results are available"
+    )
+
+    search_strategy_used: str = Field(..., description="Actual search strategy used")
+
+    elasticsearch_took: Optional[int] = Field(
+        default=None, description="Time Elasticsearch took (internal)", ge=0
+    )
+
+    cache_hit: bool = Field(
+        default=False, description="Whether the result was served from cache"
+    )
+
+    warnings: Optional[List[str]] = Field(
+        default=None, description="Any warnings during processing"
+    )
+
+    debug_info: Optional[Dict[str, Any]] = Field(
+        default=None, description="Debug information (only in development)"
+    )
+
+    model_config = {"json_encoders": {datetime: lambda v: v.isoformat()}}
 
 
 class TransactionResult(BaseModel):
     """
     Individual transaction result from search.
-    
+
     This model represents a single transaction returned by the search service,
     with all relevant transaction data and search-specific metadata.
     """
-    
-    transaction_id: str = Field(
-        ...,
-        description="Unique transaction identifier"
-    )
-    
-    date: str = Field(
-        ...,
-        description="Transaction date (ISO format)"
-    )
-    
-    amount: float = Field(
-        ...,
-        description="Transaction amount"
-    )
-    
+
+    transaction_id: str = Field(..., description="Unique transaction identifier")
+
+    date: str = Field(..., description="Transaction date (ISO format)")
+
+    amount: float = Field(..., description="Transaction amount")
+
     currency: str = Field(
-        ...,
-        description="Transaction currency",
-        pattern=r"^[A-Z]{3}$"
+        ..., description="Transaction currency", pattern=r"^[A-Z]{3}$"
     )
-    
-    description: str = Field(
-        ...,
-        description="Transaction description"
-    )
-    
-    merchant: Optional[str] = Field(
-        default=None,
-        description="Merchant name"
-    )
-    
-    category: Optional[str] = Field(
-        default=None,
-        description="Transaction category"
-    )
-    
-    account_id: str = Field(
-        ...,
-        description="Account identifier"
-    )
-    
+
+    description: str = Field(..., description="Transaction description")
+
+    merchant: Optional[str] = Field(default=None, description="Merchant name")
+
+    category: Optional[str] = Field(default=None, description="Transaction category")
+
+    account_id: str = Field(..., description="Account identifier")
+
     transaction_type: Literal["debit", "credit"] = Field(
-        ...,
-        description="Type of transaction"
+        ..., description="Type of transaction"
     )
-    
+
     balance_after: Optional[float] = Field(
-        default=None,
-        description="Account balance after transaction"
+        default=None, description="Account balance after transaction"
     )
-    
+
     tags: Optional[List[str]] = Field(
-        default=None,
-        description="List of associated tags"
+        default=None, description="List of associated tags"
     )
-    
+
     metadata: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Additional transaction metadata"
+        default=None, description="Additional transaction metadata"
     )
-    
+
     relevance_score: Optional[float] = Field(
-        default=None,
-        description="Search relevance score",
-        ge=0.0,
-        le=1.0
+        default=None, description="Search relevance score", ge=0.0, le=1.0
     )
-    
+
     highlights: Optional[Dict[str, List[str]]] = Field(
-        default=None,
-        description="Highlighted text matches"
+        default=None, description="Highlighted text matches"
     )
 
     model_config = {
@@ -621,8 +529,8 @@ class TransactionResult(BaseModel):
                 "relevance_score": 0.95,
                 "highlights": {
                     "description": ["<em>CARREFOUR</em> PARIS 15"],
-                    "merchant": ["<em>Carrefour</em>"]
-                }
+                    "merchant": ["<em>Carrefour</em>"],
+                },
             }
         }
     }
@@ -631,31 +539,21 @@ class TransactionResult(BaseModel):
 class AggregationResult(BaseModel):
     """
     Results from aggregation requests (optional).
-    
+
     This model contains the results of data aggregations requested
     in the search query, such as category summaries, time-based groupings, etc.
     """
-    
+
     aggregation_type: str = Field(
-        ...,
-        description="Type of aggregation performed",
-        min_length=1
+        ..., description="Type of aggregation performed", min_length=1
     )
-    
-    results: Dict[str, Any] = Field(
-        ...,
-        description="Aggregation results data"
-    )
-    
-    total_count: int = Field(
-        ...,
-        description="Total count across all buckets",
-        ge=0
-    )
-    
+
+    results: Dict[str, Any] = Field(..., description="Aggregation results data")
+
+    total_count: int = Field(..., description="Total count across all buckets", ge=0)
+
     metadata: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Additional aggregation metadata"
+        default=None, description="Additional aggregation metadata"
     )
 
     model_config = {
@@ -664,16 +562,8 @@ class AggregationResult(BaseModel):
                 "aggregation_type": "category_summary",
                 "results": {
                     "buckets": [
-                        {
-                            "key": "food",
-                            "doc_count": 25,
-                            "total_amount": -1250.75
-                        },
-                        {
-                            "key": "transport",
-                            "doc_count": 12,
-                            "total_amount": -340.20
-                        }
+                        {"key": "food", "doc_count": 25, "total_amount": -1250.75},
+                        {"key": "transport", "doc_count": 12, "total_amount": -340.20},
                     ]
                 },
                 "total_count": 37,
@@ -681,6 +571,10 @@ class AggregationResult(BaseModel):
                     "date": "2024-01-01 to 2024-01-31",
                     "currency": "EUR"
                 }
+
+                    "date_range": "2024-01-01 to 2024-01-31",
+                    "currency": "EUR",
+                },
             }
         }
     }
@@ -689,53 +583,47 @@ class AggregationResult(BaseModel):
 class SearchServiceResponse(BaseModel):
     """
     Complete search service response contract.
-    
+
     This is the main contract for responses sent from Search Service
     back to Conversation Service, containing search results and metadata.
     """
-    
+
     response_metadata: ResponseMetadata = Field(
-        ...,
-        description="Metadata about the response"
-    )
-    
-    results: List[TransactionResult] = Field(
-        ...,
-        description="List of transaction results"
-    )
-    
-    aggregations: Optional[List[AggregationResult]] = Field(
-        default=None,
-        description="Optional aggregation results"
-    )
-    
-    success: bool = Field(
-        default=True,
-        description="Whether the search was successful"
-    )
-    
-    error_message: Optional[str] = Field(
-        default=None,
-        description="Error message if search failed"
-    )
-    
-    suggestions: Optional[List[str]] = Field(
-        default=None,
-        description="Suggestions for query improvement"
+        ..., description="Metadata about the response"
     )
 
-    @model_validator(mode='after')
-    def validate_error_consistency(self) -> 'SearchServiceResponse':
+    results: List[TransactionResult] = Field(
+        ..., description="List of transaction results"
+    )
+
+    aggregations: Optional[List[AggregationResult]] = Field(
+        default=None, description="Optional aggregation results"
+    )
+
+    success: bool = Field(default=True, description="Whether the search was successful")
+
+    error_message: Optional[str] = Field(
+        default=None, description="Error message if search failed"
+    )
+
+    suggestions: Optional[List[str]] = Field(
+        default=None, description="Suggestions for query improvement"
+    )
+
+    @model_validator(mode="after")
+    def validate_error_consistency(self) -> "SearchServiceResponse":
         """Validate error message consistency with success flag."""
         if not self.success and not self.error_message:
             raise ValueError("Error message is required when success is False")
         return self
-    
-    @model_validator(mode='after')
-    def validate_results_consistency(self) -> 'SearchServiceResponse':
+
+    @model_validator(mode="after")
+    def validate_results_consistency(self) -> "SearchServiceResponse":
         """Validate results consistency with metadata."""
         if len(self.results) != self.response_metadata.returned_results:
-            raise ValueError("Number of results must match returned_results in metadata")
+            raise ValueError(
+                "Number of results must match returned_results in metadata"
+            )
         return self
 
     def get_summary_stats(self) -> Dict[str, Any]:
@@ -748,13 +636,16 @@ class SearchServiceResponse(BaseModel):
                 "date": None,
                 "categories": [],
                 "merchants": []
+                "date_range": None,
+                "category_name": [],
+                "merchant_name": [],
             }
-        
+
         amounts = [r.amount for r in self.results]
         dates = [r.date for r in self.results]
         categories = list(set(r.category for r in self.results if r.category))
         merchants = list(set(r.merchant for r in self.results if r.merchant))
-        
+
         return {
             "total_transactions": len(self.results),
             "total_amount": sum(amounts),
@@ -765,21 +656,26 @@ class SearchServiceResponse(BaseModel):
             } if dates else None,
             "categories": categories,
             "merchants": merchants
+
+            "date_range": {"start": min(dates), "end": max(dates)} if dates else None,
+            "category_name": categories,
+            "merchant_name": merchants,
         }
-    
-    def filter_by_amount(self, min_amount: Optional[float] = None, 
-                        max_amount: Optional[float] = None) -> List[TransactionResult]:
+
+    def filter_by_amount(
+        self, min_amount: Optional[float] = None, max_amount: Optional[float] = None
+    ) -> List[TransactionResult]:
         """Filter results by amount range."""
         filtered = self.results
-        
+
         if min_amount is not None:
             filtered = [r for r in filtered if r.amount >= min_amount]
-        
+
         if max_amount is not None:
             filtered = [r for r in filtered if r.amount <= max_amount]
-        
+
         return filtered
-    
+
     def group_by_category(self) -> Dict[str, List[TransactionResult]]:
         """Group results by transaction category."""
         groups = {}
@@ -788,7 +684,7 @@ class SearchServiceResponse(BaseModel):
             if category not in groups:
                 groups[category] = []
             groups[category].append(result)
-        
+
         return groups
 
     model_config = {
@@ -801,7 +697,7 @@ class SearchServiceResponse(BaseModel):
                     "returned_results": 20,
                     "has_more_results": True,
                     "search_strategy_used": "semantic",
-                    "cache_hit": False
+                    "cache_hit": False,
                 },
                 "results": [
                     {
@@ -814,7 +710,7 @@ class SearchServiceResponse(BaseModel):
                         "category": "food",
                         "account_id": "acc_987654321",
                         "transaction_type": "debit",
-                        "relevance_score": 0.95
+                        "relevance_score": 0.95,
                     }
                 ],
                 "aggregations": [
@@ -825,18 +721,18 @@ class SearchServiceResponse(BaseModel):
                                 {
                                     "key": "food",
                                     "doc_count": 25,
-                                    "total_amount": -1250.75
+                                    "total_amount": -1250.75,
                                 }
                             ]
                         },
-                        "total_count": 25
+                        "total_count": 25,
                     }
                 ],
                 "success": True,
                 "suggestions": [
                     "Try broadening your date range for more results",
-                    "Consider searching for similar merchants like 'Monoprix'"
-                ]
+                    "Consider searching for similar merchants like 'Monoprix'",
+                ],
             }
         }
     }
@@ -844,69 +740,72 @@ class SearchServiceResponse(BaseModel):
 
 # Utility functions for contract validation and conversion
 
+
 def validate_search_query_contract(query_dict: Dict[str, Any]) -> SearchServiceQuery:
     """
     Validate and convert dictionary to SearchServiceQuery.
-    
+
     Args:
         query_dict: Dictionary representation of query
-        
+
     Returns:
         Validated SearchServiceQuery instance
-        
+
     Raises:
         ValidationError: If validation fails
     """
     return SearchServiceQuery(**query_dict)
 
 
-def validate_search_response_contract(response_dict: Dict[str, Any]) -> SearchServiceResponse:
+def validate_search_response_contract(
+    response_dict: Dict[str, Any],
+) -> SearchServiceResponse:
     """
     Validate and convert dictionary to SearchServiceResponse.
-    
+
     Args:
         response_dict: Dictionary representation of response
-        
+
     Returns:
         Validated SearchServiceResponse instance
-        
+
     Raises:
         ValidationError: If validation fails
     """
     return SearchServiceResponse(**response_dict)
 
 
-def create_minimal_query(conversation_id: str, user_id: int, intent_type: str) -> SearchServiceQuery:
+def create_minimal_query(
+    conversation_id: str, user_id: int, intent_type: str
+) -> SearchServiceQuery:
     """
     Create a minimal search query with default parameters.
-    
+
     Args:
         conversation_id: ID of the conversation
         user_id: ID of the user
         intent_type: Detected intent type
-        
+
     Returns:
         SearchServiceQuery with minimal configuration
     """
     return SearchServiceQuery(
         query_metadata=QueryMetadata(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            intent_type=intent_type
+            conversation_id=conversation_id, user_id=user_id, intent_type=intent_type
         ),
         search_parameters=SearchParameters(),
-        filters=SearchFilters()
+        filters=SearchFilters(),
     )
 
 
 def create_error_response(query_id: str, error_message: str) -> SearchServiceResponse:
     """
     Create an error response for failed searches.
-    
+
     Args:
         query_id: ID of the original query
         error_message: Description of the error
-        
+
     Returns:
         SearchServiceResponse indicating failure
     """
@@ -917,9 +816,9 @@ def create_error_response(query_id: str, error_message: str) -> SearchServiceRes
             total_results=0,
             returned_results=0,
             has_more_results=False,
-            search_strategy_used="none"
+            search_strategy_used="none",
         ),
         results=[],
         success=False,
-        error_message=error_message
+        error_message=error_message,
     )

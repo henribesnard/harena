@@ -33,6 +33,7 @@ if TYPE_CHECKING or AUTOGEN_AVAILABLE:
     from .hybrid_intent_agent import HybridIntentAgent
 
     from .llm_intent_agent import LLMIntentAgent
+    from .advanced_llm_intent_agent import AdvancedLLMIntentAgent
     from .search_query_agent import SearchQueryAgent
     from .response_agent import ResponseAgent
     from .orchestrator_agent import OrchestratorAgent
@@ -41,6 +42,7 @@ __all__ = [
     "BaseFinancialAgent",
     "HybridIntentAgent",
     "LLMIntentAgent",
+    "AdvancedLLMIntentAgent",
     "SearchQueryAgent",
     "ResponseAgent",
     "OrchestratorAgent"
@@ -68,6 +70,7 @@ def get_available_agents():
         "BaseFinancialAgent",
         "HybridIntentAgent",
         "LLMIntentAgent",
+        "AdvancedLLMIntentAgent",
         "SearchQueryAgent",
         "ResponseAgent",
         "OrchestratorAgent"

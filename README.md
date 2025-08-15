@@ -57,3 +57,11 @@ Example response:
   "entities": [{"entity_type": "MERCHANT", "value": "AMAZON"}]
 }
 ```
+
+## Restes à faire
+
+- Trouver une solution efficace pour la détection d'intentions.
+- Revoir le workflow de synchronisation : est-il nécessaire d'enregistrer les données dans une base relationnelle avant de les propager vers Elasticsearch ?
+- Réduire la latence des réponses.
+- Ajouter un endpoint pour les réponses en streaming.
+

@@ -19,6 +19,7 @@ from conversation_service.models.service_contracts import (
 )
 import asyncio
 import pytest
+from datetime import datetime, timedelta
 
 try:
     from search_service.core.search_engine import SearchEngine
@@ -100,6 +101,42 @@ def test_generate_search_contract_deduplicates_terms():
     assert "merchant_name" not in request["filters"]
     assert "user_id" not in request["filters"]
     assert request["user_id"] == 1
+
+
+def test_relative_date_current_month():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.RELATIVE_DATE,
+                raw_value="ce mois",
+                normalized_value="current_month",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "dépenses ce mois", user_id=1)
+    )
+    request = search_query.to_search_request()
+    date_filter = request["filters"].get("date")
+
+    now = datetime.utcnow()
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    end = next_month - timedelta(days=1)
+
+    assert date_filter["gte"] == start.strftime("%Y-%m-%d")
+    assert date_filter["lte"] == end.strftime("%Y-%m-%d")
 
 
 def test_execute_search_query_converts_fields():

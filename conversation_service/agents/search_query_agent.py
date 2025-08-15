@@ -21,6 +21,7 @@ import re
 import json
 import httpx
 from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 
 from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
@@ -38,6 +39,25 @@ from ..utils.validators import ContractValidator
 logger = logging.getLogger(__name__)
 # Dedicated logger for security/audit events
 audit_logger = logging.getLogger("audit")
+ 
+
+def resolve_relative_date(normalized_value: str) -> Dict[str, Dict[str, str]]:
+    """Resolve a relative date keyword into an absolute date range."""
+    now = datetime.utcnow()
+    value = normalized_value.lower()
+
+    if value == "current_month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        end = next_month - timedelta(days=1)
+    elif value == "current_week":
+        start = now - timedelta(days=now.weekday())
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=6)
+    else:
+        return {}
+
+    return {"date": {"gte": start.strftime("%Y-%m-%d"), "lte": end.strftime("%Y-%m-%d")}}
 
 
 class QueryOptimizer:
@@ -174,6 +194,13 @@ class QueryOptimizer:
 
                 if date:
                     date_filters["date"] = date
+                    break
+            if entity.entity_type == EntityType.RELATIVE_DATE and isinstance(
+                entity.normalized_value, str
+            ):
+                relative = resolve_relative_date(str(entity.normalized_value))
+                if relative:
+                    date_filters.update(relative)
                     break
 
         return date_filters

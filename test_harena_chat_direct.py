@@ -1,7 +1,7 @@
 """
-Test minimal pour Harena : login → chat → vérifications.
-Affiche l’authentification, l’accès au chat, l’utilisation du MockIntentAgent,
-l’intention détectée, la requête envoyée au SearchService et le résultat obtenu.
+Test minimal pour Harena : login → chat → vérifications.
+Affiche l'authentification, l'accès au chat, l'utilisation du MockIntentAgent,
+l'intention détectée, la requête envoyée au SearchService et le résultat obtenu.
 """
 
 import base64
@@ -43,6 +43,7 @@ def main() -> None:
     chat_data = chat_resp.json()
     print("✅ Ok accès au chat")
     print(f"🗨️ Question posée : {QUESTION}")
+    print(f"💬 Réponse conversation : {chat_data['message']}")   # <— ligne ajoutée
 
     intent_result = chat_data["metadata"]["intent_result"]
     print(f"🤖 Intention détectée : {intent_result['intent_type']}")
@@ -63,7 +64,7 @@ def main() -> None:
     else:
         print("❌ Mock non utilisé (agent_type inconnu)")
 
-    # ----- RECHERCHE EFFECTUÉE PAR L’AGENT ----------------------------------
+    # ----- RECHERCHE EFFECTUÉE PAR L'AGENT ----------------------------------
     merchant = next(
         (e["normalized_value"] for e in intent_result.get("entities", []) if e["entity_type"] == "MERCHANT"),
         None,

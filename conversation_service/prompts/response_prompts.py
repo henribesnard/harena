@@ -52,6 +52,8 @@ MÉTADONNÉES DE LA RECHERCHE :
 - Temps d'exécution : {execution_time}ms
 - Type de requête : {query_type}
 
+DATE ACTUELLE : {current_date}
+
 {context_section}
 
 OBJECTIF : Créer une réponse qui répond précisément à la question de l'utilisateur, en utilisant les données trouvées de manière claire et actionnable.
@@ -92,7 +94,8 @@ def format_response_prompt(
     user_message: str,
     search_results: Dict[str, Any],
     context: str = "",
-    user_profile: Optional[Dict[str, Any]] = None
+    user_profile: Optional[Dict[str, Any]] = None,
+    current_date: Optional[str] = None,
 ) -> str:
     """Formate le prompt complet pour la génération de réponse finale."""
     if not user_message or not user_message.strip():
@@ -118,6 +121,7 @@ def format_response_prompt(
         total_results=total_results,
         execution_time=processing_time,
         query_type=query_type,
+        current_date=current_date or "",
         context_section=context_section
     )
 

@@ -405,16 +405,25 @@ class ResponseAgent(BaseFinancialAgent):
             )
             return DeepSeekResponse(content=fallback, raw=None)
     
-    def _build_response_prompt(self, user_message: str, formatted_results: str, 
+    def _build_response_prompt(self, user_message: str, formatted_results: str,
                               conversation_context: str) -> str:
         """Build the complete prompt for response generation."""
-        return f"""Question utilisateur: "{user_message}"
+        current_date = datetime.utcnow().strftime("%d/%m/%Y")
+        no_results_instruction = ""
+        if "Aucun résultat" in formatted_results:
+            no_results_instruction = "Aucune transaction trouvée pour le mois en cours."
+
+        return f"""Nous sommes le {current_date}.
+
+Question utilisateur: "{user_message}"
 
 Résultats de recherche:
 {formatted_results}
 
 Contexte conversationnel:
 {conversation_context}
+
+{no_results_instruction}
 
 Génère une réponse naturelle et utile qui:
 1. Répond directement à la question

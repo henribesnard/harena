@@ -12,7 +12,6 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from enum import Enum
-import argparse
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -462,14 +461,31 @@ class ImprovedIntentDetector:
 
 # ==================== ÉVALUATION ====================
 
-def evaluate(detector, dataset):
-    """Exécute la boucle de test et retourne les prédictions et succès."""
 
-    test_questions = list(dataset.keys())
+def compute_accuracy(predictions, expected):
+    """Calcule précision, rappel et F1."""
 
-def main(use_model: bool = False, debug: bool = False):
+    total = len(expected)
+    true_positive = sum(
+        1 for q, p in predictions.items()
+        if q in expected and p == expected[q]["intent_type"]
+    )
 
-def main(model_name: str):
+    precision = true_positive / len(predictions) if predictions else 0.0
+    recall = true_positive / total if total else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+
+# ==================== FONCTION PRINCIPALE ====================
+
+
+def main(
+    use_model: bool = False,
+    debug: bool = False,
+    model_name: str = os.getenv("MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"),
+) -> int:
     """Test amélioré avec meilleure gestion d'erreurs"""
 
     print("=" * 80)
@@ -484,31 +500,16 @@ def main(model_name: str):
         mode_desc += " (DEBUG)"
     print(f"Mode : {mode_desc}\n")
 
-    detector = ImprovedIntentDetector(use_model=use_model, debug=debug)
-    
-    print("🔧 OPTIONS DE TEST:")
-    print("1. Mock uniquement (rapide)")
-    print("2. Mock + Modèle (nécessite 4-6GB RAM)")
-    print("3. Mock + Modèle avec DEBUG")
-    print()
-    
-    choice = input("Votre choix (1, 2 ou 3) : ").strip()
-    use_model = choice in ["2", "3"]
-    debug = choice == "3"
-    
-    print()
     detector = ImprovedIntentDetector(
         use_model=use_model, debug=debug, model_name=model_name
     )
-    
-    # Questions de test sélectionnées
+
     test_questions = list(MOCK_INTENT_RESPONSES.keys())
-    
     print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
 
     successes = 0
     latencies = []
-    predictions = {}
+    predictions: Dict[str, Optional[str]] = {}
 
     for i, query in enumerate(test_questions, 1):
         print(f"\n[{i}/{len(test_questions)}] 💬 {query}")
@@ -552,82 +553,38 @@ def main(model_name: str):
         print(f"   Latence max : {max(latencies):.1f}ms")
 
     print("\n✅ Test terminé!")
-    return predictions, successes
-
-
-def compute_accuracy(predictions, expected):
-    """Calcule précision, rappel et F1."""
-
-    total = len(expected)
-    true_positive = sum(
-        1 for q, p in predictions.items()
-        if q in expected and p == expected[q]["intent_type"]
-    )
-
-    precision = true_positive / len(predictions) if predictions else 0.0
-    recall = true_positive / total if total else 0.0
-    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
-
-    return {"precision": precision, "recall": recall, "f1": f1}
-
-# ==================== FONCTION PRINCIPALE ====================
-
-def main():
-    """Test amélioré avec meilleure gestion d'erreurs"""
-    
-    print("=" * 80)
-    print("🧪 TEST AMÉLIORÉ - DÉTECTION D'INTENTION PHI-3.5")
-    print("=" * 80)
-    print(f"📅 Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 80)
-    print()
-    
-    print("🔧 OPTIONS DE TEST:")
-    print("1. Mock uniquement (rapide)")
-    print("2. Mock + Modèle (nécessite 4-6GB RAM)")
-    print("3. Mock + Modèle avec DEBUG")
-    print()
-    
-    choice = input("Votre choix (1, 2 ou 3) : ").strip()
-    use_model = choice in ["2", "3"]
-    debug = choice == "3"
-    
-    print()
-    detector = ImprovedIntentDetector(use_model=use_model, debug=debug)
-
-    predictions, successes = evaluate(detector, MOCK_INTENT_RESPONSES)
     metrics = compute_accuracy(predictions, MOCK_INTENT_RESPONSES)
-
     print(f"\nScore global (F1) : {metrics['f1']:.2f}")
 
     threshold = 0.8
-    return 0 if metrics['f1'] >= threshold else 1
+    return 0 if metrics["f1"] >= threshold else 1
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test de détection d'intention")
     parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
     parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
-    args = parser.parse_args()
-
-    try:
-        main(use_model=args.use_model, debug=args.debug)
-    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model-name",
         default=os.getenv("MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"),
         help="Nom ou chemin du modèle à utiliser (peut être local ou sur HuggingFace)",
     )
     args = parser.parse_args()
-    try:
-        sys.exit(main())
 
-        main(model_name=args.model_name)
+    try:
+        sys.exit(
+            main(
+                use_model=args.use_model,
+                debug=args.debug,
+                model_name=args.model_name,
+            )
+        )
     except KeyboardInterrupt:
         print("\n\n⚠️ Test interrompu")
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Erreur : {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

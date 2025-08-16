@@ -14,6 +14,20 @@ Chaque fichier de test peut également être lancé directement :
 python test_metrics_endpoint.py
 ```
 
+## Test du détecteur d'intentions avec un modèle personnalisé
+
+Le script `test_model.py` utilise par défaut le modèle
+`microsoft/Phi-3.5-mini-instruct`. Pour essayer d'autres poids (locaux ou sur
+HuggingFace), passez le nom du modèle en argument ou via la variable
+d'environnement `MODEL_NAME` :
+
+```bash
+python test_model.py --model-name my-org/mon-modele
+# ou
+MODEL_NAME=/chemin/vers/mon-modele python test_model.py
+```
+
+
 ## Service startup
 
 The conversation service now performs a full agent health check during

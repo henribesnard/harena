@@ -75,6 +75,44 @@ MOCK_INTENT_RESPONSES = {
     }
 }
 
+# ==================== Gabarit de prompt ====================
+
+PROMPT_TEMPLATE = """<|system|>
+You are a financial intent classifier. Analyze the user query and return a JSON object.
+
+Intent types: TRANSACTION_SEARCH, SPENDING_ANALYSIS, ACCOUNT_BALANCE, BUDGET_TRACKING, CONVERSATIONAL
+Categories: FINANCIAL_QUERY, GREETING, FILTER_REQUEST, GOAL_TRACKING
+Entity types: AMOUNT, DATE, MERCHANT, CATEGORY, ACCOUNT
+
+Example 1:
+Query: "Show my Netflix transactions"
+Output: {"intent_type": "TRANSACTION_SEARCH", "intent_category": "FINANCIAL_QUERY", "confidence": 0.95, "entities": [{"entity_type": "MERCHANT", "raw_value": "Netflix", "normalized_value": "netflix", "confidence": 0.98}]}
+
+Example 2:
+Query: "What's my balance?"
+Output: {"intent_type": "ACCOUNT_BALANCE", "intent_category": "FINANCIAL_QUERY", "confidence": 0.96, "entities": []}
+
+Example 3:
+Query: "Hello"
+Output: {"intent_type": "CONVERSATIONAL", "intent_category": "GREETING", "confidence": 0.97, "entities": []}
+
+IMPORTANT: Return ONLY the JSON object, no explanations (retourner uniquement du JSON).<|end|>
+<|user|>
+Query: "%QUESTION%"
+<|end|>
+<|assistant|>
+"""
+
+
+def build_prompt(question: str) -> str:
+    """Injecte la question utilisateur dans le gabarit de prompt.
+
+    Toute modification du format de sortie ou des exemples doit être faite
+    exclusivement dans ``PROMPT_TEMPLATE`` pour faciliter l'expérimentation.
+    """
+
+    return PROMPT_TEMPLATE.replace("%QUESTION%", question)
+
 # ==================== MODÈLES PYDANTIC SIMPLIFIÉS ====================
 
 class IntentCategory(str, Enum):
@@ -156,37 +194,6 @@ class ImprovedIntentDetector:
         )
         self.model.eval()
     
-    def _create_enhanced_prompt(self, query: str) -> str:
-        """Prompt amélioré avec few-shot examples"""
-        
-        # Prompt structuré pour Phi-3.5
-        prompt = """<|system|>
-You are a financial intent classifier. Analyze the user query and return a JSON object.
-
-Intent types: TRANSACTION_SEARCH, SPENDING_ANALYSIS, ACCOUNT_BALANCE, BUDGET_TRACKING, CONVERSATIONAL
-Categories: FINANCIAL_QUERY, GREETING, FILTER_REQUEST, GOAL_TRACKING
-Entity types: AMOUNT, DATE, MERCHANT, CATEGORY, ACCOUNT
-
-Example 1:
-Query: "Show my Netflix transactions"
-Output: {"intent_type": "TRANSACTION_SEARCH", "intent_category": "FINANCIAL_QUERY", "confidence": 0.95, "entities": [{"entity_type": "MERCHANT", "raw_value": "Netflix", "normalized_value": "netflix", "confidence": 0.98}]}
-
-Example 2:
-Query: "What's my balance?"
-Output: {"intent_type": "ACCOUNT_BALANCE", "intent_category": "FINANCIAL_QUERY", "confidence": 0.96, "entities": []}
-
-Example 3:
-Query: "Hello"
-Output: {"intent_type": "CONVERSATIONAL", "intent_category": "GREETING", "confidence": 0.97, "entities": []}
-
-IMPORTANT: Return ONLY the JSON object, no explanations.<|end|>
-<|user|>
-Query: "{}"
-<|end|>
-<|assistant|>
-""".format(query)
-        
-        return prompt
     
     def _extract_json_safely(self, response: str) -> Dict[str, Any]:
         """Extraction JSON robuste avec multiples stratégies"""
@@ -261,7 +268,7 @@ Query: "{}"
         
         try:
             # Prompt amélioré
-            prompt = self._create_enhanced_prompt(query)
+            prompt = build_prompt(query)
             
             # Tokenisation avec attention au padding
             inputs = self.tokenizer(

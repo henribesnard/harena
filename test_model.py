@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from enum import Enum
+import argparse
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -454,15 +455,24 @@ Query: "{}"
 
 # ==================== FONCTION PRINCIPALE ====================
 
+def main(use_model: bool = False, debug: bool = False):
+
 def main(model_name: str):
     """Test amélioré avec meilleure gestion d'erreurs"""
-    
+
     print("=" * 80)
     print("🧪 TEST AMÉLIORÉ - DÉTECTION D'INTENTION PHI-3.5")
     print("=" * 80)
     print(f"📅 Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
     print()
+
+    mode_desc = "Mock + Modèle" if use_model else "Mock uniquement"
+    if debug:
+        mode_desc += " (DEBUG)"
+    print(f"Mode : {mode_desc}\n")
+
+    detector = ImprovedIntentDetector(use_model=use_model, debug=debug)
     
     print("🔧 OPTIONS DE TEST:")
     print("1. Mock uniquement (rapide)")
@@ -533,6 +543,13 @@ def main(model_name: str):
     print("\n✅ Test terminé!")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Test de détection d'intention")
+    parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
+    parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
+    args = parser.parse_args()
+
+    try:
+        main(use_model=args.use_model, debug=args.debug)
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model-name",

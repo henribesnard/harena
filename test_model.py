@@ -450,10 +450,15 @@ Query: "{}"
             model_result = self.detect_with_model(query)
         else:
             model_result = None
-        
+
         return mock_result, model_result
 
-# ==================== FONCTION PRINCIPALE ====================
+# ==================== ÉVALUATION ====================
+
+def evaluate(detector, dataset):
+    """Exécute la boucle de test et retourne les prédictions et succès."""
+
+    test_questions = list(dataset.keys())
 
 def main(use_model: bool = False, debug: bool = False):
 
@@ -493,54 +498,104 @@ def main(model_name: str):
     test_questions = list(MOCK_INTENT_RESPONSES.keys())
     
     print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
-    
+
     successes = 0
-    failures = 0
     latencies = []
-    
+    predictions = {}
+
     for i, query in enumerate(test_questions, 1):
         print(f"\n[{i}/{len(test_questions)}] 💬 {query}")
         print("-" * 60)
-        
+
         mock_result, model_result = detector.detect(query)
-        
-        # Afficher résultat attendu
-        print(f"📌 Attendu : {mock_result.intent_type} ({mock_result.confidence:.2f})")
-        
+
+        expected_intent = mock_result.intent_type
+        print(f"📌 Attendu : {expected_intent} ({mock_result.confidence:.2f})")
+
         if model_result:
-            # Afficher résultat modèle
-            print(f"🤖 Modèle  : {model_result.intent_type} ({model_result.confidence:.2f})")
+            predicted_intent = model_result.intent_type
+            predictions[query] = predicted_intent
+            print(f"🤖 Modèle  : {predicted_intent} ({model_result.confidence:.2f})")
             print(f"⏱️ Latence : {model_result.processing_time_ms:.1f}ms")
-            
-            # Vérifier match
-            if mock_result.intent_type == model_result.intent_type:
+
+            if predicted_intent == expected_intent:
                 print("✅ Match!")
                 successes += 1
             else:
                 print("❌ Différent")
-                failures += 1
-            
+
             latencies.append(model_result.processing_time_ms)
         else:
+            predictions[query] = None
             print("⚠️ Mode mock uniquement")
-    
-    # Résumé
+
+    total = len(test_questions)
     print("\n" + "=" * 80)
     print("📊 RÉSUMÉ")
     print("=" * 80)
-    
+
     if latencies:
-        total = successes + failures
         print(f"\n🎯 PRÉCISION:")
         print(f"   Succès : {successes}/{total} ({(successes/total)*100:.1f}%)")
-        print(f"   Échecs : {failures}/{total}")
-        
+        print(f"   Échecs : {total - successes}/{total}")
+
         print(f"\n⏱️ PERFORMANCE:")
         print(f"   Latence moyenne : {sum(latencies)/len(latencies):.1f}ms")
-        print(f"   Latence min : {min(latencies):.1f}ms") 
+        print(f"   Latence min : {min(latencies):.1f}ms")
         print(f"   Latence max : {max(latencies):.1f}ms")
-    
+
     print("\n✅ Test terminé!")
+    return predictions, successes
+
+
+def compute_accuracy(predictions, expected):
+    """Calcule précision, rappel et F1."""
+
+    total = len(expected)
+    true_positive = sum(
+        1 for q, p in predictions.items()
+        if q in expected and p == expected[q]["intent_type"]
+    )
+
+    precision = true_positive / len(predictions) if predictions else 0.0
+    recall = true_positive / total if total else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+# ==================== FONCTION PRINCIPALE ====================
+
+def main():
+    """Test amélioré avec meilleure gestion d'erreurs"""
+    
+    print("=" * 80)
+    print("🧪 TEST AMÉLIORÉ - DÉTECTION D'INTENTION PHI-3.5")
+    print("=" * 80)
+    print(f"📅 Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 80)
+    print()
+    
+    print("🔧 OPTIONS DE TEST:")
+    print("1. Mock uniquement (rapide)")
+    print("2. Mock + Modèle (nécessite 4-6GB RAM)")
+    print("3. Mock + Modèle avec DEBUG")
+    print()
+    
+    choice = input("Votre choix (1, 2 ou 3) : ").strip()
+    use_model = choice in ["2", "3"]
+    debug = choice == "3"
+    
+    print()
+    detector = ImprovedIntentDetector(use_model=use_model, debug=debug)
+
+    predictions, successes = evaluate(detector, MOCK_INTENT_RESPONSES)
+    metrics = compute_accuracy(predictions, MOCK_INTENT_RESPONSES)
+
+    print(f"\nScore global (F1) : {metrics['f1']:.2f}")
+
+    threshold = 0.8
+    return 0 if metrics['f1'] >= threshold else 1
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test de détection d'intention")
@@ -558,10 +613,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     try:
+        sys.exit(main())
+
         main(model_name=args.model_name)
     except KeyboardInterrupt:
         print("\n\n⚠️ Test interrompu")
+        sys.exit(1)
     except Exception as e:
         print(f"\n❌ Erreur : {e}")
         import traceback
         traceback.print_exc()
+        sys.exit(1)

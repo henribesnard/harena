@@ -466,19 +466,19 @@ class ImprovedIntentDetector:
 def evaluate(detector, dataset):
     """Exécute la boucle de test et retourne les prédictions, succès et métriques."""
 
+    predictions: Dict[str, Optional[str]] = {}
+
     test_questions = list(dataset.keys())
     print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
 
     successes = 0
-    latencies = []
-    predictions = {}
+    test_questions = list(dataset.keys())
 
     for i, query in enumerate(test_questions, 1):
         print(f"\n[{i}/{len(test_questions)}] 💬 {query}")
         print("-" * 60)
 
         mock_result, model_result = detector.detect(query)
-
         expected_intent = mock_result.intent_type
         print(f"📌 Attendu : {expected_intent} ({mock_result.confidence:.2f})")
 
@@ -486,19 +486,17 @@ def evaluate(detector, dataset):
             predicted_intent = model_result.intent_type
             predictions[query] = predicted_intent
             print(f"🤖 Modèle  : {predicted_intent} ({model_result.confidence:.2f})")
-            print(f"⏱️ Latence : {model_result.processing_time_ms:.1f}ms")
 
             if predicted_intent == expected_intent:
                 print("✅ Match!")
                 successes += 1
             else:
                 print("❌ Différent")
-
-            latencies.append(model_result.processing_time_ms)
         else:
             predictions[query] = None
             print("⚠️ Mode mock uniquement")
 
+    return predictions, successes
     total = len(test_questions)
     print("\n" + "=" * 80)
     print("📊 RÉSUMÉ")
@@ -538,6 +536,9 @@ def compute_accuracy(predictions, expected):
 
 # ==================== FONCTION PRINCIPALE ====================
 
+def main(use_model: bool = False, debug: bool = False, model_name: Optional[str] = None):
+    """Test amélioré avec meilleure gestion d'erreurs"""
+
 def main(model_name: str, use_model: bool, debug: bool):
     """Test amélioré avec meilleure gestion d'erreurs."""
 
@@ -547,6 +548,16 @@ def main(model_name: str, use_model: bool, debug: bool):
     print(f"📅 Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
     print()
+
+    mode_desc = "Mock + Modèle" if use_model else "Mock uniquement"
+    if debug:
+        mode_desc += " (DEBUG)"
+    print(f"Mode : {mode_desc}\n")
+
+    detector = ImprovedIntentDetector(
+        use_model=use_model, debug=debug, model_name=model_name
+    )
+
 
     mode_desc = "Mock + Modèle" if use_model else "Mock uniquement"
     if debug:
@@ -571,6 +582,16 @@ if __name__ == "__main__":
         default=os.getenv("MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"),
         help="Nom ou chemin du modèle à utiliser (peut être local ou sur HuggingFace)",
     )
+    parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
+    parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
+    args = parser.parse_args()
+
+    try:
+        status = main(
+            model_name=args.model_name,
+            use_model=args.use_model,
+            debug=args.debug,
+
     parser.add_argument(
         "--use-model", action="store_true", help="Activer le modèle"
     )
@@ -589,9 +610,11 @@ if __name__ == "__main__":
         )
     except KeyboardInterrupt:
         print("\n\n⚠️ Test interrompu")
-        sys.exit(1)
+        status = 1
     except Exception as e:
         print(f"\n❌ Erreur : {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)
+        status = 1
+
+    sys.exit(status)

@@ -462,10 +462,15 @@ class ImprovedIntentDetector:
 
 # ==================== ÉVALUATION ====================
 
+
 def evaluate(detector, dataset):
-    """Exécute la boucle de test et retourne les prédictions et succès."""
+    """Exécute la boucle de test et retourne les prédictions, succès et métriques."""
 
     predictions: Dict[str, Optional[str]] = {}
+
+    test_questions = list(dataset.keys())
+    print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
+
     successes = 0
     test_questions = list(dataset.keys())
 
@@ -492,6 +497,26 @@ def evaluate(detector, dataset):
             print("⚠️ Mode mock uniquement")
 
     return predictions, successes
+    total = len(test_questions)
+    print("\n" + "=" * 80)
+    print("📊 RÉSUMÉ")
+    print("=" * 80)
+
+    if latencies:
+        print(f"\n🎯 PRÉCISION:")
+        print(f"   Succès : {successes}/{total} ({(successes/total)*100:.1f}%)")
+        print(f"   Échecs : {total - successes}/{total}")
+
+        print(f"\n⏱️ PERFORMANCE:")
+        print(f"   Latence moyenne : {sum(latencies)/len(latencies):.1f}ms")
+        print(f"   Latence min : {min(latencies):.1f}ms")
+        print(f"   Latence max : {max(latencies):.1f}ms")
+
+    metrics = compute_accuracy(predictions, dataset)
+
+    print("\n✅ Test terminé!")
+
+    return predictions, successes, metrics
 
 
 def compute_accuracy(predictions, expected):
@@ -514,6 +539,9 @@ def compute_accuracy(predictions, expected):
 def main(use_model: bool = False, debug: bool = False, model_name: Optional[str] = None):
     """Test amélioré avec meilleure gestion d'erreurs"""
 
+def main(model_name: str, use_model: bool, debug: bool):
+    """Test amélioré avec meilleure gestion d'erreurs."""
+
     print("=" * 80)
     print("🧪 TEST AMÉLIORÉ - DÉTECTION D'INTENTION PHI-3.5")
     print("=" * 80)
@@ -530,13 +558,21 @@ def main(use_model: bool = False, debug: bool = False, model_name: Optional[str]
         use_model=use_model, debug=debug, model_name=model_name
     )
 
-    predictions, successes = evaluate(detector, MOCK_INTENT_RESPONSES)
-    metrics = compute_accuracy(predictions, MOCK_INTENT_RESPONSES)
 
+    mode_desc = "Mock + Modèle" if use_model else "Mock uniquement"
+    if debug:
+        mode_desc += " (DEBUG)"
+    print(f"Mode : {mode_desc}\n")
+
+    detector = ImprovedIntentDetector(
+        use_model=use_model, debug=debug, model_name=model_name
+    )
+
+    predictions, successes, metrics = evaluate(detector, MOCK_INTENT_RESPONSES)
     print(f"\nScore global (F1) : {metrics['f1']:.2f}")
 
     threshold = 0.8
-    return 0 if metrics['f1'] >= threshold else 1
+    return 0 if metrics["f1"] >= threshold else 1
 
 
 if __name__ == "__main__":
@@ -555,6 +591,22 @@ if __name__ == "__main__":
             model_name=args.model_name,
             use_model=args.use_model,
             debug=args.debug,
+
+    parser.add_argument(
+        "--use-model", action="store_true", help="Activer le modèle"
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="Activer le mode débogage"
+    )
+    args = parser.parse_args()
+
+    try:
+        sys.exit(
+            main(
+                model_name=args.model_name,
+                use_model=args.use_model,
+                debug=args.debug,
+            )
         )
     except KeyboardInterrupt:
         print("\n\n⚠️ Test interrompu")

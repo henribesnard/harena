@@ -12,7 +12,6 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from enum import Enum
-import argparse
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -463,11 +462,48 @@ class ImprovedIntentDetector:
 # ==================== ÉVALUATION ====================
 
 
+def compute_accuracy(predictions, expected):
+    """Calcule précision, rappel et F1."""
+
+    total = len(expected)
+    true_positive = sum(
+        1 for q, p in predictions.items()
+        if q in expected and p == expected[q]["intent_type"]
+    )
+
+    precision = true_positive / len(predictions) if predictions else 0.0
+    recall = true_positive / total if total else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+
+# ==================== FONCTION PRINCIPALE ====================
+
+
+def main(
+    use_model: bool = False,
+    debug: bool = False,
+    model_name: str = os.getenv("MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"),
+) -> int:
+    """Test amélioré avec meilleure gestion d'erreurs"""
+
+
 def evaluate(detector, dataset):
     """Exécute la boucle de test et retourne les prédictions, succès et métriques."""
 
     predictions: Dict[str, Optional[str]] = {}
 
+    detector = ImprovedIntentDetector(
+        use_model=use_model, debug=debug, model_name=model_name
+    )
+
+    test_questions = list(MOCK_INTENT_RESPONSES.keys())
+    print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
+
+    successes = 0
+    latencies = []
+    predictions: Dict[str, Optional[str]] = {}
     test_questions = list(dataset.keys())
     print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
 
@@ -515,6 +551,8 @@ def evaluate(detector, dataset):
     metrics = compute_accuracy(predictions, dataset)
 
     print("\n✅ Test terminé!")
+    metrics = compute_accuracy(predictions, MOCK_INTENT_RESPONSES)
+
 
     return predictions, successes, metrics
 
@@ -584,6 +622,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
     parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
+
     args = parser.parse_args()
 
     try:
@@ -603,6 +642,9 @@ if __name__ == "__main__":
     try:
         sys.exit(
             main(
+                use_model=args.use_model,
+                debug=args.debug,
+                model_name=args.model_name,
                 model_name=args.model_name,
                 use_model=args.use_model,
                 debug=args.debug,
@@ -614,6 +656,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Erreur : {e}")
         import traceback
+
         traceback.print_exc()
         status = 1
 

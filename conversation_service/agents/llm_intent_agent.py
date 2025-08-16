@@ -36,6 +36,10 @@ from ..prompts.intent_prompts import (
 logger = logging.getLogger(__name__)
 
 
+class LLMOutputParsingError(RuntimeError):
+    """Raised when the LLM response cannot be parsed as JSON."""
+
+
 class LLMIntentAgent(BaseFinancialAgent):
     """Intent detection agent that relies solely on the DeepSeek LLM."""
 
@@ -138,19 +142,18 @@ class LLMIntentAgent(BaseFinancialAgent):
                 await asyncio.sleep(2 ** attempt)
         if response is None:
             raise RuntimeError("LLM call failed")
-        try:
-            data = json.loads(response.content)
-        except Exception as err:  # pragma: no cover - defensive handling
-
-            raise RuntimeError("LLM did not return a response")
-            raise RuntimeError("LLM response unavailable")
-
-            raise RuntimeError("LLM intent detection failed")
-        try:
-            data = json.loads(response.content)
-        except Exception as err:  # pragma: no cover - defensive fallback
-            logger.warning("Failed to parse LLM output: %s", err)
-            data = {"intent": "OUT_OF_SCOPE", "confidence": 0.0, "entities": []}
+        parsed = getattr(response, "output_parsed", None)
+        if parsed is None:
+            raw_text = getattr(response, "output_text", None)
+            if raw_text is None:
+                raw_text = getattr(response, "content", "")
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError as err:
+                raise LLMOutputParsingError(
+                    f"Invalid JSON in LLM response: {err}"
+                ) from err
+        data = parsed
 
         intent_type = data.get("intent", "OUT_OF_SCOPE")
         entities: List[FinancialEntity] = []

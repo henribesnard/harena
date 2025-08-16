@@ -35,6 +35,8 @@ python test_model.py --use-model --debug
 ```
 
 
+Pour un benchmark d'intention, consultez [README_intent_benchmark.md](README_intent_benchmark.md).
+
 ## Service startup
 
 The conversation service now performs a full agent health check during

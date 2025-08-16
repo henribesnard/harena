@@ -488,6 +488,98 @@ def main(
 ) -> int:
     """Test amélioré avec meilleure gestion d'erreurs"""
 
+
+def evaluate(detector, dataset):
+    """Exécute la boucle de test et retourne les prédictions, succès et métriques."""
+
+    predictions: Dict[str, Optional[str]] = {}
+
+    detector = ImprovedIntentDetector(
+        use_model=use_model, debug=debug, model_name=model_name
+    )
+
+    test_questions = list(MOCK_INTENT_RESPONSES.keys())
+    print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
+
+    successes = 0
+    latencies = []
+    predictions: Dict[str, Optional[str]] = {}
+    test_questions = list(dataset.keys())
+    print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
+
+    successes = 0
+    test_questions = list(dataset.keys())
+
+    for i, query in enumerate(test_questions, 1):
+        print(f"\n[{i}/{len(test_questions)}] 💬 {query}")
+        print("-" * 60)
+
+        mock_result, model_result = detector.detect(query)
+        expected_intent = mock_result.intent_type
+        print(f"📌 Attendu : {expected_intent} ({mock_result.confidence:.2f})")
+
+        if model_result:
+            predicted_intent = model_result.intent_type
+            predictions[query] = predicted_intent
+            print(f"🤖 Modèle  : {predicted_intent} ({model_result.confidence:.2f})")
+
+            if predicted_intent == expected_intent:
+                print("✅ Match!")
+                successes += 1
+            else:
+                print("❌ Différent")
+        else:
+            predictions[query] = None
+            print("⚠️ Mode mock uniquement")
+
+    return predictions, successes
+    total = len(test_questions)
+    print("\n" + "=" * 80)
+    print("📊 RÉSUMÉ")
+    print("=" * 80)
+
+    if latencies:
+        print(f"\n🎯 PRÉCISION:")
+        print(f"   Succès : {successes}/{total} ({(successes/total)*100:.1f}%)")
+        print(f"   Échecs : {total - successes}/{total}")
+
+        print(f"\n⏱️ PERFORMANCE:")
+        print(f"   Latence moyenne : {sum(latencies)/len(latencies):.1f}ms")
+        print(f"   Latence min : {min(latencies):.1f}ms")
+        print(f"   Latence max : {max(latencies):.1f}ms")
+
+    metrics = compute_accuracy(predictions, dataset)
+
+    print("\n✅ Test terminé!")
+    metrics = compute_accuracy(predictions, MOCK_INTENT_RESPONSES)
+
+
+    return predictions, successes, metrics
+
+
+def compute_accuracy(predictions, expected):
+    """Calcule précision, rappel et F1."""
+
+    total = len(expected)
+    true_positive = sum(
+        1 for q, p in predictions.items()
+        if q in expected and p == expected[q]["intent_type"]
+    )
+
+    precision = true_positive / len(predictions) if predictions else 0.0
+    recall = true_positive / total if total else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+# ==================== FONCTION PRINCIPALE ====================
+
+def main(use_model: bool = False, debug: bool = False, model_name: Optional[str] = None):
+    """Test amélioré avec meilleure gestion d'erreurs"""
+
+def main(model_name: str, use_model: bool, debug: bool):
+    """Test amélioré avec meilleure gestion d'erreurs."""
+
     print("=" * 80)
     print("🧪 TEST AMÉLIORÉ - DÉTECTION D'INTENTION PHI-3.5")
     print("=" * 80)
@@ -504,56 +596,17 @@ def main(
         use_model=use_model, debug=debug, model_name=model_name
     )
 
-    test_questions = list(MOCK_INTENT_RESPONSES.keys())
-    print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
 
-    successes = 0
-    latencies = []
-    predictions: Dict[str, Optional[str]] = {}
+    mode_desc = "Mock + Modèle" if use_model else "Mock uniquement"
+    if debug:
+        mode_desc += " (DEBUG)"
+    print(f"Mode : {mode_desc}\n")
 
-    for i, query in enumerate(test_questions, 1):
-        print(f"\n[{i}/{len(test_questions)}] 💬 {query}")
-        print("-" * 60)
+    detector = ImprovedIntentDetector(
+        use_model=use_model, debug=debug, model_name=model_name
+    )
 
-        mock_result, model_result = detector.detect(query)
-
-        expected_intent = mock_result.intent_type
-        print(f"📌 Attendu : {expected_intent} ({mock_result.confidence:.2f})")
-
-        if model_result:
-            predicted_intent = model_result.intent_type
-            predictions[query] = predicted_intent
-            print(f"🤖 Modèle  : {predicted_intent} ({model_result.confidence:.2f})")
-            print(f"⏱️ Latence : {model_result.processing_time_ms:.1f}ms")
-
-            if predicted_intent == expected_intent:
-                print("✅ Match!")
-                successes += 1
-            else:
-                print("❌ Différent")
-
-            latencies.append(model_result.processing_time_ms)
-        else:
-            predictions[query] = None
-            print("⚠️ Mode mock uniquement")
-
-    total = len(test_questions)
-    print("\n" + "=" * 80)
-    print("📊 RÉSUMÉ")
-    print("=" * 80)
-
-    if latencies:
-        print(f"\n🎯 PRÉCISION:")
-        print(f"   Succès : {successes}/{total} ({(successes/total)*100:.1f}%)")
-        print(f"   Échecs : {total - successes}/{total}")
-
-        print(f"\n⏱️ PERFORMANCE:")
-        print(f"   Latence moyenne : {sum(latencies)/len(latencies):.1f}ms")
-        print(f"   Latence min : {min(latencies):.1f}ms")
-        print(f"   Latence max : {max(latencies):.1f}ms")
-
-    print("\n✅ Test terminé!")
-    metrics = compute_accuracy(predictions, MOCK_INTENT_RESPONSES)
+    predictions, successes, metrics = evaluate(detector, MOCK_INTENT_RESPONSES)
     print(f"\nScore global (F1) : {metrics['f1']:.2f}")
 
     threshold = 0.8
@@ -562,12 +615,27 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test de détection d'intention")
-    parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
-    parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
     parser.add_argument(
         "--model-name",
         default=os.getenv("MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"),
         help="Nom ou chemin du modèle à utiliser (peut être local ou sur HuggingFace)",
+    )
+    parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
+    parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
+
+    args = parser.parse_args()
+
+    try:
+        status = main(
+            model_name=args.model_name,
+            use_model=args.use_model,
+            debug=args.debug,
+
+    parser.add_argument(
+        "--use-model", action="store_true", help="Activer le modèle"
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="Activer le mode débogage"
     )
     args = parser.parse_args()
 
@@ -577,14 +645,19 @@ if __name__ == "__main__":
                 use_model=args.use_model,
                 debug=args.debug,
                 model_name=args.model_name,
+                model_name=args.model_name,
+                use_model=args.use_model,
+                debug=args.debug,
             )
         )
     except KeyboardInterrupt:
         print("\n\n⚠️ Test interrompu")
-        sys.exit(1)
+        status = 1
     except Exception as e:
         print(f"\n❌ Erreur : {e}")
         import traceback
 
         traceback.print_exc()
-        sys.exit(1)
+        status = 1
+
+    sys.exit(status)

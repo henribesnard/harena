@@ -4,6 +4,7 @@ Script de test corrigé pour Phi-3.5 - Détection d'intention
 Version optimisée avec meilleur prompt et gestion d'erreurs
 """
 
+import argparse
 import json
 import time
 import sys
@@ -11,6 +12,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from enum import Enum
+import argparse
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -113,39 +115,56 @@ class IntentResult(BaseModel):
 
 class ImprovedIntentDetector:
     """Détecteur amélioré avec meilleur prompt et gestion d'erreurs"""
-    
-    def __init__(self, use_model: bool = True, debug: bool = False):
+
+    def __init__(
+        self,
+        use_model: bool = True,
+        debug: bool = False,
+        model_name: Optional[str] = None,
+    ):
+        """Initialise le détecteur.
+
+        Args:
+            use_model: Active le chargement du modèle si ``True``.
+            debug: Active les sorties de debug.
+            model_name: Nom ou chemin du modèle à charger. Peut également être
+                fourni via la variable d'environnement ``MODEL_NAME``.
+        """
+
         self.use_model = use_model
         self.debug = debug
         self.model = None
         self.tokenizer = None
-        
+        # Permet de définir le modèle via paramètre, variable d'env ou valeur par défaut
+        self.model_name = model_name or os.getenv(
+            "MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"
+        )
+
         if use_model:
-            print("🚀 Chargement du modèle Phi-3.5-mini...")
+            print(f"🚀 Chargement du modèle {self.model_name}...")
             try:
-                self._load_model()
+                self._load_model(self.model_name)
                 print("✅ Modèle chargé avec succès\n")
             except Exception as e:
                 print(f"⚠️ Impossible de charger le modèle : {e}")
                 print("📌 Basculement en mode mock uniquement\n")
                 self.use_model = False
-    
-    def _load_model(self):
+
+    def _load_model(self, model_name: str):
         """Charge le modèle avec configuration optimisée"""
-        model_name = "microsoft/Phi-3.5-mini-instruct"
-        
+
         # Tokenizer avec configuration correcte
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name,
             trust_remote_code=True,
             padding_side='left'  # Important pour Phi-3.5
         )
-        
+
         # Fix du pad_token
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        
+
         # Modèle
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
@@ -440,6 +459,44 @@ def evaluate(detector, dataset):
     """Exécute la boucle de test et retourne les prédictions et succès."""
 
     test_questions = list(dataset.keys())
+
+def main(use_model: bool = False, debug: bool = False):
+
+def main(model_name: str):
+    """Test amélioré avec meilleure gestion d'erreurs"""
+
+    print("=" * 80)
+    print("🧪 TEST AMÉLIORÉ - DÉTECTION D'INTENTION PHI-3.5")
+    print("=" * 80)
+    print(f"📅 Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 80)
+    print()
+
+    mode_desc = "Mock + Modèle" if use_model else "Mock uniquement"
+    if debug:
+        mode_desc += " (DEBUG)"
+    print(f"Mode : {mode_desc}\n")
+
+    detector = ImprovedIntentDetector(use_model=use_model, debug=debug)
+    
+    print("🔧 OPTIONS DE TEST:")
+    print("1. Mock uniquement (rapide)")
+    print("2. Mock + Modèle (nécessite 4-6GB RAM)")
+    print("3. Mock + Modèle avec DEBUG")
+    print()
+    
+    choice = input("Votre choix (1, 2 ou 3) : ").strip()
+    use_model = choice in ["2", "3"]
+    debug = choice == "3"
+    
+    print()
+    detector = ImprovedIntentDetector(
+        use_model=use_model, debug=debug, model_name=model_name
+    )
+    
+    # Questions de test sélectionnées
+    test_questions = list(MOCK_INTENT_RESPONSES.keys())
+    
     print(f"\n🚀 TEST DE {len(test_questions)} QUESTIONS\n")
 
     successes = 0
@@ -541,8 +598,24 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Test de détection d'intention")
+    parser.add_argument("--use-model", action="store_true", help="Activer le modèle")
+    parser.add_argument("--debug", action="store_true", help="Activer le mode débogage")
+    args = parser.parse_args()
+
+    try:
+        main(use_model=args.use_model, debug=args.debug)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model-name",
+        default=os.getenv("MODEL_NAME", "microsoft/Phi-3.5-mini-instruct"),
+        help="Nom ou chemin du modèle à utiliser (peut être local ou sur HuggingFace)",
+    )
+    args = parser.parse_args()
     try:
         sys.exit(main())
+
+        main(model_name=args.model_name)
     except KeyboardInterrupt:
         print("\n\n⚠️ Test interrompu")
         sys.exit(1)

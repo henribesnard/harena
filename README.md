@@ -16,15 +16,22 @@ python test_metrics_endpoint.py
 
 ## Test du détecteur d'intentions avec un modèle personnalisé
 
-Le script `test_model.py` utilise par défaut le modèle
-`microsoft/Phi-3.5-mini-instruct`. Pour essayer d'autres poids (locaux ou sur
-HuggingFace), passez le nom du modèle en argument ou via la variable
-d'environnement `MODEL_NAME` :
+Le script `test_model.py` ne propose plus de menu interactif. Il fonctionne en
+mode mock par défaut et se configure via des flags en ligne de commande. Pour
+charger un modèle HuggingFace ou local, utilisez `--use-model` et indiquez
+éventuellement un nom de modèle :
 
 ```bash
-python test_model.py --model-name my-org/mon-modele
+# Mode mock uniquement
+python test_model.py
+
+# Utiliser un modèle spécifique
+python test_model.py --use-model --model-name my-org/mon-modele
 # ou
-MODEL_NAME=/chemin/vers/mon-modele python test_model.py
+MODEL_NAME=/chemin/vers/mon-modele python test_model.py --use-model
+
+# Activer les traces de débogage
+python test_model.py --use-model --debug
 ```
 
 

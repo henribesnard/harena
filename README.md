@@ -68,6 +68,13 @@ free-form text. The allowed intent values are:
 `TRANSACTION_SEARCH`, `SPENDING_ANALYSIS`, `BALANCE_INQUIRY`,
 `GENERAL_QUESTION`, `GREETING`, `OUT_OF_SCOPE`.
 
+The following table maps key intents to their categories and suggested actions:
+
+| Intent | Category | Suggested actions |
+| ------ | -------- | ----------------- |
+| SEARCH_BY_MERCHANT | FINANCIAL_QUERY | `["search_by_merchant","list_transactions"]` |
+| SEARCH_BY_TEXT | FINANCIAL_QUERY | `["search_by_text","list_transactions"]` |
+
 Entity types must be one of the values from `EntityType` in
 `conversation_service/models/financial_models.py`.
 

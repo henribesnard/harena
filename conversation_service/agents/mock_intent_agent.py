@@ -567,6 +567,18 @@ MOCK_INTENT_RESPONSES: Dict[str, Dict[str, Any]] = {
         "suggested_actions": ["export_report", "excel_format"],
     },
 
+    # GENERAL_QUESTION
+    "Quel temps fait-il ?": {
+        "intent_type": "GENERAL_QUESTION",
+        "intent_category": "GENERAL_QUESTION",
+        "confidence": 0.5,
+        "entities": [],
+        "method": "llm_detection",
+        "processing_time_ms": 100.0,
+        "requires_clarification": False,
+        "suggested_actions": ["generic_response"],
+    },
+
     # UNCLEAR_INTENT
     "Trucs bizarres dans mes comptes": {
         "intent_type": "UNCLEAR_INTENT",
@@ -669,16 +681,16 @@ class MockIntentAgent(LLMIntentAgent):
 
         data = self._dataset.get(user_message)
         if data is None:
-            # Unknown question, return unclear intent
+            # Unknown question, return general question intent
             data = {
-                "intent_type": "UNCLEAR_INTENT",
-                "intent_category": "UNCLEAR_INTENT",
+                "intent_type": "GENERAL_QUESTION",
+                "intent_category": "GENERAL_QUESTION",
                 "confidence": 0.0,
                 "entities": [],
                 "method": "mock_detection",
                 "processing_time_ms": 0.0,
-                "requires_clarification": True,
-                "suggested_actions": [],
+                "requires_clarification": False,
+                "suggested_actions": ["generic_response"],
             }
 
         start = time.perf_counter()

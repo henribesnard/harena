@@ -93,3 +93,45 @@ def test_response_agent_handles_no_transactions_current_month():
     assert "période spécifiée" in result["content"]
     assert today in result["content"]
 
+
+def test_response_agent_summarizes_large_result_set():
+    agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+
+    results = [
+        TransactionResult(
+            transaction_id=f"t{i}",
+            date=f"2024-01-{i+1:02d}T00:00:00Z",
+            amount=10.0 + i,
+            currency="EUR",
+            description=f"Transaction {i}",
+            merchant="Shop",
+            category="Misc",
+            account_id="acc1",
+            transaction_type="debit",
+        )
+        for i in range(25)
+    ]
+
+    search_response = SearchServiceResponse(
+        response_metadata=ResponseMetadata(
+            query_id="q3",
+            processing_time_ms=1.0,
+            total_results=25,
+            returned_results=25,
+            has_more_results=False,
+            search_strategy_used="semantic",
+        ),
+        results=results,
+        success=True,
+    )
+
+    search_results = {"metadata": {"search_response": search_response}}
+
+    result = asyncio.run(
+        agent.generate_response("Résumé de mes transactions", search_results, user_id=1)
+    )
+
+    formatted = result["metadata"]["formatted_results"]
+    assert "... et 20 autres transactions (total 25)" in formatted
+    assert result["metadata"]["search_stats"]["total_results"] == 25
+

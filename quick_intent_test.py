@@ -515,11 +515,13 @@ async def main():
     # Tests unitaires
     test_queries = [
         "Combien j'ai dépensé chez Carrefour le mois dernier ?",
-        "Virement de 500 euros à Marie pour le loyer",
+        "Combien ai-je transféré à Marie le mois dernier ?",
         "Quel est le solde de mon livret A ?",
         "Montre mes achats supérieurs à 100€ en janvier 2024",
         "Budget alimentation ce mois",
-        "Bonjour"
+        "Bonjour, comment ça va ?",
+        "Merci pour l'information",
+        "Peux-tu transférer 500 euros à Marie ?",  # Doit renvoyer une intention non supportée
     ]
     
     print("\n🚀 TEST DE L'AGENT HARENA INTENT\n")
@@ -535,15 +537,21 @@ async def main():
         print(f"📊 Catégorie : {result.intent_category}")
         print(f"🎯 Confidence : {result.confidence:.2%}")
         print(f"⏱️ Latence : {result.processing_time_ms:.1f}ms")
-        
+
         if result.entities:
             print(f"📝 Entités :")
             for entity in result.entities:
                 print(f"   - {entity.entity_type}: '{entity.raw_value}' → {entity.normalized_value}")
-        
+
         if result.suggested_actions:
             print(f"💡 Actions : {', '.join(result.suggested_actions)}")
-        
+
+        if query == "Peux-tu transférer 500 euros à Marie ?":
+            assert (
+                result.intent_type in {"UNSUPPORTED", "UNCLEAR", "UNCLEAR_INTENT"}
+                or result.intent_category == IntentCategory.UNKNOWN
+            ), "Les demandes de paiement doivent être marquées comme non supportées ou ambiguës"
+
         print("-" * 60)
     
     # Afficher les optimisations

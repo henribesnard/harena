@@ -142,17 +142,25 @@ class QueryOptimizer:
             "inferieure",
             "inferieurs",
             "inferieures",
+            "plus",
+            "moins",
+            "egal",
+            "egale",
+            "egaux",
+            "egales",
             # Monetary symbols and currency tokens
             "€",
             "$",
             "£",
             "¥",
-            "euro",
-            "euros",
             "dollar",
             "dollars",
             "yen",
             "yens",
+            "usd",
+            "eur",
+            "gbp",
+            "chf",
             # Numeric tokens
             "0",
             "1",
@@ -201,10 +209,12 @@ class QueryOptimizer:
         for word in words:
             if word not in unique_words:
                 unique_words.append(word)
+        if not unique_words:
+            return None
 
         optimized_text = " ".join(unique_words)[:200]
         logger.debug("Normalized search text: %s", optimized_text)
-        return optimized_text or None  # Limit search text length
+        return optimized_text  # Limit search text length
 
     @staticmethod
     def extract_date_filters(intent_result: IntentResult) -> Dict[str, Any]:

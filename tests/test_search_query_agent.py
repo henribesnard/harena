@@ -23,10 +23,15 @@ from datetime import datetime, timedelta
 
 try:
     from search_service.core.search_engine import SearchEngine
-    from search_service.models.request import SearchRequest
 except Exception:  # pragma: no cover - skip if deps missing
     SearchEngine = None
+
+try:
+    from search_service.models.request import SearchRequest
+    from search_service.core.query_builder import QueryBuilder
+except Exception:  # pragma: no cover - skip if deps missing
     SearchRequest = None
+    QueryBuilder = None
 
 
 class DummyDeepSeekClient:
@@ -189,6 +194,44 @@ def test_amount_filter_without_date():
     assert "amount_abs" in request["filters"]
     assert "date" not in request["filters"]
     assert request["query"] == ""
+
+
+def test_no_multimatch_for_amount_phrase():
+    if QueryBuilder is None or SearchRequest is None:
+        pytest.skip("search_service not available")
+
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.AMOUNT,
+                raw_value="100",
+                normalized_value=100,
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+        suggested_actions=["filter_by_amount_greater"],
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(
+            intent_result, "transactions supérieures à 100 euros", user_id=1
+        )
+    )
+    request = search_query.to_search_request()
+
+    qb = QueryBuilder()
+    es_query = qb.build_query(SearchRequest(**request))
+
+    assert all("multi_match" not in clause for clause in es_query["query"]["bool"]["must"])
 
 def test_extract_amount_filters_gte_only():
     intent_result = make_amount_intent({"gte": 50})

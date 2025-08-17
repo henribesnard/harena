@@ -268,9 +268,9 @@ class SearchFilters(BaseModel):
         """Validate amount filter has proper gte/lte."""
         if v is None:
             return v
-        if "gte" not in v or "lte" not in v:
-            raise ValueError("amount filter must contain both 'gte' and 'lte'")
-        if v["gte"] > v["lte"]:
+        if "gte" not in v and "lte" not in v:
+            raise ValueError("amount filter must contain 'gte' or 'lte'")
+        if "gte" in v and "lte" in v and v["gte"] > v["lte"]:
             raise ValueError("'gte' must be less than or equal to 'lte'")
         return v
 

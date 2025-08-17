@@ -167,15 +167,23 @@ class ResponseAgent(BaseFinancialAgent):
         Execute response generation operation.
 
         Args:
-            input_data: Dict containing 'user_message', 'search_results', and 'context'
+            input_data: Dict containing 'user_message', 'search_results', 'context',
+                and optional 'search_error'
             user_id: ID of the requesting user
 
         Returns:
             Dict with generated response and metadata
         """
         user_message = input_data.get("user_message", "")
-        search_results = input_data.get("search_results", {})
         context = input_data.get("context")
+        if input_data.get("search_error"):
+            return {
+                "content": "La recherche n'a pas pu être effectuée.",
+                "metadata": {"error": "search_failed", "fallback_used": True},
+                "confidence_score": 0.0,
+            }
+
+        search_results = input_data.get("search_results", {})
 
         if not search_results:
             raise ValueError("search_results are required for response generation")

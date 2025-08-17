@@ -221,23 +221,34 @@ class QueryOptimizer:
             return amount_filters
 
         for entity in intent_result.entities:
-            if entity.entity_type == EntityType.AMOUNT and isinstance(
-                entity.normalized_value, (int, float)
-            ):
-                normalized_amount = float(entity.normalized_value)
-
+            if entity.entity_type == EntityType.AMOUNT:
                 actions = intent_result.suggested_actions or []
-                if "filter_by_amount_greater" in actions:
-                    amount_filters["amount"] = {"gte": normalized_amount}
-                elif "filter_by_amount_less" in actions:
-                    amount_filters["amount"] = {"lte": normalized_amount}
-                else:
-                    tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
-                    amount_filters["amount"] = {
-                        "gte": normalized_amount - tolerance,
-                        "lte": normalized_amount + tolerance,
-                    }
-                break
+                value = entity.normalized_value
+
+                if isinstance(value, dict):
+                    amount: Dict[str, float] = {}
+                    if "gte" in value:
+                        amount["gte"] = float(value["gte"])
+                    if "lte" in value:
+                        amount["lte"] = float(value["lte"])
+                    if amount:
+                        amount_filters["amount"] = amount
+                        break
+
+                elif isinstance(value, (int, float)):
+                    normalized_amount = float(value)
+
+                    if "filter_by_amount_greater" in actions:
+                        amount_filters["amount"] = {"gte": normalized_amount}
+                    elif "filter_by_amount_less" in actions:
+                        amount_filters["amount"] = {"lte": normalized_amount}
+                    else:
+                        tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
+                        amount_filters["amount"] = {
+                            "gte": normalized_amount - tolerance,
+                            "lte": normalized_amount + tolerance,
+                        }
+                    break
 
         return amount_filters
 

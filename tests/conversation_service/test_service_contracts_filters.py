@@ -28,16 +28,26 @@ def test_date_filter_inverted_range():
         SearchFilters.validate_date({"gte": "2024-02-01", "lte": "2024-01-01"})
 
 
-def test_amount_filter_valid():
+def test_amount_filter_valid_range():
     filters = SearchFilters(amount={"gte": 10.0, "lte": 100.0})
     assert filters.amount == {"gte": 10.0, "lte": 100.0}
 
 
+def test_amount_filter_valid_gte_only():
+    filters = SearchFilters(amount={"gte": 10.0})
+    assert filters.amount == {"gte": 10.0}
+
+
+def test_amount_filter_valid_lte_only():
+    filters = SearchFilters(amount={"lte": 100.0})
+    assert filters.amount == {"lte": 100.0}
+
+
 def test_amount_filter_missing_keys():
     with pytest.raises(ValueError):
-        SearchFilters.validate_amount({"gte": 10.0})
+        SearchFilters.validate_amount({})
     with pytest.raises(ValueError):
-        SearchFilters.validate_amount({"lte": 100.0})
+        SearchFilters.validate_amount({"foo": 1.0})
 
 
 def test_amount_filter_inverted_range():

@@ -182,12 +182,13 @@ def test_amount_filter_without_date():
 
     search_query = asyncio.run(
         agent._generate_search_contract(
-            intent_result, "transactions supérieures à 100€", user_id=1
+            intent_result, "transactions supérieures à 100 euros", user_id=1
         )
     )
     request = search_query.to_search_request()
     assert "amount" in request["filters"]
     assert "date" not in request["filters"]
+    assert request["query"] == ""
 
 def test_extract_amount_filters_gte_only():
     intent_result = make_amount_intent({"gte": 50})

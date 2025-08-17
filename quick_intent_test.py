@@ -36,6 +36,8 @@ class IntentCategory(str, Enum):
     GREETING = "GREETING"
     CONFIRMATION = "CONFIRMATION"
     CLARIFICATION = "CLARIFICATION"
+    UNCLEAR_INTENT = "UNCLEAR_INTENT"
+    UNKNOWN = "UNKNOWN"
     FILTER_REQUEST = "FILTER_REQUEST"
     UNCLEAR_INTENT = "UNCLEAR_INTENT"
 
@@ -187,6 +189,9 @@ RÈGLES IMPORTANTES:
 3. Confidence entre 0.80 et 0.99 selon la clarté
 4. Processing_time_ms réaliste (100-300ms)
 5. Suggested_actions pertinentes pour l'intention
+6. Si l'utilisateur demande une action (paiement, virement, transfert, export),
+   répondre avec intent_type="UNSUPPORTED" et intent_category="UNCLEAR_INTENT".
+   Ajoute une note de clarification indiquant que cette action n'est pas supportée.
 
 Exemples:
 "Combien j'ai dépensé chez Carrefour ?" → SPENDING_ANALYSIS avec MERCHANT:carrefour
@@ -367,10 +372,16 @@ Exemples:
             processing_time = (time.time() - start_time) * 1000
             result_dict["processing_time_ms"] = processing_time
             result_dict["raw_user_message"] = user_message
-            
+
             # Valider avec Pydantic
             result = IntentResult(**result_dict)
-            
+
+            # Post-traitement pour intents non supportés
+            if result.intent_type == "UNSUPPORTED":
+                result.validation_errors = ["Intent not supported."]
+                result.search_required = False
+                result.requires_clarification = True
+
             # Mettre en cache si succès
             if self.cache_enabled and result.confidence > 0.8:
                 self.cache[user_message] = result.model_dump()

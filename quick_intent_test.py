@@ -312,7 +312,9 @@ Exemples:
                 "required": [
                     "intent_type", "intent_category", "confidence", "entities",
                     "method", "processing_time_ms", "requires_clarification",
-                    "search_required"
+                    "search_required", "suggested_actions", "raw_user_message",
+                    "normalized_query", "alternative_intents", "validation_errors",
+                    "context_influence"
                 ],
                 "additionalProperties": False
             }

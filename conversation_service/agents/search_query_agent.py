@@ -207,24 +207,36 @@ class QueryOptimizer:
 
     @staticmethod
     def extract_amount_filters(intent_result: IntentResult) -> Dict[str, Any]:
-        """Extract amount range filters from intent entities."""
+        """Extract amount filters from intent entities.
+
+        The mock intent agent may suggest whether the comparison should be
+        greater-than or less-than through ``suggested_actions``.  When such a
+        hint is present we build the corresponding range.  Otherwise we fall
+        back to a loose ±10%% tolerance around the detected amount to keep the
+        original behaviour.
+        """
         amount_filters: Dict[str, Any] = {}
 
         if not intent_result.entities:
             return amount_filters
 
         for entity in intent_result.entities:
-            if entity.entity_type == EntityType.AMOUNT and isinstance(entity.normalized_value, (int, float)):
-                normalized_amount = float(entity.normalized_value)
             if entity.entity_type == EntityType.AMOUNT and isinstance(
                 entity.normalized_value, (int, float)
             ):
-                normalized_amount = entity.normalized_value
-                tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
-                amount_filters["amount"] = {
-                    "gte": normalized_amount - tolerance,
-                    "lte": normalized_amount + tolerance,
-                }
+                normalized_amount = float(entity.normalized_value)
+
+                actions = intent_result.suggested_actions or []
+                if "filter_by_amount_greater" in actions:
+                    amount_filters["amount"] = {"gte": normalized_amount}
+                elif "filter_by_amount_less" in actions:
+                    amount_filters["amount"] = {"lte": normalized_amount}
+                else:
+                    tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
+                    amount_filters["amount"] = {
+                        "gte": normalized_amount - tolerance,
+                        "lte": normalized_amount + tolerance,
+                    }
                 break
 
         return amount_filters

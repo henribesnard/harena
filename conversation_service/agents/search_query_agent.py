@@ -582,30 +582,14 @@ class SearchQueryAgent(BaseFinancialAgent):
     async def _execute_search_query(
         self, query: SearchServiceQuery
     ) -> SearchServiceResponse:
-        """
-        Execute search query against the Search Service.
-
-        Args:
-            query: SearchServiceQuery contract
-
-        Returns:
-            SearchServiceResponse from the service
-        """
+        """Execute search query against the Search Service and aggregate all pages."""
         try:
-            # Prepare request payload for SearchRequest schema
             url = f"{self.search_service_url}/search"
             headers = {
                 "Content-Type": "application/json",
                 "User-Agent": f"ConversationService/{self.name}",
             }
 
-            request_payload = (
-                query.to_search_request()
-                if hasattr(query, "to_search_request")
-                else query.dict()
-            )
-
-            # Audit logging for search execution
             metadata = query.query_metadata
             audit_logger.info(
                 "search query execution: user_id=%s conversation_id=%s query_id=%s intent_type=%s",
@@ -619,73 +603,113 @@ class SearchQueryAgent(BaseFinancialAgent):
                     "Sending search request to Search Service: user_id=%s, "
                     "conversation_id=%s, query_id=%s"
                 ),
-                query.query_metadata.user_id,
-                query.query_metadata.conversation_id,
-                query.query_metadata.query_id,
+                metadata.user_id,
+                metadata.conversation_id,
+                metadata.query_id,
             )
-
             logger.info(
                 "Search parameters before request: text=%s filters=%s",
                 query.search_parameters.search_text,
                 query.filters.model_dump(exclude_none=True),
             )
 
-            logger.debug("Search request payload: %s", request_payload)
+            original_offset = query.search_parameters.offset
+            current_offset = original_offset
+            aggregated_response: Optional[SearchServiceResponse] = None
+            all_results: List[Any] = []
+            total_processing_time = 0.0
 
-            # Execute HTTP request
-            response = await self.http_client.post(
-                url=url, json=request_payload, headers=headers
-            )
+            while True:
+                query.search_parameters.offset = current_offset
+                request_payload = (
+                    query.to_search_request()
+                    if hasattr(query, "to_search_request")
+                    else query.dict()
+                )
+                request_payload["offset"] = current_offset
+                logger.debug("Search request payload: %s", request_payload)
 
-            response.raise_for_status()
+                response = await self.http_client.post(
+                    url=url, json=request_payload, headers=headers
+                )
+                response.raise_for_status()
+                response_data = response.json()
 
-            # Parse response
-            response_data = response.json()
+                for result in response_data.get("results", []):
+                    if "currency_code" in result and "currency" not in result:
+                        result["currency"] = result.pop("currency_code")
+                    if "primary_description" in result and "description" not in result:
+                        result["description"] = result.pop("primary_description")
+                    if "merchant_name" in result and "merchant" not in result:
+                        result["merchant"] = result.pop("merchant_name")
+                    if "category_name" in result and "category" not in result:
+                        result["category"] = result.pop("category_name")
+                    if "account_id" in result and isinstance(result["account_id"], int):
+                        result["account_id"] = str(result["account_id"])
 
-            # Normalize field names from Search Service before model validation
-            for result in response_data.get("results", []):
-                if "currency_code" in result and "currency" not in result:
-                    result["currency"] = result.pop("currency_code")
-                if "primary_description" in result and "description" not in result:
-                    result["description"] = result.pop("primary_description")
-                if "merchant_name" in result and "merchant" not in result:
-                    result["merchant"] = result.pop("merchant_name")
-                if "category_name" in result and "category" not in result:
-                    result["category"] = result.pop("category_name")
-                if "account_id" in result and isinstance(result["account_id"], int):
-                    result["account_id"] = str(result["account_id"])
+                page_response = SearchServiceResponse(**response_data)
+                if aggregated_response is None:
+                    aggregated_response = page_response
 
-            search_response = SearchServiceResponse(**response_data)
-
-            results_len = len(search_response.results or [])
-            logger.info(
-                "Search service returned %s results",
-                results_len,
-            )
-            if search_response.results:
-                logger.info("First search result: %s", search_response.results[0])
-
-            total_results = getattr(
-                getattr(search_response, "response_metadata", {}), "total_results", 0
-            )
-            logger.info(
-                "Search service returned %s total results",
-                total_results,
-            )
-
-            returned_results = getattr(
-                getattr(search_response, "response_metadata", {}), "returned_results", 0
-            )
-            if isinstance(getattr(search_response, "response_metadata", None), dict):
-                returned_results = search_response.response_metadata.get(
-                    "returned_results", 0
+                all_results.extend(page_response.results)
+                page_meta = page_response.response_metadata
+                processing_time = (
+                    page_meta.get("processing_time_ms", 0.0)
+                    if isinstance(page_meta, dict)
+                    else getattr(page_meta, "processing_time_ms", 0.0)
+                )
+                total_processing_time += processing_time
+                total_results_page = (
+                    page_meta.get("total_results", 0)
+                    if isinstance(page_meta, dict)
+                    else getattr(page_meta, "total_results", 0)
+                )
+                has_more = (
+                    page_meta.get("has_more_results", False)
+                    if isinstance(page_meta, dict)
+                    else getattr(page_meta, "has_more_results", False)
                 )
 
+                current_offset += len(page_response.results)
+                if current_offset >= total_results_page or not has_more:
+                    break
+
+            query.search_parameters.offset = original_offset
+
+            aggregated_response.results = all_results
+            meta = aggregated_response.response_metadata
+            if isinstance(meta, dict):
+                meta["total_results"] = len(all_results)
+                meta["returned_results"] = len(all_results)
+                meta["has_more_results"] = False
+                meta["processing_time_ms"] = total_processing_time
+            else:
+                meta.total_results = len(all_results)
+                meta.returned_results = len(all_results)
+                meta.has_more_results = False
+                meta.processing_time_ms = total_processing_time
+
+            results_len = len(aggregated_response.results or [])
+            logger.info("Search service returned %s results", results_len)
+            if aggregated_response.results:
+                logger.info("First search result: %s", aggregated_response.results[0])
+            meta = aggregated_response.response_metadata
+            total_res = (
+                meta.get("total_results", 0)
+                if isinstance(meta, dict)
+                else getattr(meta, "total_results", 0)
+            )
+            returned_res = (
+                meta.get("returned_results", 0)
+                if isinstance(meta, dict)
+                else getattr(meta, "returned_results", 0)
+            )
+            logger.info("Search service returned %s total results", total_res)
             logger.info(
-                f"Search query executed successfully: {returned_results} results"
+                "Search query executed successfully: %s results", returned_res
             )
 
-            return search_response
+            return aggregated_response
 
         except httpx.HTTPStatusError as e:
             logger.error(

@@ -227,6 +227,8 @@ Exemples:
                                     "anyOf": [
                                         {"type": "string"},
                                         {"type": "number"},
+                                        {"type": "object", "additionalProperties": False},
+
                                         {
                                             "type": "object",
                                             "properties": {
@@ -282,14 +284,19 @@ Exemples:
                                 "intent_type": {"type": "string"},
                                 "confidence": {"type": "number"}
                             },
-                            "required": ["intent_type", "confidence"]
+                            "required": ["intent_type", "confidence"],
+                            "additionalProperties": False
                         }
                     },
                     "validation_errors": {
                         "type": ["array", "null"],
                         "items": {"type": "string"}
                     },
-                    "context_influence": {"type": ["object", "null"]}
+                    "context_influence": {
+                        "type": ["object", "null"],
+                        "properties": {},
+                        "additionalProperties": False
+                    }
                 },
                 "required": [
                     "intent_type", "intent_category", "confidence", "entities",

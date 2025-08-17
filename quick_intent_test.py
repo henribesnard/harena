@@ -39,7 +39,6 @@ class IntentCategory(str, Enum):
     UNCLEAR_INTENT = "UNCLEAR_INTENT"
     UNKNOWN = "UNKNOWN"
     FILTER_REQUEST = "FILTER_REQUEST"
-    UNCLEAR_INTENT = "UNCLEAR_INTENT"
 
 class EntityType(str, Enum):
     """Types d'entités financières."""

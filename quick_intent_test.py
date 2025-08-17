@@ -227,7 +227,15 @@ Exemples:
                                     "anyOf": [
                                         {"type": "string"},
                                         {"type": "number"},
-                                        {"type": "object"},
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "start_date": {"type": "string"},
+                                                "end_date": {"type": "string"}
+                                            },
+                                            "required": ["start_date", "end_date"],
+                                            "additionalProperties": False
+                                        },
                                         {"type": "array"},
                                         {"type": "boolean"},
                                         {"type": "null"}

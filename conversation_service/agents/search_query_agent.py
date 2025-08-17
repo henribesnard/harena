@@ -239,9 +239,9 @@ class QueryOptimizer:
                     normalized_amount = float(value)
 
                     if "filter_by_amount_greater" in actions:
-                        amount_filters["amount"] = {"gte": normalized_amount}
+                        amount_filters["amount_abs"] = {"gte": normalized_amount}
                     elif "filter_by_amount_less" in actions:
-                        amount_filters["amount"] = {"lte": normalized_amount}
+                        amount_filters["amount_abs"] = {"lte": normalized_amount}
                     else:
                         tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
                         amount_filters["amount"] = {

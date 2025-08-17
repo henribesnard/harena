@@ -128,6 +128,13 @@ class QueryOptimizer:
             "j",
             "ai",
             "jai",
+            "a",
+            "euro",
+            "euros",
+            "superieur",
+            "superieure",
+            "superieurs",
+            "superieures",
         }
         words = [word for word in search_text.split() if word not in stop_words]
 
@@ -136,6 +143,7 @@ class QueryOptimizer:
 
         # Add entity-based keywords without duplicating existing terms
         seen_words = set(words)
+        has_amount = False
         if intent_result.entities:
             for entity in intent_result.entities:
                 if entity.entity_type in {
@@ -149,6 +157,11 @@ class QueryOptimizer:
                         if value not in seen_words:
                             words.append(value)
                             seen_words.add(value)
+                if entity.entity_type in {EntityType.AMOUNT, "AMOUNT"}:
+                    has_amount = True
+
+        if has_amount:
+            words = [w for w in words if not w.replace('.', '', 1).isdigit()]
 
         # Remove any remaining duplicates while preserving order and limit length
         unique_words: List[str] = []

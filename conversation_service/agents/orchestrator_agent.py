@@ -128,7 +128,8 @@ class WorkflowExecutor:
             "conversation_id": conversation_id,
             "intent_result": None,
             "search_results": None,
-            "final_response": None
+            "final_response": None,
+            "search_error": False
         }
         
         try:
@@ -223,6 +224,7 @@ class WorkflowExecutor:
                         search_step.error = str(e)
                         logger.error(f"Search query step failed: {e}")
                         workflow_data["search_results"] = self._create_empty_search_results()
+                        workflow_data["search_error"] = True
                     finally:
                         search_step.end_time = time.perf_counter()
                         duration_ms = metrics.performance_monitor.end_timer(search_timer)
@@ -278,6 +280,7 @@ class WorkflowExecutor:
                             "user_message": user_message,
                             "search_results": workflow_data["search_results"],
                             "context": context,
+                            "search_error": workflow_data.get("search_error", False),
                         },
                         user_id,
                     )

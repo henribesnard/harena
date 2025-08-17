@@ -283,11 +283,14 @@ class QueryOptimizer:
 
                 elif isinstance(value, (int, float)):
                     normalized_amount = float(value)
+                    abs_amount = abs(normalized_amount)
 
                     if "filter_by_amount_greater" in actions:
-                        amount_filters["amount_abs"] = {"gte": normalized_amount}
+                        # Use absolute amount comparison for "greater than" queries
+                        amount_filters["amount_abs"] = {"gte": abs_amount}
                     elif "filter_by_amount_less" in actions:
-                        amount_filters["amount_abs"] = {"lte": normalized_amount}
+                        # Use absolute amount comparison for "less than" queries
+                        amount_filters["amount_abs"] = {"lte": abs_amount}
                     else:
                         tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
                         amount_filters["amount"] = {

@@ -1,9 +1,10 @@
 import asyncio
-
 import conversation_service.agents.orchestrator_agent as oa
 from conversation_service.agents.orchestrator_agent import WorkflowExecutor
+from conversation_service.agents.response_agent import ResponseAgent
 from conversation_service.models.agent_models import AgentResponse
 from conversation_service.models.financial_models import DetectionMethod
+from types import SimpleNamespace
 
 
 oa.INTENT_TIMEOUT_SECONDS = 0.01
@@ -62,3 +63,46 @@ def test_fallback_intent_keeps_workflow_running():
     )
     assert search_step["status"] == "completed"
     assert result["final_response"] == "ok"
+
+
+class DummyIntentAgent:
+    name = "intent_agent"
+
+    async def execute_with_metrics(self, input_data, user_id):
+        intent_result = SimpleNamespace(search_required=True, suggested_actions=None)
+        return AgentResponse(
+            agent_name=self.name,
+            content="intent",
+            metadata={"intent_result": intent_result},
+            execution_time_ms=0,
+            success=True,
+        )
+
+
+class FailingSearchAgent:
+    name = "search_agent"
+
+    async def execute_with_metrics(self, input_data, user_id):
+        raise Exception("search failed")
+
+
+class DummyDeepSeekClient:
+    api_key = "test-key"
+    base_url = "http://api.example.com"
+
+    async def generate_response(self, messages, temperature, max_tokens, user, use_cache):
+        class Raw:
+            usage = type("Usage", (), {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})()
+        return type("Resp", (), {"content": messages[-1]["content"], "raw": Raw()})()
+
+
+def test_search_error_informs_user():
+    intent_agent = DummyIntentAgent()
+    search_agent = FailingSearchAgent()
+    response_agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+    executor = WorkflowExecutor(intent_agent, search_agent, response_agent)
+
+    result = asyncio.run(executor.execute_workflow("hello", "c2", 1))
+
+    assert result["workflow_data"]["search_error"] is True
+    assert "n'a pas pu être effectuée" in result["final_response"]

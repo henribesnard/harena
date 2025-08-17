@@ -79,6 +79,11 @@ class DummyElasticsearchClientNoMerchant:
             }
         }
 
+
+class DummyElasticsearchClientCount:
+    async def count(self, index, body):
+        return {"count": 5}
+
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
 def test_netflix_month_question_returns_transactions():
     agent = SearchQueryAgent(
@@ -146,4 +151,12 @@ def test_text_search_returns_results_without_merchant_name():
     assert response["results"]
     assert response["results"][0]["merchant_name"] is None
     assert "netflix" in response["results"][0]["primary_description"].lower()
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_count_transactions_returns_correct_count():
+    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientCount())
+    request = SearchRequest(user_id=1, query="", filters={})
+    count = asyncio.run(engine.count(request))
+    assert count == 5
 

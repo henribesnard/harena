@@ -11,7 +11,7 @@ from datetime import datetime
 BASE_URL = "http://localhost:8000/api/v1"
 USERNAME = "test2@example.com"
 PASSWORD = "password123"
-QUESTION = "Mes transactions Netflix ce mois"
+QUESTION = "Transactions supérieures à 100 euros"
 
 def _decode_jwt(token: str) -> dict:
     """Décodage manuel du payload JWT (sans vérification de signature)."""

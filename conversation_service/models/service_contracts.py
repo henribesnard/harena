@@ -363,7 +363,7 @@ class SearchServiceQuery(BaseModel):
                 "query_metadata": {
                     "conversation_id": "550e8400-e29b-41d4-a716-446655440001",
                     "user_id": 12345,
-                    "intent_type": "TRANSACTION_SEARCH_BY_DATE",
+                    "intent_type": "SEARCH_BY_DATE",
                     "source_agent": "search_query_agent",
                 },
                 "search_parameters": {

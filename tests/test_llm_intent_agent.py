@@ -31,3 +31,21 @@ def test_llm_intent_agent_parses_output_correctly():
         e for e in intent_result.entities if e.entity_type == EntityType.MERCHANT
     )
     assert merchant.normalized_value == "Netflix"
+
+
+class DummyDeepSeekClientSearchByText:
+    api_key = "test-key"
+    base_url = "http://api.example.com"
+
+    async def generate_response(self, messages, temperature, max_tokens, user, use_cache):
+        class Response:
+            content = '{"intent": "SEARCH_BY_TEXT", "entities": []}'
+
+        return Response()
+
+
+def test_llm_intent_agent_parses_search_by_text():
+    agent = LLMIntentAgent(deepseek_client=DummyDeepSeekClientSearchByText())
+    result = asyncio.run(agent.detect_intent("Recherche textuelle", user_id=1))
+    intent_result = result["metadata"]["intent_result"]
+    assert intent_result.intent_type == "SEARCH_BY_TEXT"

@@ -186,7 +186,7 @@ def test_amount_filter_without_date():
         )
     )
     request = search_query.to_search_request()
-    assert "amount" in request["filters"]
+    assert "amount_abs" in request["filters"]
     assert "date" not in request["filters"]
     assert request["query"] == ""
 
@@ -206,6 +206,12 @@ def test_extract_amount_filters_range():
     intent_result = make_amount_intent({"gte": 50, "lte": 100})
     filters = QueryOptimizer.extract_amount_filters(intent_result)
     assert filters == {"amount": {"gte": 50.0, "lte": 100.0}}
+
+
+def test_extract_amount_filters_absolute_comparison():
+    intent_result = make_amount_intent(100, actions=["filter_by_amount_greater"])
+    filters = QueryOptimizer.extract_amount_filters(intent_result)
+    assert filters == {"amount_abs": {"gte": 100.0}}
 
 
 def test_execute_search_query_converts_fields():

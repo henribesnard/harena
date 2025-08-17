@@ -77,7 +77,12 @@ def test_response_agent_handles_no_transactions_current_month():
         success=True,
     )
 
-    search_results = {"metadata": {"search_response": search_response}}
+    search_results = {
+        "metadata": {
+            "search_response": search_response,
+            "search_query": {"filters": {"date": {"gte": "2025-08-01", "lte": "2025-08-31"}}},
+        }
+    }
 
     result = asyncio.run(
         agent.generate_response("Mes transactions ce mois-ci ?", search_results, user_id=1)
@@ -85,6 +90,6 @@ def test_response_agent_handles_no_transactions_current_month():
 
     today = datetime.utcnow().strftime("%d/%m/%Y")
     assert "Aucune transaction" in result["content"]
-    assert "mois en cours" in result["content"]
+    assert "période spécifiée" in result["content"]
     assert today in result["content"]
 

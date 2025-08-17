@@ -225,6 +225,12 @@ class ResponseAgent(BaseFinancialAgent):
             formatted_results = await self._format_search_results(search_response)
             logger.debug("Formatted results preview: %s", formatted_results[:200])
 
+            # Determine if a date filter was applied to the search query
+            search_query = search_results_dict.get("metadata", {}).get("search_query", {})
+            has_date_filter = bool(
+                search_query.get("filters", {}).get("date") if isinstance(search_query, dict) else False
+            )
+
             # Get conversation context
             conversation_context = await self._get_conversation_context(context)
 
@@ -240,7 +246,7 @@ class ResponseAgent(BaseFinancialAgent):
 
             # Generate contextual response using AI
             ai_response = await self._generate_ai_response(
-                user_message, formatted_results, conversation_context, user_id
+                user_message, formatted_results, conversation_context, user_id, has_date_filter
             )
 
             # Extract token usage if available and log generated response
@@ -366,6 +372,7 @@ class ResponseAgent(BaseFinancialAgent):
         formatted_results: str,
         conversation_context: str,
         user_id: int,
+        has_date_filter: bool,
     ) -> DeepSeekResponse:
         """
         Generate AI response using DeepSeek.
@@ -380,7 +387,9 @@ class ResponseAgent(BaseFinancialAgent):
             DeepSeekResponse containing response and raw completion
         """
         # Prepare prompt for response generation
-        prompt = self._build_response_prompt(user_message, formatted_results, conversation_context)
+        prompt = self._build_response_prompt(
+            user_message, formatted_results, conversation_context, has_date_filter
+        )
 
         try:
             logger.debug("Generating AI response for user_id=%s", user_id)
@@ -405,13 +414,25 @@ class ResponseAgent(BaseFinancialAgent):
             )
             return DeepSeekResponse(content=fallback, raw=None)
     
-    def _build_response_prompt(self, user_message: str, formatted_results: str,
-                              conversation_context: str) -> str:
+    def _build_response_prompt(
+        self,
+        user_message: str,
+        formatted_results: str,
+        conversation_context: str,
+        has_date_filter: bool,
+    ) -> str:
         """Build the complete prompt for response generation."""
         current_date = datetime.utcnow().strftime("%d/%m/%Y")
         no_results_instruction = ""
         if "Aucun résultat" in formatted_results:
-            no_results_instruction = "Aucune transaction trouvée pour le mois en cours."
+            if has_date_filter:
+                no_results_instruction = (
+                    "Aucune transaction trouvée pour la période spécifiée."
+                )
+            else:
+                no_results_instruction = (
+                    "Aucune transaction correspondante trouvée."
+                )
 
         return f"""Nous sommes le {current_date}.
 

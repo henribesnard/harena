@@ -227,7 +227,7 @@ Exemples:
                                     "anyOf": [
                                         {"type": "string"},
                                         {"type": "number"},
-                                        {"type": "object"},
+                                        {"type": "object", "additionalProperties": False},
                                         {"type": "array"},
                                         {"type": "boolean"},
                                         {"type": "null"}
@@ -274,14 +274,19 @@ Exemples:
                                 "intent_type": {"type": "string"},
                                 "confidence": {"type": "number"}
                             },
-                            "required": ["intent_type", "confidence"]
+                            "required": ["intent_type", "confidence"],
+                            "additionalProperties": False
                         }
                     },
                     "validation_errors": {
                         "type": ["array", "null"],
                         "items": {"type": "string"}
                     },
-                    "context_influence": {"type": ["object", "null"]}
+                    "context_influence": {
+                        "type": ["object", "null"],
+                        "properties": {},
+                        "additionalProperties": False
+                    }
                 },
                 "required": [
                     "intent_type", "intent_category", "confidence", "entities",

@@ -263,7 +263,9 @@ class LLMIntentAgent(BaseFinancialAgent):
                 )
             )
 
-        if intent_type in {
+        if intent_type == "SEARCH_BY_OPERATION_TYPE":
+            category = IntentCategory.FINANCIAL_QUERY
+        elif intent_type in {
             "SEARCH_BY_MERCHANT",
             "SEARCH_BY_CATEGORY",
             "SEARCH_BY_TEXT",

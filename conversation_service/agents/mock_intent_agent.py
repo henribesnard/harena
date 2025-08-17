@@ -126,6 +126,25 @@ MOCK_INTENT_RESPONSES: Dict[str, Dict[str, Any]] = {
         "suggested_actions": ["filter_by_amount_greater"],
     },
 
+    "Opérations carte": {
+        "intent_type": "SEARCH_BY_OPERATION_TYPE",
+        "intent_category": "FINANCIAL_QUERY",
+        "confidence": 0.93,
+        "entities": [
+            {
+                "entity_type": "OPERATION_TYPE",
+                "raw_value": "carte",
+                "normalized_value": "card",
+                "confidence": 0.96,
+                "position": [11, 16],
+            }
+        ],
+        "method": "llm_detection",
+        "processing_time_ms": 130.0,
+        "requires_clarification": False,
+        "suggested_actions": ["filter_by_operation_type", "list_transactions"],
+    },
+
     # SPENDING_ANALYSIS
     "Mes dépenses restaurant cette semaine": {
         "intent_type": "SPENDING_ANALYSIS",

@@ -155,36 +155,54 @@ class DummyElasticsearchClientCount:
 
 class DummyElasticsearchClientAmountAbs:
     async def search(self, index, body, size, from_):
-        has_filter = False
-        for clause in body.get("query", {}).get("bool", {}).get("must", []):
-            if "range" in clause and "amount_abs" in clause["range"]:
-                gte = clause["range"]["amount_abs"].get("gte", 0)
-                if gte <= 150:
-                    has_filter = True
-        if has_filter:
-            return {
-                "hits": {
-                    "total": {"value": 1},
-                    "hits": [
-                        {
-                            "_score": 1.0,
-                            "_source": {
-                                "transaction_id": "t1",
-                                "user_id": 1,
-                                "amount": -150.0,
-                                "amount_abs": 150.0,
-                                "currency_code": "EUR",
-                                "transaction_type": "debit",
-                                "date": "2025-02-01",
-                                "primary_description": "Paiement carte",
-                                "category_name": "Divers",
-                                "operation_type": "card",
-                            },
-                        }
-                    ],
-                }
+        return {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_score": 1.0,
+                        "_source": {
+                            "transaction_id": "t1",
+                            "user_id": 1,
+                            "amount": -150.0,
+                            "amount_abs": 150.0,
+                            "currency_code": "EUR",
+                            "transaction_type": "debit",
+                            "date": "2025-02-01",
+                            "primary_description": "Paiement carte",
+                            "category_name": "Divers",
+                            "operation_type": "card",
+                        },
+                    }
+                ],
             }
-        return {"hits": {"total": {"value": 0}, "hits": []}}
+        }
+
+
+class DummyElasticsearchClientAmountAbsLess:
+    async def search(self, index, body, size, from_):
+        return {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_score": 1.0,
+                        "_source": {
+                            "transaction_id": "t1",
+                            "user_id": 1,
+                            "amount": -50.0,
+                            "amount_abs": 50.0,
+                            "currency_code": "EUR",
+                            "transaction_type": "debit",
+                            "date": "2025-02-01",
+                            "primary_description": "Paiement carte",
+                            "category_name": "Divers",
+                            "operation_type": "card",
+                        },
+                    }
+                ],
+            }
+        }
 
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
 def test_netflix_month_question_returns_transactions():
@@ -329,4 +347,38 @@ def test_amount_abs_filter_matches_negative_amount():
     engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientAmountAbs())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["amount"] == -150.0
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_amount_abs_filter_with_less_than_action():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.AMOUNT,
+                raw_value="100",
+                normalized_value=100,
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+        suggested_actions=["filter_by_amount_less"],
+    )
+    user_message = "transactions inférieures à 100€"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    assert request_dict["filters"].get("amount_abs", {}).get("lte") == 100
+
+    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientAmountAbsLess())
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert response["results"] and response["results"][0]["amount_abs"] < 100
 

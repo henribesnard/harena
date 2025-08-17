@@ -3,7 +3,7 @@ from conversation_service.agents import base_financial_agent
 # Ensure the base agent does not require AutoGen during tests
 base_financial_agent.AUTOGEN_AVAILABLE = True
 
-from conversation_service.agents.search_query_agent import SearchQueryAgent
+from conversation_service.agents.search_query_agent import SearchQueryAgent, QueryOptimizer
 from conversation_service.models.financial_models import (
     FinancialEntity,
     EntityType,
@@ -51,6 +51,25 @@ class DummyHTTPClient:
 
     async def post(self, url, json, headers):
         return DummyHTTPResponse(self._data)
+
+
+def make_amount_intent(normalized_value, actions=None):
+    return IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.AMOUNT,
+                raw_value="amount",
+                normalized_value=normalized_value,
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        suggested_actions=actions,
+        processing_time_ms=1.0,
+    )
 
 
 def test_prepare_entity_context_with_string_entity_type():
@@ -137,6 +156,24 @@ def test_relative_date_current_month():
 
     assert date_filter["gte"] == start.strftime("%Y-%m-%d")
     assert date_filter["lte"] == end.strftime("%Y-%m-%d")
+
+
+def test_extract_amount_filters_gte_only():
+    intent_result = make_amount_intent({"gte": 50})
+    filters = QueryOptimizer.extract_amount_filters(intent_result)
+    assert filters == {"amount": {"gte": 50.0}}
+
+
+def test_extract_amount_filters_lte_only():
+    intent_result = make_amount_intent({"lte": 100})
+    filters = QueryOptimizer.extract_amount_filters(intent_result)
+    assert filters == {"amount": {"lte": 100.0}}
+
+
+def test_extract_amount_filters_range():
+    intent_result = make_amount_intent({"gte": 50, "lte": 100})
+    filters = QueryOptimizer.extract_amount_filters(intent_result)
+    assert filters == {"amount": {"gte": 50.0, "lte": 100.0}}
 
 
 def test_execute_search_query_converts_fields():

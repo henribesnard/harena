@@ -31,7 +31,7 @@ except Exception:  # pragma: no cover - fallback to simple stubs
         metadata: Dict[str, Any] = field(default_factory=dict)
 
     class SearchEngine:
-        def __init__(self, elasticsearch_client=None):
+        def __init__(self, elasticsearch_client=None, cache_enabled: bool = True):
             self.elasticsearch_client = elasticsearch_client
 
         async def search(self, request: SearchRequest) -> Dict[str, Any]:
@@ -232,7 +232,7 @@ def test_netflix_month_question_returns_transactions():
     request_dict = search_contract.to_search_request()
     assert request_dict["query"] == "netflix"
 
-    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClient())
+    engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClient())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["merchant_name"] == "Netflix"
 
@@ -266,7 +266,7 @@ def test_text_search_returns_results_without_merchant_name():
     assert request_dict["query"] == "netflix"
     assert "merchant_name" not in request_dict["filters"]
 
-    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientNoMerchant())
+    engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientNoMerchant())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"]
     assert response["results"][0].get("merchant_name") is None
@@ -302,7 +302,7 @@ def test_amount_filter_returns_results_without_query():
     request_dict = search_contract.to_search_request()
     assert request_dict["query"] == ""
 
-    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientHighAmount())
+    engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientHighAmount())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"]
     assert all(r["amount_abs"] > 100 for r in response["results"])
@@ -310,7 +310,7 @@ def test_amount_filter_returns_results_without_query():
 
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
 def test_count_transactions_returns_correct_count():
-    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientCount())
+    engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientCount())
     request = SearchRequest(user_id=1, query="", filters={})
     count = asyncio.run(engine.count(request))
     assert count == 5
@@ -344,7 +344,7 @@ def test_amount_abs_filter_matches_negative_amount():
     )
     request_dict = search_contract.to_search_request()
     assert request_dict["filters"].get("amount_abs", {}).get("gte") == 100
-    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientAmountAbs())
+    engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientAmountAbs())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["amount"] == -150.0
 
@@ -378,7 +378,7 @@ def test_amount_abs_filter_with_less_than_action():
     request_dict = search_contract.to_search_request()
     assert request_dict["filters"].get("amount_abs", {}).get("lte") == 100
 
-    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientAmountAbsLess())
+    engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientAmountAbsLess())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["amount_abs"] < 100
 

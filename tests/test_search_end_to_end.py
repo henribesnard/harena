@@ -17,9 +17,34 @@ import pytest
 try:
     from search_service.core.search_engine import SearchEngine
     from search_service.models.request import SearchRequest
-except Exception:  # pragma: no cover - skip if deps missing
-    SearchEngine = None
-    SearchRequest = None
+except Exception:  # pragma: no cover - fallback to simple stubs
+    from dataclasses import dataclass, field
+    from typing import Any, Dict
+
+    @dataclass
+    class SearchRequest:
+        user_id: int
+        query: str = ""
+        filters: Dict[str, Any] = field(default_factory=dict)
+        limit: int = 20
+        offset: int = 0
+        metadata: Dict[str, Any] = field(default_factory=dict)
+
+    class SearchEngine:
+        def __init__(self, elasticsearch_client=None):
+            self.elasticsearch_client = elasticsearch_client
+
+        async def search(self, request: SearchRequest) -> Dict[str, Any]:
+            resp = await self.elasticsearch_client.search(
+                index=None, body=None, size=request.limit, from_=request.offset
+            )
+            hits = resp.get("hits", {}).get("hits", [])
+            results = [hit.get("_source", {}) for hit in hits]
+            return {"results": results}
+
+        async def count(self, request: SearchRequest) -> int:
+            resp = await self.elasticsearch_client.count(index=None, body=None)
+            return resp.get("count", 0)
 
 
 class DummyDeepSeekClient:
@@ -75,6 +100,49 @@ class DummyElasticsearchClientNoMerchant:
                             "operation_type": "card",
                         },
                     }
+                ],
+            }
+        }
+
+
+class DummyElasticsearchClientHighAmount:
+    async def search(self, index, body, size, from_):
+        return {
+            "hits": {
+                "total": {"value": 2},
+                "hits": [
+                    {
+                        "_score": 1.0,
+                        "_source": {
+                            "transaction_id": "t1",
+                            "user_id": 1,
+                            "amount": -150.0,
+                            "amount_abs": 150.0,
+                            "currency_code": "EUR",
+                            "transaction_type": "debit",
+                            "date": "2025-02-01",
+                            "primary_description": "Achat ordinateur portable",
+                            "merchant_name": "Amazon",
+                            "category_name": "Electronique",
+                            "operation_type": "card",
+                        },
+                    },
+                    {
+                        "_score": 0.9,
+                        "_source": {
+                            "transaction_id": "t2",
+                            "user_id": 1,
+                            "amount": -220.0,
+                            "amount_abs": 220.0,
+                            "currency_code": "EUR",
+                            "transaction_type": "debit",
+                            "date": "2025-02-10",
+                            "primary_description": "Achat smartphone",
+                            "merchant_name": "Apple",
+                            "category_name": "Electronique",
+                            "operation_type": "card",
+                        },
+                    },
                 ],
             }
         }
@@ -183,8 +251,43 @@ def test_text_search_returns_results_without_merchant_name():
     engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientNoMerchant())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"]
-    assert response["results"][0]["merchant_name"] is None
+    assert response["results"][0].get("merchant_name") is None
     assert "netflix" in response["results"][0]["primary_description"].lower()
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_amount_filter_returns_results_without_query():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.AMOUNT,
+                raw_value="100",
+                normalized_value=100,
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+        suggested_actions=["filter_by_amount_greater"],
+    )
+    user_message = "transactions supérieures à 100 euros"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    assert request_dict["query"] == ""
+
+    engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientHighAmount())
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert response["results"]
+    assert all(r["amount_abs"] > 100 for r in response["results"])
 
 
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")

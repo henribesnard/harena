@@ -284,7 +284,13 @@ class WorkflowExecutor:
                         },
                         user_id,
                     )
-                    if response_response.success:
+                    if workflow_data.get("search_error"):
+                        # Propagate search failure to the workflow and avoid normal response
+                        workflow_data["final_response"] = response_response.content
+                        response_step.status = WorkflowStepStatus.FAILED
+                        response_step.result = response_response
+                        response_step.error = "Search query failed"
+                    elif response_response.success:
                         workflow_data["final_response"] = response_response.content
                         response_step.status = WorkflowStepStatus.COMPLETED
                         response_step.result = response_response

@@ -27,6 +27,9 @@ from ..core.deepseek_client import DeepSeekClient, DeepSeekResponse
 
 logger = logging.getLogger(__name__)
 
+# Message returned to the user when the search step fails
+SEARCH_ERROR_MESSAGE = "La recherche n'a pas pu être effectuée."
+
 
 class ResponseFormatter:
     """Helper class for formatting financial data in responses."""
@@ -178,7 +181,7 @@ class ResponseAgent(BaseFinancialAgent):
         context = input_data.get("context")
         if input_data.get("search_error"):
             return {
-                "content": "La recherche n'a pas pu être effectuée.",
+                "content": SEARCH_ERROR_MESSAGE,
                 "metadata": {"error": "search_failed", "fallback_used": True},
                 "confidence_score": 0.0,
             }

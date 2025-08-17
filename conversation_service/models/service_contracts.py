@@ -204,6 +204,10 @@ class SearchFilters(BaseModel):
         default=None, description="List of transaction types to include"
     )
 
+    operation_type: Optional[str] = Field(
+        default=None, description="Operation type to include"
+    )
+
     account_ids: Optional[List[str]] = Field(
         default=None, description="List of account IDs to include"
     )
@@ -287,6 +291,7 @@ class SearchFilters(BaseModel):
                 "category_name": ["food", "transport"],
                 "merchant_name": ["Carrefour", "SNCF"],
                 "transaction_types": ["debit"],
+                "operation_type": "card",
                 "text_query": "restaurant paris",
             }
         },
@@ -494,6 +499,12 @@ class TransactionResult(BaseModel):
         ..., description="Type of transaction"
     )
 
+    operation_type: Optional[str] = Field(
+        default=None,
+        description="Type of operation",
+        validation_alias="operation_type",
+    )
+
     balance_after: Optional[float] = Field(
         default=None, description="Account balance after transaction"
     )
@@ -686,6 +697,12 @@ class SearchServiceResponse(BaseModel):
             filtered = [r for r in filtered if r.amount <= max_amount]
 
         return filtered
+
+    def filter_by_operation_type(self, operation_type: Optional[str] = None) -> List[TransactionResult]:
+        """Filter results by operation type."""
+        if not operation_type:
+            return self.results
+        return [r for r in self.results if r.operation_type == operation_type]
 
     def group_by_category(self) -> Dict[str, List[TransactionResult]]:
         """Group results by transaction category."""

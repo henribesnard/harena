@@ -435,6 +435,14 @@ class SearchQueryAgent(BaseFinancialAgent):
         if categories:
             search_filters["category_name"] = categories
 
+        operation_types = [
+            str(e.normalized_value)
+            for e in all_entities
+            if e.entity_type in {EntityType.OPERATION_TYPE, "OPERATION_TYPE"} and e.normalized_value
+        ]
+        if operation_types:
+            search_filters["operation_type"] = operation_types[0]
+
         # Merchant name filtering is intentionally avoided. Some databases may
         # store transactions with an empty ``merchant_name`` field. Adding a
         # ``merchant_name`` filter would exclude those records, even though the

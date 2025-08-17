@@ -48,6 +48,7 @@ class EntityType(str, Enum):
     
     # Transaction entities
     TRANSACTION_TYPE = "TRANSACTION_TYPE"
+    OPERATION_TYPE = "OPERATION_TYPE"
     MERCHANT = "MERCHANT"
     CATEGORY = "CATEGORY"
     DESCRIPTION = "DESCRIPTION"
@@ -234,7 +235,8 @@ class FinancialEntity(BaseModel):
             EntityType.DATE_RANGE: {"field": "date", "value": self.normalized_value},
             EntityType.CATEGORY: {"field": "category", "value": self.normalized_value},
             EntityType.MERCHANT: {"field": "merchant", "value": self.normalized_value},
-            EntityType.TRANSACTION_TYPE: {"field": "transaction_type", "value": self.normalized_value}
+            EntityType.TRANSACTION_TYPE: {"field": "transaction_type", "value": self.normalized_value},
+            EntityType.OPERATION_TYPE: {"field": "operation_type", "value": self.normalized_value}
         }
         
         return filter_map.get(self.entity_type)

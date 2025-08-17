@@ -439,7 +439,7 @@ class IntentResult(BaseModel):
         "use_enum_values": True,
         "json_schema_extra": {
             "example": {
-                "intent_type": "TRANSACTION_SEARCH_BY_AMOUNT_AND_DATE",
+                "intent_type": "SEARCH_BY_AMOUNT_AND_DATE",
                 "intent_category": "TRANSACTION_SEARCH",
                 "confidence": 0.92,
                 "method": "llm_based",

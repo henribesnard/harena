@@ -238,7 +238,18 @@ Exemples:
                                             "required": ["start_date", "end_date"],
                                             "additionalProperties": False
                                         },
-                                        {"type": "array"},
+                                        {
+                                            "type": "array",
+                                            "items": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "number"},
+                                                    {"type": "boolean"},
+                                                    {"type": "object", "properties": {}, "additionalProperties": False},
+                                                    {"type": "null"}
+                                                ]
+                                            }
+                                        },
                                         {"type": "boolean"},
                                         {"type": "null"}
                                     ]

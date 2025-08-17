@@ -60,8 +60,10 @@ def test_conversational_intents_are_supported():
     assert confirmation_result.intent_category == IntentCategory.CONFIRMATION
 
 
-def test_payment_request_returns_unclear_intent():
+def test_unknown_request_returns_general_question():
     agent = MockIntentAgent()
-    result = asyncio.run(agent.detect_intent("Peux-tu transférer 500 euros à Marie ?", user_id=1))
+    result = asyncio.run(
+        agent.detect_intent("Peux-tu transférer 500 euros à Marie ?", user_id=1)
+    )
     intent_result = result["metadata"]["intent_result"]
-    assert intent_result.intent_category == IntentCategory.UNCLEAR_INTENT
+    assert intent_result.intent_category == IntentCategory.GENERAL_QUESTION

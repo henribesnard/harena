@@ -164,9 +164,9 @@ INTENTIONS PRINCIPALES:
 - TRANSACTION_SEARCH: Recherche de transactions (par montant, date, marchand, catégorie)
 - SPENDING_ANALYSIS: Analyse des dépenses (totaux, tendances, comparaisons)
 - ACCOUNT_BALANCE: Consultation de solde (compte courant, épargne)
-- BUDGET_TRACKING: Suivi de budget (par catégorie, alertes)
+- BUDGET_MANAGEMENT: Suivi de budget (par catégorie, alertes)
 - GOAL_TRACKING: Suivi d'objectifs (épargne, dépenses)
-- CONVERSATIONAL: Interactions conversationnelles
+- GREETING: Interactions conversationnelles
 
 ENTITÉS À EXTRAIRE:
 - AMOUNT: Montants (50€, mille euros) → normaliser en float

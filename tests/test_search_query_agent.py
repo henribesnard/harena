@@ -16,6 +16,8 @@ from conversation_service.models.service_contracts import (
     QueryMetadata,
     SearchParameters,
     SearchFilters,
+    ResponseMetadata,
+    SearchServiceResponse,
 )
 import asyncio
 import pytest
@@ -359,6 +361,62 @@ def test_execute_search_query_converts_fields():
     assert result["merchant"] == "Starbucks"
     assert result["category"] == "Food"
     assert result["account_id"] == "987"
+
+
+def test_pagination_updates_offset(monkeypatch):
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+
+    if not hasattr(agent, "name"):
+        agent.name = agent._name
+
+    async def dummy_extract(message, intent_result, user_id):
+        return []
+
+    async def dummy_generate(intent_result, user_message, user_id, enhanced_entities=None):
+        return SearchServiceQuery(
+            query_metadata=QueryMetadata(
+                conversation_id="conv1", user_id=user_id, intent_type="TEST_INTENT"
+            ),
+            search_parameters=SearchParameters(max_results=1, offset=0),
+            filters=SearchFilters(),
+        )
+
+    calls = []
+
+    async def dummy_execute(query):
+        calls.append(query.search_parameters.offset)
+        meta = ResponseMetadata(
+            query_id="q1",
+            processing_time_ms=1.0,
+            total_results=2,
+            returned_results=1,
+            has_more_results=query.search_parameters.offset == 0,
+            search_strategy_used="semantic",
+        )
+        return SearchServiceResponse(
+            response_metadata=meta,
+            results=[{"transaction_id": f"t{query.search_parameters.offset}"}],
+            success=True,
+        )
+
+    monkeypatch.setattr(agent, "_extract_additional_entities", dummy_extract)
+    monkeypatch.setattr(agent, "_generate_search_contract", dummy_generate)
+    monkeypatch.setattr(agent, "_execute_search_query", dummy_execute)
+
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    asyncio.run(agent.process_search_request(intent_result, "msg", user_id=1))
+    assert calls == [0, 1]
 
 
 class DummyElasticsearchClientNoMerchant:

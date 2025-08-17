@@ -23,9 +23,18 @@ import argparse
 import statistics as stats
 from collections import Counter
 
+import openai
+from packaging import version
 from dotenv import load_dotenv
 from jsonschema import Draft7Validator, ValidationError
 from openai import OpenAI
+
+REQUIRED_OPENAI = "1.1.0"
+if version.parse(openai.__version__) < version.parse(REQUIRED_OPENAI):
+    raise RuntimeError(
+        f"openai>={REQUIRED_OPENAI} required, but {openai.__version__} is installed. "
+        "Please update the openai package."
+    )
 
 # -----------------------------
 # 1) JSON Schema & validateur précompilé

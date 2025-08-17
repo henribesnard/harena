@@ -26,18 +26,20 @@ logger = logging.getLogger(__name__)
 # ==================== MODÈLES PYDANTIC (IntentResult) ====================
 
 class IntentCategory(str, Enum):
-    """Catégories d'intentions."""
-    TRANSACTION_SEARCH = "TRANSACTION_SEARCH"
+    """Catégories d'intentions consultatives."""
+    FINANCIAL_QUERY = "FINANCIAL_QUERY"
     SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
-    ACCOUNT_BALANCE = "ACCOUNT_BALANCE"
-    BUDGET_MANAGEMENT = "BUDGET_MANAGEMENT"
-    GOAL_TRACKING = "GOAL_TRACKING"
-    FILTER_REQUEST = "FILTER_REQUEST"
+    TREND_ANALYSIS = "TREND_ANALYSIS"
+    BALANCE_INQUIRY = "BALANCE_INQUIRY"
+    ACCOUNT_INFORMATION = "ACCOUNT_INFORMATION"
+    BUDGET_ANALYSIS = "BUDGET_ANALYSIS"
     GREETING = "GREETING"
     CONFIRMATION = "CONFIRMATION"
     CLARIFICATION = "CLARIFICATION"
     UNCLEAR_INTENT = "UNCLEAR_INTENT"
     UNKNOWN = "UNKNOWN"
+    FILTER_REQUEST = "FILTER_REQUEST"
+    UNCLEAR_INTENT = "UNCLEAR_INTENT"
 
 class EntityType(str, Enum):
     """Types d'entités financières."""
@@ -162,12 +164,17 @@ class HarenaIntentAgent:
 Tu dois analyser chaque question et retourner un objet IntentResult structuré.
 
 INTENTIONS PRINCIPALES:
-- TRANSACTION_SEARCH: Recherche de transactions (par montant, date, marchand, catégorie)
-- SPENDING_ANALYSIS: Analyse des dépenses (totaux, tendances, comparaisons)
-- ACCOUNT_BALANCE: Consultation de solde (compte courant, épargne)
-- BUDGET_MANAGEMENT: Suivi de budget (par catégorie, alertes)
-- GOAL_TRACKING: Suivi d'objectifs (épargne, dépenses)
+- FINANCIAL_QUERY: Questions financières générales
+- SPENDING_ANALYSIS: Analyse des dépenses (totaux, comparaisons)
+- TREND_ANALYSIS: Analyse des tendances de dépenses ou revenus
+- BALANCE_INQUIRY: Consultation de solde d'un compte
+- ACCOUNT_INFORMATION: Informations sur les comptes ou cartes
+- BUDGET_ANALYSIS: Analyse de budget et suivi de catégories
 - GREETING: Interactions conversationnelles
+- CONFIRMATION: Réponses d'accord ou de validation
+- CLARIFICATION: Demande ou apport de précisions
+- FILTER_REQUEST: Demande de filtre de recherche spécifique
+- UNCLEAR_INTENT: Intention ambiguë ou non reconnue
 
 ENTITÉS À EXTRAIRE:
 - AMOUNT: Montants (50€, mille euros) → normaliser en float
@@ -188,14 +195,14 @@ RÈGLES IMPORTANTES:
 
 Exemples:
 "Combien j'ai dépensé chez Carrefour ?" → SPENDING_ANALYSIS avec MERCHANT:carrefour
-"Virement de 500€ à Marie" → TRANSFER_REQUEST avec AMOUNT:500.0 et RECIPIENT:marie
-"Quel est mon solde ?" → ACCOUNT_BALANCE avec search_required:true"""
+"Quel est mon solde ?" → BALANCE_INQUIRY avec search_required:true"""
     
     def _get_json_schema(self) -> dict:
         """
         Retourne le JSON Schema pour les Structured Outputs.
         Compatible avec l'API OpenAI.
         """
+        intent_categories = [cat.value for cat in IntentCategory]
         return {
             "name": "intent_result",
             "schema": {
@@ -207,7 +214,7 @@ Exemples:
                     },
                     "intent_category": {
                         "type": "string",
-                        "enum": [cat.value for cat in IntentCategory],
+                        "enum": intent_categories,
                         "description": "Catégorie d'intention"
                     },
                     "confidence": {
@@ -389,7 +396,7 @@ Exemples:
             # Retour d'erreur structuré
             return IntentResult(
                 intent_type="ERROR",
-                intent_category=IntentCategory.UNKNOWN,
+                intent_category=IntentCategory.UNCLEAR_INTENT,
                 confidence=0.0,
                 entities=[],
                 method=DetectionMethod.LLM_BASED,
@@ -525,7 +532,6 @@ async def main():
     # Tests unitaires
     test_queries = [
         "Combien j'ai dépensé chez Carrefour le mois dernier ?",
-        "Virement de 500 euros à Marie pour le loyer",
         "Quel est le solde de mon livret A ?",
         "Montre mes achats supérieurs à 100€ en janvier 2024",
         "Budget alimentation ce mois",

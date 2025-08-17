@@ -9,7 +9,11 @@ from conversation_service.agents.mock_intent_agent import (
     MockIntentAgent,
     MOCK_INTENT_RESPONSES,
 )
-from conversation_service.models.financial_models import DetectionMethod, IntentResult
+from conversation_service.models.financial_models import (
+    DetectionMethod,
+    IntentCategory,
+    IntentResult,
+)
 
 
 @pytest.mark.parametrize("question,expected", list(MOCK_INTENT_RESPONSES.items()))
@@ -42,3 +46,22 @@ def test_detect_intent_returns_intent_result_for_known_question():
     assert isinstance(intent_result, IntentResult)
     assert intent_result.method == DetectionMethod.RULE_BASED
     assert result["metadata"]["detection_method"] == DetectionMethod.RULE_BASED
+
+
+def test_conversational_intents_are_supported():
+    agent = MockIntentAgent()
+
+    greeting = asyncio.run(agent.detect_intent("Bonjour, comment ça va ?", user_id=1))
+    greeting_result = greeting["metadata"]["intent_result"]
+    assert greeting_result.intent_category == IntentCategory.GREETING
+
+    confirmation = asyncio.run(agent.detect_intent("Merci pour l'information", user_id=1))
+    confirmation_result = confirmation["metadata"]["intent_result"]
+    assert confirmation_result.intent_category == IntentCategory.CONFIRMATION
+
+
+def test_payment_request_returns_unclear_intent():
+    agent = MockIntentAgent()
+    result = asyncio.run(agent.detect_intent("Peux-tu transférer 500 euros à Marie ?", user_id=1))
+    intent_result = result["metadata"]["intent_result"]
+    assert intent_result.intent_category == IntentCategory.UNCLEAR_INTENT

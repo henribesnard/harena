@@ -269,10 +269,13 @@ class LLMIntentAgent(BaseFinancialAgent):
             "SEARCH_BY_MERCHANT",
             "SEARCH_BY_CATEGORY",
             "SEARCH_BY_TEXT",
-            "COUNT_TRANSACTIONS",
         }:
             category = IntentCategory.TRANSACTION_SEARCH
-        elif intent_type in {"SPENDING_ANALYSIS", "CATEGORY_ANALYSIS"}:
+        elif intent_type in {
+            "SPENDING_ANALYSIS",
+            "CATEGORY_ANALYSIS",
+            "COUNT_TRANSACTIONS",
+        }:
             category = IntentCategory.SPENDING_ANALYSIS
         elif intent_type in {"BALANCE_CHECK", "BALANCE_INQUIRY"}:
             category = IntentCategory.BALANCE_INQUIRY

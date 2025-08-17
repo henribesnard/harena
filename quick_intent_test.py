@@ -194,7 +194,6 @@ Exemples:
         """
         return {
             "name": "intent_result",
-            "strict": True,  # Force le respect strict du schéma
             "schema": {
                 "type": "object",
                 "properties": {

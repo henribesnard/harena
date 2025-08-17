@@ -270,14 +270,22 @@ class SearchFilters(BaseModel):
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
-        """Validate amount filter has proper gte/lte."""
+        """Validate amount filter has proper gte/lte.
+
+        Accepts filters containing either ``gte`` or ``lte`` or both. Any
+        extraneous keys are ignored in the returned value.
+        """
         if v is None:
             return v
-        if "gte" not in v and "lte" not in v:
+
+        allowed = {"gte", "lte"}
+        if not any(key in v for key in allowed):
             raise ValueError("amount filter must contain 'gte' or 'lte'")
+
         if "gte" in v and "lte" in v and v["gte"] > v["lte"]:
             raise ValueError("'gte' must be less than or equal to 'lte'")
-        return v
+
+        return {k: v[k] for k in allowed if k in v}
 
     model_config = {
         "populate_by_name": True,

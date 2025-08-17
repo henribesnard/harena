@@ -28,19 +28,17 @@ def test_date_filter_inverted_range():
         SearchFilters.validate_date({"gte": "2024-02-01", "lte": "2024-01-01"})
 
 
-def test_amount_filter_valid_range():
-    filters = SearchFilters(amount={"gte": 10.0, "lte": 100.0})
-    assert filters.amount == {"gte": 10.0, "lte": 100.0}
-
-
-def test_amount_filter_valid_gte_only():
-    filters = SearchFilters(amount={"gte": 10.0})
-    assert filters.amount == {"gte": 10.0}
-
-
-def test_amount_filter_valid_lte_only():
-    filters = SearchFilters(amount={"lte": 100.0})
-    assert filters.amount == {"lte": 100.0}
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"gte": 10.0},
+        {"lte": 100.0},
+        {"gte": 10.0, "lte": 100.0},
+    ],
+)
+def test_amount_filter_valid(payload):
+    filters = SearchFilters(amount=payload)
+    assert filters.amount == payload
 
 
 def test_amount_filter_missing_keys():

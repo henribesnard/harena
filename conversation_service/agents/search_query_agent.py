@@ -64,7 +64,9 @@ class QueryOptimizer:
     """Helper class for optimizing search queries."""
 
     @staticmethod
-    def optimize_search_text(user_message: str, intent_result: IntentResult) -> str:
+    def optimize_search_text(
+        user_message: str, intent_result: IntentResult
+    ) -> Optional[str]:
         """
         Optimize search text based on intent and entities.
 
@@ -73,7 +75,7 @@ class QueryOptimizer:
             intent_result: Detected intent with entities
 
         Returns:
-            Optimized search text
+            Optimized search text or ``None`` if no useful terms remain
         """
         # Start with clean user message
         search_text = user_message.lower().strip()
@@ -131,12 +133,43 @@ class QueryOptimizer:
             "a",
             "euro",
             "euros",
+            # Comparatives
             "superieur",
             "superieure",
             "superieurs",
             "superieures",
+            "inferieur",
+            "inferieure",
+            "inferieurs",
+            "inferieures",
+            # Monetary symbols and currency tokens
+            "€",
+            "$",
+            "£",
+            "¥",
+            "euro",
+            "euros",
+            "dollar",
+            "dollars",
+            "yen",
+            "yens",
+            # Numeric tokens
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
         }
-        words = [word for word in search_text.split() if word not in stop_words]
+        words = [
+            word
+            for word in search_text.split()
+            if word not in stop_words and not re.fullmatch(r"\d+(?:[.,]\d+)?", word)
+        ]
 
         # Remove basic verb forms (infinitives) for more aggressive normalization
         words = [word for word in words if not word.endswith(("er", "ir", "re"))]
@@ -171,7 +204,7 @@ class QueryOptimizer:
 
         optimized_text = " ".join(unique_words)[:200]
         logger.debug("Normalized search text: %s", optimized_text)
-        return optimized_text  # Limit search text length
+        return optimized_text or None  # Limit search text length
 
     @staticmethod
     def extract_date_filters(intent_result: IntentResult) -> Dict[str, Any]:
@@ -252,9 +285,9 @@ class QueryOptimizer:
                     normalized_amount = float(value)
 
                     if "filter_by_amount_greater" in actions:
-                        amount_filters["amount"] = {"gte": normalized_amount}
+                        amount_filters["amount_abs"] = {"gte": normalized_amount}
                     elif "filter_by_amount_less" in actions:
-                        amount_filters["amount"] = {"lte": normalized_amount}
+                        amount_filters["amount_abs"] = {"lte": normalized_amount}
                     else:
                         tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
                         amount_filters["amount"] = {
@@ -511,7 +544,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 "BALANCE_CHECK",
                 "SPENDING_ANALYSIS",
             ],
-            fuzzy_matching=True if len(search_text.split()) > 1 else False,
+            fuzzy_matching=True if search_text and len(search_text.split()) > 1 else False,
         )
 
         # Create complete search query

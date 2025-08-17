@@ -215,6 +215,24 @@ MOCK_INTENT_RESPONSES: Dict[str, Dict[str, Any]] = {
         "suggested_actions": ["search_by_category", "monthly_average"],
     },
 
+    "Combien de transactions ce mois ?": {
+        "intent_type": "COUNT_TRANSACTIONS",
+        "intent_category": "SPENDING_ANALYSIS",
+        "confidence": 0.91,
+        "entities": [
+            {
+                "entity_type": "RELATIVE_DATE",
+                "raw_value": "ce mois",
+                "normalized_value": "current_month",
+                "confidence": 0.9,
+            }
+        ],
+        "method": "llm_detection",
+        "processing_time_ms": 105.0,
+        "requires_clarification": False,
+        "suggested_actions": ["count_transactions"],
+    },
+
     # TREND_ANALYSIS
     "Évolution de mes dépenses ces 3 derniers mois": {
         "intent_type": "TREND_ANALYSIS",

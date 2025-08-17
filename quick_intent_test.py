@@ -1,325 +1,545 @@
-#!/usr/bin/env python3
 """
-Benchmark simple pour l'agent de détection d'intentions financières.
-- Appelle l'API Responses avec Structured Outputs (JSON Schema strict)
-- Mesure la latence réelle
-- Valide le JSON retourné (jsonschema)
-- Calcule un score de fiabilité (taux de réponses conformes au schéma)
-- Imprime un rapport synthétique
-
-Dépendances:
-    pip install openai python-dotenv jsonschema
-
-Usage:
-    python intent_benchmark.py --model gpt-4.1-mini --runs 40 --shuffle
+Agent OpenAI spécialisé pour la détection d'intention financière Harena
+Utilise les Structured Outputs et l'optimisation des coûts via Batch API
 """
 
-import os
 import json
 import time
-import math
-import random
-import argparse
-import statistics as stats
-from collections import Counter
-
+import asyncio
+import os
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
+from enum import Enum
+from pydantic import BaseModel, Field, field_validator, model_validator
 import openai
-from packaging import version
+from openai import OpenAI, AsyncOpenAI
 from dotenv import load_dotenv
-from jsonschema import Draft7Validator, ValidationError
-from openai import OpenAI
+import logging
 
-REQUIRED_OPENAI = "1.1.0"
-if version.parse(openai.__version__) < version.parse(REQUIRED_OPENAI):
-    raise RuntimeError(
-        f"openai>={REQUIRED_OPENAI} required, but {openai.__version__} is installed. "
-        "Please update the openai package."
-    )
+# Charger les variables d'environnement
+load_dotenv()
 
-# -----------------------------
-# 1) JSON Schema & validateur précompilé
-# -----------------------------
-INTENT_SCHEMA = {
-    "$schema": "https://json-schema.org/draft-07/schema#",
-    "title": "IntentResult",
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "intent_type", "intent_category", "confidence", "entities",
-        "method", "processing_time_ms", "requires_clarification",
-        "search_required", "raw_user_message"
-    ],
-    "properties": {
-        "intent_type": {
-            "type": "string",
-            "enum": [
-                "TRANSACTION_SEARCH", "TRANSACTION_SEARCH_BY_DATE", "TRANSACTION_SEARCH_BY_AMOUNT_AND_DATE",
-                "SPENDING_ANALYSIS", "CATEGORY_ANALYSIS", "BUDGET_INQUIRY", "BUDGET_TRACKING", "TREND_ANALYSIS",
-                "ACCOUNT_BALANCE", "BALANCE_INQUIRY", "MERCHANT_INQUIRY", "COMPARISON_QUERY", "GOAL_TRACKING",
-                "GENERAL", "FINANCIAL_QUERY",
-                "CONVERSATIONAL", "EXPORT_REQUEST", "UNCLEAR_INTENT", "GREETING", "OUT_OF_SCOPE",
-                "FALLBACK_INTENT", "TEST_INTENT", "ERROR", "UNKNOWN"
-            ]
-        },
-        "intent_category": {"type": "string"},
-        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-        "entities": {
-            "type": "array",
-            "items": {
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ==================== MODÈLES PYDANTIC (IntentResult) ====================
+
+class IntentCategory(str, Enum):
+    """Catégories d'intentions."""
+    TRANSACTION_SEARCH = "TRANSACTION_SEARCH"
+    SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
+    ACCOUNT_BALANCE = "ACCOUNT_BALANCE"
+    BUDGET_MANAGEMENT = "BUDGET_MANAGEMENT"
+    GOAL_TRACKING = "GOAL_TRACKING"
+    FILTER_REQUEST = "FILTER_REQUEST"
+    GREETING = "GREETING"
+    CONFIRMATION = "CONFIRMATION"
+    CLARIFICATION = "CLARIFICATION"
+    UNKNOWN = "UNKNOWN"
+
+class EntityType(str, Enum):
+    """Types d'entités financières."""
+    AMOUNT = "AMOUNT"
+    DATE = "DATE"
+    DATE_RANGE = "DATE_RANGE"
+    CATEGORY = "CATEGORY"
+    MERCHANT = "MERCHANT"
+    ACCOUNT = "ACCOUNT"
+    CURRENCY = "CURRENCY"
+    RECIPIENT = "RECIPIENT"
+    RELATIVE_DATE = "RELATIVE_DATE"
+    TRANSACTION_TYPE = "TRANSACTION_TYPE"
+
+class DetectionMethod(str, Enum):
+    """Méthode de détection."""
+    LLM_BASED = "llm_based"
+    RULE_BASED = "rule_based"
+    HYBRID = "hybrid"
+
+class FinancialEntity(BaseModel):
+    """Entité financière extraite."""
+    entity_type: EntityType
+    raw_value: str
+    normalized_value: Any
+    confidence: float = Field(ge=0.0, le=1.0)
+    detection_method: DetectionMethod = DetectionMethod.LLM_BASED
+    position: Optional[Dict[str, int]] = None
+    validation_status: str = "valid"
+    
+    def to_search_filter(self) -> Optional[Dict[str, Any]]:
+        """Convertit l'entité en filtre de recherche."""
+        if self.validation_status == "invalid":
+            return None
+        return {
+            "type": self.entity_type.value,
+            "value": self.normalized_value,
+            "operator": "equals"
+        }
+
+class IntentResult(BaseModel):
+    """Résultat complet de classification d'intention."""
+    intent_type: str = Field(..., min_length=1, max_length=100)
+    intent_category: IntentCategory
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    entities: List[FinancialEntity] = Field(default_factory=list)
+    method: DetectionMethod = Field(default=DetectionMethod.LLM_BASED)
+    processing_time_ms: float = Field(..., ge=0.0)
+    alternative_intents: Optional[List[Dict[str, Any]]] = None
+    context_influence: Optional[Dict[str, Any]] = None
+    validation_errors: Optional[List[str]] = None
+    requires_clarification: bool = False
+    suggested_actions: Optional[List[str]] = None
+    raw_user_message: Optional[str] = None
+    normalized_query: Optional[str] = None
+    search_required: bool = True
+
+    @field_validator("alternative_intents")
+    @classmethod
+    def validate_alternative_intents(cls, v):
+        if v is not None:
+            for alt in v:
+                if "intent_type" not in alt or "confidence" not in alt:
+                    raise ValueError("Alternative intent mal formé")
+                if not (0.0 <= alt["confidence"] <= 1.0):
+                    raise ValueError("Confidence doit être entre 0 et 1")
+        return v
+
+    @model_validator(mode='after')
+    def validate_entities_consistency(self):
+        """Valide la cohérence des entités avec l'intention."""
+        return self
+
+# ==================== AGENT OPENAI OPTIMISÉ ====================
+
+class HarenaIntentAgent:
+    """
+    Agent OpenAI spécialisé pour la détection d'intention Harena.
+    Utilise les Structured Outputs pour garantir le format IntentResult.
+    """
+    
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4o-mini",  # Modèle économique par défaut
+        use_batch_api: bool = False,
+        cache_enabled: bool = True
+    ):
+        """
+        Initialise l'agent avec configuration optimisée.
+        
+        Args:
+            api_key: Clé API OpenAI
+            model: Modèle à utiliser (gpt-4o-mini recommandé pour coût)
+            use_batch_api: Utiliser Batch API pour 50% de réduction
+            cache_enabled: Activer le cache pour économies
+        """
+        self.client = OpenAI(api_key=api_key)
+        self.async_client = AsyncOpenAI(api_key=api_key)
+        self.model = model
+        self.use_batch_api = use_batch_api
+        self.cache_enabled = cache_enabled
+        self.cache = {} if cache_enabled else None
+        
+        # Configuration des coûts (par million de tokens)
+        self.pricing = {
+            "gpt-4o-mini": {"input": 0.15, "output": 0.60, "batch_discount": 0.5},
+            "gpt-4o": {"input": 2.50, "output": 10.00, "batch_discount": 0.5},
+            "gpt-4o-2024-08-06": {"input": 2.50, "output": 10.00, "batch_discount": 0.5}
+        }
+        
+        # Prompt système optimisé
+        self.system_prompt = self._create_system_prompt()
+        
+        logger.info(f"Agent initialisé avec modèle {model}")
+        if use_batch_api:
+            logger.info("Mode Batch API activé (50% de réduction)")
+    
+    def _create_system_prompt(self) -> str:
+        """Crée le prompt système optimisé avec few-shot examples."""
+        return """Tu es un agent spécialisé dans l'analyse d'intentions financières pour le système Harena.
+Tu dois analyser chaque question et retourner un objet IntentResult structuré.
+
+INTENTIONS PRINCIPALES:
+- TRANSACTION_SEARCH: Recherche de transactions (par montant, date, marchand, catégorie)
+- SPENDING_ANALYSIS: Analyse des dépenses (totaux, tendances, comparaisons)
+- ACCOUNT_BALANCE: Consultation de solde (compte courant, épargne)
+- BUDGET_TRACKING: Suivi de budget (par catégorie, alertes)
+- GOAL_TRACKING: Suivi d'objectifs (épargne, dépenses)
+- CONVERSATIONAL: Interactions conversationnelles
+
+ENTITÉS À EXTRAIRE:
+- AMOUNT: Montants (50€, mille euros) → normaliser en float
+- DATE/DATE_RANGE: Dates (janvier 2024) → format ISO
+- MERCHANT: Marchands (Carrefour, Netflix) → lowercase
+- CATEGORY: Catégories (alimentation, transport) → termes canoniques
+- ACCOUNT: Comptes (livret A, compte courant) → identifiants standards
+
+RÈGLES IMPORTANTES:
+1. Toujours retourner un IntentResult complet avec tous les champs
+2. Normaliser les valeurs (montants en float, dates en ISO, marchands en lowercase)
+3. Confidence entre 0.80 et 0.99 selon la clarté
+4. Processing_time_ms réaliste (100-300ms)
+5. Suggested_actions pertinentes pour l'intention
+
+Exemples:
+"Combien j'ai dépensé chez Carrefour ?" → SPENDING_ANALYSIS avec MERCHANT:carrefour
+"Virement de 500€ à Marie" → TRANSFER_REQUEST avec AMOUNT:500.0 et RECIPIENT:marie
+"Quel est mon solde ?" → ACCOUNT_BALANCE avec search_required:true"""
+    
+    def _get_json_schema(self) -> dict:
+        """
+        Retourne le JSON Schema pour les Structured Outputs.
+        Compatible avec l'API OpenAI.
+        """
+        return {
+            "name": "intent_result",
+            "strict": True,  # Force le respect strict du schéma
+            "schema": {
                 "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "entity_type", "raw_value", "normalized_value",
-                    "confidence", "detection_method", "validation_status"
-                ],
                 "properties": {
-                    "entity_type": {"type": "string"},
-                    "raw_value": {"type": "string"},
-                    "normalized_value": {},
-                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                    "detection_method": {"type": "string"},
-                    "validation_status": {"type": "string", "enum": ["valid", "invalid", "ambiguous"]}
-                }
+                    "intent_type": {
+                        "type": "string",
+                        "description": "Type d'intention détecté"
+                    },
+                    "intent_category": {
+                        "type": "string",
+                        "enum": [cat.value for cat in IntentCategory],
+                        "description": "Catégorie d'intention"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "description": "Score de confiance"
+                    },
+                    "entities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "entity_type": {
+                                    "type": "string",
+                                    "enum": [et.value for et in EntityType]
+                                },
+                                "raw_value": {"type": "string"},
+                                "normalized_value": {
+                                    "anyOf": [
+                                        {"type": "string"},
+                                        {"type": "number"},
+                                        {"type": "object"},
+                                        {"type": "array"},
+                                        {"type": "boolean"},
+                                        {"type": "null"}
+                                    ]
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0.0,
+                                    "maximum": 1.0
+                                },
+                                "detection_method": {
+                                    "type": "string",
+                                    "enum": ["llm_based", "rule_based", "hybrid"]
+                                },
+                                "validation_status": {"type": "string"}
+                            },
+                            "required": ["entity_type", "raw_value", "normalized_value", 
+                                       "confidence", "detection_method", "validation_status"],
+                            "additionalProperties": False
+                        },
+                        "description": "Entités extraites"
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["llm_based", "rule_based", "hybrid"]
+                    },
+                    "processing_time_ms": {
+                        "type": "number",
+                        "minimum": 0.0
+                    },
+                    "requires_clarification": {"type": "boolean"},
+                    "search_required": {"type": "boolean"},
+                    "suggested_actions": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"}
+                    },
+                    "raw_user_message": {"type": ["string", "null"]},
+                    "normalized_query": {"type": ["string", "null"]},
+                    "alternative_intents": {
+                        "type": ["array", "null"],
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "intent_type": {"type": "string"},
+                                "confidence": {"type": "number"}
+                            },
+                            "required": ["intent_type", "confidence"]
+                        }
+                    },
+                    "validation_errors": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"}
+                    },
+                    "context_influence": {"type": ["object", "null"]}
+                },
+                "required": [
+                    "intent_type", "intent_category", "confidence", "entities",
+                    "method", "processing_time_ms", "requires_clarification",
+                    "search_required"
+                ],
+                "additionalProperties": False
             }
-        },
-        "method": {"type": "string"},
-        "processing_time_ms": {"type": "number", "minimum": 1},
-        "requires_clarification": {"type": "boolean"},
-        "search_required": {"type": "boolean"},
-        "raw_user_message": {"type": "string"},
-        "suggested_actions": {"type": "array", "items": {"type": "string"}},
-        "additional_data": {"type": "object"}
-    }
-}
+        }
+    
+    async def detect_intent_async(self, user_message: str) -> IntentResult:
+        """
+        Détection d'intention asynchrone avec Structured Outputs.
+        
+        Args:
+            user_message: Question de l'utilisateur
+            
+        Returns:
+            IntentResult structuré et validé
+        """
+        start_time = time.time()
+        
+        # Vérifier le cache
+        if self.cache_enabled and user_message in self.cache:
+            cached_result = self.cache[user_message].copy()
+            cached_result["processing_time_ms"] = 0.5  # Cache hit
+            return IntentResult(**cached_result)
+        
+        try:
+            # Appel API avec Structured Outputs
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": f"Analyse cette question et retourne un IntentResult: {user_message}"}
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": self._get_json_schema()
+                },
+                temperature=0.1,  # Déterministe
+                max_tokens=500,
+                seed=42  # Pour reproductibilité
+            )
+            
+            # Parser la réponse JSON
+            result_dict = json.loads(response.choices[0].message.content)
+            
+            # Ajouter métadonnées
+            processing_time = (time.time() - start_time) * 1000
+            result_dict["processing_time_ms"] = processing_time
+            result_dict["raw_user_message"] = user_message
+            
+            # Valider avec Pydantic
+            result = IntentResult(**result_dict)
+            
+            # Mettre en cache si succès
+            if self.cache_enabled and result.confidence > 0.8:
+                self.cache[user_message] = result.model_dump()
+            
+            # Log des coûts estimés
+            self._log_cost_estimate(response.usage)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Erreur détection: {e}")
+            # Retour d'erreur structuré
+            return IntentResult(
+                intent_type="ERROR",
+                intent_category=IntentCategory.UNKNOWN,
+                confidence=0.0,
+                entities=[],
+                method=DetectionMethod.LLM_BASED,
+                processing_time_ms=(time.time() - start_time) * 1000,
+                raw_user_message=user_message,
+                validation_errors=[str(e)],
+                requires_clarification=True,
+                search_required=False
+            )
+    
+    def detect_intent(self, user_message: str) -> IntentResult:
+        """Version synchrone de detect_intent."""
+        return asyncio.run(self.detect_intent_async(user_message))
+    
+    async def batch_detect_intents(self, messages: List[str]) -> List[IntentResult]:
+        """
+        Traitement batch pour économiser 50% des coûts.
+        
+        Args:
+            messages: Liste de questions à traiter
+            
+        Returns:
+            Liste de résultats IntentResult
+        """
+        if not self.use_batch_api:
+            # Traitement parallèle standard
+            tasks = [self.detect_intent_async(msg) for msg in messages]
+            return await asyncio.gather(*tasks)
+        
+        # Créer le batch pour l'API
+        batch_requests = []
+        for i, message in enumerate(messages):
+            batch_requests.append({
+                "custom_id": f"request-{i}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": f"Analyse: {message}"}
+                    ],
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": self._get_json_schema()
+                    },
+                    "temperature": 0.1,
+                    "max_tokens": 500
+                }
+            })
+        
+        # Créer le fichier batch
+        batch_file_content = "\n".join(json.dumps(req) for req in batch_requests)
+        
+        # Upload et créer le batch
+        file = self.client.files.create(
+            file=batch_file_content.encode(),
+            purpose="batch"
+        )
+        
+        batch = self.client.batches.create(
+            input_file_id=file.id,
+            endpoint="/v1/chat/completions",
+            completion_window="24h"
+        )
+        
+        logger.info(f"Batch créé: {batch.id} - Économie de 50% sur {len(messages)} requêtes")
+        
+        # Note: En production, implémenter le polling du statut du batch
+        # et récupérer les résultats une fois terminé
+        
+        return []  # Placeholder - implémenter récupération async
+    
+    def _log_cost_estimate(self, usage: Any):
+        """Log l'estimation des coûts."""
+        if usage and self.model in self.pricing:
+            prices = self.pricing[self.model]
+            input_cost = (usage.prompt_tokens / 1_000_000) * prices["input"]
+            output_cost = (usage.completion_tokens / 1_000_000) * prices["output"]
+            
+            if self.use_batch_api:
+                input_cost *= prices["batch_discount"]
+                output_cost *= prices["batch_discount"]
+            
+            total_cost = input_cost + output_cost
+            
+            logger.debug(f"Coût estimé: ${total_cost:.6f} "
+                        f"(input: {usage.prompt_tokens} tokens, "
+                        f"output: {usage.completion_tokens} tokens)")
+    
+    def optimize_for_production(self):
+        """Optimisations pour la production."""
+        optimizations = {
+            "model": "gpt-4o-mini",  # Plus économique
+            "batch_api": True,  # 50% de réduction
+            "cache": True,  # Éviter requêtes répétées
+            "prompt_caching": True,  # 75% réduction sur prompts répétés
+            "strategies": [
+                "Utiliser gpt-4o-mini : 0.15$/1M input, 0.60$/1M output",
+                "Batch API : -50% sur tous les coûts",
+                "Prompt caching : -75% sur tokens système répétés",
+                "Cache local : 0$ pour requêtes identiques",
+                "Structured Outputs : Évite retry et parsing errors"
+            ]
+        }
+        return optimizations
 
-INTENT_VALIDATOR = Draft7Validator(INTENT_SCHEMA)
+# ==================== UTILISATION ET TESTS ====================
 
-# -----------------------------
-# 2) Prompt système
-# -----------------------------
-SYSTEM_PROMPT = """Tu es un classifieur d’intentions financières en français.
-Tu dois produire STRICTEMENT un objet JSON valide respectant le JSON Schema fourni (toutes les clés requises).
-Règles importantes:
-- Choisis `intent_type` dans la liste autorisée (enum du schéma).
-- `intent_category`:
-    - Pour requêtes financières (recherche, analyse, budget, solde, etc.): "FINANCIAL_QUERY".
-    - Pour salutation/conversation: "GREETING".
-    - Pour hors-périmètre: "OUT_OF_SCOPE".
-- `requires_clarification` = true si la requête est ambiguë/incomplète.
-- `search_required` = true pour: TRANSACTION_SEARCH*, SPENDING_ANALYSIS, CATEGORY_ANALYSIS, BUDGET_*, TREND_ANALYSIS,
-  ACCOUNT_BALANCE/BALANCE_INQUIRY, MERCHANT_INQUIRY, COMPARISON_QUERY, GOAL_TRACKING, GENERAL, FINANCIAL_QUERY.
-  false pour: CONVERSATIONAL, EXPORT_REQUEST, UNCLEAR_INTENT, GREETING, OUT_OF_SCOPE, FALLBACK_INTENT, TEST_INTENT, ERROR, UNKNOWN.
-- `entities` peut être vide si rien d’extractible avec confiance.
-- `processing_time_ms` réaliste 50–300 pour ce classifieur (valeur indicative).
-- `method` = "llm_based".
-- `raw_user_message` = EXACTEMENT la question utilisateur.
-- La sortie DOIT être uniquement l’objet JSON (pas de texte en dehors).
-"""
-
-# -----------------------------
-# 3) Jeu de questions de test
-# -----------------------------
-TEST_QUESTIONS = [
-    # SPENDING_ANALYSIS
-    "Combien j'ai dépensé chez Carrefour le mois dernier ?",
-    "Total des dépenses restaurants cette semaine ?",
-    # CATEGORY_ANALYSIS
-    "Analyse mes dépenses en transport sur les 30 derniers jours.",
-    # TRANSACTION_SEARCH*
-    "Montre-moi mes transactions Uber d’hier.",
-    "Liste les transactions du 10 juillet 2025.",
-    "Trouve les opérations supérieures à 100€ en juin.",
-    # BUDGET_*
-    "Quel est mon budget courses ce mois-ci ?",
-    "Ai-je dépassé mon budget transport ?",
-    # TREND_ANALYSIS
-    "Mes factures d'électricité augmentent-elles depuis trois mois ?",
-    # BALANCE / ACCOUNT_BALANCE
-    "Quel est le solde de mon compte courant ?",
-    # MERCHANT_INQUIRY
-    "Combien ai-je dépensé chez Amazon en 2024 ?",
-    # COMPARISON_QUERY
-    "Ai-je dépensé plus en janvier qu'en février ?",
-    # GOAL_TRACKING
-    "Où en est mon objectif d’épargne vacances ?",
-    # GENERAL & FINANCIAL_QUERY
-    "Donne-moi un résumé de mes finances récentes.",
-    "Combien j'ai dépensé récemment ?",
-    # EXPORT_REQUEST
-    "Exporte mes transactions de mai en CSV.",
-    # CONVERSATIONAL / GREETING
-    "Bonjour",
-    "Merci beaucoup !",
-    # UNCLEAR / OUT_OF_SCOPE / FALLBACK / TEST / ERROR / UNKNOWN
-    "Peux-tu vérifier cela ?",
-    "Quel temps fait-il à Paris ?",
-    "blabla ???",
-    "test test",
-    "???"
-]
-
-# -----------------------------
-# 4) Client & appel Responses API
-# -----------------------------
-def make_client():
-    load_dotenv()
+async def main():
+    """Exemple d'utilisation de l'agent."""
+    
+    # Charger les variables d'environnement
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()  # Charge le fichier .env
     api_key = os.getenv("OPENAI_API_KEY")
+    
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY manquant. Créez un fichier .env avec OPENAI_API_KEY=...")
-    return OpenAI(api_key=api_key)
-
-
-def detect_intent(client: OpenAI, question: str, model: str):
-    """
-    Appelle l'API Responses avec Structured Outputs (json_schema strict),
-    renvoie (parsed_json, measured_latency_ms, raw_response).
-    """
-    t0 = time.perf_counter()
-    resp = client.responses.create(
-        model=model,
-        input=[
-            {"role": "system", "content": [{"type": "input_text", "text": SYSTEM_PROMPT}]},
-            {"role": "user", "content": [{"type": "input_text", "text": question}]},
-        ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "IntentResult",
-                "schema": INTENT_SCHEMA,
-                "strict": True,
-            },
-        },
+        print("❌ Erreur : OPENAI_API_KEY non trouvée dans .env")
+        print("Créez un fichier .env avec : OPENAI_API_KEY=sk-...")
+        return
+    
+    # Initialiser l'agent
+    agent = HarenaIntentAgent(
+        api_key=api_key,
+        model="gpt-4o-mini",  # Modèle économique
+        use_batch_api=False,  # True pour 50% de réduction
+        cache_enabled=True
     )
-    t1 = time.perf_counter()
-    measured_ms = round((t1 - t0) * 1000.0, 2)
-
-    parsed = resp.output_parsed
-    if parsed is None:
-        try:
-            parsed = json.loads(resp.output_text or "")
-        except Exception as e:
-            raise ValueError(f"Réponse non parsable en JSON: {e}")
-
-    return parsed, measured_ms, resp
-
-# -----------------------------
-# 5) Validation & métriques
-# -----------------------------
-def validate_intent_result(obj: dict):
-    """Valide la sortie via jsonschema. Retourne (ok: bool, error_msg: str|None)."""
-    try:
-        INTENT_VALIDATOR.validate(obj)
-        return True, None
-    except ValidationError as e:
-        return False, str(e)
-
-
-def p95(values):
-    if not values:
-        return 0.0
-    s = sorted(values)
-    k = int(math.ceil(0.95 * len(s))) - 1
-    k = min(max(k, 0), len(s) - 1)
-    return float(s[k])
-
-
-def run_benchmark(model: str, runs: int, shuffle: bool):
-    client = make_client()
-    questions = TEST_QUESTIONS[:]
-    if shuffle:
-        random.shuffle(questions)
-
-    if runs and runs < len(questions):
-        questions = questions[:runs]
-    elif runs and runs > len(questions):
-        extra = []
-        i = 0
-        while len(questions) + len(extra) < runs:
-            extra.append(TEST_QUESTIONS[i % len(TEST_QUESTIONS)])
-            i += 1
-        questions = questions + extra
-
-    print(f"\n▶ Exécution: {len(questions)} questions — modèle: {model}\n")
-
-    latencies = []
-    confidences = []
-    intents = []
-    needs_clarif = 0
-    search_true = 0
-
-    ok_count = 0
-    failures = []
-
-    for idx, q in enumerate(questions, 1):
-        print(f"[{idx:02d}/{len(questions)}] Q: {q}")
-        try:
-            parsed, measured_ms, _resp = detect_intent(client, q, model=model)
-            ok, err = validate_intent_result(parsed)
-            latencies.append(measured_ms)
-
-            if ok:
-                ok_count += 1
-                confidences.append(parsed.get("confidence", 0.0))
-                intents.append(parsed.get("intent_type", ""))
-                if parsed.get("requires_clarification") is True:
-                    needs_clarif += 1
-                if parsed.get("search_required") is True:
-                    search_true += 1
-                print(f"    ✔ Valide | lat={measured_ms} ms | intent={parsed.get('intent_type')} | conf={parsed.get('confidence')}")
-            else:
-                failures.append({"question": q, "error": err, "parsed": parsed})
-                print(f"    ✘ Invalide | lat={measured_ms} ms | erreur schéma: {err}")
-
-        except Exception as e:
-            failures.append({"question": q, "error": str(e), "parsed": None})
-            print(f"    ✘ Erreur appel API: {e}")
-
-    total = len(questions)
-    reliability = (ok_count / total) if total else 0.0
-
-    print("\n================= RAPPORT =================")
-    print(f"Total questions     : {total}")
-    print(f"Valides (schéma)    : {ok_count}")
-    print(f"Invalides/Erreurs   : {total - ok_count}")
-    print(f"Score de fiabilité  : {reliability:.2%}")
-
-    if latencies:
-        print(f"Latence moyenne     : {stats.mean(latencies):.1f} ms")
-        print(f"Latence médiane     : {stats.median(latencies):.1f} ms")
-        print(f"Latence p95         : {p95(latencies):.1f} ms")
-
-    if confidences:
-        print(f"Confiance moyenne   : {stats.mean(confidences):.3f}")
-
-    if intents:
-        cnt = Counter(intents)
-        top = ", ".join(f"{k}:{v}" for k, v in cnt.most_common())
-        print(f"Répartition intents : {top}")
-
-    print(f"Clarifications (true): {needs_clarif}")
-    print(f"search_required=true : {search_true}")
-
-    if failures:
-        print("\n-- Exemples d’échecs --")
-        for f in failures[:3]:
-            print(f"* Q: {f['question']}\n  Erreur: {f['error']}\n")
-
-    print("===========================================\n")
-    return reliability
-
-# -----------------------------
-# 6) CLI
-# -----------------------------
-def parse_args():
-    ap = argparse.ArgumentParser(description="Benchmark intent detector (OpenAI Responses + Structured Outputs)")
-    ap.add_argument("--model", type=str, default="gpt-4.1-mini",
-                    help="Nom du modèle (ex: gpt-4.1-mini, o3-mini, etc.)")
-    ap.add_argument("--runs", type=int, default=0,
-                    help="Nombre de questions à exécuter (0 = toutes, >len => boucle).")
-    ap.add_argument("--shuffle", action="store_true",
-                    help="Mélanger l'ordre des questions.")
-    return ap.parse_args()
+    
+    # Tests unitaires
+    test_queries = [
+        "Combien j'ai dépensé chez Carrefour le mois dernier ?",
+        "Virement de 500 euros à Marie pour le loyer",
+        "Quel est le solde de mon livret A ?",
+        "Montre mes achats supérieurs à 100€ en janvier 2024",
+        "Budget alimentation ce mois",
+        "Bonjour"
+    ]
+    
+    print("\n🚀 TEST DE L'AGENT HARENA INTENT\n")
+    print("-" * 60)
+    
+    for query in test_queries:
+        print(f"\n💬 Question : {query}")
+        
+        # Détection d'intention
+        result = await agent.detect_intent_async(query)
+        
+        print(f"📌 Intent : {result.intent_type}")
+        print(f"📊 Catégorie : {result.intent_category}")
+        print(f"🎯 Confidence : {result.confidence:.2%}")
+        print(f"⏱️ Latence : {result.processing_time_ms:.1f}ms")
+        
+        if result.entities:
+            print(f"📝 Entités :")
+            for entity in result.entities:
+                print(f"   - {entity.entity_type}: '{entity.raw_value}' → {entity.normalized_value}")
+        
+        if result.suggested_actions:
+            print(f"💡 Actions : {', '.join(result.suggested_actions)}")
+        
+        print("-" * 60)
+    
+    # Afficher les optimisations
+    print("\n💰 OPTIMISATIONS DE COÛT :")
+    optimizations = agent.optimize_for_production()
+    for strategy in optimizations["strategies"]:
+        print(f"  ✅ {strategy}")
+    
+    print("\n📊 ESTIMATION MENSUELLE (10 000 requêtes/jour) :")
+    daily_requests = 10_000
+    tokens_per_request = 200  # Moyenne estimée
+    
+    # Calcul sans optimisation
+    monthly_cost_standard = (daily_requests * 30 * tokens_per_request / 1_000_000) * (0.15 + 0.60)
+    print(f"  Sans optimisation : ${monthly_cost_standard:.2f}/mois")
+    
+    # Calcul avec Batch API
+    monthly_cost_batch = monthly_cost_standard * 0.5
+    print(f"  Avec Batch API : ${monthly_cost_batch:.2f}/mois")
+    
+    # Calcul avec cache (30% de requêtes en cache)
+    monthly_cost_cached = monthly_cost_batch * 0.7
+    print(f"  Avec Batch + Cache : ${monthly_cost_cached:.2f}/mois")
 
 if __name__ == "__main__":
-    args = parse_args()
-    run_benchmark(model=args.model, runs=args.runs, shuffle=args.shuffle)
+    asyncio.run(main())

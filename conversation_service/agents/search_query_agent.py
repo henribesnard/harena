@@ -427,21 +427,37 @@ class SearchQueryAgent(BaseFinancialAgent):
                 search_query.filters,
             )
 
-            # Step 3: Execute search query
+            # Step 3: Execute search query with pagination support
             search_response = await self._execute_search_query(search_query)
+
+            results = list(getattr(search_response, "results", []) or [])
+            metadata = getattr(search_response, "response_metadata", None)
+            returned_results = getattr(metadata, "returned_results", len(results))
+            has_more = getattr(metadata, "has_more_results", False)
+
+            offset = search_query.search_parameters.offset
+            limit = search_query.search_parameters.max_results
+
+            while has_more:
+                offset += limit
+                next_query = search_query.with_offset(offset)
+                page = await self._execute_search_query(next_query)
+                results.extend(getattr(page, "results", []) or [])
+                page_meta = getattr(page, "response_metadata", None)
+                returned_results += getattr(
+                    page_meta, "returned_results", len(getattr(page, "results", []) or [])
+                )
+                has_more = getattr(page_meta, "has_more_results", False)
+
+            search_response.results = results
+            if metadata:
+                metadata.returned_results = len(results)
+                metadata.has_more_results = False
 
             execution_time = (time.perf_counter() - start_time) * 1000
 
-            returned_results = getattr(
-                getattr(search_response, "response_metadata", {}), "returned_results", 0
-            )
-            if isinstance(getattr(search_response, "response_metadata", None), dict):
-                returned_results = search_response.response_metadata.get(
-                    "returned_results", 0
-                )
-
             return {
-                "content": f"Search completed: {returned_results} results",
+                "content": f"Search completed: {len(results)} results",
                 "metadata": {
                     "search_query": search_query.dict(),
                     "search_response": search_response.dict(),
@@ -451,7 +467,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                         else []
                     ),
                     "execution_time_ms": execution_time,
-                    "search_results_count": returned_results,
+                    "search_results_count": len(results),
                 },
                 "confidence_score": min(
                     intent_result.confidence + 0.1, 1.0

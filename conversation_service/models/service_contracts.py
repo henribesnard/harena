@@ -417,6 +417,27 @@ class SearchServiceQuery(BaseModel):
             },
         }
 
+    def with_offset(self, offset: int) -> "SearchServiceQuery":
+        """Return a copy of this query with an updated offset.
+
+        Args:
+            offset: New offset value for pagination.
+
+        Returns:
+            A cloned ``SearchServiceQuery`` with ``search_parameters.offset``
+            set to the provided value.
+        """
+
+        params_dict = self.search_parameters.dict()
+        params_dict["offset"] = offset
+        new_params = SearchParameters(**params_dict)
+        return SearchServiceQuery(
+            query_metadata=self.query_metadata,
+            search_parameters=new_params,
+            filters=self.filters,
+            aggregations=self.aggregations,
+        )
+
 
 class ResponseMetadata(BaseModel):
     """

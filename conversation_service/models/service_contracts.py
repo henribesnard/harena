@@ -188,6 +188,11 @@ class SearchFilters(BaseModel):
         description="Amount filter with 'gte' and 'lte' keys"
     )
 
+    amount_abs: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Absolute amount filter with 'gte' and 'lte' keys"
+    )
+
     category_name: Optional[List[str]] = Field(
         default=None,
         description="List of transaction categories to include",

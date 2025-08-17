@@ -208,6 +208,28 @@ def test_extract_amount_filters_range():
     assert filters == {"amount": {"gte": 50.0, "lte": 100.0}}
 
 
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ({"gte": 50}, {"amount": {"gte": 50.0}}),
+        ({"lte": 100}, {"amount": {"lte": 100.0}}),
+        ({"gte": 50, "lte": 100}, {"amount": {"gte": 50.0, "lte": 100.0}}),
+    ],
+)
+def test_generate_search_contract_amount_filters(value, expected):
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = make_amount_intent(value)
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "", user_id=1)
+    )
+    request = search_query.to_search_request()
+    assert request["user_id"] == 1
+    assert request["filters"] == expected
+
+
 def test_extract_amount_filters_absolute_comparison():
     intent_result = make_amount_intent(100, actions=["filter_by_amount_greater"])
     filters = QueryOptimizer.extract_amount_filters(intent_result)

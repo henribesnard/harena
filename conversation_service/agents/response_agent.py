@@ -48,24 +48,29 @@ class ResponseFormatter:
         if not transactions:
             return "Aucune transaction trouvée."
         
+        transactions_sorted = sorted(
+            transactions, key=lambda t: t.get("date", ""), reverse=True
+        )
+
         formatted_lines = []
-        for i, transaction in enumerate(transactions[:5], 1):  # Limit to 5 transactions
+        for i, transaction in enumerate(transactions_sorted[:5], 1):
             date = transaction.get("date", "Date inconnue")
             amount = transaction.get("amount", 0.0)
             merchant = transaction.get("merchant_name", "Marchand inconnu")
             category = transaction.get("category_name", "")
-            
+
             formatted_amount = ResponseFormatter.format_amount(amount)
             line = f"{i}. {date} | {formatted_amount} | {merchant}"
             if category:
                 line += f" ({category})"
             formatted_lines.append(line)
-        
+
         result = "\n".join(formatted_lines)
-        
-        if len(transactions) > 5:
-            result += f"\n... et {len(transactions) - 5} autres transactions"
-        
+
+        total = len(transactions_sorted)
+        if total > 5:
+            result += f"\n... et {total - 5} autres transactions (total {total})"
+
         return result
     
     @staticmethod

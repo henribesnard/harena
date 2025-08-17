@@ -45,12 +45,13 @@ def create_pydantic_stub():
     def _create_model(name, **fields):
         """Stub pour create_model"""
         return type(name, (_BaseModel,), fields)
-    
+
     pydantic_stub.BaseModel = _BaseModel
     pydantic_stub.Field = _Field
     pydantic_stub.field_validator = _field_validator
     pydantic_stub.model_validator = _model_validator
     pydantic_stub.create_model = _create_model
+    pydantic_stub.ConfigDict = dict
     pydantic_stub.ValidationError = type("ValidationError", (Exception,), {})
     
     return pydantic_stub

@@ -1,7 +1,7 @@
 import asyncio
 import conversation_service.agents.orchestrator_agent as oa
 from conversation_service.agents.orchestrator_agent import WorkflowExecutor
-from conversation_service.agents.response_agent import ResponseAgent
+from conversation_service.agents.response_agent import ResponseAgent, SEARCH_ERROR_MESSAGE
 from conversation_service.models.agent_models import AgentResponse
 from conversation_service.models.financial_models import DetectionMethod
 from types import SimpleNamespace
@@ -105,4 +105,8 @@ def test_search_error_informs_user():
     result = asyncio.run(executor.execute_workflow("hello", "c2", 1))
 
     assert result["workflow_data"]["search_error"] is True
-    assert "n'a pas pu être effectuée" in result["final_response"]
+    assert result["final_response"] == SEARCH_ERROR_MESSAGE
+    response_step = next(
+        step for step in result["execution_details"]["steps"] if step["name"] == "response_generation"
+    )
+    assert response_step["status"] == "failed"

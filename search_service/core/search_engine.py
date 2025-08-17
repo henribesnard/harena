@@ -40,12 +40,13 @@ logger = logging.getLogger(__name__)
 class SearchEngine:
     """Moteur de recherche unifié utilisant le client Elasticsearch existant"""
 
-    def __init__(self, elasticsearch_client=None):
+    def __init__(self, elasticsearch_client=None, cache_enabled: bool = True):
         self.elasticsearch_client = elasticsearch_client
         self.query_builder = QueryBuilder()
         self.index_name = "harena_transactions"  # Basé sur votre config existante
 
         # Cache multi-niveaux pour réponses de recherche
+        self.cache_enabled = cache_enabled
         self.cache = MultiLevelCache()
         self.cache_hits = 0
         self.cache_misses = 0
@@ -103,7 +104,14 @@ class SearchEngine:
                 "window_seconds": self.rate_limit_window,
             },
         }
-    
+
+    async def clear_cache(self) -> None:
+        """Vide le cache et réinitialise les statistiques associées."""
+        if self.cache:
+            await self.cache.clear()
+        self.cache_hits = 0
+        self.cache_misses = 0
+
     async def search(self, request: SearchRequest) -> Dict[str, Any]:
         """Execute a search and always return a structured response.
 
@@ -124,14 +132,16 @@ class SearchEngine:
             self._check_rate_limit(request.user_id)
 
             # Vérification cache
-            cache_key = self._generate_cache_key(request)
-            cached = await self.cache.get(cache_key)
-            if cached:
-                self.cache_hits += 1
-                cached["response_metadata"]["cache_hit"] = True
-                return cached
-            else:
-                self.cache_misses += 1
+            cache_key = None
+            if self.cache_enabled:
+                cache_key = self._generate_cache_key(request)
+                cached = await self.cache.get(cache_key)
+                if cached:
+                    self.cache_hits += 1
+                    cached["response_metadata"]["cache_hit"] = True
+                    return cached
+                else:
+                    self.cache_misses += 1
 
             # Construction requête Elasticsearch
             es_query = self.query_builder.build_query(request)
@@ -178,8 +188,9 @@ class SearchEngine:
                 )
 
             # Mise en cache du résultat
-            cache_ttl = int(os.getenv("SEARCH_CACHE_TTL", "30"))
-            await self.cache.set(cache_key, response, ttl=cache_ttl)
+            if self.cache_enabled:
+                cache_ttl = int(os.getenv("SEARCH_CACHE_TTL", "30"))
+                await self.cache.set(cache_key, response, ttl=cache_ttl)
 
             logger.info(
                 f"Search completed: {returned_results}/{total_results} results in {execution_time}ms"

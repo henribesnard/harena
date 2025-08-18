@@ -19,10 +19,11 @@ sys.modules["openai"] = types.SimpleNamespace(
 )
 sys.modules["dotenv"] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: None)
 
+from scripts.quick_intent_test import HarenaIntentAgent
+from scripts.intent_utils import parse_intents_md
 from scripts.quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
 
 THRESHOLD = 0.8
-
 
 def parse_intents_md(path: Path) -> Dict[str, str]:
     """Parse INTENTS.md and return mapping of intent_type to category."""

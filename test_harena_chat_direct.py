@@ -112,12 +112,7 @@ def main() -> None:
             # Certains scénarios peuvent fournir directement une liste
             search_results = sr
 
-    if search_results:
-        search_results_count = len(search_results)
-    else:
-        # Retour arrière si les résultats ne sont pas disponibles dans workflow_data
-        search_results_count = metadata.get("search_results_count", 0)
-
+    search_results_count = len(search_results)
     print(f"   📊 Résultats trouvés par l'agent : {search_results_count}")
     
     # Analyser les entités pour comprendre la requête générée

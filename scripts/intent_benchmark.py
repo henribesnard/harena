@@ -6,22 +6,10 @@ from typing import Dict
 
 from quick_intent_test import HarenaIntentAgent
 
-
-def parse_intents_md(path: Path) -> Dict[str, str]:
-    """Parse INTENTS.md and return mapping of intent_type to category."""
-    intents: Dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line.startswith("|") or line.startswith("| ---") or "Intent Type" in line:
-            continue
-        parts = [p.strip() for p in line.strip("|").split("|")]
-        if len(parts) < 2:
-            continue
-        intent, category = parts[0], parts[1]
-        if category.startswith("UNSUPPORTED"):
-            category = "UNCLEAR_INTENT"
-        intents[intent] = category
-    return intents
+try:  # Allow running as script or module
+    from scripts.intent_utils import parse_intents_md
+except ImportError:  # pragma: no cover - fallback for direct execution
+    from intent_utils import parse_intents_md
 
 
 INTENT_QUERIES: Dict[str, str] = {

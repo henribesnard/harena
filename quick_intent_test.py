@@ -8,6 +8,7 @@ import time
 import asyncio
 import os
 from typing import Dict, List, Any, Optional, Tuple
+from pathlib import Path
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -158,43 +159,117 @@ class HarenaIntentAgent:
             logger.info("Mode Batch API activé (50% de réduction)")
     
     def _create_system_prompt(self) -> str:
-        """Crée le prompt système optimisé avec few-shot examples."""
-        return """Tu es un agent spécialisé dans l'analyse d'intentions financières pour le système Harena.
-Tu dois analyser chaque question et retourner un objet IntentResult structuré.
+        """Crée le prompt système avec la liste complète des intentions et exemples."""
 
-INTENTIONS PRINCIPALES:
-- FINANCIAL_QUERY: Questions financières générales
-- SPENDING_ANALYSIS: Analyse des dépenses (totaux, comparaisons)
-- TREND_ANALYSIS: Analyse des tendances de dépenses ou revenus
-- BALANCE_INQUIRY: Consultation de solde d'un compte
-- ACCOUNT_INFORMATION: Informations sur les comptes ou cartes
-- BUDGET_ANALYSIS: Analyse de budget et suivi de catégories
-- GREETING: Interactions conversationnelles
-- CONFIRMATION: Réponses d'accord ou de validation
-- CLARIFICATION: Demande ou apport de précisions
-- FILTER_REQUEST: Demande de filtre de recherche spécifique
-- UNCLEAR_INTENT: Intention ambiguë ou non reconnue
+        intents: List[Tuple[str, str, str]] = []
+        path = Path(__file__).with_name("INTENTS.md")
+        category_map = {
+            "ACCOUNT_BALANCE": "BALANCE_INQUIRY",
+            "GENERAL_QUESTION": "UNCLEAR_INTENT",
+        }
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line.startswith("|") or line.startswith("| ---") or "Intent Type" in line:
+                    continue
+                parts = [p.strip() for p in line.strip("|").split("|")]
+                if len(parts) < 3:
+                    continue
+                intent, category, description = parts[:3]
+                if category.startswith("UNSUPPORTED"):
+                    category = "UNCLEAR_INTENT"
+                category = category_map.get(category, category)
+                intents.append((intent, category, description))
 
-ENTITÉS À EXTRAIRE:
-- AMOUNT: Montants (50€, mille euros) → normaliser en float
-- DATE/DATE_RANGE: Dates (janvier 2024) → format ISO
-- MERCHANT: Marchands (Carrefour, Netflix) → lowercase
-- CATEGORY: Catégories (alimentation, transport) → termes canoniques
-- ACCOUNT: Comptes (livret A, compte courant) → identifiants standards
+        example_queries: Dict[str, str] = {
+            "TRANSACTION_SEARCH": "Liste toutes mes transactions",
+            "SEARCH_BY_DATE": "Transactions de mars 2024",
+            "SEARCH_BY_AMOUNT": "Transactions de 50 euros",
+            "SEARCH_BY_MERCHANT": "Transactions chez Carrefour",
+            "SEARCH_BY_CATEGORY": "Transactions de la catégorie restaurants",
+            "SEARCH_BY_AMOUNT_AND_DATE": "Achats de plus de 100 euros en janvier 2024",
+            "SEARCH_BY_OPERATION_TYPE": "Transactions par carte bancaire",
+            "SEARCH_BY_TEXT": "Recherche les transactions contenant Netflix",
+            "COUNT_TRANSACTIONS": "Combien de transactions en février ?",
+            "MERCHANT_INQUIRY": "Analyse des dépenses chez Amazon",
+            "FILTER_REQUEST": "Seulement les débits pas les crédits",
+            "SPENDING_ANALYSIS": "Analyse de mes dépenses",
+            "SPENDING_ANALYSIS_BY_CATEGORY": "Analyse des dépenses alimentaires",
+            "SPENDING_ANALYSIS_BY_PERIOD": "Analyse de mes dépenses la semaine dernière",
+            "SPENDING_COMPARISON": "Compare mes dépenses de janvier et février",
+            "TREND_ANALYSIS": "Tendance de mes dépenses cette année",
+            "CATEGORY_ANALYSIS": "Répartition de mes dépenses par catégorie",
+            "COMPARISON_QUERY": "Compare restaurants et courses",
+            "BALANCE_INQUIRY": "Quel est mon solde actuel ?",
+            "ACCOUNT_BALANCE_SPECIFIC": "Solde de mon compte courant",
+            "BALANCE_EVOLUTION": "Évolution de mon solde",
+            "GREETING": "Bonjour",
+            "CONFIRMATION": "Merci beaucoup",
+            "CLARIFICATION": "Peux-tu préciser ?",
+            "GENERAL_QUESTION": "Quel temps fait-il ?",
+            "TRANSFER_REQUEST": "Transfère 100 euros à Paul",
+            "PAYMENT_REQUEST": "Paye ma facture d'électricité",
+            "CARD_BLOCK": "Bloque ma carte bancaire",
+            "BUDGET_INQUIRY": "Où en est mon budget ?",
+            "GOAL_TRACKING": "Quel est l'état de mon objectif d'épargne ?",
+            "EXPORT_REQUEST": "Exporte mes transactions en CSV",
+            "OUT_OF_SCOPE": "Donne-moi une recette de cuisine",
+            "UNCLEAR_INTENT": "Je ne sais pas fais quelque chose",
+            "UNKNOWN": "blabla ???",
+            "TEST_INTENT": "[TEST] ping",
+            "ERROR": "��",
+        }
 
-RÈGLES IMPORTANTES:
-1. Toujours retourner un IntentResult complet avec tous les champs
-2. Normaliser les valeurs (montants en float, dates en ISO, marchands en lowercase)
-3. Confidence entre 0.80 et 0.99 selon la clarté
-4. Processing_time_ms réaliste (100-300ms)
-5. Suggested_actions pertinentes pour l'intention
-6. Si l'utilisateur demande une action (paiement, virement, transfert, export),
-   répondre avec intent_type="UNSUPPORTED" et intent_category="UNCLEAR_INTENT".
-   Ajoute une note de clarification indiquant que cette action n'est pas supportée.
+        unsupported = {
+            "TRANSFER_REQUEST",
+            "PAYMENT_REQUEST",
+            "CARD_BLOCK",
+            "BUDGET_INQUIRY",
+            "GOAL_TRACKING",
+            "EXPORT_REQUEST",
+            "OUT_OF_SCOPE",
+        }
 
-Exemples:
-"Combien j'ai dépensé chez Carrefour ?" → SPENDING_ANALYSIS avec MERCHANT:carrefour
-"Quel est mon solde ?" → BALANCE_INQUIRY avec search_required:true"""
+        lines = [
+            "Tu es un agent spécialisé dans l'analyse d'intentions financières pour le système Harena.",
+            "Tu dois analyser chaque question et retourner un objet IntentResult structuré.",
+            "",
+            "INTENTIONS DÉTAILLÉES ET EXEMPLES:",
+        ]
+
+        for intent, category, description in intents:
+            user_example = example_queries.get(intent, "")
+            example_intent = "UNSUPPORTED" if intent in unsupported else intent
+            lines.append(f"- {intent} ({category}): {description}")
+            if user_example:
+                lines.append(
+                    f"  Ex: \"{user_example}\" -> intent_type={example_intent}, intent_category={category}, entities=[]"
+                )
+
+        lines += [
+            "",
+            "ENTITÉS À EXTRAIRE:",
+            "- AMOUNT: Montants (50€, mille euros) → normaliser en float",
+            "- DATE/DATE_RANGE: Dates (janvier 2024) → format ISO",
+            "- MERCHANT: Marchands (Carrefour, Netflix) → lowercase",
+            "- CATEGORY: Catégories (alimentation, transport) → termes canoniques",
+            "- ACCOUNT: Comptes (livret A, compte courant) → identifiants standards",
+            "",
+            "RÈGLES IMPORTANTES:",
+            "1. Toujours retourner un IntentResult complet avec tous les champs",
+            "2. Normaliser les valeurs (montants en float, dates en ISO, marchands en lowercase)",
+            "3. Confidence entre 0.80 et 0.99 selon la clarté",
+            "4. Processing_time_ms réaliste (100-300ms)",
+            "5. Suggested_actions pertinentes pour l'intention",
+            "6. Si l'utilisateur demande une action (paiement, virement, transfert, export),",
+            '   répondre avec intent_type="UNSUPPORTED" et intent_category="UNCLEAR_INTENT".',
+            "   Ajoute une note de clarification indiquant que cette action n'est pas supportée.",
+            "",
+            'Exemples: "Combien j\'ai dépensé chez Carrefour ?" → SPENDING_ANALYSIS avec MERCHANT:carrefour',
+            '"Quel est mon solde ?" → BALANCE_INQUIRY avec search_required:true',
+        ]
+
+        return "\n".join(lines)
     
     def _get_json_schema(self) -> dict:
         """

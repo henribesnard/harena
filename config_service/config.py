@@ -291,7 +291,7 @@ class GlobalSettings(BaseSettings):
     EMBEDDING_MAX_RETRIES: int = int(os.environ.get("EMBEDDING_MAX_RETRIES", "3"))
     
     # Configuration de pagination
-    DEFAULT_SEARCH_LIMIT: int = int(os.environ.get("DEFAULT_SEARCH_LIMIT", "20"))
+    DEFAULT_SEARCH_LIMIT: int = int(os.environ.get("DEFAULT_SEARCH_LIMIT", "100"))
     DEFAULT_LIMIT: int = int(os.environ.get("DEFAULT_LIMIT", "20"))
     
     # Configuration des timeouts de recherche

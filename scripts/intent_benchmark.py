@@ -6,13 +6,19 @@ from typing import Dict
 
 from quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
 
+repo_root = Path(__file__).resolve().parents[1]
+
 
 def parse_intents_md(path: Path) -> Dict[str, str]:
     """Parse INTENTS.md and return mapping of intent_type to category."""
     intents: Dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line.startswith("|") or line.startswith("| ---") or "Intent Type" in line:
+        if (
+            not line.startswith("|")
+            or line.startswith("| ---")
+            or "Intent Type" in line
+        ):
             continue
         parts = [p.strip() for p in line.strip("|").split("|")]
         if len(parts) < 2:
@@ -39,7 +45,9 @@ INTENT_QUERIES: Dict[str, str] = {
     "FILTER_REQUEST": "Seulement les débits pas les crédits",
     "SPENDING_ANALYSIS": "Analyse de mes dépenses",
     "SPENDING_ANALYSIS_BY_CATEGORY": "Analyse des dépenses alimentaires",
-    "SPENDING_ANALYSIS_BY_PERIOD": "Analyse de mes dépenses la semaine dernière",
+    "SPENDING_ANALYSIS_BY_PERIOD": (
+        "Analyse de mes dépenses la semaine dernière"
+    ),
     "SPENDING_COMPARISON": "Compare mes dépenses de janvier et février",
     "TREND_ANALYSIS": "Tendance de mes dépenses cette année",
     "CATEGORY_ANALYSIS": "Répartition de mes dépenses par catégorie",
@@ -80,7 +88,7 @@ UNSUPPORTED_INTENTS = {
 
 
 async def run_benchmark() -> None:
-    intents = parse_intents_md(Path("INTENTS.md"))
+    intents = parse_intents_md(repo_root / "INTENTS.md")
 
     api_key = os.getenv("OPENAI_API_KEY", "")
     agent = HarenaIntentAgent(api_key=api_key)
@@ -126,7 +134,8 @@ async def run_benchmark() -> None:
     print(f"Overall success rate: {success / total:.1%}")
     print(f"Average confidence: {avg_conf:.2f}")
     print(
-        f"Latency (ms) -> avg: {avg_lat:.1f}, min: {min_lat:.1f}, max: {max_lat:.1f}"
+        f"Latency (ms) -> avg: {avg_lat:.1f}, min: {min_lat:.1f}, "
+        f"max: {max_lat:.1f}"
     )
     print()
     header = (
@@ -137,8 +146,9 @@ async def run_benchmark() -> None:
     print("-" * len(header))
     for r in results:
         print(
-            f"{r['intent']:<25} {r['expected_category']:<15} {r['predicted_intent']:<25} "
-            f"{r['predicted_category']:<15} {r['confidence']:<6.2f} {r['latency_ms']:<11.1f}"
+            f"{r['intent']:<25} {r['expected_category']:<15} "
+            f"{r['predicted_intent']:<25} {r['predicted_category']:<15} "
+            f"{r['confidence']:<6.2f} {r['latency_ms']:<11.1f}"
         )
 
 

@@ -162,7 +162,8 @@ class HarenaIntentAgent:
         """Crée le prompt système avec la liste complète des intentions et exemples."""
 
         intents: List[Tuple[str, str, str]] = []
-        path = Path(__file__).with_name("INTENTS.md")
+        repo_root = Path(__file__).resolve().parents[1]
+        path = repo_root / "INTENTS.md"
         category_map = {
             "ACCOUNT_BALANCE": "BALANCE_INQUIRY",
             "GENERAL_QUESTION": "UNCLEAR_INTENT",

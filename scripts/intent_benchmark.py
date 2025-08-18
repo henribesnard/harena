@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Dict
 
-from quick_intent_test import HarenaIntentAgent
+from quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
 
 
 def parse_intents_md(path: Path) -> Dict[str, str]:
@@ -20,6 +20,7 @@ def parse_intents_md(path: Path) -> Dict[str, str]:
         intent, category = parts[0], parts[1]
         if category.startswith("UNSUPPORTED"):
             category = "UNCLEAR_INTENT"
+        category = CATEGORY_MAP.get(category, category)
         intents[intent] = category
     return intents
 

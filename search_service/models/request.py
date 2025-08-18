@@ -15,7 +15,7 @@ class SearchRequest(BaseModel):
     )
     
     # Optionnel - Paramètres de pagination
-    limit: int = Field(default=20, description="Nombre de résultats max", ge=1, le=100)
+    limit: int = Field(default=100, description="Nombre de résultats max", ge=1, le=100)
     offset: int = Field(default=0, description="Décalage pour pagination", ge=0)
     
     # Optionnel - Métadonnées

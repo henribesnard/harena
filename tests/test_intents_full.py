@@ -19,7 +19,7 @@ sys.modules["openai"] = types.SimpleNamespace(
 )
 sys.modules["dotenv"] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: None)
 
-from scripts.quick_intent_test import HarenaIntentAgent
+from scripts.quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
 
 THRESHOLD = 0.8
 
@@ -38,6 +38,7 @@ def parse_intents_md(path: Path) -> Dict[str, str]:
         # Harmonize unsupported categories with enum
         if category.startswith("UNSUPPORTED"):
             category = "UNCLEAR_INTENT"
+        category = CATEGORY_MAP.get(category, category)
         intents[intent] = category
     return intents
 

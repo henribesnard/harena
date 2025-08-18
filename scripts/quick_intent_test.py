@@ -24,6 +24,12 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Mapping to harmonize categories between INTENTS.md and the agent
+CATEGORY_MAP = {
+    "ACCOUNT_BALANCE": "BALANCE_INQUIRY",
+    "GENERAL_QUESTION": "UNCLEAR_INTENT",
+}
+
 # ==================== MODÈLES PYDANTIC (IntentResult) ====================
 
 class IntentCategory(str, Enum):
@@ -164,10 +170,6 @@ class HarenaIntentAgent:
         intents: List[Tuple[str, str, str]] = []
         repo_root = Path(__file__).resolve().parents[1]
         path = repo_root / "INTENTS.md"
-        category_map = {
-            "ACCOUNT_BALANCE": "BALANCE_INQUIRY",
-            "GENERAL_QUESTION": "UNCLEAR_INTENT",
-        }
         with path.open(encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -179,7 +181,7 @@ class HarenaIntentAgent:
                 intent, category, description = parts[:3]
                 if category.startswith("UNSUPPORTED"):
                     category = "UNCLEAR_INTENT"
-                category = category_map.get(category, category)
+                category = CATEGORY_MAP.get(category, category)
                 intents.append((intent, category, description))
 
         example_queries: Dict[str, str] = {

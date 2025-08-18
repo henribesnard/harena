@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Dict
 
-from quick_intent_test import HarenaIntentAgent
+from scripts.quick_intent_test import HarenaIntentAgent
 
 
 def parse_intents_md(path: Path) -> Dict[str, str]:

@@ -13,7 +13,7 @@ sys.modules["openai"] = types.SimpleNamespace(
     OpenAI=_DummyClient, AsyncOpenAI=_DummyClient
 )
 
-from quick_intent_test import HarenaIntentAgent, IntentCategory
+from scripts.quick_intent_test import HarenaIntentAgent, IntentCategory
 
 
 class DummyUsage:

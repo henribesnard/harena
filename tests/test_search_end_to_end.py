@@ -34,7 +34,7 @@ except Exception:  # pragma: no cover - fallback to simple stubs
         user_id: int
         query: str = ""
         filters: Dict[str, Any] = field(default_factory=dict)
-        limit: int = 20
+        limit: int = 100
         offset: int = 0
         metadata: Dict[str, Any] = field(default_factory=dict)
 

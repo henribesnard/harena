@@ -65,6 +65,20 @@ INTENT_QUERIES: Dict[str, str] = {
 }
 
 
+# Intents that are not yet supported by the system. If the model predicts
+# ``UNSUPPORTED`` for any of these intents (with a matching category), the
+# prediction is still considered correct.
+UNSUPPORTED_INTENTS = {
+    "TRANSFER_REQUEST",
+    "PAYMENT_REQUEST",
+    "CARD_BLOCK",
+    "BUDGET_INQUIRY",
+    "GOAL_TRACKING",
+    "EXPORT_REQUEST",
+    "OUT_OF_SCOPE",
+}
+
+
 async def run_benchmark() -> None:
     intents = parse_intents_md(Path("INTENTS.md"))
 
@@ -92,8 +106,14 @@ async def run_benchmark() -> None:
     success = sum(
         1
         for r in results
-        if r["intent"] == r["predicted_intent"]
-        and r["expected_category"] == r["predicted_category"]
+        if r["expected_category"] == r["predicted_category"]
+        and (
+            r["intent"] == r["predicted_intent"]
+            or (
+                r["predicted_intent"] == "UNSUPPORTED"
+                and r["intent"] in UNSUPPORTED_INTENTS
+            )
+        )
     )
     avg_conf = sum(r["confidence"] for r in results) / total
     latencies = [r["latency_ms"] for r in results]

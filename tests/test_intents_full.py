@@ -19,7 +19,7 @@ sys.modules["openai"] = types.SimpleNamespace(
 )
 sys.modules["dotenv"] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: None)
 
-from quick_intent_test import HarenaIntentAgent
+from scripts.quick_intent_test import HarenaIntentAgent
 
 THRESHOLD = 0.8
 

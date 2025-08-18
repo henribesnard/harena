@@ -8,6 +8,11 @@ from quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
 
 repo_root = Path(__file__).resolve().parents[1]
 
+try:  # Allow running as script or module
+    from scripts.intent_utils import parse_intents_md
+except ImportError:  # pragma: no cover - fallback for direct execution
+    from intent_utils import parse_intents_md
+
 
 def parse_intents_md(path: Path) -> Dict[str, str]:
     """Parse INTENTS.md and return mapping of intent_type to category."""

@@ -7,7 +7,7 @@ import json
 import time
 import asyncio
 import os
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Literal
 from pathlib import Path
 from datetime import datetime
 import openai
@@ -38,6 +38,150 @@ CATEGORY_MAP = {
 }
 
 # ==================== MODÈLES PYDANTIC (IntentResult) ====================
+
+class IntentCategory(str, Enum):
+    """Catégories d'intentions consultatives."""
+    FINANCIAL_QUERY = "FINANCIAL_QUERY"
+    TRANSACTION_SEARCH = "TRANSACTION_SEARCH"
+    BALANCE_INQUIRY = "BALANCE_INQUIRY"
+    ACCOUNT_INFORMATION = "ACCOUNT_INFORMATION"
+
+    SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
+    BUDGET_ANALYSIS = "BUDGET_ANALYSIS"
+    TREND_ANALYSIS = "TREND_ANALYSIS"
+
+    GREETING = "GREETING"
+    CLARIFICATION = "CLARIFICATION"
+    CONFIRMATION = "CONFIRMATION"
+    GENERAL_QUESTION = "GENERAL_QUESTION"
+
+    EXPORT_REQUEST = "EXPORT_REQUEST"
+    FILTER_REQUEST = "FILTER_REQUEST"
+    SORT_REQUEST = "SORT_REQUEST"
+    GOAL_TRACKING = "GOAL_TRACKING"
+
+    UNCLEAR_INTENT = "UNCLEAR_INTENT"
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"
+
+    # Valeur supplémentaire spécifique au script
+    UNKNOWN = "UNKNOWN"
+
+class EntityType(str, Enum):
+    """Types d'entités financières."""
+    # Monetary entities
+    AMOUNT = "AMOUNT"
+    CURRENCY = "CURRENCY"
+    PERCENTAGE = "PERCENTAGE"
+
+    # Temporal entities
+    DATE = "DATE"
+    DATE_RANGE = "DATE_RANGE"
+    RELATIVE_DATE = "RELATIVE_DATE"
+
+    # Account entities
+    ACCOUNT_TYPE = "ACCOUNT_TYPE"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    IBAN = "IBAN"
+
+    # Transaction entities
+    TRANSACTION_TYPE = "TRANSACTION_TYPE"
+    OPERATION_TYPE = "OPERATION_TYPE"
+    MERCHANT = "MERCHANT"
+    CATEGORY = "CATEGORY"
+    DESCRIPTION = "DESCRIPTION"
+
+    # Person/Organization entities
+    PERSON = "PERSON"
+    ORGANIZATION = "ORGANIZATION"
+    BANK = "BANK"
+
+    # Location entities
+    LOCATION = "LOCATION"
+    COUNTRY = "COUNTRY"
+
+    # Financial instruments
+    CARD_TYPE = "CARD_TYPE"
+    PAYMENT_METHOD = "PAYMENT_METHOD"
+
+    # Other
+    REFERENCE_NUMBER = "REFERENCE_NUMBER"
+    OTHER = "OTHER"
+
+class DetectionMethod(str, Enum):
+    """Méthode de détection."""
+    LLM_BASED = "llm_based"
+    RULE_BASED = "rule_based"
+    HYBRID = "hybrid"
+
+class FinancialEntity(BaseModel):
+    """Entité financière extraite."""
+    entity_type: EntityType
+    raw_value: str
+    normalized_value: Any
+    confidence: float = Field(ge=0.0, le=1.0)
+    start_position: Optional[int] = Field(default=None, ge=0)
+    end_position: Optional[int] = Field(default=None, ge=0)
+    detection_method: DetectionMethod = DetectionMethod.LLM_BASED
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    validation_status: Literal["valid", "invalid", "uncertain", "not_validated"] = "not_validated"
+    alternative_values: Optional[List[Any]] = None
+
+    @model_validator(mode='after')
+    def validate_positions(self) -> 'FinancialEntity':
+        if (self.start_position is not None and
+                self.end_position is not None and
+                self.end_position <= self.start_position):
+            raise ValueError("end_position must be greater than start_position")
+        return self
+
+    def to_search_filter(self) -> Optional[Dict[str, Any]]:
+        """Convertit l'entité en filtre de recherche."""
+        if self.validation_status == "invalid":
+            return None
+        filter_map = {
+            EntityType.AMOUNT: {"field": "amount", "value": self.normalized_value},
+            EntityType.DATE: {"field": "date", "value": self.normalized_value},
+            EntityType.DATE_RANGE: {"field": "date", "value": self.normalized_value},
+            EntityType.CATEGORY: {"field": "category", "value": self.normalized_value},
+            EntityType.MERCHANT: {"field": "merchant", "value": self.normalized_value},
+            EntityType.TRANSACTION_TYPE: {"field": "transaction_type", "value": self.normalized_value},
+            EntityType.OPERATION_TYPE: {"field": "operation_type", "value": self.normalized_value},
+        }
+        return filter_map.get(self.entity_type)
+
+class IntentResult(BaseModel):
+    """Résultat complet de classification d'intention."""
+    intent_type: str = Field(..., min_length=1, max_length=100)
+    intent_category: IntentCategory
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    entities: List[FinancialEntity] = Field(default_factory=list)
+    method: DetectionMethod = Field(default=DetectionMethod.LLM_BASED)
+    processing_time_ms: float = Field(..., ge=0.0)
+    alternative_intents: Optional[List[Dict[str, Any]]] = None
+    context_influence: Optional[Dict[str, Any]] = None
+    validation_errors: Optional[List[str]] = None
+    requires_clarification: bool = False
+    suggested_actions: Optional[List[str]] = None
+    raw_user_message: Optional[str] = None
+    normalized_query: Optional[str] = None
+    search_required: bool = True
+
+    @field_validator("alternative_intents")
+    @classmethod
+    def validate_alternative_intents(cls, v):
+        if v is not None:
+            for alt in v:
+                if "intent_type" not in alt or "confidence" not in alt:
+                    raise ValueError("Alternative intent mal formé")
+                if not (0.0 <= alt["confidence"] <= 1.0):
+                    raise ValueError("Confidence doit être entre 0 et 1")
+        return v
+
+    @model_validator(mode='after')
+    def validate_entities_consistency(self):
+        """Valide la cohérence des entités avec l'intention."""
+        return self
+
 # Importés depuis conversation_service.models.financial_models
 
 # ==================== AGENT OPENAI OPTIMISÉ ====================

@@ -287,6 +287,22 @@ class HarenaIntentAgent:
             "ERROR": "��",
         }
 
+        entity_examples: Dict[str, str] = {
+            "ACCOUNT_BALANCE_SPECIFIC": '[{entity_type:ACCOUNT_TYPE, raw_value:"compte courant", normalized_value:"compte courant", confidence:0.95, detection_method:llm_based, validation_status:valid}]',
+            "SEARCH_BY_DATE": '[{entity_type:DATE_RANGE, raw_value:"mars 2024", normalized_value:"2024-03", confidence:0.95}]',
+            "SEARCH_BY_AMOUNT": '[{entity_type:AMOUNT, raw_value:"50 euros", normalized_value:50.0, confidence:0.95}]',
+            "SEARCH_BY_MERCHANT": '[{entity_type:MERCHANT, raw_value:"Carrefour", normalized_value:"carrefour", confidence:0.95}]',
+            "SEARCH_BY_CATEGORY": '[{entity_type:CATEGORY, raw_value:"restaurants", normalized_value:"restaurants", confidence:0.95}]',
+            "SEARCH_BY_AMOUNT_AND_DATE": '[{entity_type:AMOUNT, raw_value:"100 euros", normalized_value:100.0, confidence:0.95}, {entity_type:DATE_RANGE, raw_value:"janvier 2024", normalized_value:"2024-01", confidence:0.95}]',
+            "SEARCH_BY_OPERATION_TYPE": '[{entity_type:OPERATION_TYPE, raw_value:"carte bancaire", normalized_value:"carte bancaire", confidence:0.95}]',
+            "SEARCH_BY_TEXT": '[{entity_type:DESCRIPTION, raw_value:"Netflix", normalized_value:"netflix", confidence:0.95}]',
+            "COUNT_TRANSACTIONS": '[{entity_type:DATE_RANGE, raw_value:"février", normalized_value:"2024-02", confidence:0.95}]',
+            "MERCHANT_INQUIRY": '[{entity_type:MERCHANT, raw_value:"Amazon", normalized_value:"amazon", confidence:0.95}]',
+            "SPENDING_ANALYSIS_BY_CATEGORY": '[{entity_type:CATEGORY, raw_value:"alimentaires", normalized_value:"alimentation", confidence:0.95}]',
+            "SPENDING_ANALYSIS_BY_PERIOD": '[{entity_type:DATE_RANGE, raw_value:"la semaine dernière", normalized_value:"2024-09-11/2024-09-17", confidence:0.95}]',
+            "SPENDING_COMPARISON": '[{entity_type:DATE_RANGE, raw_value:"janvier", normalized_value:"2024-01", confidence:0.95}, {entity_type:DATE_RANGE, raw_value:"février", normalized_value:"2024-02", confidence:0.95}]',
+        }
+
         unsupported = {
             "TRANSFER_REQUEST",
             "PAYMENT_REQUEST",
@@ -309,9 +325,10 @@ class HarenaIntentAgent:
             example_intent = "UNSUPPORTED" if intent in unsupported else intent
             lines.append(f"- {intent} ({category}): {description}")
             if user_example:
-                if intent == "ACCOUNT_BALANCE_SPECIFIC":
+                entity_example = entity_examples.get(intent)
+                if entity_example:
                     lines.append(
-                        f"  Ex: \"{user_example}\" -> intent_type={example_intent}, intent_category={category}, entities=[{{entity_type:ACCOUNT_TYPE, raw_value:\"compte courant\", normalized_value:\"compte courant\"}}]"
+                        f"  Ex: \"{user_example}\" -> intent_type={example_intent}, intent_category={category}, entities={entity_example}"
                     )
                 else:
                     lines.append(

@@ -65,9 +65,6 @@ class IntentCategory(str, Enum):
     UNCLEAR_INTENT = "UNCLEAR_INTENT"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
-    # Valeur supplémentaire spécifique au script
-    UNKNOWN = "UNKNOWN"
-
 class EntityType(str, Enum):
     """Types d'entités financières."""
     # Monetary entities
@@ -329,6 +326,7 @@ class HarenaIntentAgent:
             "- MERCHANT: Marchands (Carrefour, Netflix) → lowercase",
             "- CATEGORY: Catégories (alimentation, transport) → termes canoniques",
             "- ACCOUNT_TYPE: Comptes (livret A, compte courant) → identifiants standards",
+            "- ACCOUNT_TYPE: Types de comptes (livret A, compte courant) → identifiants standards",
             "",
             "RÈGLES IMPORTANTES:",
             "1. Toujours retourner un IntentResult complet avec tous les champs",
@@ -490,11 +488,18 @@ class HarenaIntentAgent:
             IntentResult structuré et validé
         """
         start_time = time.time()
-        
+        allowed_categories = {cat.value for cat in IntentCategory}
+
         # Vérifier le cache
         if self.cache_enabled and user_message in self.cache:
             cached_result = self.cache[user_message].copy()
+            if cached_result.get("intent_category") not in allowed_categories:
+                cached_result["intent_category"] = IntentCategory.UNCLEAR_INTENT.value
             cached_result["processing_time_ms"] = 0.5  # Cache hit
+            # Harmoniser les anciens types d'entités
+            for ent in cached_result.get("entities", []):
+                if ent.get("entity_type") == "ACCOUNT":
+                    ent["entity_type"] = EntityType.ACCOUNT_TYPE.value
             result = IntentResult(**cached_result)
             errors = validate_intent_result_contract(result.model_dump())
             if errors:
@@ -521,7 +526,16 @@ class HarenaIntentAgent:
             
             # Parser la réponse JSON
             result_dict = json.loads(response.choices[0].message.content)
+            if result_dict.get("intent_category") not in allowed_categories:
+                result_dict["intent_category"] = IntentCategory.UNCLEAR_INTENT.value
             
+
+
+            # Harmoniser les types d'entités non supportés
+            for ent in result_dict.get("entities", []):
+                if ent.get("entity_type") == "ACCOUNT":
+                    ent["entity_type"] = EntityType.ACCOUNT_TYPE.value
+
             # Ajouter métadonnées
             processing_time = (time.time() - start_time) * 1000
             result_dict["processing_time_ms"] = processing_time

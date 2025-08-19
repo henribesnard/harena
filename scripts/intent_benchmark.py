@@ -1,12 +1,15 @@
+import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[1]
+sys.path.append(str(repo_root))
+
 import asyncio
 import os
 import time
-from pathlib import Path
 from typing import Dict
 
 from quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
-
-repo_root = Path(__file__).resolve().parents[1]
 
 try:  # Allow running as script or module
     from scripts.intent_utils import parse_intents_md

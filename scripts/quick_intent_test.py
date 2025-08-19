@@ -541,8 +541,26 @@ class HarenaIntentAgent:
             result_dict["processing_time_ms"] = processing_time
             result_dict["raw_user_message"] = user_message
 
+            # Normaliser les entités avant validation Pydantic
+            normalized_entities: List[Dict[str, Any]] = []
+            validation_errors = result_dict.get("validation_errors", [])
+            for ent in result_dict.get("entities", []):
+                if "confidence" not in ent:
+                    msg = (
+                        f"Entity missing confidence; defaulting to 0.85: {ent}"
+                    )
+                    logger.warning(msg)
+                    validation_errors.append(msg)
+                    ent["confidence"] = 0.85
+                normalized_entities.append(ent)
+            result_dict["entities"] = normalized_entities
+            if validation_errors:
+                result_dict["validation_errors"] = validation_errors
+
             # Valider avec Pydantic
             result = IntentResult(**result_dict)
+            # Revalidation pour garantir la cohérence après normalisation
+            result = IntentResult(**result.model_dump())
 
             # Validation du contrat
             errors = validate_intent_result_contract(result.model_dump())

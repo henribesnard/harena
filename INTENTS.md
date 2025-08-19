@@ -63,8 +63,8 @@ This document lists all intents recognized by Harena's MVP and their associated 
 
 | Intent Type | Category | Description | Suggested actions |
 | --- | --- | --- | --- |
-| UNCLEAR_INTENT | UNKNOWN | Intention ambiguë ou non reconnue | ["ask_to_rephrase"] |
-| UNKNOWN | UNKNOWN | Phrase inintelligible | ["ask_to_rephrase"] |
-| TEST_INTENT | UNKNOWN | Message de test («[TEST] ping») | ["no_action"] |
-| ERROR | UNKNOWN | Entrée corrompue | ["retry_or_contact_support"] |
+| UNCLEAR_INTENT | UNCLEAR_INTENT | Intention ambiguë ou non reconnue | ["ask_to_rephrase"] |
+| UNKNOWN | UNCLEAR_INTENT | Phrase inintelligible | ["ask_to_rephrase"] |
+| TEST_INTENT | UNCLEAR_INTENT | Message de test («[TEST] ping») | ["no_action"] |
+| ERROR | UNCLEAR_INTENT | Entrée corrompue | ["retry_or_contact_support"] |
 

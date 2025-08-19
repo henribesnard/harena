@@ -10,12 +10,19 @@ import os
 from typing import Dict, List, Any, Optional, Tuple, Literal
 from pathlib import Path
 from datetime import datetime
-from enum import Enum
-from pydantic import BaseModel, Field, field_validator, model_validator
 import openai
 from openai import OpenAI, AsyncOpenAI
 from dotenv import load_dotenv
 import logging
+
+from conversation_service.models.financial_models import (
+    IntentCategory,
+    EntityType,
+    FinancialEntity,
+    IntentResult,
+    DetectionMethod,
+)
+from conversation_service.utils.validators import validate_intent_result_contract
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -174,6 +181,8 @@ class IntentResult(BaseModel):
     def validate_entities_consistency(self):
         """Valide la cohérence des entités avec l'intention."""
         return self
+
+# Importés depuis conversation_service.models.financial_models
 
 # ==================== AGENT OPENAI OPTIMISÉ ====================
 
@@ -479,7 +488,12 @@ class HarenaIntentAgent:
         if self.cache_enabled and user_message in self.cache:
             cached_result = self.cache[user_message].copy()
             cached_result["processing_time_ms"] = 0.5  # Cache hit
-            return IntentResult(**cached_result)
+            result = IntentResult(**cached_result)
+            errors = validate_intent_result_contract(result.model_dump())
+            if errors:
+                logger.error(f"IntentResult contract errors: {errors}")
+                result.validation_errors = errors
+            return result
         
         try:
             # Appel API avec Structured Outputs
@@ -509,6 +523,12 @@ class HarenaIntentAgent:
             # Valider avec Pydantic
             result = IntentResult(**result_dict)
 
+            # Validation du contrat
+            errors = validate_intent_result_contract(result.model_dump())
+            if errors:
+                logger.error(f"IntentResult contract errors: {errors}")
+                result.validation_errors = (result.validation_errors or []) + errors
+
             # Post-traitement pour intents non supportés
             if result.intent_type == "UNSUPPORTED":
                 result.validation_errors = ["Intent not supported."]
@@ -521,13 +541,13 @@ class HarenaIntentAgent:
             
             # Log des coûts estimés
             self._log_cost_estimate(response.usage)
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Erreur détection: {e}")
             # Retour d'erreur structuré
-            return IntentResult(
+            result = IntentResult(
                 intent_type="ERROR",
                 intent_category=IntentCategory.UNCLEAR_INTENT,
                 confidence=0.0,
@@ -537,8 +557,13 @@ class HarenaIntentAgent:
                 raw_user_message=user_message,
                 validation_errors=[str(e)],
                 requires_clarification=True,
-                search_required=False
+                search_required=False,
             )
+            errors = validate_intent_result_contract(result.model_dump())
+            if errors:
+                logger.error(f"IntentResult contract errors: {errors}")
+                result.validation_errors = (result.validation_errors or []) + errors
+            return result
     
     def detect_intent(self, user_message: str) -> IntentResult:
         """Version synchrone de detect_intent."""
@@ -700,7 +725,7 @@ async def main():
         if query == "Peux-tu transférer 500 euros à Marie ?":
             assert (
                 result.intent_type in {"UNSUPPORTED", "UNCLEAR", "UNCLEAR_INTENT"}
-                or result.intent_category == IntentCategory.UNKNOWN
+                or result.intent_category in {IntentCategory.UNCLEAR_INTENT, IntentCategory.OUT_OF_SCOPE}
             ), "Les demandes de paiement doivent être marquées comme non supportées ou ambiguës"
 
         print("-" * 60)

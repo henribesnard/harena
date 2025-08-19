@@ -10,12 +10,19 @@ import os
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
-from enum import Enum
-from pydantic import BaseModel, Field, field_validator, model_validator
 import openai
 from openai import OpenAI, AsyncOpenAI
 from dotenv import load_dotenv
 import logging
+
+from conversation_service.models.financial_models import (
+    IntentCategory,
+    EntityType,
+    FinancialEntity,
+    IntentResult,
+    DetectionMethod,
+)
+from conversation_service.utils.validators import validate_intent_result_contract
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -31,93 +38,7 @@ CATEGORY_MAP = {
 }
 
 # ==================== MODÈLES PYDANTIC (IntentResult) ====================
-
-class IntentCategory(str, Enum):
-    """Catégories d'intentions consultatives."""
-    FINANCIAL_QUERY = "FINANCIAL_QUERY"
-    SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
-    TREND_ANALYSIS = "TREND_ANALYSIS"
-    BALANCE_INQUIRY = "BALANCE_INQUIRY"
-    ACCOUNT_INFORMATION = "ACCOUNT_INFORMATION"
-    BUDGET_ANALYSIS = "BUDGET_ANALYSIS"
-    GREETING = "GREETING"
-    CONFIRMATION = "CONFIRMATION"
-    CLARIFICATION = "CLARIFICATION"
-    UNCLEAR_INTENT = "UNCLEAR_INTENT"
-    UNKNOWN = "UNKNOWN"
-    FILTER_REQUEST = "FILTER_REQUEST"
-
-class EntityType(str, Enum):
-    """Types d'entités financières."""
-    AMOUNT = "AMOUNT"
-    DATE = "DATE"
-    DATE_RANGE = "DATE_RANGE"
-    CATEGORY = "CATEGORY"
-    MERCHANT = "MERCHANT"
-    ACCOUNT = "ACCOUNT"
-    CURRENCY = "CURRENCY"
-    RECIPIENT = "RECIPIENT"
-    RELATIVE_DATE = "RELATIVE_DATE"
-    TRANSACTION_TYPE = "TRANSACTION_TYPE"
-
-class DetectionMethod(str, Enum):
-    """Méthode de détection."""
-    LLM_BASED = "llm_based"
-    RULE_BASED = "rule_based"
-    HYBRID = "hybrid"
-
-class FinancialEntity(BaseModel):
-    """Entité financière extraite."""
-    entity_type: EntityType
-    raw_value: str
-    normalized_value: Any
-    confidence: float = Field(ge=0.0, le=1.0)
-    detection_method: DetectionMethod = DetectionMethod.LLM_BASED
-    position: Optional[Dict[str, int]] = None
-    validation_status: str = "valid"
-    
-    def to_search_filter(self) -> Optional[Dict[str, Any]]:
-        """Convertit l'entité en filtre de recherche."""
-        if self.validation_status == "invalid":
-            return None
-        return {
-            "type": self.entity_type.value,
-            "value": self.normalized_value,
-            "operator": "equals"
-        }
-
-class IntentResult(BaseModel):
-    """Résultat complet de classification d'intention."""
-    intent_type: str = Field(..., min_length=1, max_length=100)
-    intent_category: IntentCategory
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    entities: List[FinancialEntity] = Field(default_factory=list)
-    method: DetectionMethod = Field(default=DetectionMethod.LLM_BASED)
-    processing_time_ms: float = Field(..., ge=0.0)
-    alternative_intents: Optional[List[Dict[str, Any]]] = None
-    context_influence: Optional[Dict[str, Any]] = None
-    validation_errors: Optional[List[str]] = None
-    requires_clarification: bool = False
-    suggested_actions: Optional[List[str]] = None
-    raw_user_message: Optional[str] = None
-    normalized_query: Optional[str] = None
-    search_required: bool = True
-
-    @field_validator("alternative_intents")
-    @classmethod
-    def validate_alternative_intents(cls, v):
-        if v is not None:
-            for alt in v:
-                if "intent_type" not in alt or "confidence" not in alt:
-                    raise ValueError("Alternative intent mal formé")
-                if not (0.0 <= alt["confidence"] <= 1.0):
-                    raise ValueError("Confidence doit être entre 0 et 1")
-        return v
-
-    @model_validator(mode='after')
-    def validate_entities_consistency(self):
-        """Valide la cohérence des entités avec l'intention."""
-        return self
+# Importés depuis conversation_service.models.financial_models
 
 # ==================== AGENT OPENAI OPTIMISÉ ====================
 
@@ -423,7 +344,12 @@ class HarenaIntentAgent:
         if self.cache_enabled and user_message in self.cache:
             cached_result = self.cache[user_message].copy()
             cached_result["processing_time_ms"] = 0.5  # Cache hit
-            return IntentResult(**cached_result)
+            result = IntentResult(**cached_result)
+            errors = validate_intent_result_contract(result.model_dump())
+            if errors:
+                logger.error(f"IntentResult contract errors: {errors}")
+                result.validation_errors = errors
+            return result
         
         try:
             # Appel API avec Structured Outputs
@@ -453,6 +379,12 @@ class HarenaIntentAgent:
             # Valider avec Pydantic
             result = IntentResult(**result_dict)
 
+            # Validation du contrat
+            errors = validate_intent_result_contract(result.model_dump())
+            if errors:
+                logger.error(f"IntentResult contract errors: {errors}")
+                result.validation_errors = (result.validation_errors or []) + errors
+
             # Post-traitement pour intents non supportés
             if result.intent_type == "UNSUPPORTED":
                 result.validation_errors = ["Intent not supported."]
@@ -465,13 +397,13 @@ class HarenaIntentAgent:
             
             # Log des coûts estimés
             self._log_cost_estimate(response.usage)
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Erreur détection: {e}")
             # Retour d'erreur structuré
-            return IntentResult(
+            result = IntentResult(
                 intent_type="ERROR",
                 intent_category=IntentCategory.UNCLEAR_INTENT,
                 confidence=0.0,
@@ -481,8 +413,13 @@ class HarenaIntentAgent:
                 raw_user_message=user_message,
                 validation_errors=[str(e)],
                 requires_clarification=True,
-                search_required=False
+                search_required=False,
             )
+            errors = validate_intent_result_contract(result.model_dump())
+            if errors:
+                logger.error(f"IntentResult contract errors: {errors}")
+                result.validation_errors = (result.validation_errors or []) + errors
+            return result
     
     def detect_intent(self, user_message: str) -> IntentResult:
         """Version synchrone de detect_intent."""
@@ -644,7 +581,7 @@ async def main():
         if query == "Peux-tu transférer 500 euros à Marie ?":
             assert (
                 result.intent_type in {"UNSUPPORTED", "UNCLEAR", "UNCLEAR_INTENT"}
-                or result.intent_category == IntentCategory.UNKNOWN
+                or result.intent_category in {IntentCategory.UNCLEAR_INTENT, IntentCategory.OUT_OF_SCOPE}
             ), "Les demandes de paiement doivent être marquées comme non supportées ou ambiguës"
 
         print("-" * 60)

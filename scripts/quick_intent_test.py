@@ -309,9 +309,14 @@ class HarenaIntentAgent:
             example_intent = "UNSUPPORTED" if intent in unsupported else intent
             lines.append(f"- {intent} ({category}): {description}")
             if user_example:
-                lines.append(
-                    f"  Ex: \"{user_example}\" -> intent_type={example_intent}, intent_category={category}, entities=[]"
-                )
+                if intent == "ACCOUNT_BALANCE_SPECIFIC":
+                    lines.append(
+                        f"  Ex: \"{user_example}\" -> intent_type={example_intent}, intent_category={category}, entities=[{{entity_type:ACCOUNT_TYPE, raw_value:\"compte courant\", normalized_value:\"compte courant\"}}]"
+                    )
+                else:
+                    lines.append(
+                        f"  Ex: \"{user_example}\" -> intent_type={example_intent}, intent_category={category}, entities=[]"
+                    )
 
         lines += [
             "",
@@ -320,6 +325,7 @@ class HarenaIntentAgent:
             "- DATE/DATE_RANGE: Dates (janvier 2024) → format ISO",
             "- MERCHANT: Marchands (Carrefour, Netflix) → lowercase",
             "- CATEGORY: Catégories (alimentation, transport) → termes canoniques",
+            "- ACCOUNT_TYPE: Comptes (livret A, compte courant) → identifiants standards",
             "- ACCOUNT_TYPE: Types de comptes (livret A, compte courant) → identifiants standards",
             "",
             "RÈGLES IMPORTANTES:",

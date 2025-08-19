@@ -2,8 +2,9 @@
 Agent models for AutoGen v0.4 integration in Conversation Service MVP.
 
 This module defines the core data models for AutoGen agents, including
-configuration, responses, and team workflow management. These models
-are optimized for the financial conversation use case with DeepSeek LLM.
+configuration, responses, and team workflow management. While initially
+optimized for the financial conversation use case with DeepSeek LLM, the
+models now support additional LLM providers such as OpenAI's GPT family.
 
 Classes:
     - AgentConfig: Configuration model for AutoGen agents
@@ -28,11 +29,12 @@ class AgentConfig(BaseModel):
     
     This model defines the complete configuration for an AutoGen agent,
     including model client settings, system messages, and behavioral parameters.
-    Optimized for DeepSeek integration and financial domain specialization.
+    Optimized for financial domain specialization and compatible with multiple
+    LLM providers (e.g., DeepSeek, OpenAI GPT).
     
     Attributes:
         name: Unique identifier for the agent
-        model_client_config: DeepSeek model configuration
+        model_client_config: LLM model configuration (DeepSeek, OpenAI, etc.)
         system_message: System prompt for the agent's behavior
         max_consecutive_auto_reply: Maximum consecutive auto-replies
         description: Optional description of agent's purpose
@@ -52,7 +54,7 @@ class AgentConfig(BaseModel):
     
     model_client_config: Dict[str, Any] = Field(
         ...,
-        description="DeepSeek model client configuration"
+        description="LLM model client configuration"
     )
     
     system_message: str = Field(
@@ -110,15 +112,19 @@ class AgentConfig(BaseModel):
     @field_validator("model_client_config")
     @classmethod
     def validate_model_config(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate DeepSeek model configuration."""
+        """Validate model configuration for supported LLM providers."""
         required_keys = ["model", "api_key", "base_url"]
         for key in required_keys:
             if key not in v:
                 raise ValueError(f"Missing required key '{key}' in model_client_config")
         
-        # Validate DeepSeek model format
-        if not v["model"].startswith("deepseek-"):
-            raise ValueError("Model must be a DeepSeek model (start with 'deepseek-')")
+        # Validate model format for known providers
+        supported_prefixes = ("deepseek-", "gpt-")
+        if not any(v["model"].startswith(prefix) for prefix in supported_prefixes):
+            raise ValueError(
+                "Model must start with a supported prefix: "
+                + ", ".join(supported_prefixes)
+            )
             
         return v
     
@@ -135,9 +141,9 @@ class AgentConfig(BaseModel):
             "example": {
                 "name": "intent_classifier_agent",
                 "model_client_config": {
-                    "model": "deepseek-chat",
+                    "model": "gpt-4o-mini",
                     "api_key": "sk-xxx",
-                    "base_url": "https://api.deepseek.com"
+                    "base_url": "https://api.openai.com/v1"
                 },
                 "system_message": "You are a financial intent classification agent...",
                 "max_consecutive_auto_reply": 3,

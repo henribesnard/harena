@@ -1,12 +1,12 @@
 """LLM-only intent detection agent.
 
 This module defines :class:`LLMIntentAgent`, a simple agent that relies on the
-DeepSeek LLM to classify user messages into a restricted set of financial
+OpenAI API to classify user messages into a restricted set of financial
 intents and to extract entities.  The tests exercise only a small portion of the
 original project, so the implementation here focuses on the functionality
-required by the unit tests: constructing a system prompt, sending a request to
-``DeepSeekClient`` and returning an :class:`~IntentResult` instance describing
-the detected intent.
+required by the unit tests: constructing a system prompt, sending a structured
+output request to OpenAI and returning an :class:`~IntentResult` instance
+describing the detected intent.
 """
 
 from __future__ import annotations
@@ -16,6 +16,11 @@ import json
 import time
 import logging
 from typing import Any, Dict, List, Optional
+
+try:  # pragma: no cover - library may be absent in tests
+    from openai import AsyncOpenAI
+except Exception:  # pragma: no cover - fall back to a stub
+    AsyncOpenAI = None  # type: ignore
 
 from .base_financial_agent import BaseFinancialAgent
 from ..core.deepseek_client import DeepSeekClient
@@ -33,6 +38,12 @@ from ..prompts.intent_prompts import (
     INTENT_EXAMPLES_FEW_SHOT,
 )
 
+# Mapping to harmonise categories with internal enums
+CATEGORY_MAP: Dict[str, str] = {
+    "ACCOUNT_BALANCE": "BALANCE_INQUIRY",
+    "GENERAL_QUESTION": "UNCLEAR_INTENT",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,20 +52,21 @@ class LLMOutputParsingError(RuntimeError):
 
 
 class LLMIntentAgent(BaseFinancialAgent):
-    """Intent detection agent that relies solely on the DeepSeek LLM."""
+    """Intent detection agent using OpenAI structured outputs."""
 
     def __init__(
         self,
         deepseek_client: DeepSeekClient,
         config: Optional[AgentConfig] = None,
+        openai_client: Optional[Any] = None,
     ) -> None:
         if config is None:
             config = AgentConfig(
                 name="llm_intent_agent",
                 model_client_config={
-                    "model": "deepseek-chat",
+                    "model": "gpt-4o-mini",
                     "api_key": deepseek_client.api_key,
-                    "base_url": deepseek_client.base_url,
+                    "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._build_system_message(),
                 max_consecutive_auto_reply=1,
@@ -67,6 +79,12 @@ class LLMIntentAgent(BaseFinancialAgent):
         super().__init__(name=config.name, config=config, deepseek_client=deepseek_client)
         self._intent_cache = IntentResultCache(max_size=100)
         self._max_retries = 3
+        if openai_client is not None:
+            self._openai_client = openai_client
+        elif AsyncOpenAI is not None:
+            self._openai_client = AsyncOpenAI(api_key=config.model_client_config["api_key"])
+        else:  # pragma: no cover - requires openai package
+            raise ImportError("openai package is required unless openai_client is provided")
 
     # ------------------------------------------------------------------
     # Operation API
@@ -126,36 +144,63 @@ class LLMIntentAgent(BaseFinancialAgent):
             {"role": "user", "content": user_message},
         ]
 
+        schema = {
+            "type": "object",
+            "properties": {
+                "intent_type": {"type": "string"},
+                "intent_category": {"type": "string"},
+                "confidence": {"type": "number"},
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "entity_type": {"type": "string"},
+                            "value": {"type": "string"},
+                            "confidence": {"type": "number"},
+                        },
+                        "required": ["entity_type", "value"],
+                    },
+                },
+            },
+            "required": ["intent_type", "intent_category", "confidence", "entities"],
+        }
+
         response = None
         for attempt in range(self._max_retries):
             try:
-                response = await self.deepseek_client.generate_response(
+                response = await self._openai_client.chat.completions.create(
+                    model=self.config.model_client_config["model"],
                     messages=messages,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"name": "intent_result", "schema": schema},
+                    },
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
-                    user=str(user_id),
-                    use_cache=True,
                 )
                 break
-            except Exception as err:
-                logger.warning("DeepSeek call failed (attempt %s): %s", attempt + 1, err)
+            except Exception as err:  # pragma: no cover - retry logic
+                logger.warning("OpenAI call failed (attempt %s): %s", attempt + 1, err)
                 await asyncio.sleep(2 ** attempt)
         if response is None:
             raise RuntimeError("LLM call failed")
-        parsed = getattr(response, "output_parsed", None)
-        if parsed is None:
-            raw_text = getattr(response, "output_text", None)
-            if raw_text is None:
-                raw_text = getattr(response, "content", "")
-            try:
-                parsed = json.loads(raw_text)
-            except json.JSONDecodeError as err:
-                raise LLMOutputParsingError(
-                    f"Invalid JSON in LLM response: {err}"
-                ) from err
-        data = parsed
 
-        intent_type = data.get("intent", "OUT_OF_SCOPE")
+        try:
+            data = json.loads(response.choices[0].message.content)
+        except Exception as err:  # pragma: no cover - parsing errors
+            raise LLMOutputParsingError(f"Invalid JSON in LLM response: {err}") from err
+
+        intent_type = data.get("intent_type") or data.get("intent") or "OUT_OF_SCOPE"
+        raw_category = (data.get("intent_category") or "GENERAL_QUESTION").upper()
+        mapped_category = CATEGORY_MAP.get(raw_category, raw_category)
+        try:
+            intent_category = IntentCategory(mapped_category)
+        except Exception:
+            intent_category = IntentCategory.GENERAL_QUESTION
+
+        confidence = float(data.get("confidence", 0.85))
+
         entities: List[FinancialEntity] = []
         for ent in data.get("entities", []):
             type_key = ent.get("entity_type") or ent.get("type") or ""
@@ -164,20 +209,21 @@ class LLMIntentAgent(BaseFinancialAgent):
             except Exception:  # pragma: no cover - unknown entity types
                 logger.debug("Unknown entity type: %s", type_key)
                 continue
+            ent_conf = float(ent.get("confidence", confidence))
             entities.append(
                 FinancialEntity(
                     entity_type=e_type,
                     raw_value=ent.get("value", ""),
-                    normalized_value=ent.get("value", ""),
-                    confidence=ent.get("confidence", data.get("confidence", 0.0)),
+                    normalized_value=ent.get("normalized_value", ent.get("value", "")),
+                    confidence=ent_conf,
                     detection_method=DetectionMethod.LLM_BASED,
                 )
             )
 
         intent_result = IntentResult(
             intent_type=intent_type,
-            intent_category=self._infer_category(intent_type),
-            confidence=data.get("confidence", 0.0),
+            intent_category=intent_category,
+            confidence=confidence,
             entities=entities,
             method=DetectionMethod.LLM_BASED,
             processing_time_ms=(time.perf_counter() - start_time) * 1000,

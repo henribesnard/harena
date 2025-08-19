@@ -65,9 +65,6 @@ class IntentCategory(str, Enum):
     UNCLEAR_INTENT = "UNCLEAR_INTENT"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
-    # Valeur supplémentaire spécifique au script
-    UNKNOWN = "UNKNOWN"
-
 class EntityType(str, Enum):
     """Types d'entités financières."""
     # Monetary entities
@@ -485,10 +482,13 @@ class HarenaIntentAgent:
             IntentResult structuré et validé
         """
         start_time = time.time()
-        
+        allowed_categories = {cat.value for cat in IntentCategory}
+
         # Vérifier le cache
         if self.cache_enabled and user_message in self.cache:
             cached_result = self.cache[user_message].copy()
+            if cached_result.get("intent_category") not in allowed_categories:
+                cached_result["intent_category"] = IntentCategory.UNCLEAR_INTENT.value
             cached_result["processing_time_ms"] = 0.5  # Cache hit
             # Harmoniser les anciens types d'entités
             for ent in cached_result.get("entities", []):
@@ -520,6 +520,10 @@ class HarenaIntentAgent:
             
             # Parser la réponse JSON
             result_dict = json.loads(response.choices[0].message.content)
+            if result_dict.get("intent_category") not in allowed_categories:
+                result_dict["intent_category"] = IntentCategory.UNCLEAR_INTENT.value
+            
+
 
             # Harmoniser les types d'entités non supportés
             for ent in result_dict.get("entities", []):

@@ -18,24 +18,38 @@ from conversation_service.models.financial_models import (
 
 class DummyDeepSeekClient:
     api_key = "test-key"
-    base_url = "http://api.example.com"
-
-    async def generate_response(self, messages, temperature, max_tokens, user, use_cache):
-        class Response:
-            content = json.dumps(
-                {
-                    "intent": "SEARCH_BY_MERCHANT",
-                    "confidence": 0.9,
-                    "entities": [{"type": "MERCHANT", "value": "Netflix"}],
-                }
-            )
-
-        return Response()
+    base_url = "https://api.openai.com/v1"
 
 
-class ErrorDeepSeekClient(DummyDeepSeekClient):
-    async def generate_response(self, *args, **kwargs):
-        raise RuntimeError("LLM failure")
+class DummyOpenAIClient:
+    def __init__(self, content: str):
+        self._content = content
+
+        class _Completions:
+            async def create(_self, *args, **kwargs):
+                class Choice:
+                    message = type("Msg", (), {"content": content})
+
+                return type("Resp", (), {"choices": [Choice()]})
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        self.chat = _Chat()
+
+
+class ErrorOpenAIClient(DummyOpenAIClient):
+    def __init__(self):
+        class _Completions:
+            async def create(_self, *args, **kwargs):
+                raise RuntimeError("LLM failure")
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        self.chat = _Chat()
 
 
 class FallbackAgent:
@@ -62,7 +76,19 @@ class FallbackAgent:
 
 
 def test_full_flow_detects_intent_and_latency():
-    agent = EnhancedLLMIntentAgent(deepseek_client=DummyDeepSeekClient())
+    openai_client = DummyOpenAIClient(
+        json.dumps(
+            {
+                "intent_type": "SEARCH_BY_MERCHANT",
+                "intent_category": "TRANSACTION_SEARCH",
+                "confidence": 0.9,
+                "entities": [{"entity_type": "MERCHANT", "value": "Netflix"}],
+            }
+        )
+    )
+    agent = EnhancedLLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
+    )
     result = asyncio.run(agent.detect_intent("Combien j’ai dépensé pour Netflix ?", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "SEARCH_BY_MERCHANT"
@@ -71,7 +97,9 @@ def test_full_flow_detects_intent_and_latency():
 
 def test_fallback_when_llm_errors():
     agent = EnhancedLLMIntentAgent(
-        deepseek_client=ErrorDeepSeekClient(), fallback_agent=FallbackAgent()
+        deepseek_client=DummyDeepSeekClient(),
+        openai_client=ErrorOpenAIClient(),
+        fallback_agent=FallbackAgent(),
     )
     result = asyncio.run(agent.detect_intent("Bonjour", 1))
     intent_result = result["metadata"]["intent_result"]
@@ -89,15 +117,51 @@ def test_latency_measurement(monkeypatch):
         return 100.0 if calls["count"] == 1 else 100.123
 
     monkeypatch.setattr(ela.time, "perf_counter", fake_perf_counter)
-    agent = EnhancedLLMIntentAgent(deepseek_client=DummyDeepSeekClient())
+    openai_client = DummyOpenAIClient(
+        json.dumps(
+            {
+                "intent_type": "SEARCH_BY_MERCHANT",
+                "intent_category": "TRANSACTION_SEARCH",
+                "confidence": 0.9,
+                "entities": [],
+            }
+        )
+    )
+    agent = EnhancedLLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
+    )
     result = asyncio.run(agent.detect_intent("ping", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.processing_time_ms == pytest.approx(123.0, abs=1e-6)
 
 
 def test_matches_old_llm_intent_agent_output():
-    enhanced = EnhancedLLMIntentAgent(deepseek_client=DummyDeepSeekClient())
-    legacy = LLMIntentAgent(deepseek_client=DummyDeepSeekClient())
+    openai_client1 = DummyOpenAIClient(
+        json.dumps(
+            {
+                "intent_type": "SEARCH_BY_MERCHANT",
+                "intent_category": "TRANSACTION_SEARCH",
+                "confidence": 0.9,
+                "entities": [],
+            }
+        )
+    )
+    openai_client2 = DummyOpenAIClient(
+        json.dumps(
+            {
+                "intent_type": "SEARCH_BY_MERCHANT",
+                "intent_category": "TRANSACTION_SEARCH",
+                "confidence": 0.9,
+                "entities": [],
+            }
+        )
+    )
+    enhanced = EnhancedLLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client1
+    )
+    legacy = LLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client2
+    )
     res_new = asyncio.run(enhanced.detect_intent("Combien ?", 1))
     res_old = asyncio.run(legacy.detect_intent("Combien ?", 1))
     assert (

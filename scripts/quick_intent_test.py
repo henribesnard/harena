@@ -320,7 +320,7 @@ class HarenaIntentAgent:
             "- DATE/DATE_RANGE: Dates (janvier 2024) → format ISO",
             "- MERCHANT: Marchands (Carrefour, Netflix) → lowercase",
             "- CATEGORY: Catégories (alimentation, transport) → termes canoniques",
-            "- ACCOUNT: Comptes (livret A, compte courant) → identifiants standards",
+            "- ACCOUNT_TYPE: Types de comptes (livret A, compte courant) → identifiants standards",
             "",
             "RÈGLES IMPORTANTES:",
             "1. Toujours retourner un IntentResult complet avec tous les champs",
@@ -490,6 +490,10 @@ class HarenaIntentAgent:
             if cached_result.get("intent_category") not in allowed_categories:
                 cached_result["intent_category"] = IntentCategory.UNCLEAR_INTENT.value
             cached_result["processing_time_ms"] = 0.5  # Cache hit
+            # Harmoniser les anciens types d'entités
+            for ent in cached_result.get("entities", []):
+                if ent.get("entity_type") == "ACCOUNT":
+                    ent["entity_type"] = EntityType.ACCOUNT_TYPE.value
             result = IntentResult(**cached_result)
             errors = validate_intent_result_contract(result.model_dump())
             if errors:
@@ -519,6 +523,13 @@ class HarenaIntentAgent:
             if result_dict.get("intent_category") not in allowed_categories:
                 result_dict["intent_category"] = IntentCategory.UNCLEAR_INTENT.value
             
+
+
+            # Harmoniser les types d'entités non supportés
+            for ent in result_dict.get("entities", []):
+                if ent.get("entity_type") == "ACCOUNT":
+                    ent["entity_type"] = EntityType.ACCOUNT_TYPE.value
+
             # Ajouter métadonnées
             processing_time = (time.time() - start_time) * 1000
             result_dict["processing_time_ms"] = processing_time

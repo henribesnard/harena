@@ -35,8 +35,9 @@ class EnhancedLLMIntentAgent(LLMIntentAgent):
         deepseek_client: DeepSeekClient,
         fallback_agent: Optional[BaseFinancialAgent] = None,
         config: Optional[AgentConfig] = None,
+        openai_client: Optional[Any] = None,
     ) -> None:
-        super().__init__(deepseek_client=deepseek_client, config=config)
+        super().__init__(deepseek_client=deepseek_client, config=config, openai_client=openai_client)
         self.fallback_agent = fallback_agent
 
     async def detect_intent(self, user_message: str, user_id: int) -> Dict[str, Any]:

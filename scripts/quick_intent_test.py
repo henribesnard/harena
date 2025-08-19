@@ -7,9 +7,11 @@ import json
 import time
 import asyncio
 import os
+from enum import Enum
 from typing import Dict, List, Any, Optional, Tuple, Literal
 from pathlib import Path
 from datetime import datetime
+from pydantic import BaseModel, Field, model_validator, field_validator
 import openai
 from openai import OpenAI, AsyncOpenAI
 from dotenv import load_dotenv

@@ -81,10 +81,14 @@ Réponds uniquement avec un JSON ayant la structure suivante :
   "confidence": 0.0-1.0,
   "entities": [
     {"entity_type": "...", "value": "...", "confidence": 0.0-1.0}
-  ]
+  ],
+  "suggested_actions": ["filter_by_amount_greater"]
 }
 ```
 Chaque entité doit contenir les champs ``entity_type``, ``value`` et ``confidence``.
+
+Inclure le champ optionnel ``suggested_actions`` lorsque le message contient des
+comparatifs de montant ("supérieur", "plus de", "inférieur", "moins de").
 
 **Exemple avec montant** :
 ```
@@ -95,11 +99,8 @@ MESSAGE: "transactions supérieures à 100 €"
   "confidence": 0.9,
   "entities": [
     {"entity_type": "AMOUNT", "value": "100", "confidence": 0.9}
-  ]
-  "intent_type": "[intention_identifiée]",
-  "intent_category": "[catégorie_benchmark]",
-  "confidence": [0.0-1.0],
-  "entities": [{"entity_type": "...", "value": "...", "confidence": [0.0-1.0]}]
+  ],
+  "suggested_actions": ["filter_by_amount_greater"]
 }
 ```
 
@@ -135,6 +136,7 @@ INTENT_TYPE: SEARCH_BY_AMOUNT
 INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.95
 ENTITIES: {"amounts": ["50 euros"]}
+SUGGESTED_ACTIONS: []
 
 **Exemple 2 - Recherche par date :**
 MESSAGE: "Transactions de mars 2024"
@@ -142,6 +144,7 @@ INTENT_TYPE: SEARCH_BY_DATE
 INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.92
 ENTITIES: {"dates": ["mars 2024"]}
+SUGGESTED_ACTIONS: []
 
 **Exemple 3 - Analyse par catégorie :**
 MESSAGE: "Analyse des dépenses alimentaires"
@@ -149,6 +152,7 @@ INTENT_TYPE: SPENDING_ANALYSIS_BY_CATEGORY
 INTENT_CATEGORY: SPENDING_ANALYSIS
 CONFIDENCE: 0.90
 ENTITIES: {"categories": ["alimentaire"]}
+SUGGESTED_ACTIONS: []
 
 **Exemple 4 - Solde de compte :**
 MESSAGE: "Quel est mon solde actuel ?"
@@ -156,6 +160,7 @@ INTENT_TYPE: BALANCE_INQUIRY
 INTENT_CATEGORY: ACCOUNT_BALANCE
 CONFIDENCE: 0.93
 ENTITIES: {}
+SUGGESTED_ACTIONS: []
 
 **Exemple 5 - Salutation :**
 MESSAGE: "Bonjour !"
@@ -163,6 +168,7 @@ INTENT_TYPE: GREETING
 INTENT_CATEGORY: GREETING
 CONFIDENCE: 0.30
 ENTITIES: {}
+SUGGESTED_ACTIONS: []
 
 **Exemple 6 - Intention ambiguë :**
 MESSAGE: "Je ne sais pas, fais quelque chose"
@@ -170,6 +176,15 @@ INTENT_TYPE: UNCLEAR_INTENT
 INTENT_CATEGORY: UNCLEAR_INTENT
 CONFIDENCE: 0.20
 ENTITIES: {}
+SUGGESTED_ACTIONS: []
+
+**Exemple 7 - Comparatif montant supérieur :**
+MESSAGE: "Transactions supérieures à 100 €"
+INTENT_TYPE: SEARCH_BY_AMOUNT
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.96
+ENTITIES: {"amounts": ["100 €"]}
+SUGGESTED_ACTIONS: ["filter_by_amount_greater"]
 """
 
 # =============================================================================

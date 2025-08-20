@@ -2,6 +2,8 @@
 
 This package exposes the main components required by the conversation
 service and provides helper functions for validating the runtime
+environment using a generic OpenAI configuration via
+:class:`~config.openai_config.OpenAISettings`.
 environment using :class:`~config.openai_config.OpenAISettings`.
 """
 

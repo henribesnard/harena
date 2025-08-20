@@ -78,23 +78,27 @@ class ResponseFormatter:
         """Format summary statistics from search response."""
         if not search_response.aggregations:
             return ""
-
         agg = search_response.aggregations
-        tx_buckets = agg.get("transaction_type_terms", {}).get("buckets", [])
-        if not tx_buckets:
-            return ""
 
-        lines = ["**Montants par type de transaction:**"]
-        total = 0.0
-        for bucket in tx_buckets:
-            amount = bucket.get("amount_sum", {}).get("value", 0.0)
-            total += amount
-            tx_type = bucket.get("key", "inconnu")
-            lines.append(
-                f"• {tx_type}: {ResponseFormatter.format_amount(amount)}"
-            )
-        lines.append(f"Total: {ResponseFormatter.format_amount(total)}")
-        return "\n".join(lines)
+        tx_buckets = agg.get("transaction_type_terms", {}).get("buckets", [])
+        if tx_buckets:
+            lines = ["**Montants par type de transaction:**"]
+            total = 0.0
+            for bucket in tx_buckets:
+                amount = bucket.get("amount_sum", {}).get("value", 0.0)
+                total += amount
+                tx_type = bucket.get("key", "inconnu")
+                count = bucket.get("doc_count", 0)
+                lines.append(
+                    f"• {tx_type}: {ResponseFormatter.format_amount(amount)} ({count} transactions)"
+                )
+            lines.append(f"Total: {ResponseFormatter.format_amount(total)}")
+            return "\n".join(lines)
+
+        amount_total = agg.get("amount_sum", {}).get("value")
+        if amount_total is not None:
+            return f"**Total des montants:** {ResponseFormatter.format_amount(amount_total)}"
+        return ""
     
     @staticmethod
     def format_category_breakdown(search_response: SearchServiceResponse) -> str:

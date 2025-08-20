@@ -91,38 +91,40 @@ class GlobalSettings(BaseSettings):
     QDRANT_DISTANCE_METRIC: str = os.environ.get("QDRANT_DISTANCE_METRIC", "cosine")
     
     # ==========================================
-    # CONFIGURATION DEEPSEEK
+    # CONFIGURATION OPENAI
     # ==========================================
-    DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
-    DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-    DEEPSEEK_CHAT_MODEL: str = os.environ.get("DEEPSEEK_CHAT_MODEL", "deepseek-chat")
-    DEEPSEEK_REASONER_MODEL: str = os.environ.get("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner")
-    DEEPSEEK_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_MAX_TOKENS", "2048"))
-    DEEPSEEK_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_TEMPERATURE", "1.0"))
-    DEEPSEEK_TOP_P: float = float(os.environ.get("DEEPSEEK_TOP_P", "0.95"))
-    DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "30"))
-    DEEPSEEK_MAX_PROMPT_CHARS: int = int(os.environ.get("DEEPSEEK_MAX_PROMPT_CHARS", "2000"))
-    
-    # Configuration DeepSeek par tâche - Conversation Service
-    DEEPSEEK_INTENT_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_INTENT_MAX_TOKENS", "80"))
-    DEEPSEEK_INTENT_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_INTENT_TEMPERATURE", "0.1"))
-    DEEPSEEK_INTENT_TIMEOUT: int = int(os.environ.get("DEEPSEEK_INTENT_TIMEOUT", "6"))
-    DEEPSEEK_INTENT_TOP_P: float = float(os.environ.get("DEEPSEEK_INTENT_TOP_P", "0.9"))
+    OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
+    OPENAI_BASE_URL: str = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    OPENAI_CHAT_MODEL: str = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+    OPENAI_REASONER_MODEL: str = os.environ.get("OPENAI_REASONER_MODEL", "gpt-4o-mini")
+    OPENAI_MAX_TOKENS: int = int(os.environ.get("OPENAI_MAX_TOKENS", "2048"))
+    OPENAI_TEMPERATURE: float = float(os.environ.get("OPENAI_TEMPERATURE", "1.0"))
+    OPENAI_TOP_P: float = float(os.environ.get("OPENAI_TOP_P", "0.95"))
+    OPENAI_TIMEOUT: int = int(os.environ.get("OPENAI_TIMEOUT", "30"))
+    OPENAI_MAX_PROMPT_CHARS: int = int(os.environ.get("OPENAI_MAX_PROMPT_CHARS", "2000"))
 
-    DEEPSEEK_ENTITY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_ENTITY_MAX_TOKENS", "60"))
-    DEEPSEEK_ENTITY_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_ENTITY_TEMPERATURE", "0.05"))
-    DEEPSEEK_ENTITY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_ENTITY_TIMEOUT", "5"))
-    DEEPSEEK_ENTITY_TOP_P: float = float(os.environ.get("DEEPSEEK_ENTITY_TOP_P", "0.8"))
+    # Configuration OpenAI par tâche - Conversation Service
+    OPENAI_INTENT_MAX_TOKENS: int = int(os.environ.get("OPENAI_INTENT_MAX_TOKENS", "80"))
+    OPENAI_INTENT_TEMPERATURE: float = float(os.environ.get("OPENAI_INTENT_TEMPERATURE", "0.1"))
+    OPENAI_INTENT_TIMEOUT: int = int(os.environ.get("OPENAI_INTENT_TIMEOUT", "6"))
+    OPENAI_INTENT_TOP_P: float = float(os.environ.get("OPENAI_INTENT_TOP_P", "0.9"))
 
-    DEEPSEEK_QUERY_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_QUERY_MAX_TOKENS", "200"))
-    DEEPSEEK_QUERY_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_QUERY_TEMPERATURE", "0.2"))
-    DEEPSEEK_QUERY_TIMEOUT: int = int(os.environ.get("DEEPSEEK_QUERY_TIMEOUT", "8"))
-    DEEPSEEK_QUERY_TOP_P: float = float(os.environ.get("DEEPSEEK_QUERY_TOP_P", "0.9"))
+    OPENAI_ENTITY_MAX_TOKENS: int = int(os.environ.get("OPENAI_ENTITY_MAX_TOKENS", "60"))
+    OPENAI_ENTITY_TEMPERATURE: float = float(os.environ.get("OPENAI_ENTITY_TEMPERATURE", "0.05"))
+    OPENAI_ENTITY_TIMEOUT: int = int(os.environ.get("OPENAI_ENTITY_TIMEOUT", "5"))
+    OPENAI_ENTITY_TOP_P: float = float(os.environ.get("OPENAI_ENTITY_TOP_P", "0.8"))
 
-    DEEPSEEK_RESPONSE_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_RESPONSE_MAX_TOKENS", "300"))
-    DEEPSEEK_RESPONSE_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_RESPONSE_TEMPERATURE", "0.7"))
-    DEEPSEEK_RESPONSE_TIMEOUT: int = int(os.environ.get("DEEPSEEK_RESPONSE_TIMEOUT", "12"))
-    DEEPSEEK_RESPONSE_TOP_P: float = float(os.environ.get("DEEPSEEK_RESPONSE_TOP_P", "0.95"))
+    OPENAI_QUERY_MAX_TOKENS: int = int(os.environ.get("OPENAI_QUERY_MAX_TOKENS", "200"))
+    OPENAI_QUERY_TEMPERATURE: float = float(os.environ.get("OPENAI_QUERY_TEMPERATURE", "0.2"))
+    OPENAI_QUERY_TIMEOUT: int = int(os.environ.get("OPENAI_QUERY_TIMEOUT", "8"))
+    OPENAI_QUERY_TOP_P: float = float(os.environ.get("OPENAI_QUERY_TOP_P", "0.9"))
+
+    OPENAI_RESPONSE_MAX_TOKENS: int = int(os.environ.get("OPENAI_RESPONSE_MAX_TOKENS", "300"))
+    OPENAI_RESPONSE_TEMPERATURE: float = float(os.environ.get("OPENAI_RESPONSE_TEMPERATURE", "0.7"))
+    OPENAI_RESPONSE_TIMEOUT: int = int(os.environ.get("OPENAI_RESPONSE_TIMEOUT", "12"))
+    OPENAI_RESPONSE_TOP_P: float = float(os.environ.get("OPENAI_RESPONSE_TOP_P", "0.95"))
+
+    OPENAI_EXPECTED_LATENCY_MS: int = int(os.environ.get("OPENAI_EXPECTED_LATENCY_MS", "1500"))
 
     # ==========================================
     # CONFIGURATION LLM-ONLY
@@ -134,14 +136,10 @@ class GlobalSettings(BaseSettings):
     LLM_CACHE_MAX_SIZE: int = int(os.environ.get("LLM_CACHE_MAX_SIZE", "1000"))
     LLM_TEMPERATURE: float = float(os.environ.get("LLM_TEMPERATURE", "0.1"))
     LLM_TOP_P: float = float(os.environ.get("LLM_TOP_P", os.environ.get("TOP_P", "0.95")))
-    DEEPSEEK_EXPECTED_LATENCY_MS: int = int(os.environ.get("DEEPSEEK_EXPECTED_LATENCY_MS", "1500"))
     
     # ==========================================
-    # CONFIGURATION OPENAI POUR LES EMBEDDINGS ET L'INTENT DETECTION
-    # Clé API dédiée à OpenAI (llm_intent_agent). Si elle est absente,
-    # la clé DeepSeek est utilisée en repli.
+    # CONFIGURATION OPENAI POUR LES EMBEDDINGS
     # ==========================================
-    OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
     EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
     OPENAI_EMBEDDING_MODEL: str = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     
@@ -848,58 +846,58 @@ class GlobalSettings(BaseSettings):
             "EMBEDDING_MAX_RETRIES": self.EMBEDDING_MAX_RETRIES
         }
     
-    def get_deepseek_config(self, task_type: str = "default") -> dict:
-        """Retourne la configuration DeepSeek optimisée par tâche"""
-        
+    def get_openai_config(self, task_type: str = "default") -> dict:
+        """Retourne la configuration OpenAI optimisée par tâche"""
+
         configs = {
             "intent": {
-                "api_key": self.DEEPSEEK_API_KEY,
-                "base_url": self.DEEPSEEK_BASE_URL,
-                "chat_model": self.DEEPSEEK_CHAT_MODEL,
-                "max_tokens": self.DEEPSEEK_INTENT_MAX_TOKENS,
-                "temperature": self.DEEPSEEK_INTENT_TEMPERATURE,
-                "top_p": self.DEEPSEEK_INTENT_TOP_P,
-                "timeout": self.DEEPSEEK_INTENT_TIMEOUT
+                "api_key": self.OPENAI_API_KEY,
+                "base_url": self.OPENAI_BASE_URL,
+                "chat_model": self.OPENAI_CHAT_MODEL,
+                "max_tokens": self.OPENAI_INTENT_MAX_TOKENS,
+                "temperature": self.OPENAI_INTENT_TEMPERATURE,
+                "top_p": self.OPENAI_INTENT_TOP_P,
+                "timeout": self.OPENAI_INTENT_TIMEOUT,
             },
             "entity": {
-                "api_key": self.DEEPSEEK_API_KEY,
-                "base_url": self.DEEPSEEK_BASE_URL,
-                "chat_model": self.DEEPSEEK_CHAT_MODEL,
-                "max_tokens": self.DEEPSEEK_ENTITY_MAX_TOKENS,
-                "temperature": self.DEEPSEEK_ENTITY_TEMPERATURE,
-                "top_p": self.DEEPSEEK_ENTITY_TOP_P,
-                "timeout": self.DEEPSEEK_ENTITY_TIMEOUT
+                "api_key": self.OPENAI_API_KEY,
+                "base_url": self.OPENAI_BASE_URL,
+                "chat_model": self.OPENAI_CHAT_MODEL,
+                "max_tokens": self.OPENAI_ENTITY_MAX_TOKENS,
+                "temperature": self.OPENAI_ENTITY_TEMPERATURE,
+                "top_p": self.OPENAI_ENTITY_TOP_P,
+                "timeout": self.OPENAI_ENTITY_TIMEOUT,
             },
             "query": {
-                "api_key": self.DEEPSEEK_API_KEY,
-                "base_url": self.DEEPSEEK_BASE_URL,
-                "chat_model": self.DEEPSEEK_CHAT_MODEL,
-                "max_tokens": self.DEEPSEEK_QUERY_MAX_TOKENS,
-                "temperature": self.DEEPSEEK_QUERY_TEMPERATURE,
-                "top_p": self.DEEPSEEK_QUERY_TOP_P,
-                "timeout": self.DEEPSEEK_QUERY_TIMEOUT
+                "api_key": self.OPENAI_API_KEY,
+                "base_url": self.OPENAI_BASE_URL,
+                "chat_model": self.OPENAI_CHAT_MODEL,
+                "max_tokens": self.OPENAI_QUERY_MAX_TOKENS,
+                "temperature": self.OPENAI_QUERY_TEMPERATURE,
+                "top_p": self.OPENAI_QUERY_TOP_P,
+                "timeout": self.OPENAI_QUERY_TIMEOUT,
             },
             "response": {
-                "api_key": self.DEEPSEEK_API_KEY,
-                "base_url": self.DEEPSEEK_BASE_URL,
-                "chat_model": self.DEEPSEEK_CHAT_MODEL,
-                "max_tokens": self.DEEPSEEK_RESPONSE_MAX_TOKENS,
-                "temperature": self.DEEPSEEK_RESPONSE_TEMPERATURE,
-                "top_p": self.DEEPSEEK_RESPONSE_TOP_P,
-                "timeout": self.DEEPSEEK_RESPONSE_TIMEOUT
+                "api_key": self.OPENAI_API_KEY,
+                "base_url": self.OPENAI_BASE_URL,
+                "chat_model": self.OPENAI_CHAT_MODEL,
+                "max_tokens": self.OPENAI_RESPONSE_MAX_TOKENS,
+                "temperature": self.OPENAI_RESPONSE_TEMPERATURE,
+                "top_p": self.OPENAI_RESPONSE_TOP_P,
+                "timeout": self.OPENAI_RESPONSE_TIMEOUT,
             },
             "default": {
-                "api_key": self.DEEPSEEK_API_KEY,
-                "base_url": self.DEEPSEEK_BASE_URL,
-                "chat_model": self.DEEPSEEK_CHAT_MODEL,
-                "reasoner_model": self.DEEPSEEK_REASONER_MODEL,
-                "max_tokens": self.DEEPSEEK_MAX_TOKENS,
-                "temperature": self.DEEPSEEK_TEMPERATURE,
-                "top_p": self.DEEPSEEK_TOP_P,
-                "timeout": self.DEEPSEEK_TIMEOUT
-            }
+                "api_key": self.OPENAI_API_KEY,
+                "base_url": self.OPENAI_BASE_URL,
+                "chat_model": self.OPENAI_CHAT_MODEL,
+                "reasoner_model": self.OPENAI_REASONER_MODEL,
+                "max_tokens": self.OPENAI_MAX_TOKENS,
+                "temperature": self.OPENAI_TEMPERATURE,
+                "top_p": self.OPENAI_TOP_P,
+                "timeout": self.OPENAI_TIMEOUT,
+            },
         }
-        
+
         return configs.get(task_type, configs["default"])
     
     def get_cache_config(self) -> dict:
@@ -939,12 +937,12 @@ class GlobalSettings(BaseSettings):
         errors = []
         warnings = []
         
-        # Validation DeepSeek
-        if not self.DEEPSEEK_API_KEY:
-            errors.append("DEEPSEEK_API_KEY est requis")
-        
-        if not self.DEEPSEEK_BASE_URL:
-            errors.append("DEEPSEEK_BASE_URL est requis")
+        # Validation OpenAI
+        if not self.OPENAI_API_KEY:
+            errors.append("OPENAI_API_KEY est requis")
+
+        if not self.OPENAI_BASE_URL:
+            errors.append("OPENAI_BASE_URL est requis")
         
         # Validation Redis (si activé)
         if self.REDIS_CACHE_ENABLED:
@@ -966,11 +964,11 @@ class GlobalSettings(BaseSettings):
             warnings.append("MEMORY_CACHE_SIZE < 100 peut réduire les performances")
         
         # Validation timeouts optimisés
-        if self.DEEPSEEK_INTENT_TIMEOUT > 10:
-            warnings.append("DEEPSEEK_INTENT_TIMEOUT > 10s est trop élevé pour l'optimisation")
-        
-        if self.DEEPSEEK_INTENT_MAX_TOKENS > 150:
-            warnings.append("DEEPSEEK_INTENT_MAX_TOKENS > 150 peut ralentir la classification")
+        if self.OPENAI_INTENT_TIMEOUT > 10:
+            warnings.append("OPENAI_INTENT_TIMEOUT > 10s est trop élevé pour l'optimisation")
+
+        if self.OPENAI_INTENT_MAX_TOKENS > 150:
+            warnings.append("OPENAI_INTENT_MAX_TOKENS > 150 peut ralentir la classification")
         
         # Validation cache TTL
         if self.CACHE_TTL_INTENT < 60:
@@ -1029,7 +1027,7 @@ logger.debug(f"DEFAULT_CACHE_TTL: {search_constants['DEFAULT_CACHE_TTL']}")
 
 # Log informations importantes
 logger.info(f"Configuration Harena Finance Platform chargée - Mode: {settings.ENVIRONMENT}")
-logger.info(f"DeepSeek API: {'✅ Configuré' if settings.DEEPSEEK_API_KEY else '❌ Manquant'}")
+logger.info(f"OpenAI API: {'✅ Configuré' if settings.OPENAI_API_KEY else '❌ Manquant'}")
 logger.info(f"Redis Cache: {'✅ Activé' if settings.REDIS_CACHE_ENABLED else '❌ Désactivé'}")
 logger.info(f"Search Service: {settings.SEARCH_SERVICE_NAME} v{settings.SEARCH_SERVICE_VERSION}")
 logger.info(f"Conversation Service: Port {settings.CONVERSATION_SERVICE_PORT}, Confidence: {settings.MIN_CONFIDENCE_THRESHOLD}")
@@ -1041,7 +1039,7 @@ logger.info(f"Bridge API: {'✅ Configuré' if settings.BRIDGE_CLIENT_ID else '�
 if settings.ENVIRONMENT == "production":
     if settings.SECRET_KEY == secrets.token_urlsafe(32):
         logger.warning("🔐 SECRET_KEY utilise une valeur par défaut - définir SECRET_KEY en production!")
-    if not settings.DEEPSEEK_API_KEY:
-        logger.warning("🤖 DEEPSEEK_API_KEY manquant - fonctionnalités IA désactivées")
+    if not settings.OPENAI_API_KEY:
+        logger.warning("🤖 OPENAI_API_KEY manquant - fonctionnalités IA désactivées")
     if not settings.DATABASE_URL:
         logger.warning("🗄️ DATABASE_URL manquant - base de données non configurée")

@@ -1,10 +1,11 @@
-"""Enhanced LLM Intent Agent.
+"""Enhanced OpenAI LLM Intent Agent.
 
 This module introduces :class:`EnhancedLLMIntentAgent`, an extension of
 :class:`LLMIntentAgent` adding robust error handling and latency
-measurement. The agent wraps the base implementation with a fallback
-mechanism so that the system can gracefully recover from LLM failures.
-The measured latency is stored in the returned :class:`IntentResult`.
+measurement for OpenAI-based intent detection. The agent wraps the base
+implementation with a fallback mechanism so that the system can gracefully
+recover from LLM failures. The measured latency is stored in the returned
+:class:`IntentResult`.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class EnhancedLLMIntentAgent(LLMIntentAgent):
-    """LLM intent agent with fallback and latency tracking."""
+    """OpenAI intent agent with fallback and latency tracking."""
 
     def __init__(
         self,

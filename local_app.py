@@ -19,6 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
+from config.settings import settings
+
 # Charger le fichier .env en priorité
 load_dotenv()
 
@@ -31,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("harena_local")
 
 # Fix DATABASE_URL pour développement local
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = settings.DATABASE_URL
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     os.environ["DATABASE_URL"] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -56,7 +58,7 @@ class ServiceLoader:
         
         try:
             # Vérifier BONSAI_URL
-            bonsai_url = os.environ.get("BONSAI_URL")
+            bonsai_url = settings.BONSAI_URL
             if not bonsai_url:
                 raise ValueError("BONSAI_URL n'est pas configurée")
             
@@ -282,7 +284,7 @@ def create_app():
         logger.info("🔍 Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
         try:
             # Vérifier BONSAI_URL pour enrichment_service
-            bonsai_url = os.environ.get("BONSAI_URL")
+            bonsai_url = settings.BONSAI_URL
             if not bonsai_url:
                 logger.warning("⚠️ BONSAI_URL non configurée - enrichment_service sera en mode dégradé")
                 enrichment_elasticsearch_available = False
@@ -535,7 +537,7 @@ def create_app():
         return {
             "platform": "Harena Finance",
             "services": loader.services_status,
-            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "environment": settings.ENVIRONMENT,
             "search_service_details": {
                 "initialized": loader.search_service_initialized,
                 "error": loader.search_service_error,

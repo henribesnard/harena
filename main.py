@@ -17,6 +17,8 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 
+from config.settings import settings
+
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +39,7 @@ async def lifespan(app: FastAPI):
     
     # Vérification des variables d'environnement critiques
     required_env_vars = ["BRIDGE_CLIENT_ID", "BRIDGE_CLIENT_SECRET"]
-    missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+    missing_vars = [var for var in required_env_vars if not getattr(settings, var)]
     
     if missing_vars:
         logger.warning(f"Variables d'environnement manquantes: {', '.join(missing_vars)}")
@@ -62,7 +64,7 @@ app = FastAPI(
 )
 
 # Configuration CORS
-origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,https://app.harena.finance").split(",")
+origins = settings.CORS_ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -181,7 +183,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     logger.error(f"Exception non gérée: {str(exc)}", exc_info=True)
     
-    debug_mode = os.getenv("DEBUG", "False").lower() == "true"
+    debug_mode = settings.DEBUG
     error_detail = str(exc) if debug_mode else "Contactez l'administrateur pour plus d'informations."
     
     return JSONResponse(
@@ -196,20 +198,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ======== LANCEMENT DE L'APPLICATION ========
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 3000))
-    host = os.getenv("HOST", "0.0.0.0")
-    debug = os.getenv("DEBUG", "False").lower() == "true"
-    
+    port = settings.PORT
+    host = settings.HOST
+    debug = settings.DEBUG
+
     # Ajouter l'environnement comme variable globale
-    os.environ["ENVIRONMENT"] = os.getenv("ENVIRONMENT", "development")
-    
-    logger.info(f"Démarrage de l'application Harena sur {host}:{port} (debug={debug}, env={os.environ['ENVIRONMENT']})")
-    logger.info(f"Services disponibles: {[name for name, info in available_services.items() if info is not None]}")
-    
-    uvicorn.run(
-        "main:app",
-        host=host,
-        port=port,
-        reload=debug,
-        workers=1
+    os.environ["ENVIRONMENT"] = settings.ENVIRONMENT
+
+    logger.info(
+        f"Démarrage de l'application Harena sur {host}:{port} (debug={debug}, env={settings.ENVIRONMENT})"
     )
+    logger.info(
+        f"Services disponibles: {[name for name, info in available_services.items() if info is not None]}"
+    )
+
+    uvicorn.run("main:app", host=host, port=port, reload=debug, workers=1)

@@ -27,8 +27,9 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import threading
-import os
 import asyncio
+
+from config.settings import settings
 
 # Redis import avec fallback gracieux
 try:
@@ -112,9 +113,9 @@ class LRUCache:
             maxsize: Taille maximale du cache (défaut: MEMORY_CACHE_SIZE env var)
             default_ttl: TTL par défaut en secondes (défaut: MEMORY_CACHE_TTL env var)
         """
-        # Configuration depuis les variables d'environnement
-        self.maxsize = maxsize or int(os.getenv('MEMORY_CACHE_SIZE', '2000'))
-        self.default_ttl = default_ttl or int(os.getenv('MEMORY_CACHE_TTL', '300'))
+        # Configuration depuis les paramètres
+        self.maxsize = maxsize or settings.MEMORY_CACHE_SIZE
+        self.default_ttl = default_ttl or settings.MEMORY_CACHE_TTL
         
         # Stockage principal
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
@@ -301,10 +302,10 @@ class RedisCache:
             max_connections: Max connexions pool (défaut: REDIS_MAX_CONNECTIONS env var)
         """
         # Configuration depuis env vars
-        self.redis_url = redis_url or os.getenv('REDIS_URL') or os.getenv('REDISCLOUD_URL')
-        self.key_prefix = key_prefix or os.getenv('REDIS_CACHE_PREFIX', 'harena_conv')
-        self.default_ttl = default_ttl or int(os.getenv('CACHE_TTL', '3600'))
-        self.max_connections = max_connections or int(os.getenv('REDIS_MAX_CONNECTIONS', '10'))
+        self.redis_url = redis_url or settings.REDIS_URL or settings.REDISCLOUD_URL
+        self.key_prefix = key_prefix or settings.REDIS_CACHE_PREFIX
+        self.default_ttl = default_ttl or settings.CACHE_TTL
+        self.max_connections = max_connections or settings.REDIS_MAX_CONNECTIONS
         
         # État Redis
         self.redis_client: Optional[Any] = None
@@ -560,16 +561,16 @@ class MultiLevelCache:
             l2_ttl: TTL L2 (défaut: CACHE_TTL env var)
             key_prefix: Préfixe Redis (défaut: env var)
         """
-        # Configuration depuis env vars avec fallbacks
-        self.l1_size = l1_size or int(os.getenv('MEMORY_CACHE_SIZE', '2000'))
-        self.l1_ttl = l1_ttl or int(os.getenv('CACHE_TTL_RESPONSE', '60'))
-        self.l2_ttl = l2_ttl or int(os.getenv('CACHE_TTL', '3600'))
+        # Configuration depuis les paramètres avec fallbacks
+        self.l1_size = l1_size or settings.MEMORY_CACHE_SIZE
+        self.l1_ttl = l1_ttl or settings.CACHE_TTL_RESPONSE
+        self.l2_ttl = l2_ttl or settings.CACHE_TTL
         
         # Création des caches
         self.l1_cache = LRUCache(maxsize=self.l1_size, default_ttl=self.l1_ttl)
         
         # L2 Redis seulement si activé
-        redis_enabled = os.getenv('REDIS_CACHE_ENABLED', 'true').lower() == 'true'
+        redis_enabled = settings.REDIS_CACHE_ENABLED
         if redis_enabled:
             self.l2_cache = RedisCache(
                 redis_url=l2_redis_url,

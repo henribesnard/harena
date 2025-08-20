@@ -26,6 +26,7 @@ Version: 1.0.0 MVP - Complete Core Package
 """
 
 import logging
+from config.settings import settings
 from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
@@ -192,8 +193,6 @@ def get_core_config() -> dict:
     Returns:
         Core configuration dictionary
     """
-    import os
-    
     config = DEFAULT_CORE_CONFIG.copy()
     
     # Override with environment variables if present
@@ -211,7 +210,7 @@ def get_core_config() -> dict:
     }
     
     for config_key, env_var in env_overrides.items():
-        env_value = os.getenv(env_var)
+        env_value = getattr(settings, env_var, None)
         if env_value is not None:
             # Convert to appropriate type
             if config_key in ["deepseek_timeout", "conversation_max_turns", 
@@ -275,7 +274,7 @@ def validate_core_setup() -> dict:
     import os
     required_env_vars = ["DEEPSEEK_API_KEY"]
     for var in required_env_vars:
-        if not os.getenv(var):
+        if not getattr(settings, var, None):
             results["errors"].append(f"Required environment variable missing: {var}")
             results["valid"] = False
     

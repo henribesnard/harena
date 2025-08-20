@@ -18,7 +18,6 @@ Version: 1.0.0 MVP - Multi-Agent Orchestration
 import time
 import logging
 import asyncio
-import os
 import json
 from typing import Dict, Any, Optional, List, Deque
 from dataclasses import dataclass
@@ -36,12 +35,15 @@ from ..core.conversation_manager import ConversationManager
 from ..core.metrics_collector import MetricsCollector
 from ..utils.metrics import get_default_metrics_collector
 
+from config.settings import settings
+from config.openai_config import OpenAISettings
+
 logger = logging.getLogger(__name__)
 
 
-INTENT_TIMEOUT_SECONDS = float(os.getenv("INTENT_TIMEOUT_SECONDS", "10"))
-INTENT_MAX_RETRIES = int(os.getenv("INTENT_MAX_RETRIES", "3"))
-INTENT_BACKOFF_BASE = float(os.getenv("INTENT_BACKOFF_BASE", "1"))
+INTENT_TIMEOUT_SECONDS = settings.INTENT_TIMEOUT_SECONDS
+INTENT_MAX_RETRIES = settings.INTENT_MAX_RETRIES
+INTENT_BACKOFF_BASE = settings.INTENT_BACKOFF_BASE
 
 
 class WorkflowStepStatus(Enum):
@@ -599,7 +601,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                 name="orchestrator_agent",
                 model_client_config={
                     "model": "gpt-4o-mini",
-                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "api_key": OpenAISettings().OPENAI_API_KEY,
                     "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._get_system_message(),

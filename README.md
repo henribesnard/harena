@@ -82,9 +82,16 @@ initialization so that every call is properly authenticated.
 
 ## Environment Variables
 
-`OPENAI_API_KEY` provides the dedicated API key used by the `LLMIntentAgent`
-for intent detection. If this variable is missing, the agent reuses the
-`DEEPSEEK_API_KEY` value as a fallback.
+The application loads configuration through Pydantic `Settings` classes. The
+following environment variables are recognised:
+
+- `OPENAI_API_KEY`, `OPENAI_BASE_URL`: configuration for OpenAI access
+- `BONSAI_URL`: Elasticsearch endpoint used by search and enrichment services
+- `DATABASE_URL`: connexion PostgreSQL
+- `REDIS_URL`: Redis cache connexion (optionally `REDISCLOUD_URL`)
+- `BRIDGE_CLIENT_ID`, `BRIDGE_CLIENT_SECRET`: Bridge API credentials
+- `DEEPSEEK_API_KEY`: key for the DeepSeek client
+- `CORS_ORIGINS`, `HOST`, `PORT`, `DEBUG`: generic service settings
 
 `SEARCH_SERVICE_URL` sets the base URL for the Search Service. It defaults to
 `http://localhost:8000/api/v1/search` and the service automatically appends

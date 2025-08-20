@@ -177,6 +177,30 @@ class DummyElasticsearchClientHighAmount:
         }
 
 
+class DummyElasticsearchClientHighAmountMany:
+    async def search(self, index, body, size, from_):
+        hits = [
+            {
+                "_score": 1.0,
+                "_source": {
+                    "transaction_id": f"t{i}",
+                    "user_id": 1,
+                    "amount": -(100 + i),
+                    "amount_abs": 100 + i,
+                    "currency_code": "EUR",
+                    "transaction_type": "debit",
+                    "date": "2025-02-01",
+                    "primary_description": f"Transaction {i}",
+                    "merchant_name": "Test",
+                    "category_name": "Divers",
+                    "operation_type": "card",
+                },
+            }
+            for i in range(1, 59)
+        ]
+        return {"hits": {"total": {"value": len(hits)}, "hits": hits}}
+
+
 class DummyElasticsearchClientCount:
     async def count(self, index, body):
         return {"count": 5}
@@ -376,6 +400,42 @@ def test_amount_abs_filter_matches_negative_amount():
     engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientAmountAbs())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["amount"] == -150.0
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_amount_filter_returns_58_transactions():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.AMOUNT,
+                raw_value="100",
+                normalized_value=100,
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+        suggested_actions=["filter_by_amount_greater"],
+    )
+    filters = agent.extract_amount_filters(intent_result)
+    assert filters == {"amount_abs": {"gte": 100.0}}
+    user_message = "transactions supérieures à 100 €"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    engine = SearchEngine(
+        cache_enabled=False, elasticsearch_client=DummyElasticsearchClientHighAmountMany()
+    )
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert len(response["results"]) == 58
 
 
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")

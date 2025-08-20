@@ -1,6 +1,6 @@
 import asyncio
 import json
-
+import os
 import pytest
 import conversation_service.agents.base_financial_agent as base_financial_agent
 base_financial_agent.AUTOGEN_AVAILABLE = True
@@ -76,6 +76,7 @@ class FallbackAgent:
 
 
 def test_full_flow_detects_intent_and_latency():
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
     openai_client = DummyOpenAIClient(
         json.dumps(
             {
@@ -89,6 +90,7 @@ def test_full_flow_detects_intent_and_latency():
     agent = EnhancedLLMIntentAgent(
         deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
     )
+    assert agent.config.model_client_config["api_key"] == "openai-test-key"
     result = asyncio.run(agent.detect_intent("Combien j’ai dépensé pour Netflix ?", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "SEARCH_BY_MERCHANT"
@@ -96,11 +98,13 @@ def test_full_flow_detects_intent_and_latency():
 
 
 def test_fallback_when_llm_errors():
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
     agent = EnhancedLLMIntentAgent(
         deepseek_client=DummyDeepSeekClient(),
         openai_client=ErrorOpenAIClient(),
         fallback_agent=FallbackAgent(),
     )
+    assert agent.config.model_client_config["api_key"] == "openai-test-key"
     result = asyncio.run(agent.detect_intent("Bonjour", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "FALLBACK_INTENT"
@@ -108,6 +112,7 @@ def test_fallback_when_llm_errors():
 
 
 def test_latency_measurement(monkeypatch):
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
     import conversation_service.agents.enhanced_llm_intent_agent as ela
 
     calls = {"count": 0}
@@ -130,12 +135,14 @@ def test_latency_measurement(monkeypatch):
     agent = EnhancedLLMIntentAgent(
         deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
     )
+    assert agent.config.model_client_config["api_key"] == "openai-test-key"
     result = asyncio.run(agent.detect_intent("ping", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.processing_time_ms == pytest.approx(123.0, abs=1e-6)
 
 
 def test_matches_old_llm_intent_agent_output():
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
     openai_client1 = DummyOpenAIClient(
         json.dumps(
             {
@@ -162,6 +169,8 @@ def test_matches_old_llm_intent_agent_output():
     legacy = LLMIntentAgent(
         deepseek_client=DummyDeepSeekClient(), openai_client=openai_client2
     )
+    assert enhanced.config.model_client_config["api_key"] == "openai-test-key"
+    assert legacy.config.model_client_config["api_key"] == "openai-test-key"
     res_new = asyncio.run(enhanced.detect_intent("Combien ?", 1))
     res_old = asyncio.run(legacy.detect_intent("Combien ?", 1))
     assert (

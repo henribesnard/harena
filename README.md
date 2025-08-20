@@ -53,6 +53,9 @@ initialization so that every call is properly authenticated.
 
 ## Environment Variables
 
+`OPENAI_API_KEY` provides the API key used by the `LLMIntentAgent` for intent
+detection. If not set, the agent falls back to the DeepSeek key.
+
 `SEARCH_SERVICE_URL` sets the base URL for the Search Service. It defaults to
 `http://localhost:8000/api/v1/search` and the service automatically appends
 `/search` when issuing queries.

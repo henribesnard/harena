@@ -1,5 +1,7 @@
 """API package for the conversation service.
 
+from . import routes, dependencies, websocket, middleware
+from .routes import router
 This package exposes the main :class:`APIRouter` along with helper
 dependencies used by the tests.  The implementation is intentionally minimal
 and is not intended to represent the production code base.

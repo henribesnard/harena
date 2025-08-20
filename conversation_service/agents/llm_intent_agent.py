@@ -37,6 +37,7 @@ from ..models.financial_models import (
     IntentResult,
 )
 from ..utils.intent_cache import IntentResultCache
+from ..core.taxonomies import get_taxonomy
 from ..prompts.intent_prompts import (
     INTENT_SYSTEM_PROMPT,
     INTENT_EXAMPLES_FEW_SHOT,
@@ -377,6 +378,11 @@ class LLMIntentAgent(BaseFinancialAgent):
             suggested_actions = [suggested_actions]
 
         intent_type = data.get("intent_type", "OUT_OF_SCOPE")
+        taxonomy = get_taxonomy(intent_type)
+        if taxonomy:
+            category = taxonomy.category
+            if not suggested_actions:
+                suggested_actions = taxonomy.suggested_actions
         raw_category = data.get("intent_category", "GENERAL_QUESTION").upper()
         mapped_category = CATEGORY_MAP.get(raw_category, raw_category)
         try:
@@ -593,6 +599,12 @@ class LLMIntentAgent(BaseFinancialAgent):
         suggested_actions = data.get("suggested_actions")
         if isinstance(suggested_actions, str):
             suggested_actions = [suggested_actions]
+
+        taxonomy = get_taxonomy(intent_type)
+        if taxonomy:
+            category = taxonomy.category
+            if not suggested_actions:
+                suggested_actions = taxonomy.suggested_actions
 
         return IntentResult(
             intent_type=intent_type,

@@ -15,13 +15,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from .api.middleware import GlobalExceptionMiddleware
-from fastapi import FastAPI
 
 from .api.routes import router as api_router
 from .api.middleware import setup_middleware
 
 from config.openai_config import OpenAISettings
 from config.autogen_config import AutoGenSettings
+
+logger = logging.getLogger(__name__)
 
 openai_settings = OpenAISettings()
 autogen_settings = AutoGenSettings()
@@ -39,8 +40,9 @@ def create_app() -> FastAPI:
     cors_origins = autogen_settings.CORS_ORIGINS.split(",")
     allowed_hosts = ["localhost", "127.0.0.1"] + cors_origins
 
-    # Validate core setup after environment configuration
-    run_core_validation()
+    # Basic OpenAI configuration check (replaces run_core_validation)
+    if not openai_settings.OPENAI_API_KEY or len(openai_settings.OPENAI_API_KEY) < 10:
+        logger.warning("OPENAI_API_KEY not configured - using mock responses")
     
     # Create FastAPI app with metadata
     app = FastAPI(
@@ -96,13 +98,17 @@ def create_app() -> FastAPI:
     app.middleware("http")(log_requests)
     app.add_middleware(GlobalExceptionMiddleware)
     
-    # Include API routes
+    # Apply shared middleware
+    setup_middleware(app)
+
+    # Include routes
     app.include_router(
         api_router,
         prefix="/api/v1",
-        tags=["conversation"]
+        tags=["conversation"],
     )
-    
+    app.include_router(websocket_router)
+
     # Add root endpoint
     @app.get("/", include_in_schema=False)
     async def root():
@@ -113,13 +119,14 @@ def create_app() -> FastAPI:
             "status": app_state["health_status"],
             "documentation": "/docs",
             "health_check": "/health",
-            "api_base": "/api/v1"
+            "api_base": "/api/v1",
         }
     
     """Create and configure the FastAPI application."""
     app = FastAPI(title="Conversation Service")
     setup_middleware(app)
     app.include_router(api_router)
+
     return app
 
 

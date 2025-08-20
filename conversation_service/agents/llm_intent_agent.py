@@ -61,7 +61,11 @@ class LLMIntentAgent(BaseFinancialAgent):
         config: Optional[AgentConfig] = None,
         openai_client: Optional[Any] = None,
     ) -> None:
-        api_key = os.getenv("OPENAI_API_KEY") or deepseek_client.api_key
+        # Prefer a dedicated OpenAI key if provided; otherwise reuse the
+        # DeepSeek key as a fallback for backward compatibility.
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            api_key = deepseek_client.api_key
         if config is None:
             config = AgentConfig(
                 name="llm_intent_agent",

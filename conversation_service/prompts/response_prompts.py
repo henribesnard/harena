@@ -8,6 +8,7 @@ finales enrichies, contextuelles et naturelles à partir des résultats du Searc
 from typing import Dict, List, Optional, Any
 import json
 import logging
+from .example_loader import load_yaml_examples
 
 logger = logging.getLogger(__name__)
 
@@ -60,31 +61,9 @@ OBJECTIF : Créer une réponse qui répond précisément à la question de l'uti
 
 Répondez de manière naturelle et conversationnelle."""
 
-RESPONSE_EXAMPLES_FEW_SHOT = """EXEMPLES DE GÉNÉRATION DE RÉPONSES :
-
-**Exemple 1 - Réponse Transactionnelle :**
-MESSAGE: "Mes achats chez Carrefour le mois dernier"
-RÉPONSE: "Voici vos achats chez Carrefour en décembre 2024 :
-• 15/12 : Courses alimentaires - 52,30€
-• 22/12 : Produits d'hygiène - 31,85€ 
-• 28/12 : Courses de fin d'année - 43,30€
-💰 Total dépensé : 127,45€ chez Carrefour le mois dernier."
-
-**Exemple 2 - Réponse Analytique :**
-MESSAGE: "Combien j'ai dépensé en restaurant ces 3 derniers mois ?"
-RÉPONSE: "📊 Voici vos dépenses restaurant des 3 derniers mois :
-• Octobre : 178,50€ (12 sorties)
-• Novembre : 142,30€ (9 sorties) 
-• Décembre : 135,40€ (8 sorties)
-💳 Total : 456,20€ sur 29 sorties restaurant"
-
-**Exemple 3 - Réponse Vide Constructive :**
-MESSAGE: "Mes achats Apple ce mois-ci"
-RÉPONSE: "Je n'ai pas trouvé d'achats Apple dans vos transactions de janvier 2025. 
-Quelques possibilités :
-• Les transactions Apple peuvent apparaître sous d'autres noms (App Store, iTunes)
-• L'achat a peut-être été effectué le mois dernier
-Voulez-vous que je recherche avec des termes plus larges ?"""
+RESPONSE_EXAMPLES_FEW_SHOT = load_yaml_examples(
+    "response_agent_examples.yaml", "EXEMPLES DE GÉNÉRATION DE RÉPONSES :"
+)
 
 # =============================================================================
 # FONCTIONS DE FORMATAGE
@@ -114,8 +93,7 @@ def format_response_prompt(
     context_section = ""
     if context and context.strip():
         context_section = f"\nCONTEXTE CONVERSATIONNEL :\n{context.strip()}\n"
-    
-    return RESPONSE_GENERATION_TEMPLATE.format(
+    prompt = RESPONSE_GENERATION_TEMPLATE.format(
         user_message=user_message.strip(),
         search_results=results_formatted,
         total_results=total_results,
@@ -124,6 +102,7 @@ def format_response_prompt(
         current_date=current_date or "",
         context_section=context_section
     )
+    return f"{prompt}\n\n{RESPONSE_EXAMPLES_FEW_SHOT}"
 
 def format_search_results_for_prompt(search_results: Dict[str, Any]) -> str:
     """Formate les résultats SearchServiceResponse pour inclusion dans le prompt."""

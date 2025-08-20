@@ -14,6 +14,7 @@ Responsabilité :
 from typing import Dict, List, Optional, Any
 import json
 import logging
+from .example_loader import load_yaml_examples
 
 logger = logging.getLogger(__name__)
 
@@ -125,108 +126,9 @@ MESSAGE: "{user_message}"
 Analysez précisément l'intention et extrayez toutes les entités financières pertinentes.
 Répondez dans le format requis."""
 
-# =============================================================================
-# EXEMPLES FEW-SHOT POUR AMÉLIORER LA PRÉCISION
-# =============================================================================
-
-INTENT_EXAMPLES_FEW_SHOT = """EXEMPLES DE CLASSIFICATION :
-
-**Exemple 1 - Recherche par montant :**
-MESSAGE: "Transactions de 50 euros"
-INTENT_TYPE: SEARCH_BY_AMOUNT
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.95
-ENTITIES: {"amounts": ["50 euros"]}
-SUGGESTED_ACTIONS: []
-
-**Exemple 2 - Recherche par date :**
-MESSAGE: "Transactions de mars 2024"
-INTENT_TYPE: SEARCH_BY_DATE
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.92
-ENTITIES: {"dates": ["mars 2024"]}
-SUGGESTED_ACTIONS: []
-
-**Exemple 3 - Analyse par catégorie :**
-MESSAGE: "Analyse des dépenses alimentaires"
-INTENT_TYPE: SPENDING_ANALYSIS_BY_CATEGORY
-INTENT_CATEGORY: SPENDING_ANALYSIS
-CONFIDENCE: 0.90
-ENTITIES: {"categories": ["alimentaire"]}
-SUGGESTED_ACTIONS: []
-
-**Exemple 4 - Solde de compte :**
-MESSAGE: "Quel est mon solde actuel ?"
-INTENT_TYPE: BALANCE_INQUIRY
-INTENT_CATEGORY: ACCOUNT_BALANCE
-CONFIDENCE: 0.93
-ENTITIES: {}
-SUGGESTED_ACTIONS: []
-
-**Exemple 5 - Salutation :**
-MESSAGE: "Bonjour !"
-INTENT_TYPE: GREETING
-INTENT_CATEGORY: GREETING
-CONFIDENCE: 0.30
-ENTITIES: {}
-SUGGESTED_ACTIONS: []
-
-**Exemple 6 - Intention ambiguë :**
-MESSAGE: "Je ne sais pas, fais quelque chose"
-INTENT_TYPE: UNCLEAR_INTENT
-INTENT_CATEGORY: UNCLEAR_INTENT
-CONFIDENCE: 0.20
-ENTITIES: {}
-SUGGESTED_ACTIONS: []
-
-**Exemple 7 - Comparatif montant supérieur :**
-MESSAGE: "Transactions supérieures à 100 €"
-INTENT_TYPE: SEARCH_BY_AMOUNT
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.96
-ENTITIES: {"amounts": ["100 €"]}
-SUGGESTED_ACTIONS: ["filter_by_amount_greater"]
-
-**Exemple 8 - Comparatif montant inférieur :**
-MESSAGE: "Transactions inférieures à 50 €"
-INTENT_TYPE: SEARCH_BY_AMOUNT
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.95
-ENTITIES: {"amounts": ["50 €"]}
-SUGGESTED_ACTIONS: ["filter_by_amount_less"]
-
-**Exemple 9 - Recherche par mois (juin) :**
-MESSAGE: "Transactions en juin"
-INTENT_TYPE: SEARCH_BY_DATE
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.91
-ENTITIES: {"dates": ["juin 2025"]}
-SUGGESTED_ACTIONS: []
-
-**Exemple 10 - Recherche par mois (mai) :**
-MESSAGE: "Transactions au mois de mai"
-INTENT_TYPE: SEARCH_BY_DATE
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.91
-ENTITIES: {"dates": ["mai 2025"]}
-SUGGESTED_ACTIONS: []
-
-**Exemple 11 - Transactions en sorties (débits) :**
-MESSAGE: "Montre mes sorties"
-INTENT_TYPE: SEARCH_BY_OPERATION_TYPE
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.90
-ENTITIES: {"transaction_type": ["debit"]}
-SUGGESTED_ACTIONS: []
-
-**Exemple 12 - Transactions en entrées (crédits) :**
-MESSAGE: "Liste mes gains"
-INTENT_TYPE: SEARCH_BY_OPERATION_TYPE
-INTENT_CATEGORY: FINANCIAL_QUERY
-CONFIDENCE: 0.90
-ENTITIES: {"transaction_type": ["credit"]}
-SUGGESTED_ACTIONS: []
-"""
+INTENT_EXAMPLES_FEW_SHOT = load_yaml_examples(
+    "llm_intent_agent_examples.yaml", "EXEMPLES DE CLASSIFICATION :"
+)
 
 # =============================================================================
 # FONCTIONS DE FORMATAGE
@@ -260,8 +162,7 @@ def format_intent_prompt(user_message: str, context: str = "") -> str:
         user_message=user_message.strip(),
         context_section=context_section
     )
-    
-    return user_prompt
+    return f"{user_prompt}\n\n{INTENT_EXAMPLES_FEW_SHOT}"
 
 def build_context_summary(conversation_history: List[Dict[str, Any]], max_tokens: int = 500) -> str:
     """

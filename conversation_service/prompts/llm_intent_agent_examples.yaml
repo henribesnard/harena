@@ -1,0 +1,16 @@
+- description: "Recherche par montant"
+  input: "Transactions de 50 euros"
+  output: |
+    {
+      "intent_type": "SEARCH_BY_AMOUNT",
+      "intent_category": "FINANCIAL_QUERY",
+      "entities": [{"entity_type": "AMOUNT", "value": "50 euros"}]
+    }
+- description: "Solde de compte"
+  input: "Quel est mon solde actuel ?"
+  output: |
+    {
+      "intent_type": "BALANCE_INQUIRY",
+      "intent_category": "ACCOUNT_BALANCE",
+      "entities": []
+    }

@@ -24,6 +24,7 @@ import asyncio
 import pytest
 from datetime import datetime, timedelta
 from typing import Dict, Any
+import calendar
 
 try:
     from search_service.core.search_engine import SearchEngine
@@ -295,6 +296,45 @@ def test_date_filter_with_french_month_name():
     year = datetime.utcnow().strftime("%Y")
     assert date_filter["gte"] == f"{year}-05-01"
     assert date_filter["lte"] == f"{year}-05-31"
+
+
+@pytest.mark.parametrize(
+    "french_month, month_num",
+    [("juin", "06"), ("fevrier", "02")],
+)
+def test_date_filter_handles_month_end_days(french_month, month_num):
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.DATE,
+                raw_value=french_month,
+                normalized_value=french_month,
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(
+            intent_result, f"dépenses en {french_month}", user_id=1
+        )
+    )
+    request = search_query.to_search_request()
+    date_filter = request["filters"].get("date")
+
+    year = datetime.utcnow().strftime("%Y")
+    max_day = calendar.monthrange(int(year), int(month_num))[1]
+    assert date_filter["gte"] == f"{year}-{month_num}-01"
+    assert date_filter["lte"] == f"{year}-{month_num}-{max_day:02d}"
 
 
 def test_amount_filter_without_date():

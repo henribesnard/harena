@@ -281,39 +281,55 @@ class QueryOptimizer:
             if entity.entity_type == EntityType.AMOUNT:
                 actions = intent_result.suggested_actions or []
                 value = entity.normalized_value
-                if isinstance(value, str):
-                    try:
-                        value = float(value)
-                    except ValueError:
-                        pass
+
+                def _to_float(val: Any) -> Optional[float]:
+                    if isinstance(val, str):
+                        cleaned = (
+                            val.replace("€", "")
+                            .replace("euros", "")
+                            .replace("euro", "")
+                            .replace(",", ".")
+                            .strip()
+                        )
+                        cleaned = re.sub(r"[^0-9.\-]", "", cleaned.lower())
+                        try:
+                            return float(cleaned)
+                        except ValueError:
+                            return None
+                    if isinstance(val, (int, float)):
+                        return float(val)
+                    return None
 
                 if isinstance(value, dict):
                     amount: Dict[str, float] = {}
-                    if "gte" in value:
-                        amount["gte"] = float(value["gte"])
-                    if "lte" in value:
-                        amount["lte"] = float(value["lte"])
+                    for op in ("gte", "lte"):
+                        if op in value:
+                            num = _to_float(value[op])
+                            if num is not None:
+                                amount[op] = num
                     if amount:
                         amount_filters["amount"] = amount
                         break
 
-                elif isinstance(value, (int, float)):
-                    normalized_amount = float(value)
-                    abs_amount = abs(normalized_amount)
+                else:
+                    num = _to_float(value)
+                    if num is not None:
+                        normalized_amount = num
+                        abs_amount = abs(normalized_amount)
 
-                    if "filter_by_amount_greater" in actions:
-                        # Use absolute amount comparison for "greater than" queries
-                        amount_filters["amount_abs"] = {"gte": abs_amount}
-                    elif "filter_by_amount_less" in actions:
-                        # Use absolute amount comparison for "less than" queries
-                        amount_filters["amount_abs"] = {"lte": abs_amount}
-                    else:
-                        tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
-                        amount_filters["amount"] = {
-                            "gte": normalized_amount - tolerance,
-                            "lte": normalized_amount + tolerance,
-                        }
-                    break
+                        if "filter_by_amount_greater" in actions:
+                            # Use absolute amount comparison for "greater than" queries
+                            amount_filters["amount_abs"] = {"gte": abs_amount}
+                        elif "filter_by_amount_less" in actions:
+                            # Use absolute amount comparison for "less than" queries
+                            amount_filters["amount_abs"] = {"lte": abs_amount}
+                        else:
+                            tolerance = abs(normalized_amount) * 0.1  # 10% tolerance
+                            amount_filters["amount"] = {
+                                "gte": normalized_amount - tolerance,
+                                "lte": normalized_amount + tolerance,
+                            }
+                        break
 
         return amount_filters
 

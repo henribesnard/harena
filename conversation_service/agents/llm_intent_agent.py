@@ -17,6 +17,7 @@ import time
 import logging
 import os
 import unicodedata
+import re
 from typing import Any, Dict, List, Optional
 
 try:  # pragma: no cover - library may be absent in tests
@@ -146,6 +147,33 @@ class LLMIntentAgent(BaseFinancialAgent):
             actions.append("filter_by_amount_less")
         return actions or None
 
+    @staticmethod
+    def _normalise_amount(value: Any) -> Any:
+        """Convert amount-like strings to floats.
+
+        This strips common currency units and whitespace, handling both
+        simple numeric strings and dictionaries containing numeric values.
+        """
+
+        if isinstance(value, str):
+            cleaned = (
+                value.replace("€", "")
+                .replace("euros", "")
+                .replace("euro", "")
+                .replace(",", ".")
+                .strip()
+            )
+            cleaned = re.sub(r"[^0-9.\-]", "", cleaned.lower())
+            try:
+                return float(cleaned)
+            except ValueError:
+                return value
+        if isinstance(value, dict):
+            return {
+                k: LLMIntentAgent._normalise_amount(v) for k, v in value.items()
+            }
+        return value
+
     # ------------------------------------------------------------------
     async def detect_intent(
         self, user_message: str, user_id: int
@@ -271,11 +299,7 @@ class LLMIntentAgent(BaseFinancialAgent):
             ent_conf = float(ent.get("confidence", confidence))
             raw_value = ent.get("value", "")
             normalized = ent.get("normalized_value", raw_value)
-            if isinstance(normalized, str):
-                try:
-                    normalized = float(normalized)
-                except ValueError:
-                    pass
+            normalized = self._normalise_amount(normalized)
             entities.append(
                 FinancialEntity(
                     entity_type=e_type,

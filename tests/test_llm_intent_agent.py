@@ -1,5 +1,6 @@
 import asyncio
 import os
+import pytest
 import conversation_service.agents.base_financial_agent as base_financial_agent
 base_financial_agent.AUTOGEN_AVAILABLE = True
 
@@ -66,3 +67,26 @@ def test_category_mapping_applied():
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "BALANCE_CHECK"
     assert intent_result.intent_category == IntentCategory.BALANCE_INQUIRY
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("J'ai dépensé 20 euros", "debit"),
+        ("Liste de mes sorties", "debit"),
+        ("Une entrée d'argent inattendue", "credit"),
+        ("Mes gains du mois", "credit"),
+    ],
+)
+def test_transaction_type_post_processing(message, expected):
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
+    openai_client = DummyOpenAIClient(
+        '{"intent_type": "TRANSACTION_SEARCH", "intent_category": "TRANSACTION_SEARCH", "confidence": 0.9, "entities": []}'
+    )
+    agent = LLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
+    )
+    result = asyncio.run(agent.detect_intent(message, user_id=1))
+    intent_result = result["metadata"]["intent_result"]
+    tx = next(e for e in intent_result.entities if e.entity_type == EntityType.TRANSACTION_TYPE)
+    assert tx.normalized_value == expected

@@ -468,6 +468,7 @@ class GlobalSettings(BaseSettings):
     CACHE_TTL_QUERY: int = int(os.environ.get("CACHE_TTL_QUERY", "120"))
     CACHE_TTL_RESPONSE: int = int(os.environ.get("CACHE_TTL_RESPONSE", "60"))
     CACHE_TTL_SECONDS: int = int(os.environ.get("CACHE_TTL_SECONDS", "300"))
+    USE_LLM_QUERY: bool = os.environ.get("USE_LLM_QUERY", "false").lower() == "true"
     
     # Cache L0 - Patterns pré-calculés
     PRECOMPUTED_PATTERNS_ENABLED: bool = os.environ.get("PRECOMPUTED_PATTERNS_ENABLED", "true").lower() == "true"

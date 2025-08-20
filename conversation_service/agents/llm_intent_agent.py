@@ -15,6 +15,7 @@ import asyncio
 import json
 import time
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 try:  # pragma: no cover - library may be absent in tests
@@ -60,12 +61,13 @@ class LLMIntentAgent(BaseFinancialAgent):
         config: Optional[AgentConfig] = None,
         openai_client: Optional[Any] = None,
     ) -> None:
+        api_key = os.getenv("OPENAI_API_KEY") or deepseek_client.api_key
         if config is None:
             config = AgentConfig(
                 name="llm_intent_agent",
                 model_client_config={
                     "model": "gpt-4o-mini",
-                    "api_key": deepseek_client.api_key,
+                    "api_key": api_key,
                     "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._build_system_message(),
@@ -75,6 +77,8 @@ class LLMIntentAgent(BaseFinancialAgent):
                 max_tokens=200,
                 timeout_seconds=8,
             )
+        else:
+            config.model_client_config["api_key"] = api_key
 
         super().__init__(name=config.name, config=config, deepseek_client=deepseek_client)
         self._intent_cache = IntentResultCache(max_size=100)

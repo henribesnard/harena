@@ -660,9 +660,9 @@ class SearchQueryAgent(BaseFinancialAgent):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            temperature=settings.DEEPSEEK_QUERY_TEMPERATURE,
-            max_tokens=settings.DEEPSEEK_QUERY_MAX_TOKENS,
-            top_p=settings.DEEPSEEK_QUERY_TOP_P,
+            temperature=settings.OPENAI_QUERY_TEMPERATURE,
+            max_tokens=settings.OPENAI_QUERY_MAX_TOKENS,
+            top_p=settings.OPENAI_QUERY_TOP_P,
             user=str(user_id),
             use_cache=True,
         )

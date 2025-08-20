@@ -18,7 +18,7 @@ class AutoGenSettings(BaseSettings):
     BONSAI_URL: str = ""
     BRIDGE_CLIENT_ID: str = ""
     BRIDGE_CLIENT_SECRET: str = ""
-    DEEPSEEK_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
 
     WORKFLOW_TIMEOUT_SECONDS: int = 45
     HEALTH_CHECK_INTERVAL_SECONDS: int = 300
@@ -29,8 +29,8 @@ class AutoGenSettings(BaseSettings):
     ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS: int = 30000
     AGENT_REACTIVATION_COOLDOWN_SECONDS: int = 60
 
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_TIMEOUT: int = 30
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_TIMEOUT: int = 30
     SEARCH_SERVICE_URL: str = "http://localhost:8000/api/v1/search"
     MAX_CONVERSATION_HISTORY: int = 100
 

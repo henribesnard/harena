@@ -3,11 +3,11 @@ AutoGen Agents Package for Conversation Service MVP.
 
 This package contains specialized AutoGen v0.4 agents for financial conversation
 processing, including intent detection, search query generation, and response
-generation. All agents are optimized for DeepSeek LLM integration.
+generation. All agents are optimized for OpenAI LLM integration.
 
 Agents:
     - BaseFinancialAgent: Base class for all financial agents
-    - LLMIntentAgent: Intent detection powered by DeepSeek LLM
+    - LLMIntentAgent: Intent detection powered by OpenAI LLM
     - SearchQueryAgent: Search service interface + entity extraction
     - ResponseAgent: Contextual response generation
     - OrchestratorAgent: Multi-agent workflow coordination

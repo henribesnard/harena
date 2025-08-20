@@ -1,7 +1,7 @@
 """
 🎭 Orchestrator Prompts - Coordination Agents AutoGen
 
-Ce module contient les prompts optimisés DeepSeek pour l'orchestrateur principal
+Ce module contient les prompts optimisés OpenAI pour l'orchestrateur principal
 qui coordonne les agents spécialisés dans le pipeline conversationnel.
 
 Responsabilité :
@@ -56,7 +56,7 @@ Coordonner intelligemment une équipe d'agents spécialisés pour traiter les de
 
 1. **LLMIntentAgent** - Détection d'intention via LLM
    - Spécialité : Classification intentions + extraction entités
-   - Mode : DeepSeek LLM uniquement
+   - Mode : OpenAI LLM uniquement
    - Performance : <200ms (IA)
    - Fiabilité : 95%+ sur intentions financières courantes
 
@@ -186,7 +186,7 @@ def format_orchestrator_prompt(
         constraints: Contraintes de temps/budget/qualité
         
     Returns:
-        Prompt formaté prêt pour DeepSeek
+        Prompt formaté prêt pour OpenAI
         
     Example:
         >>> prompt = format_orchestrator_prompt(
@@ -345,10 +345,10 @@ def build_workflow_state(
 
 def parse_orchestrator_decision(response: str) -> Dict[str, Any]:
     """
-    Parse la décision JSON de l'orchestrateur DeepSeek.
+    Parse la décision JSON de l'orchestrateur OpenAI.
     
     Args:
-        response: Réponse brute de DeepSeek
+        response: Réponse brute de l'API OpenAI
         
     Returns:
         Décision parsée et validée

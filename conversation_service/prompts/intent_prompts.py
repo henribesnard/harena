@@ -1,14 +1,14 @@
 """
 🧠 Intent Detection Prompts - IA Principale pour Classification
 
-Ce module contient les prompts optimisés DeepSeek pour la détection d'intention
+Ce module contient les prompts optimisés OpenAI pour la détection d'intention
 en mode LLM principal sans recours au pattern matching.
 
 Responsabilité :
 - Classification précise des intentions utilisateur
 - Extraction des entités financières associées
 - Gestion du contexte conversationnel
-- Format de sortie strict pour les agents DeepSeek
+- Format de sortie strict pour les agents OpenAI
 """
 
 from typing import Dict, List, Optional, Any
@@ -143,11 +143,11 @@ def format_intent_prompt(user_message: str, context: str = "") -> str:
         context: Contexte conversationnel optionnel
         
     Returns:
-        Prompt formaté prêt pour DeepSeek
+        Prompt formaté prêt pour OpenAI
         
     Example:
         >>> prompt = format_intent_prompt("Mes achats Amazon", "L'utilisateur cherchait ses factures")
-        >>> # Utilisation avec DeepSeek client
+        >>> # Utilisation avec un client OpenAI
     """
     if not user_message or not user_message.strip():
         raise ValueError("user_message ne peut pas être vide")
@@ -217,10 +217,10 @@ def build_context_summary(conversation_history: List[Dict[str, Any]], max_tokens
 
 def parse_intent_response(response: str) -> Dict[str, Any]:
     """
-    Parse la réponse formatée de DeepSeek pour extraire les composants structurés.
+    Parse la réponse formatée de l'API OpenAI pour extraire les composants structurés.
     
     Args:
-        response: Réponse brute de DeepSeek
+        response: Réponse brute de l'API OpenAI
         
     Returns:
         Dict avec intent, confidence, entities, reasoning
@@ -234,7 +234,7 @@ def parse_intent_response(response: str) -> Dict[str, Any]:
         >>> print(parsed["intent"])  # "transaction_query"
     """
     if not response or not response.strip():
-        raise ValueError("Réponse vide de DeepSeek")
+        raise ValueError("Réponse vide de l'API OpenAI")
     
     try:
         lines = response.strip().split('\n')

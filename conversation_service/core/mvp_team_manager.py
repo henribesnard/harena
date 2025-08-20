@@ -24,7 +24,12 @@ from config.settings import settings
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from ..core.deepseek_client import DeepSeekClient
+from config.openai_config import OpenAISettings
+try:  # pragma: no cover - openai may be optional in some environments
+    from openai import AsyncOpenAI
+except Exception:  # pragma: no cover - handled gracefully if missing
+    AsyncOpenAI = None  # type: ignore
+
 from ..agents.llm_intent_agent import LLMIntentAgent
 from ..agents.mock_intent_agent import MockIntentAgent  # noqa: F401 - kept for manual injection
 from ..agents.search_query_agent import SearchQueryAgent
@@ -76,7 +81,7 @@ class MVPTeamManager:
     Attributes:
         config: Application settings
         team_config: Team-specific configuration
-        deepseek_client: DeepSeek LLM client
+        llm_client: Configured LLM client
         agents: Dictionary of initialized agents
         orchestrator: Main orchestrator agent
         conversation_manager: Conversation context manager
@@ -100,9 +105,12 @@ class MVPTeamManager:
             search_service_url=self.config.get('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search'),
             performance_threshold_ms=self.config.get('ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS', 30000),
         )
-        
+
+        # OpenAI settings and LLM client
+        self.openai_settings = OpenAISettings()
+        self.llm_client: Optional[Any] = None
+
         # Core components
-        self.deepseek_client: Optional[DeepSeekClient] = None
         self.agents: Dict[str, Any] = {}
         self.orchestrator: Optional["OrchestratorAgent"] = None
         self.conversation_manager: Optional[ConversationManager] = None
@@ -152,8 +160,8 @@ class MVPTeamManager:
         try:
             logger.info("Starting team initialization...")
 
-            # Step 1: Initialize DeepSeek client
-            await self._initialize_deepseek_client()
+            # Step 1: Initialize LLM client
+            self._initialize_llm_client()
 
             # Step 2: Initialize conversation manager
             await self._initialize_conversation_manager()
@@ -395,9 +403,9 @@ class MVPTeamManager:
             if self.conversation_manager:
                 await self.conversation_manager.close()
             
-            # Close DeepSeek client
-            if self.deepseek_client:
-                await self.deepseek_client.close()
+            # Close LLM client
+            if self.llm_client:
+                await self.llm_client.close()
             
             self.is_initialized = False
             logger.info("Team shutdown completed")
@@ -421,24 +429,35 @@ class MVPTeamManager:
             'AGENT_FAILURE_THRESHOLD': settings.AGENT_FAILURE_THRESHOLD,
             'ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS': settings.ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS,
             'AGENT_REACTIVATION_COOLDOWN_SECONDS': settings.AGENT_REACTIVATION_COOLDOWN_SECONDS,
+            'SEARCH_SERVICE_URL': os.getenv('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search'),
+            'MAX_CONVERSATION_HISTORY': int(os.getenv('MAX_CONVERSATION_HISTORY', '100')),
+            'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '45')),
+            'HEALTH_CHECK_INTERVAL_SECONDS': int(os.getenv('HEALTH_CHECK_INTERVAL_SECONDS', '300')),
+            'AUTO_RECOVERY_ENABLED': os.getenv('AUTO_RECOVERY_ENABLED', 'true').lower() == 'true',
+            'INITIAL_HEALTH_CHECK_DELAY_SECONDS': int(os.getenv('INITIAL_HEALTH_CHECK_DELAY_SECONDS', '60')),
+            'INITIAL_HEALTH_CHECK': os.getenv('INITIAL_HEALTH_CHECK', 'false').lower() == 'true',
+            'AGENT_FAILURE_THRESHOLD': int(os.getenv('AGENT_FAILURE_THRESHOLD', '3')),
+            'ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS': int(os.getenv('ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS', '30000')),
+            'AGENT_REACTIVATION_COOLDOWN_SECONDS': int(os.getenv('AGENT_REACTIVATION_COOLDOWN_SECONDS', '60')),
         }
     
-    async def _initialize_deepseek_client(self) -> None:
-        """Initialize the DeepSeek client."""
+    def _initialize_llm_client(self) -> None:
+        """Initialize the OpenAI client."""
+        if self.llm_client is not None:
+            return
+
+        if AsyncOpenAI is None:  # pragma: no cover - openai not installed
+            raise ImportError("openai package is required for LLM operations")
+
         try:
-            self.deepseek_client = DeepSeekClient(
-                api_key=self.config['DEEPSEEK_API_KEY'],
-                base_url=self.config['DEEPSEEK_BASE_URL'],
-                timeout=self.config['DEEPSEEK_TIMEOUT'],
-                cache_enabled=True
+            self.llm_client = AsyncOpenAI(
+                api_key=self.openai_settings.OPENAI_API_KEY,
+                base_url=self.openai_settings.OPENAI_BASE_URL,
+                timeout=self.openai_settings.OPENAI_TIMEOUT,
             )
-            
-            # Test connection
-            await self.deepseek_client.health_check()
-            logger.info("DeepSeek client initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize DeepSeek client: {e}")
+            logger.info("OpenAI client initialized successfully")
+        except Exception as e:  # pragma: no cover - initialization failure
+            logger.error(f"Failed to initialize OpenAI client: {e}")
             raise
     
     async def _initialize_conversation_manager(self) -> None:
@@ -461,18 +480,18 @@ class MVPTeamManager:
         try:
             # Intent detection agent
             self.agents["intent_agent"] = LLMIntentAgent(
-                deepseek_client=self.deepseek_client
+                openai_client=self.llm_client
             )
-            
+
             # Search query agent
             self.agents["search_query_agent"] = SearchQueryAgent(
-                deepseek_client=self.deepseek_client,
+                llm_client=self.llm_client,
                 search_service_url=self.team_config.search_service_url
             )
-            
+
             # Response generation agent
             self.agents["response_agent"] = ResponseAgent(
-                deepseek_client=self.deepseek_client
+                llm_client=self.llm_client
             )
             
             logger.info("Specialized agents initialized successfully")

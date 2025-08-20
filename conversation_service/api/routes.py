@@ -18,6 +18,7 @@ Version: 1.0.0 MVP - FastAPI Routes
 import asyncio
 import logging
 import time
+import hashlib
 from typing import Annotated, Any, Dict, List, Optional, Protocol
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -29,7 +30,6 @@ from .dependencies import (
     get_current_user,
     validate_conversation_request,
     get_conversation_manager,
-    validate_request_rate_limit,
     get_metrics_collector,
     get_conversation_service,
     get_conversation_read_service,
@@ -50,6 +50,8 @@ from ..services.conversation_db import ConversationService as ConversationDBServ
 from ..services.conversation_service import ConversationService
 from ..utils.metrics import MetricsCollector
 from db_service.session import get_db
+from ..utils.cache_client import cache_client
+from ..utils.decorators import rate_limit
 
 try:
     from ..core.mvp_team_manager import MVPTeamManager
@@ -92,6 +94,7 @@ conversations_router = APIRouter(prefix="/conversations", tags=["conversation"])
         503: {"description": "Service temporarily unavailable"}
     }
 )
+@rate_limit(calls=5, period=60)
 async def chat_endpoint(
     background_tasks: BackgroundTasks,
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
@@ -102,7 +105,6 @@ async def chat_endpoint(
         ConversationDBService, Depends(get_conversation_service)
     ],
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[None, Depends(validate_request_rate_limit)],
     validated_request: Annotated[ConversationRequest, Depends(validate_conversation_request)]
 ) -> ConversationResponse:
     """
@@ -129,7 +131,7 @@ async def chat_endpoint(
     start_time = time.time()
     conversation_id = validated_request.conversation_id
     user_id = user["user_id"]
-    
+
     logger.info(f"Processing conversation for user {user_id}, conversation {conversation_id}")
 
     try:
@@ -152,6 +154,13 @@ async def chat_endpoint(
     logger.info(
         f"Processing conversation for user {user_id}, conversation {conversation_id}"
     )
+
+    cache_key = f"chat:{user_id}:{hashlib.md5(validated_request.message.encode()).hexdigest()}"
+    cached_response = await cache_client.get(cache_key)
+    if cached_response:
+        return ConversationResponse(**cached_response)
+
+    await cache_client.set(f"prompt:{user_id}", validated_request.message, ttl=300)
     
     try:
         # Record request metrics
@@ -269,6 +278,8 @@ async def chat_endpoint(
             error_code=None if team_result["success"] else "TEAM_PROCESSING_ERROR",
         )
 
+        await cache_client.set(cache_key, response.dict(), ttl=300)
+
         # Record metrics based on success
         if team_result["success"]:
             metrics.record_response_time("chat", processing_time)
@@ -302,6 +313,7 @@ async def chat_endpoint(
         503: {"description": "Service is unhealthy"}
     }
 )
+@rate_limit(calls=10, period=60)
 async def health_check(
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
@@ -545,10 +557,11 @@ async def get_conversation_turns(
     description="Basic service status and configuration",
     tags=["monitoring"]
 )
+@rate_limit(calls=10, period=60)
 async def get_status() -> Dict[str, Any]:
     """
     Get basic service status and configuration information.
-    
+
     Returns:
         Dict containing service status
     """

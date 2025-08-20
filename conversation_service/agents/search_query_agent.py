@@ -611,13 +611,15 @@ class SearchQueryAgent(BaseFinancialAgent):
         if categories:
             search_filters["category_name"] = categories
 
-        operation_types = [
-            _apply_synonym(str(e.normalized_value))
-            for e in all_entities
-            if e.entity_type in {EntityType.OPERATION_TYPE, "OPERATION_TYPE"} and e.normalized_value
-        ]
-        if operation_types:
-            search_filters["operation_type"] = operation_types[0]
+        for entity in all_entities:
+            if (
+                entity.entity_type in {EntityType.OPERATION_TYPE, "OPERATION_TYPE"}
+                and entity.normalized_value
+            ):
+                search_filters["operation_type"] = _apply_synonym(
+                    str(entity.normalized_value)
+                )
+                break
 
         transaction_types = [
             _apply_synonym(str(e.normalized_value))

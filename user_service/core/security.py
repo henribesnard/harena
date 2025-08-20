@@ -12,20 +12,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Vérification de la disponibilité de bcrypt
+bcrypt_version = "unknown"
 try:
     import bcrypt
-    # Gestion des différentes versions de bcrypt
-    try:
-        # Anciennes versions
-        bcrypt_version = bcrypt.__about__.__version__
-    except AttributeError:
-        try:
-            # Nouvelles versions
-            bcrypt_version = bcrypt.__version__
-        except AttributeError:
-            # Version non disponible
-            bcrypt_version = "unknown"
-    
+
+    # Préférence pour bcrypt.__version__ avec repli sur __about__
+    bcrypt_version = getattr(bcrypt, "__version__", None)
+    if not bcrypt_version:
+        about = getattr(bcrypt, "__about__", {})
+        bcrypt_version = getattr(about, "__version__", getattr(about, "get", lambda *a: "unknown")("__version__"))
+
     logger.info(f"bcrypt version: {bcrypt_version}")
 except ImportError:
     logger.error("bcrypt module not found. Please install it with 'pip install bcrypt'")

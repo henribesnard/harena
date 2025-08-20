@@ -2,8 +2,8 @@
 
 This package exposes the main components required by the conversation
 service and provides helper functions for validating the runtime
-environment.  DeepSeek specific code has been removed in favour of a
-generic OpenAI configuration using :class:`~config.openai_config.OpenAISettings`.
+environment using a generic OpenAI configuration via
+:class:`~config.openai_config.OpenAISettings`.
 """
 
 from __future__ import annotations

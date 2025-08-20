@@ -2,7 +2,7 @@
 Service contracts for standardized communication between Conversation Service and Search Service.
 
 This module defines the interface contracts that ensure consistent and reliable
-communication between the Conversation Service (AutoGen + DeepSeek) and the
+communication between the Conversation Service (AutoGen + OpenAI) and the
 Search Service (Elasticsearch). These contracts provide type safety and clear
 API specifications.
 

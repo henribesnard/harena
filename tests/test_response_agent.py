@@ -135,3 +135,40 @@ def test_response_agent_summarizes_large_result_set():
     assert "... et 20 autres transactions (total 25)" in formatted
     assert result["metadata"]["search_stats"]["total_results"] == 25
 
+
+def test_response_agent_displays_aggregated_amounts():
+    agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+
+    search_response = SearchServiceResponse(
+        response_metadata=ResponseMetadata(
+            query_id="q4",
+            processing_time_ms=1.0,
+            total_results=0,
+            returned_results=0,
+            has_more_results=False,
+            search_strategy_used="semantic",
+        ),
+        results=[],
+        aggregations={
+            "transaction_type_terms": {
+                "buckets": [
+                    {"key": "debit", "doc_count": 2, "amount_sum": {"value": -30.0}},
+                    {"key": "credit", "doc_count": 1, "amount_sum": {"value": 100.0}},
+                ]
+            }
+        },
+        success=True,
+    )
+
+    search_results = {"metadata": {"search_response": search_response}}
+
+    result = asyncio.run(
+        agent.generate_response("Analyse des dépenses", search_results, user_id=1)
+    )
+
+    formatted = result["metadata"]["formatted_results"]
+    assert "Montants par type de transaction" in formatted
+    assert "debit" in formatted
+    assert "credit" in formatted
+    assert "Total:" in formatted
+

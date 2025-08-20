@@ -811,6 +811,7 @@ def test_operation_type_synonym_conversion():
 @pytest.mark.parametrize(
     "intent_type",
     [
+        "SPENDING_ANALYSIS",
         "SPENDING_ANALYSIS_BY_PERIOD",
         "COUNT_TRANSACTIONS",
         "SPENDING_COMPARISON",

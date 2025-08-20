@@ -1,9 +1,9 @@
 """
 Response Generation Agent for contextual financial conversations.
 
-This agent generates natural, contextual responses based on search results
-and conversation history. It formats financial data in user-friendly ways
-and maintains conversation continuity.
+This agent uses OpenAI's language models to generate natural, contextual
+responses based on search results and conversation history. It formats
+financial data in user-friendly ways and maintains conversation continuity.
 
 Classes:
     - ResponseAgent: Main response generation agent

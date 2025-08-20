@@ -1,4 +1,4 @@
-"""Advanced LLM intent agent with few-shot prompts, caching, and retries."""
+"""Advanced OpenAI LLM intent agent with few-shot prompts, caching, and retries."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ FEW_SHOT_EXAMPLES: Tuple[Tuple[str, str], ...] = (
 
 
 class AdvancedLLMIntentAgent(LLMIntentAgent):
-    """Extended intent agent with prompt engineering, retry, and caching."""
+    """Extended OpenAI intent agent with prompt engineering, retry, and caching."""
 
     def __init__(
         self,

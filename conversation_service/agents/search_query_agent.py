@@ -128,7 +128,12 @@ class QueryOptimizer:
             intent_result: Detected intent with entities
 
         Returns:
-            Optimized search text or ``None`` if no useful terms remain
+            Optimized search text or ``None`` if no useful terms remain.
+
+        Notes:
+            If after cleaning the message only month names or generic filler
+            words remain, ``None`` is returned so that the search relies solely
+            on structured filters.
         """
         # Start with clean user message
         search_text = user_message.lower().strip()
@@ -142,7 +147,9 @@ class QueryOptimizer:
         # Remove punctuation
         search_text = re.sub(r"[^\w\s]", " ", search_text)
 
-        # Remove common stop words, question words, and generic terms
+        # Remove common stop words, question words, and generic terms. Action
+        # keywords like "depense" or "virement" are intentionally excluded so
+        # they remain available for search.
         stop_words = {
             "le",
             "la",
@@ -157,8 +164,6 @@ class QueryOptimizer:
             "mes",
             "recherche",
             "rechercher",
-            "depense",
-            "depenses",
             "transaction",
             "transactions",
             "combien",
@@ -263,6 +268,12 @@ class QueryOptimizer:
             if word not in unique_words:
                 unique_words.append(word)
         if not unique_words:
+            return None
+
+        # If only month names or generic filler words remain, fall back to
+        # filter-based search by clearing the search text.
+        generic_terms = {"en"}
+        if all(word in FRENCH_MONTHS or word in generic_terms for word in unique_words):
             return None
 
         optimized_text = " ".join(unique_words)[:200]

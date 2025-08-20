@@ -382,6 +382,10 @@ class SearchQueryAgent(BaseFinancialAgent):
             f"Initialized SearchQueryAgent with service URL: {search_service_url}"
         )
 
+    def extract_amount_filters(self, intent_result: IntentResult) -> Dict[str, Any]:
+        """Expose amount filter extraction for testing and reuse."""
+        return self.query_optimizer.extract_amount_filters(intent_result)
+
     async def _execute_operation(
         self, input_data: Dict[str, Any], user_id: int
     ) -> Dict[str, Any]:

@@ -16,6 +16,7 @@ import json
 import time
 import logging
 import os
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 try:  # pragma: no cover - library may be absent in tests
@@ -114,6 +115,37 @@ class LLMIntentAgent(BaseFinancialAgent):
             "\n\nRéponds uniquement avec un JSON strict."
         )
 
+    @staticmethod
+    def _detect_amount_actions(message: str) -> Optional[List[str]]:
+        """Detect comparative keywords to suggest amount filters."""
+        normalized = unicodedata.normalize("NFD", message).encode(
+            "ascii", "ignore"
+        ).decode("utf-8").lower()
+
+        greater = [
+            "superieur",
+            "superieure",
+            "superieurs",
+            "superieures",
+            "plus de",
+            "plus que",
+        ]
+        less = [
+            "inferieur",
+            "inferieure",
+            "inferieurs",
+            "inferieures",
+            "moins de",
+            "moins que",
+        ]
+
+        actions: List[str] = []
+        if any(k in normalized for k in greater):
+            actions.append("filter_by_amount_greater")
+        if any(k in normalized for k in less):
+            actions.append("filter_by_amount_less")
+        return actions or None
+
     # ------------------------------------------------------------------
     async def detect_intent(
         self, user_message: str, user_id: int
@@ -136,6 +168,8 @@ class LLMIntentAgent(BaseFinancialAgent):
                 "confidence": cached.confidence,
                 "entities": [e.model_dump() for e in cached.entities],
             }
+            if cached.suggested_actions:
+                data["suggested_actions"] = cached.suggested_actions
             return {
                 "content": json.dumps(data),
                 "metadata": {
@@ -145,6 +179,7 @@ class LLMIntentAgent(BaseFinancialAgent):
                     "intent_type": cached.intent_type,
                     "intent_category": data["intent_category"],
                     "entities": [e.model_dump() for e in cached.entities],
+                    "suggested_actions": cached.suggested_actions,
                     "cache_hit": True,
                 },
                 "confidence_score": cached.confidence,
@@ -209,6 +244,11 @@ class LLMIntentAgent(BaseFinancialAgent):
             data = json.loads(response.choices[0].message.content)
         except Exception as err:  # pragma: no cover - parsing errors
             raise LLMOutputParsingError(f"Invalid JSON in LLM response: {err}") from err
+        suggested_actions = data.get("suggested_actions")
+        if suggested_actions is None:
+            suggested_actions = self._detect_amount_actions(user_message)
+        elif isinstance(suggested_actions, str):
+            suggested_actions = [suggested_actions]
 
         intent_type = data.get("intent_type", "OUT_OF_SCOPE")
         raw_category = data.get("intent_category", "GENERAL_QUESTION").upper()
@@ -246,6 +286,9 @@ class LLMIntentAgent(BaseFinancialAgent):
                 )
             )
 
+        if suggested_actions is not None:
+            data["suggested_actions"] = suggested_actions
+
         intent_result = IntentResult(
             intent_type=intent_type,
             intent_category=intent_category,
@@ -253,6 +296,7 @@ class LLMIntentAgent(BaseFinancialAgent):
             entities=entities,
             method=DetectionMethod.LLM_BASED,
             processing_time_ms=(time.perf_counter() - start_time) * 1000,
+            suggested_actions=suggested_actions,
         )
 
         result = {
@@ -269,6 +313,7 @@ class LLMIntentAgent(BaseFinancialAgent):
                     e.model_dump() if hasattr(e, "model_dump") else e.__dict__
                     for e in intent_result.entities
                 ],
+                "suggested_actions": suggested_actions,
             },
             "confidence_score": intent_result.confidence,
         }
@@ -366,6 +411,10 @@ class LLMIntentAgent(BaseFinancialAgent):
         else:
             category = IntentCategory.GENERAL_QUESTION
 
+        suggested_actions = data.get("suggested_actions")
+        if isinstance(suggested_actions, str):
+            suggested_actions = [suggested_actions]
+
         return IntentResult(
             intent_type=intent_type,
             intent_category=category,
@@ -373,5 +422,6 @@ class LLMIntentAgent(BaseFinancialAgent):
             entities=entities,
             method=DetectionMethod.LLM_BASED,
             processing_time_ms=0.0,
+            suggested_actions=suggested_actions,
         )
 

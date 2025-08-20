@@ -83,6 +83,35 @@ def make_amount_intent(normalized_value, actions=None):
     )
 
 
+def test_action_keywords_preserved_in_search_text():
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    search_text = QueryOptimizer.optimize_search_text(
+        "Combien ai-je dépensé en juin ?", intent_result
+    )
+    assert search_text != "en juin"
+    assert "depense" in search_text
+
+
+def test_month_only_query_uses_filters_only():
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    search_text = QueryOptimizer.optimize_search_text("en juin", intent_result)
+    assert search_text is None
+
+
 def test_prepare_entity_context_with_string_entity_type():
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),

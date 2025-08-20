@@ -47,7 +47,8 @@ from ..models.conversation_models import (
     ConversationOut,
 )
 from ..models.financial_models import IntentResult
-import os
+
+from config.autogen_config import AutoGenSettings
 
 from ..utils.logging import log_unauthorized_access
 from ..repositories.conversation_repository import ConversationRepository
@@ -490,9 +491,10 @@ async def get_status() -> Dict[str, Any]:
     Returns:
         Dict containing service status
     """
-    environment = os.getenv("ENVIRONMENT", "development")
+    settings = AutoGenSettings()
+    environment = settings.ENVIRONMENT
     enable_auth = True
-    
+
     return {
         "service": "conversation_service_mvp",
         "version": "1.0.0",

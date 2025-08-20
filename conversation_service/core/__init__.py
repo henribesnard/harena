@@ -116,53 +116,16 @@ def get_available_components() -> list[str]:
 
 
 def get_core_config() -> dict:
-    """
-    Get core configuration with environment variable overrides.
-    
-    Returns:
-        Core configuration dictionary
-    """
-    """Return configuration with environment overrides."""
-    import os
-
+    """Return core configuration with essential OpenAI settings."""
+    openai = OpenAISettings()
     config = DEFAULT_CORE_CONFIG.copy()
-
-    env_overrides = {
-        "cache_enabled": "CACHE_ENABLED",
-        "metrics_enabled": "METRICS_ENABLED",
-        "rate_limit_enabled": "RATE_LIMIT_ENABLED",
-        "circuit_breaker_enabled": "CIRCUIT_BREAKER_ENABLED",
-        "conversation_max_turns": "MAX_CONVERSATION_HISTORY",
-        "conversation_memory_backend": "CONVERSATION_MEMORY_BACKEND",
-        "team_workflow_timeout": "WORKFLOW_TIMEOUT_SECONDS",
-        "team_health_check_interval": "HEALTH_CHECK_INTERVAL_SECONDS",
-        "auto_recovery_enabled": "AUTO_RECOVERY_ENABLED",
-    }
-    
-    for config_key, env_var in env_overrides.items():
-        env_value = getattr(settings, env_var, None)
-
-    for key, env_var in env_overrides.items():
-        env_value = os.getenv(env_var)
-        if env_value is not None:
-            if key in ["conversation_max_turns", "team_workflow_timeout", "team_health_check_interval"]:
-                try:
-                    config[key] = int(env_value)
-                except ValueError:  # pragma: no cover - invalid user input
-                    logger.warning(
-                        f"Invalid integer value for {env_var}: {env_value}"
-                    )
-            elif key in [
-                "cache_enabled",
-                "metrics_enabled",
-                "rate_limit_enabled",
-                "circuit_breaker_enabled",
-                "auto_recovery_enabled",
-            ]:
-                config[key] = env_value.lower() in ("true", "1", "yes", "on")
-            else:
-                config[key] = env_value
-
+    config.update(
+        {
+            "OPENAI_API_KEY": openai.OPENAI_API_KEY,
+            "OPENAI_BASE_URL": openai.OPENAI_BASE_URL,
+            "OPENAI_CHAT_MODEL": openai.OPENAI_CHAT_MODEL,
+        }
+    )
     return config
 
 
@@ -203,19 +166,14 @@ def validate_core_setup() -> dict:
         )
     if config["team_workflow_timeout"] < 30:
         results["warnings"].append("Team workflow timeout low - complex workflows may fail")
-    
-    # Environment variable checks
-    import os
-    required_env_vars = ["DEEPSEEK_API_KEY"]
+
+    required_env_vars = ["OPENAI_API_KEY"]
     for var in required_env_vars:
         if not getattr(settings, var, None):
             results["errors"].append(f"Required environment variable missing: {var}")
             results["valid"] = False
-    
+
     # Info messages
-        results["warnings"].append(
-            "Team workflow timeout low - complex workflows may fail"
-        )
 
     results["info"].append(f"Core package version: {__version__}")
     results["info"].append(

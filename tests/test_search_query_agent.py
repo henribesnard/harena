@@ -620,3 +620,31 @@ def test_amount_filter_sent_to_search_service():
     )
 
     assert captured["payload"]["filters"]["amount_abs"] == {"gte": 100.0}
+
+
+def test_operation_type_synonym_conversion():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="SEARCH_BY_OPERATION_TYPE",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.OPERATION_TYPE,
+                raw_value="virements",
+                normalized_value="virements",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "", user_id=1)
+    )
+    request = search_query.to_search_request()
+    assert request["filters"]["operation_type"] == "transfer"

@@ -543,6 +543,7 @@ def test_amount_detection_filters_transactions():
                         "confidence": 0.9,
                     }
                 ],
+                "suggested_actions": ["filter_by_amount_greater"],
             }
         )
     )
@@ -554,6 +555,8 @@ def test_amount_detection_filters_transactions():
     )
     intent_result = intent_data["metadata"]["intent_result"]
     assert intent_result.suggested_actions == ["filter_by_amount_greater"]
+    import conversation_service.agents.search_query_agent as sq
+    sq.settings.USE_LLM_QUERY = False
 
     search_agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),

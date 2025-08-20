@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from datetime import datetime
 import pytest
@@ -135,3 +136,33 @@ def test_month_regex_fallback_and_injection(message, month_txt, month_num):
     assert intent_result.intent_category == IntentCategory.FINANCIAL_QUERY
     filters = QueryOptimizer.extract_date_filters(intent_result)
     assert filters["date"]["gte"].endswith(f"-{month_num}-01")
+
+
+@pytest.mark.parametrize(
+    "message, value, action",
+    [
+        ("transactions plus de 100 €", "100€", "filter_by_amount_greater"),
+        ("transactions moins que 50 €", "50€", "filter_by_amount_less"),
+    ],
+)
+def test_llm_intent_agent_returns_amount_actions(message, value, action):
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
+    content = json.dumps(
+        {
+            "intent_type": "TRANSACTION_SEARCH",
+            "intent_category": "TRANSACTION_SEARCH",
+            "confidence": 0.9,
+            "entities": [
+                {"entity_type": "AMOUNT", "value": value, "confidence": 0.9}
+            ],
+            "suggested_actions": [action],
+        }
+    )
+    openai_client = DummyOpenAIClient(content)
+    agent = LLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
+    )
+    intent_result = asyncio.run(agent.detect_intent(message, user_id=1))["metadata"][
+        "intent_result"
+    ]
+    assert intent_result.suggested_actions == [action]

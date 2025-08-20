@@ -403,6 +403,38 @@ class LLMIntentAgent(BaseFinancialAgent):
                     detection_method=DetectionMethod.LLM_BASED,
                 )
             )
+        # Inject month entities when the LLM fails to extract them
+        if not any(e.entity_type == EntityType.DATE for e in entities):
+            months = self._extract_months(user_message)
+            if months:
+                for m in months:
+                    ent = FinancialEntity(
+                        entity_type=EntityType.DATE,
+                        raw_value=m,
+                        normalized_value=m,
+                        confidence=0.5,
+                        detection_method=DetectionMethod.FALLBACK,
+                    )
+                    entities.append(ent)
+                    data.setdefault("entities", []).append(
+                        {
+                            "entity_type": EntityType.DATE.value,
+                            "value": m,
+                            "confidence": 0.5,
+                            "normalized_value": m,
+                        }
+                    )
+                if intent_type in {"GENERAL_QUESTION", "OUT_OF_SCOPE"}:
+                    intent_type = "SEARCH_BY_DATE"
+                    intent_category = IntentCategory.FINANCIAL_QUERY
+                    confidence = 0.5
+                    data.update(
+                        {
+                            "intent_type": intent_type,
+                            "intent_category": intent_category.value,
+                            "confidence": confidence,
+                        }
+                    )
 
         # Apply simple keyword-based transaction type heuristics
         tx_type = self._detect_transaction_type(user_message)

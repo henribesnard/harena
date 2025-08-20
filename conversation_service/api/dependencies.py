@@ -1,12 +1,14 @@
+"""FastAPI dependencies for the Conversation Service MVP.
+
 """Minimal dependency definitions for the conversation service.
 
-This module provides dependency injection functions for FastAPI endpoints,
-managing AutoGen team managers, conversation context, authentication,
-and request validation.
+This module provides dependency injection helpers for FastAPI endpoints,
+managing AutoGen team managers, conversation context, authentication and
+request validation.
 
 Dependencies:
-    - get_team_manager: Provides singleton MVPTeamManager instance
-    - get_current_user: Authentication and user context (local JWT decoding with user service fallback)
+    - get_team_manager: Provides singleton ``MVPTeamManager`` instance
+    - get_current_user: Authentication and user context
     - validate_conversation_request: Request validation and enrichment
     - get_conversation_manager: Conversation context management
     - validate_request_rate_limit: Rate limiting validation
@@ -19,9 +21,9 @@ isolation and tests can override these dependencies.
 """
 
 import logging
-from typing import Any, Dict, Generator, Optional, TYPE_CHECKING
+from typing import Any, Dict, Generator, Optional, TYPE_CHECKING, Annotated
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
 from db_service.session import SessionLocal
@@ -190,68 +192,28 @@ def get_conversation_read_service(
     return ConversationRepository(db)
 
 
-async def get_current_user(
-    request: Request,
-    token: Annotated[str, Depends(oauth2_scheme)]
-) -> Dict[str, Any]:
-    """Attempt to authenticate the request using the Bearer token.
-
-    The function first tries to decode the JWT locally using ``SECRET_KEY`` to
-    extract the user identifier and any embedded claims. If decoding succeeds,
-    default values for ``permissions`` and ``rate_limit_tier`` are applied when
-    absent. Only when these fields are missing and a user service URL is
-    configured does the function contact the user service to retrieve the full
-    profile. If the user service call fails (503 or network error), the locally
-    extracted information is returned.
-
-    Args:
-        token: OAuth2 Bearer token extracted from the request.
-
 # ---------------------------------------------------------------------------
-# Placeholder dependencies used in tests.  They intentionally raise errors so
-# that tests must override them with fake implementations.
+# Simplified authentication and request validation
 # ---------------------------------------------------------------------------
-
-
-async def get_team_manager() -> Any:
-    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Team manager not configured")
-
-
-async def get_conversation_manager() -> Any:
-    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Conversation manager not configured")
-
-
-async def get_conversation_service() -> Any:
-    class Dummy:
-        def get_or_create_conversation(self, user_id: int, conversation_id: str | None):
-            class Conv:
-                def __init__(self, cid: str):
-                    self.conversation_id = cid
-            return Conv(conversation_id or "conv-1")
-
-        def add_turn(self, **kwargs: Any) -> None:
-            pass
-
-    return Dummy()
-
-
-async def get_conversation_read_service() -> Any:
-    class Dummy:
-        def get_conversations(self, user_id: int, limit: int = 10, offset: int = 0):
-            return []
-
-    return Dummy()
 
 
 async def get_current_user() -> Dict[str, Any]:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    """Placeholder authentication dependency used in tests."""
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+    )
 
 
-async def validate_conversation_request(request: ConversationRequest) -> ConversationRequest:
+async def validate_conversation_request(
+    request: ConversationRequest,
+) -> ConversationRequest:
+    """Return the request unchanged (placeholder)."""
     return request
 
 
 async def validate_request_rate_limit() -> None:
+    """No-op rate limit validator used in tests."""
     return None
 
 async def cleanup_dependencies():

@@ -18,8 +18,9 @@ Version: 1.0.0 MVP - Complete Team Management
 
 import asyncio
 import logging
-import os
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
+
+from config.settings import settings
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
@@ -172,7 +173,7 @@ class MVPTeamManager:
             await self._initialize_orchestrator()
 
             if initial_health_check is None:
-                initial_health_check = os.getenv("INITIAL_HEALTH_CHECK", "false").lower() == "true"
+                initial_health_check = settings.INITIAL_HEALTH_CHECK
 
             if initial_health_check:
                 # Step 5: Initial health check
@@ -415,6 +416,19 @@ class MVPTeamManager:
     def _load_config_from_env(self) -> Dict[str, Any]:
         """Load configuration from environment variables."""
         return {
+            'DEEPSEEK_API_KEY': settings.DEEPSEEK_API_KEY,
+            'DEEPSEEK_BASE_URL': settings.DEEPSEEK_BASE_URL,
+            'DEEPSEEK_TIMEOUT': settings.DEEPSEEK_TIMEOUT,
+            'SEARCH_SERVICE_URL': settings.SEARCH_SERVICE_URL,
+            'MAX_CONVERSATION_HISTORY': settings.MAX_CONVERSATION_HISTORY,
+            'WORKFLOW_TIMEOUT_SECONDS': settings.WORKFLOW_TIMEOUT_SECONDS,
+            'HEALTH_CHECK_INTERVAL_SECONDS': settings.HEALTH_CHECK_INTERVAL_SECONDS,
+            'AUTO_RECOVERY_ENABLED': settings.AUTO_RECOVERY_ENABLED,
+            'INITIAL_HEALTH_CHECK_DELAY_SECONDS': settings.INITIAL_HEALTH_CHECK_DELAY_SECONDS,
+            'INITIAL_HEALTH_CHECK': settings.INITIAL_HEALTH_CHECK,
+            'AGENT_FAILURE_THRESHOLD': settings.AGENT_FAILURE_THRESHOLD,
+            'ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS': settings.ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS,
+            'AGENT_REACTIVATION_COOLDOWN_SECONDS': settings.AGENT_REACTIVATION_COOLDOWN_SECONDS,
             'SEARCH_SERVICE_URL': os.getenv('SEARCH_SERVICE_URL', 'http://localhost:8000/api/v1/search'),
             'MAX_CONVERSATION_HISTORY': int(os.getenv('MAX_CONVERSATION_HISTORY', '100')),
             'WORKFLOW_TIMEOUT_SECONDS': int(os.getenv('WORKFLOW_TIMEOUT_SECONDS', '45')),

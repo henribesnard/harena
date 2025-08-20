@@ -11,6 +11,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config.settings import settings
+
 # Configuration du logging simple
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger("harena")
 
 # Fix Heroku DATABASE_URL
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = settings.DATABASE_URL
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     os.environ["DATABASE_URL"] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -45,7 +47,7 @@ class ServiceLoader:
         
         try:
             # Vérifier BONSAI_URL
-            bonsai_url = os.environ.get("BONSAI_URL")
+            bonsai_url = settings.BONSAI_URL
             if not bonsai_url:
                 raise ValueError("BONSAI_URL n'est pas configurée")
             
@@ -102,7 +104,7 @@ class ServiceLoader:
         
         try:
             # Vérifier DEEPSEEK_API_KEY
-            deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+            deepseek_key = settings.DEEPSEEK_API_KEY
             if not deepseek_key:
                 raise ValueError("DEEPSEEK_API_KEY n'est pas configurée")
             
@@ -488,7 +490,7 @@ def create_app():
         return {
             "platform": "Harena Finance",
             "services": loader.services_status,
-            "environment": os.environ.get("ENVIRONMENT", "production"),
+            "environment": settings.ENVIRONMENT,
             "search_service_details": {
                 "initialized": loader.search_service_initialized,
                 "error": loader.search_service_error,
@@ -539,4 +541,4 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("heroku_app:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    uvicorn.run("heroku_app:app", host=settings.HOST, port=settings.PORT)

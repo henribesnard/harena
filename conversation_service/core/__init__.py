@@ -9,6 +9,8 @@ generic OpenAI configuration using :class:`~config.openai_config.OpenAISettings`
 from __future__ import annotations
 
 import logging
+from config.settings import settings
+from typing import TYPE_CHECKING
 from typing import TYPE_CHECKING, Any
 
 from config.openai_config import OpenAISettings
@@ -114,6 +116,12 @@ def get_available_components() -> list[str]:
 
 
 def get_core_config() -> dict:
+    """
+    Get core configuration with environment variable overrides.
+    
+    Returns:
+        Core configuration dictionary
+    """
     """Return configuration with environment overrides."""
     import os
 
@@ -130,6 +138,9 @@ def get_core_config() -> dict:
         "team_health_check_interval": "HEALTH_CHECK_INTERVAL_SECONDS",
         "auto_recovery_enabled": "AUTO_RECOVERY_ENABLED",
     }
+    
+    for config_key, env_var in env_overrides.items():
+        env_value = getattr(settings, env_var, None)
 
     for key, env_var in env_overrides.items():
         env_value = os.getenv(env_var)
@@ -191,6 +202,17 @@ def validate_core_setup() -> dict:
             "Max conversation turns very low - limited conversation capability"
         )
     if config["team_workflow_timeout"] < 30:
+        results["warnings"].append("Team workflow timeout low - complex workflows may fail")
+    
+    # Environment variable checks
+    import os
+    required_env_vars = ["DEEPSEEK_API_KEY"]
+    for var in required_env_vars:
+        if not getattr(settings, var, None):
+            results["errors"].append(f"Required environment variable missing: {var}")
+            results["valid"] = False
+    
+    # Info messages
         results["warnings"].append(
             "Team workflow timeout low - complex workflows may fail"
         )

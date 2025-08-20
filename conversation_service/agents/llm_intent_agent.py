@@ -272,7 +272,7 @@ class LLMIntentAgent(BaseFinancialAgent):
     ) -> Dict[str, Any]:
         """Detect the intent of ``user_message``.
 
-        The DeepSeek client returns a JSON document describing the intent and any
+        The OpenAI client returns a JSON document describing the intent and any
         extracted entities.  This method converts that JSON into an
         :class:`IntentResult` and wraps it in the structure used by the rest of
         the service.

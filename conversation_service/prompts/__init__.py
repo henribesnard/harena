@@ -1,7 +1,7 @@
 """
 🎭 Prompts Package - Conversation Service
 
-Ce package contient tous les prompts optimisés pour DeepSeek dans le contexte
+Ce package contient tous les prompts optimisés pour OpenAI dans le contexte
 d'agents AutoGen financiers. Chaque module expose des prompts spécialisés
 et des fonctions de formatage pour maximiser la précision des réponses.
 
@@ -89,4 +89,4 @@ __all__ = [
 # Métadonnées du package
 __version__ = "1.0.0"
 __author__ = "Conversation Service Team"
-__description__ = "Prompts optimisés DeepSeek pour agents AutoGen financiers"
+__description__ = "Prompts optimisés OpenAI pour agents AutoGen financiers"

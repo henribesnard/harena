@@ -1,6 +1,6 @@
 """Mock intent detection agent for workflow validation.
 
-This agent bypasses any LLM calls and returns pre-defined intent
+This agent bypasses any OpenAI LLM calls and returns pre-defined intent
 classification results for a fixed set of user questions.  It enables the
 rest of the conversation workflow to be validated independently of the
 actual intent detection model.

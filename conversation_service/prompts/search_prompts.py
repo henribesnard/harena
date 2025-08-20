@@ -1,7 +1,7 @@
 """
 🔍 Search Query Generation Prompts - Génération Requêtes Search Service
 
-Ce module contient les prompts optimisés DeepSeek pour transformer les intentions
+Ce module contient les prompts optimisés OpenAI pour transformer les intentions
 et entités utilisateur en requêtes structurées pour le Search Service.
 
 Responsabilité :
@@ -142,7 +142,7 @@ def format_search_prompt(
         context: Contexte conversationnel optionnel
         
     Returns:
-        Prompt formaté prêt pour DeepSeek
+        Prompt formaté prêt pour OpenAI
         
     Raises:
         ValueError: Si intent_result invalide
@@ -362,10 +362,10 @@ def extract_amount_range(amount_entities: List[str]) -> Dict[str, float]:
 
 def parse_search_response(response: str, user_id: str) -> Dict[str, Any]:
     """
-    Parse la réponse JSON de DeepSeek et injecte l'user_id obligatoire.
+    Parse la réponse JSON de l'API OpenAI et injecte l'user_id obligatoire.
     
     Args:
-        response: Réponse brute JSON de DeepSeek
+        response: Réponse brute JSON de l'API OpenAI
         user_id: ID utilisateur à injecter dans les filtres
         
     Returns:
@@ -379,7 +379,7 @@ def parse_search_response(response: str, user_id: str) -> Dict[str, Any]:
         >>> # query["filters"]["user_id"] == "user123"
     """
     if not response or not response.strip():
-        raise ValueError("Réponse vide de DeepSeek")
+        raise ValueError("Réponse vide de l'API OpenAI")
     
     if not user_id:
         raise ValueError("user_id est obligatoire")

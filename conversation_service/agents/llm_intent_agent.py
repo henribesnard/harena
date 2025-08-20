@@ -67,9 +67,10 @@ FRENCH_MONTHS = [
     "décembre",
     "decembre",
 ]
-# Regex capturing expressions like "en juin", "au mois de mai", optionally followed by a year
+# Regex capturing expressions like "en juin", "au mois de mai" or "pendant mars",
+# optionally followed by a year
 MONTH_PHRASE_REGEX = re.compile(
-    r"(?:\b(?:en|au\s+mois\s+de|mois\s+de)\s+)?\b(" + "|".join(FRENCH_MONTHS) + r")\b(?:\s+(\d{4}))?",
+    r"(?:\b(?:en|au\s+mois\s+de|mois\s+de|durant|pendant)\s+)?\b(" + "|".join(FRENCH_MONTHS) + r")\b(?:\s+(\d{4}))?",
     re.IGNORECASE,
 )
 
@@ -179,12 +180,29 @@ class LLMIntentAgent(BaseFinancialAgent):
             "ascii", "ignore"
         ).decode("utf-8").lower()
 
-        if any(k in normalized for k in ["depense", "depens", "sortie", "sorties"]):
+        debit_keywords = [
+            "depense",
+            "depenses",
+            "depensees",
+            "depenser",
+            "sortie",
+            "sorties",
+            "debit",
+            "debits",
+        ]
+        credit_keywords = [
+            "entree",
+            "entrees",
+            "entree d argent",
+            "entree d'argent",
+            "gains",
+            "gain",
+            "credit",
+            "credits",
+        ]
+        if any(k in normalized for k in debit_keywords):
             return "debit"
-        if any(
-            k in normalized
-            for k in ["entree d argent", "entree d'argent", "gains", "gain"]
-        ):
+        if any(k in normalized for k in credit_keywords):
             return "credit"
         return None
 

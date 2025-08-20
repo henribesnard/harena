@@ -12,6 +12,7 @@ from conversation_service.models.financial_models import (
     IntentCategory,
     DetectionMethod,
 )
+from conversation_service.constants import TRANSACTION_TYPES
 from conversation_service.models.service_contracts import (
     SearchServiceQuery,
     QueryMetadata,
@@ -132,7 +133,7 @@ def test_generate_search_contract_deduplicates_terms():
     assert request["user_id"] == 1
 
 
-def test_transaction_type_synonym_applied():
+def test_transaction_type_filter_uses_allowed_values():
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),
         search_service_url="http://search.example.com",
@@ -144,8 +145,8 @@ def test_transaction_type_synonym_applied():
         entities=[
             FinancialEntity(
                 entity_type=EntityType.TRANSACTION_TYPE,
-                raw_value="virements",
-                normalized_value="virements",
+                raw_value="Débit",
+                normalized_value="debit",
                 confidence=0.9,
             )
         ],
@@ -154,10 +155,11 @@ def test_transaction_type_synonym_applied():
     )
 
     search_query = asyncio.run(
-        agent._generate_search_contract(intent_result, "virements", user_id=1)
+        agent._generate_search_contract(intent_result, "Débit", user_id=1)
     )
     request = search_query.to_search_request()
-    assert request["filters"]["transaction_types"] == ["transfer"]
+    assert request["filters"]["transaction_types"] == ["debit"]
+    assert request["filters"]["transaction_types"][0] in TRANSACTION_TYPES
 
 
 def test_operation_type_synonym_applied_without_transaction_types():
@@ -784,7 +786,7 @@ def test_amount_filter_sent_to_search_service():
     assert captured["payload"]["filters"]["amount_abs"] == {"gte": 100.0}
 
 
-@pytest.mark.parametrize("tx_type", ["debit", "credit"])
+@pytest.mark.parametrize("tx_type", TRANSACTION_TYPES)
 def test_transaction_type_filter_included(tx_type):
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),
@@ -811,6 +813,7 @@ def test_transaction_type_filter_included(tx_type):
     )
     request = search_query.to_search_request()
     assert request["filters"]["transaction_types"] == [tx_type]
+    assert request["filters"]["transaction_types"][0] in TRANSACTION_TYPES
 
 
 def test_operation_type_synonym_conversion():

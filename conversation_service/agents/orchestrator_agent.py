@@ -1,9 +1,10 @@
 """
-Orchestrator Agent for coordinating multi-agent workflows.
+Orchestrator Agent for coordinating OpenAI-powered multi-agent workflows.
 
 This agent coordinates the execution of the three specialized agents
 (Intent, Search Query, and Response) to provide a complete conversation
-processing pipeline with error handling and fallback mechanisms.
+processing pipeline with error handling and fallback mechanisms built
+around OpenAI LLM services.
 
 Classes:
     - OrchestratorAgent: Main workflow coordination agent

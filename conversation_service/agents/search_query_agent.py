@@ -281,6 +281,11 @@ class QueryOptimizer:
             if entity.entity_type == EntityType.AMOUNT:
                 actions = intent_result.suggested_actions or []
                 value = entity.normalized_value
+                if isinstance(value, str):
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        pass
 
                 if isinstance(value, dict):
                     amount: Dict[str, float] = {}

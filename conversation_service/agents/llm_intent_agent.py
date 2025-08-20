@@ -225,11 +225,18 @@ class LLMIntentAgent(BaseFinancialAgent):
                 logger.debug("Unknown entity type: %s", type_key)
                 continue
             ent_conf = float(ent.get("confidence", confidence))
+            raw_value = ent.get("value", "")
+            normalized = ent.get("normalized_value", raw_value)
+            if isinstance(normalized, str):
+                try:
+                    normalized = float(normalized)
+                except ValueError:
+                    pass
             entities.append(
                 FinancialEntity(
                     entity_type=e_type,
-                    raw_value=ent.get("value", ""),
-                    normalized_value=ent.get("normalized_value", ent.get("value", "")),
+                    raw_value=raw_value,
+                    normalized_value=normalized,
                     confidence=ent_conf,
                     detection_method=DetectionMethod.LLM_BASED,
                 )
@@ -313,6 +320,11 @@ class LLMIntentAgent(BaseFinancialAgent):
             value = ent.get("value")
             ent_conf = float(ent.get("confidence", 0.9))
             normalized = ent.get("normalized_value", value)
+            if isinstance(normalized, str):
+                try:
+                    normalized = float(normalized)
+                except ValueError:
+                    pass
             try:
                 entity_type = EntityType(ent_type_str)
             except ValueError:

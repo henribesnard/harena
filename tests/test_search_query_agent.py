@@ -228,6 +228,37 @@ def test_amount_filter_without_date():
     assert request["query"] == ""
 
 
+def test_amount_filter_with_string_value():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.AMOUNT,
+                raw_value="100",
+                normalized_value="100",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+        suggested_actions=["filter_by_amount_greater"],
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(
+            intent_result, "transactions supérieures à 100 euros", user_id=1
+        )
+    )
+    request = search_query.to_search_request()
+    assert request["filters"].get("amount_abs") == {"gte": 100.0}
+
+
 def test_no_multimatch_for_amount_phrase():
     if QueryBuilder is None or SearchRequest is None:
         pytest.skip("search_service not available")
@@ -307,6 +338,12 @@ def test_generate_search_contract_amount_filters(value, expected):
 
 def test_extract_amount_filters_absolute_comparison():
     intent_result = make_amount_intent(100, actions=["filter_by_amount_greater"])
+    filters = QueryOptimizer.extract_amount_filters(intent_result)
+    assert filters == {"amount_abs": {"gte": 100.0}}
+
+
+def test_extract_amount_filters_absolute_comparison_string():
+    intent_result = make_amount_intent("100", actions=["filter_by_amount_greater"])
     filters = QueryOptimizer.extract_amount_filters(intent_result)
     assert filters == {"amount_abs": {"gte": 100.0}}
 

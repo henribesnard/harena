@@ -282,7 +282,7 @@ async def pre_initialize_dependencies() -> None:
         # Test import of critical modules
         from .core import load_team_manager
         from .core.conversation_manager import ConversationManager
-        from .utils.metrics import MetricsCollector
+        from .core.metrics_collector import MetricsCollector
 
         MVPTeamManager, _ = load_team_manager()
         if MVPTeamManager is None:

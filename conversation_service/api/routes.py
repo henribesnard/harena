@@ -22,7 +22,6 @@ from typing import Annotated, Any, Dict, List, Optional, Protocol
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 
 from .dependencies import (
     get_team_manager,
@@ -31,8 +30,7 @@ from .dependencies import (
     get_conversation_manager,
     validate_request_rate_limit,
     get_metrics_collector,
-    get_conversation_service,
-    get_conversation_read_service,
+    get_conversation_repository,
 )
 from ..core.conversation_manager import ConversationManager
 from ..models.conversation_models import (
@@ -46,10 +44,8 @@ from ..models.financial_models import IntentResult
 import os
 
 from ..utils.logging import log_unauthorized_access
-from ..services.conversation_db import ConversationService as ConversationDBService
-from ..services.conversation_service import ConversationService
-from ..utils.metrics import MetricsCollector
-from db_service.session import get_db
+from ..repositories.conversation_repository import ConversationRepository
+from ..core.metrics_collector import MetricsCollector
 
 try:
     from ..core.mvp_team_manager import MVPTeamManager
@@ -98,10 +94,9 @@ async def chat_endpoint(
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
     metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
-    conversation_service: Annotated[
-        ConversationDBService, Depends(get_conversation_service)
+    conversation_repo: Annotated[
+        ConversationRepository, Depends(get_conversation_repository)
     ],
-    db: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validate_request_rate_limit)],
     validated_request: Annotated[ConversationRequest, Depends(validate_conversation_request)]
 ) -> ConversationResponse:
@@ -133,7 +128,7 @@ async def chat_endpoint(
     logger.info(f"Processing conversation for user {user_id}, conversation {conversation_id}")
 
     try:
-        conversation = conversation_service.get_or_create_conversation(
+        conversation = conversation_repo.get_or_create_conversation(
             user_id, conversation_id
         )
     except PermissionError:
@@ -234,7 +229,7 @@ async def chat_endpoint(
         processing_time = int((time.time() - start_time) * 1000)
 
         try:
-            conversation_service.add_turn(
+            conversation_repo.add_turn(
                 conversation_id=conversation.conversation_id,
                 user_id=user_id,
                 user_message=validated_request.message,
@@ -467,12 +462,12 @@ async def get_metrics(
 )
 async def list_conversations(
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    service: Annotated[ConversationService, Depends(get_conversation_read_service)],
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> List[ConversationOut]:
     """List conversations belonging to the current user."""
-    conversations = service.get_conversations(user["user_id"], limit=limit, offset=offset)
+    conversations = repo.list_conversations(user["user_id"])[offset : offset + limit]
     return [
         ConversationOut(
             conversation_id=c.conversation_id,
@@ -499,13 +494,11 @@ async def list_conversations(
 async def get_conversation_turns(
     conversation_id: str,
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    db_service: Annotated[ConversationDBService, Depends(get_conversation_service)],
-    service: Annotated[ConversationService, Depends(get_conversation_read_service)],
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
     limit: int = Query(10, ge=1, le=50),
 ) -> ConversationTurnsResponse:
     """Return the turns for a specific conversation."""
-    _ = db_service  # dependency for potential future use
-    conversation = service.get_conversation(conversation_id)
+    conversation = repo.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
@@ -513,11 +506,7 @@ async def get_conversation_turns(
     if conversation.user_id != user["user_id"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
-    turns_raw = (
-        service.get_conversation_turns(conversation_id)
-        if hasattr(service, "get_conversation_turns")
-        else db_service.get_turns(conversation)
-    )
+    turns_raw = repo.get_conversation_turns(conversation_id)
 
     turns: List[ConversationTurn] = []
     for t in turns_raw[:limit]:

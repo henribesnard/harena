@@ -12,7 +12,6 @@ Dependencies:
     - get_conversation_manager: Conversation context management
     - validate_request_rate_limit: Rate limiting validation
     - get_metrics_collector: Metrics collection dependency
-    - get_conversation_service: Database conversation service
 
 Author: Conversation Service Team
 Created: 2025-01-31
@@ -34,14 +33,10 @@ from db_service.session import SessionLocal
 from ..core import load_team_manager
 from ..core.conversation_manager import ConversationManager
 from ..models.conversation_models import ConversationRequest, ConversationResponse
-from ..utils.metrics import MetricsCollector
+from ..core.metrics_collector import MetricsCollector
+from ..core.cache_manager import CacheManager
+from ..repositories.conversation_repository import ConversationRepository
 from ..utils.logging import log_unauthorized_access
-from ..services.conversation_db import (
-    ConversationService as ConversationWriteService,
-)
-from ..services.conversation_service import (
-    ConversationService as ConversationReadService,
-)
 from config_service.config import settings
 
 if TYPE_CHECKING:
@@ -54,6 +49,7 @@ logger = logging.getLogger(__name__)
 _team_manager: Optional["MVPTeamManager"] = None
 _conversation_manager: Optional[ConversationManager] = None
 _metrics_collector: Optional[MetricsCollector] = None
+_cache_manager: Optional[CacheManager] = None
 
 # Rate limiting storage (in-memory for MVP; use Redis or another shared backend in production)
 _rate_limit_storage: Dict[str, Deque[float]] = {}
@@ -99,7 +95,12 @@ async def get_team_manager() -> "MVPTeamManager":
             MVPTeamManager, _ = load_team_manager()
             if MVPTeamManager is None:
                 raise ImportError("MVPTeamManager not available")
-            _team_manager = MVPTeamManager()
+            metrics = await get_metrics_collector()
+            cache = await get_cache_manager()
+            _team_manager = MVPTeamManager(
+                metrics_collector=metrics,
+                cache_manager=cache,
+            )
             await _team_manager.initialize_agents()
             team_health = getattr(_team_manager, "team_health", None)
             if team_health is None:
@@ -175,28 +176,33 @@ async def get_metrics_collector() -> MetricsCollector:
     return _metrics_collector
 
 
+async def get_cache_manager() -> CacheManager:
+    """Dependency to get the singleton CacheManager instance."""
+    global _cache_manager
+    if _cache_manager is None:
+        _cache_manager = CacheManager()
+    return _cache_manager
+
+
+def get_conversation_repository(
+    db: Annotated[Session, Depends(get_db)]
+) -> ConversationRepository:
+    """Dependency providing a ConversationRepository bound to a DB session."""
+    return ConversationRepository(db)
+
+
 def get_conversation_service(
     db: Annotated[Session, Depends(get_db)]
-) -> ConversationWriteService:
-    """
-    Dependency to provide ConversationWriteService instance bound to a database
-    session.
-
-    Args:
-        db: Database session from FastAPI dependency injection
-
-    Returns:
-        ConversationWriteService: Service instance for conversation write
-        operations
-    """
-    return ConversationWriteService(db)
+) -> ConversationRepository:
+    """Backward compatible alias for :class:`ConversationRepository`."""
+    return ConversationRepository(db)
 
 
 def get_conversation_read_service(
     db: Annotated[Session, Depends(get_db)]
-) -> ConversationReadService:
-    """Dependency to provide ConversationReadService for read-only operations."""
-    return ConversationReadService(db)
+) -> ConversationRepository:
+    """Backward compatible alias for :class:`ConversationRepository`."""
+    return ConversationRepository(db)
 
 
 async def get_current_user(
@@ -434,7 +440,7 @@ async def cleanup_dependencies():
     Should be called during application shutdown to properly close
     connections and cleanup resources.
     """
-    global _team_manager, _conversation_manager, _metrics_collector
+    global _team_manager, _conversation_manager, _metrics_collector, _cache_manager
     
     logger.info("Cleaning up API dependencies")
     
@@ -458,10 +464,18 @@ async def cleanup_dependencies():
             logger.info("MetricsCollector export completed")
         except Exception as e:
             logger.error(f"Error exporting metrics: {e}")
+
+    if _cache_manager:
+        try:
+            _cache_manager.clear()
+            logger.info("CacheManager cleared")
+        except Exception as e:
+            logger.error(f"Error clearing CacheManager: {e}")
     
     # Clear global instances
     _team_manager = None
     _conversation_manager = None
     _metrics_collector = None
+    _cache_manager = None
 
     logger.info("API dependencies cleanup completed")

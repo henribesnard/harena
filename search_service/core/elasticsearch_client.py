@@ -3,7 +3,7 @@ import aiohttp
 import ssl
 import threading
 from typing import Dict, Any, Optional
-from config_service.config import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 

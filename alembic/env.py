@@ -39,7 +39,7 @@ except ImportError as e:
     raise
 
 # Import de la configuration
-from config_service.config import settings
+from config.settings import settings
 
 # -----------------------------------------------------------------------------
 # Configuration Alembic

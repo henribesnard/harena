@@ -14,7 +14,7 @@ from datetime import datetime
 from enrichment_service.api.routes import router
 from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
-from config_service.config import settings
+from config.settings import settings
 
 # Configuration du logging
 logging.basicConfig(

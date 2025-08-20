@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 from search_service.models.request import SearchRequest
 from search_service.core.search_engine import SearchEngine, RateLimitExceeded
-from config_service.config import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 

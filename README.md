@@ -60,6 +60,26 @@ detection. If not set, the agent falls back to the DeepSeek key.
 `http://localhost:8000/api/v1/search` and the service automatically appends
 `/search` when issuing queries.
 
+## `metadata.workflow_data`
+
+The conversation API (`/conversation/chat`) includes a `metadata` object in its
+response. A nested `workflow_data` dictionary exposes details collected during
+the multi‑agent workflow:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `user_message` | `str` | Original message provided by the user |
+| `conversation_id` | `str` | Identifier of the conversation |
+| `intent_result` | `IntentResult` | Structured intent detection output |
+| `search_results` | `AgentResponse \| list \| None` | Raw search results returned by the `SearchQueryAgent` (optional) |
+| `final_response` | `str \| None` | Final text returned to the user |
+| `search_error` | `bool` | Indicates whether the search step failed |
+| `search_results_count` | `int` | Number of items found by the search agent |
+
+The key `search_results_count` is always present and can be used to quickly know
+how many results were returned without inspecting the full `search_results`
+payload.
+
 ## Intentions supportées
 
 Le `LLMIntentAgent` répond toujours avec un objet JSON structuré et ne produit

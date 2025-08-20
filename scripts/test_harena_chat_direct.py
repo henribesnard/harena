@@ -177,7 +177,7 @@ def main() -> None:
 
     # ----- RÉSUMÉ EXÉCUTIF ---------------------------------------------------
     print("📋 RÉSUMÉ EXÉCUTIF :")
-    print(f"   🎯 Intention correctement détectée : {'✅' if intent_result['intent_type'] == 'TRANSACTION_SEARCH' else '❌'}")
+    print(f"   🎯 Intention correctement détectée : {'✅' if intent_result['intent_type'] == 'SEARCH_BY_AMOUNT' else '❌'}")
     print(f"   🧩 Entités extraites : {'✅' if len(entities) > 0 else '❌'}")
     print(f"   🔍 Recherche exécutée : {'✅' if 'search_results_count' in chat_data['metadata'] else '❌'}")
     print(f"   💬 Réponse générée : {'✅' if len(response_text) > 50 else '❌'}")
@@ -185,7 +185,7 @@ def main() -> None:
     
     # Cohérence globale
     coherence_score = sum([
-        intent_result['intent_type'] == 'TRANSACTION_SEARCH',
+        intent_result['intent_type'] == 'SEARCH_BY_AMOUNT',
         len(entities) > 0,
         'search_results_count' in chat_data['metadata'],
         len(response_text) > 50,

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import datetime
 
 from conversation_service.agents import base_financial_agent
 
@@ -40,6 +41,7 @@ except Exception:  # pragma: no cover - fallback to simple stubs
         limit: int = 100
         offset: int = 0
         metadata: Dict[str, Any] = field(default_factory=dict)
+        aggregations: Dict[str, Any] = field(default_factory=dict)
 
     class SearchEngine:
         def __init__(self, elasticsearch_client=None, cache_enabled: bool = True):
@@ -51,7 +53,12 @@ except Exception:  # pragma: no cover - fallback to simple stubs
             )
             hits = resp.get("hits", {}).get("hits", [])
             results = [hit.get("_source", {}) for hit in hits]
-            return {"results": results}
+            total = resp.get("hits", {}).get("total", {}).get("value", len(results))
+            return {
+                "results": results,
+                "aggregations": resp.get("aggregations"),
+                "response_metadata": {"total_results": total},
+            }
 
         async def count(self, request: SearchRequest) -> int:
             resp = await self.elasticsearch_client.count(index=None, body=None)
@@ -255,6 +262,52 @@ class DummyElasticsearchClientAmountAbsLess:
                     }
                 ],
             }
+        }
+
+
+class DummyElasticsearchClientTransfersMay:
+    async def search(self, index, body, size, from_):
+        year = datetime.utcnow().strftime("%Y")
+        hits = [
+            {
+                "_score": 1.0,
+                "_source": {
+                    "transaction_id": f"t{i}",
+                    "user_id": 1,
+                    "amount": -10.0,
+                    "amount_abs": 10.0,
+                    "currency_code": "EUR",
+                    "transaction_type": "debit",
+                    "date": f"{year}-05-15",
+                    "primary_description": "Virement",
+                    "operation_type": "transfer",
+                },
+            }
+            for i in range(15)
+        ]
+        return {"hits": {"total": {"value": 15}, "hits": hits}}
+
+
+class DummyElasticsearchClientAggregationsJune:
+    async def search(self, index, body, size, from_):
+        return {
+            "hits": {"total": {"value": 0}, "hits": []},
+            "aggregations": {
+                "transaction_type_terms": {
+                    "buckets": [
+                        {
+                            "key": "debit",
+                            "doc_count": 8,
+                            "amount_sum": {"value": -500.0},
+                        },
+                        {
+                            "key": "credit",
+                            "doc_count": 6,
+                            "amount_sum": {"value": 800.0},
+                        },
+                    ]
+                }
+            },
         }
 
 @pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
@@ -517,6 +570,98 @@ def test_amount_detection_filters_transactions():
     )
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert len(response["results"]) == 58
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_transfer_count_in_may_returns_15():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="COUNT_TRANSACTIONS",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.OPERATION_TYPE,
+                raw_value="virements",
+                normalized_value="virements",
+                confidence=0.9,
+            ),
+            FinancialEntity(
+                entity_type=EntityType.DATE,
+                raw_value="mai",
+                normalized_value="mai",
+                confidence=0.9,
+            ),
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    user_message = "Combien de virements ai-je fait en mai ?"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    assert request_dict["filters"]["operation_type"] == "transfer"
+    year = datetime.utcnow().strftime("%Y")
+    assert request_dict["filters"]["date"] == {
+        "gte": f"{year}-05-01",
+        "lte": f"{year}-05-31",
+    }
+    engine = SearchEngine(
+        cache_enabled=False, elasticsearch_client=DummyElasticsearchClientTransfersMay()
+    )
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert response["response_metadata"]["total_results"] == 15
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_sum_debits_and_credits_in_june():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="SPENDING_ANALYSIS_BY_PERIOD",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.DATE,
+                raw_value="juin",
+                normalized_value="juin",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    user_message = "Somme des débits et crédits en juin"
+    search_contract = asyncio.run(
+        agent._generate_search_contract(intent_result, user_message, user_id=1)
+    )
+    request_dict = search_contract.to_search_request()
+    year = datetime.utcnow().strftime("%Y")
+    assert request_dict["filters"]["date"] == {
+        "gte": f"{year}-06-01",
+        "lte": f"{year}-06-31",
+    }
+    assert request_dict["aggregations"] == {
+        "metrics": ["sum"],
+        "group_by": ["transaction_type"],
+    }
+    engine = SearchEngine(
+        cache_enabled=False,
+        elasticsearch_client=DummyElasticsearchClientAggregationsJune(),
+    )
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    buckets = response["aggregations"]["transaction_type_terms"]["buckets"]
+    debit_bucket = next(b for b in buckets if b["key"] == "debit")
+    credit_bucket = next(b for b in buckets if b["key"] == "credit")
+    assert debit_bucket["amount_sum"]["value"] == -500.0
+    assert credit_bucket["amount_sum"]["value"] == 800.0
 
 
 def test_agent_aggregates_paginated_results(monkeypatch):

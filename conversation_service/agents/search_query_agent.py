@@ -1016,67 +1016,35 @@ class SearchQueryAgent(BaseFinancialAgent):
         entities: List[FinancialEntity] = []
 
         try:
-            entities_idx = ai_content.lower().find("entities:")
-            if entities_idx != -1:
-                json_block = ai_content[entities_idx + len("entities:") :].strip()
-                logger.debug(f"Raw entities JSON block: {json_block}")
+            parsed = json.loads(ai_content)
+            if not isinstance(parsed, list):
+                raise ValueError("Entity response is not a list")
+
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+
+                entity_type_str = item.get("type")
+                entity_value = item.get("value")
+
+                if not entity_type_str or entity_value in (None, ""):
+                    continue
+                if isinstance(entity_value, str) and entity_value.lower() == "aucune":
+                    continue
+
                 try:
-                    parsed = json.loads(json_block)
-                    if isinstance(parsed, list):
-                        for item in parsed:
-                            if isinstance(item, dict):
-                                for key, value in item.items():
-                                    if not value or (
-                                        isinstance(value, str)
-                                        and value.lower() == "aucune"
-                                    ):
-                                        continue
-                                    try:
-                                        entity_type = EntityType(key.upper())
-                                    except ValueError:
-                                        continue
-                                    entities.append(
-                                        FinancialEntity(
-                                            entity_type=entity_type,
-                                            raw_value=str(value),
-                                            normalized_value=str(value),
-                                            confidence=0.8,
-                                        )
-                                    )
-                        logger.debug(
-                            "Recognized entities: %s",
-                            [
-                                f"{getattr(e.entity_type, 'value', e.entity_type)}: {e.normalized_value}"
-                                for e in entities
-                            ],
-                        )
-                        return entities
-                except json.JSONDecodeError as e:
-                    logger.debug(f"JSON parsing failed: {e}")
+                    entity_type = EntityType(entity_type_str.upper())
+                except ValueError:
+                    continue
 
-            # Fallback to simple line-based parsing
-            lines = ai_content.strip().split("\n")
-            for line in lines:
-                if ":" in line:
-                    parts = line.split(":", 1)
-                    if len(parts) == 2:
-                        entity_type_str = parts[0].strip().upper()
-                        entity_value = parts[1].strip()
-
-                        if entity_value and entity_value.lower() != "aucune":
-                            try:
-                                entity_type = EntityType(entity_type_str)
-                            except ValueError:
-                                continue
-
-                            entities.append(
-                                FinancialEntity(
-                                    entity_type=entity_type,
-                                    raw_value=entity_value,
-                                    normalized_value=entity_value,
-                                    confidence=0.8,
-                                )
-                            )
+                entities.append(
+                    FinancialEntity(
+                        entity_type=entity_type,
+                        raw_value=str(entity_value),
+                        normalized_value=str(entity_value),
+                        confidence=0.8,
+                    )
+                )
 
             logger.debug(
                 "Recognized entities: %s",
@@ -1086,7 +1054,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 ],
             )
 
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
             logger.warning(f"Failed to parse entity response: {e}")
 
         return entities
@@ -1121,11 +1089,13 @@ Types d'entités à rechercher:
 - DATE_RANGE: Dates, périodes, mois, années
 - TRANSACTION_TYPE: Type de transaction (achat, virement, etc.)
 
-Format de réponse:
-TYPE_ENTITE: valeur_trouvée
-TYPE_ENTITE: autre_valeur
+Réponds uniquement avec un JSON valide au format:
+[
+  {"type": "MERCHANT", "value": "Carrefour"},
+  {"type": "DATE_RANGE", "value": "2023-01"}
+]
 
-Si aucune entité supplémentaire n'est trouvée, réponds: "aucune"."""
+Si aucune entité supplémentaire n'est trouvée, renvoie []."""
 
     async def close(self) -> None:
         """Close HTTP client resources."""

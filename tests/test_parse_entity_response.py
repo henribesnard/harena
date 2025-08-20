@@ -2,20 +2,25 @@ import sys
 import types
 
 
-def test_parse_entity_response_accepts_string_entity_type(monkeypatch):
+def _make_agent(monkeypatch):
+    """Create a SearchQueryAgent instance with minimal dependencies."""
     # Provide minimal modules to satisfy import requirements
     monkeypatch.setitem(sys.modules, "httpx", types.ModuleType("httpx"))
     dummy_deepseek = types.ModuleType("deepseek_client")
+
     class _DummyDeepSeek:
         pass
+
     dummy_deepseek.DeepSeekClient = _DummyDeepSeek
     monkeypatch.setitem(
         sys.modules, "conversation_service.core.deepseek_client", dummy_deepseek
     )
 
     dummy_base = types.ModuleType("base_financial_agent")
+
     class _DummyBase:  # placeholder for BaseFinancialAgent
         pass
+
     dummy_base.BaseFinancialAgent = _DummyBase
     monkeypatch.setitem(
         sys.modules, "conversation_service.agents.base_financial_agent", dummy_base
@@ -39,12 +44,16 @@ def test_parse_entity_response_accepts_string_entity_type(monkeypatch):
     )
 
     dummy_financial_models = types.ModuleType("financial_models")
+
     class _IntentResult:
         pass
+
     class _FinancialEntity:
         pass
+
     class _EntityType:
         pass
+
     dummy_financial_models.IntentResult = _IntentResult
     dummy_financial_models.FinancialEntity = _FinancialEntity
     dummy_financial_models.EntityType = _EntityType
@@ -72,11 +81,25 @@ def test_parse_entity_response_accepts_string_entity_type(monkeypatch):
     # Patch FinancialEntity to a simple container that keeps the string type
     monkeypatch.setattr(search_query_agent, "FinancialEntity", DummyEntity)
 
-    agent = search_query_agent.SearchQueryAgent.__new__(
+    return search_query_agent.SearchQueryAgent.__new__(
         search_query_agent.SearchQueryAgent
     )
-    content = "Entities:\nMERCHANT: Carrefour"
+
+
+def test_parse_entity_response_accepts_string_entity_type(monkeypatch):
+    agent = _make_agent(monkeypatch)
+    content = '[{"type": "MERCHANT", "value": "Carrefour"}]'
 
     entities = agent._parse_entity_response(content)
 
     assert entities and entities[0].entity_type == "MERCHANT"
+
+
+def test_parse_entity_response_handles_invalid_json(monkeypatch):
+    agent = _make_agent(monkeypatch)
+    content = "not json"
+
+    entities = agent._parse_entity_response(content)
+
+    assert entities == []
+

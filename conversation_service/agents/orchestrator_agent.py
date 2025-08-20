@@ -643,6 +643,10 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "intent_result": intent_result_dump,
                     "agent_chain": agent_chain,
                     "search_results_count": search_results_count,
+                    "workflow_data": {
+                        "search_results_count": search_results_count,
+                        "search_results": workflow_data.get("search_results"),
+                    },
                 },
                 "confidence_score": self._calculate_workflow_confidence(workflow_result),
                 "token_usage": self._aggregate_token_usage(workflow_result),
@@ -664,6 +668,10 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "intent_result": None,
                     "agent_chain": ["orchestrator_agent"],
                     "search_results_count": 0,
+                    "workflow_data": {
+                        "search_results_count": 0,
+                        "search_results": None,
+                    },
                 },
                 "confidence_score": 0.1
             }

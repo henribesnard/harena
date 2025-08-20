@@ -499,7 +499,7 @@ def test_amount_detection_filters_transactions():
         intent_agent.detect_intent("transactions supérieures à 100 €", user_id=1)
     )
     intent_result = intent_data["metadata"]["intent_result"]
-    intent_result.suggested_actions = ["filter_by_amount_greater"]
+    assert intent_result.suggested_actions == ["filter_by_amount_greater"]
 
     search_agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),
@@ -511,11 +511,12 @@ def test_amount_detection_filters_transactions():
         )
     )
     request_dict = search_contract.to_search_request()
+    assert request_dict["filters"].get("amount_abs", {}).get("gte") == 100
     engine = SearchEngine(
-        cache_enabled=False, elasticsearch_client=DummyElasticsearchClientHighAmount()
+        cache_enabled=False, elasticsearch_client=DummyElasticsearchClientHighAmountMany()
     )
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
-    assert len(response["results"]) == 2
+    assert len(response["results"]) == 58
 
 
 def test_agent_aggregates_paginated_results(monkeypatch):

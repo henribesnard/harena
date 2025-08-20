@@ -129,6 +129,46 @@ def test_generate_search_contract_deduplicates_terms():
     assert request["user_id"] == 1
 
 
+def test_default_limit_capped_to_100(monkeypatch):
+    monkeypatch.setenv("SEARCH_QUERY_DEFAULT_LIMIT", "150")
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "", user_id=1)
+    )
+    assert search_query.search_parameters.max_results == 100
+    assert agent.default_limit == 100
+
+
+def test_explicit_limit_capped_to_100():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "", user_id=1, limit=150)
+    )
+    assert search_query.search_parameters.max_results == 100
+
+
 def test_no_date_filter_without_time_constraint():
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),

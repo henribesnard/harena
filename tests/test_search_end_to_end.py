@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 
 from conversation_service.agents import base_financial_agent
 
@@ -6,6 +8,7 @@ from conversation_service.agents import base_financial_agent
 base_financial_agent.AUTOGEN_AVAILABLE = True
 
 from conversation_service.agents.search_query_agent import SearchQueryAgent
+from conversation_service.agents.llm_intent_agent import LLMIntentAgent
 from conversation_service.models.financial_models import (
     FinancialEntity,
     EntityType,
@@ -58,6 +61,24 @@ except Exception:  # pragma: no cover - fallback to simple stubs
 class DummyDeepSeekClient:
     api_key = "test-key"
     base_url = "http://api.example.com"
+
+
+class DummyOpenAIClient:
+    def __init__(self, content: str):
+        self._content = content
+
+        class _Completions:
+            async def create(_self, *args, **kwargs):
+                class Choice:
+                    message = type("Msg", (), {"content": content})
+
+                return type("Resp", (), {"choices": [Choice()]})
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        self.chat = _Chat()
 
 
 class DummyElasticsearchClient:
@@ -389,6 +410,52 @@ def test_amount_abs_filter_with_less_than_action():
     engine = SearchEngine(cache_enabled=False, elasticsearch_client=DummyElasticsearchClientAmountAbsLess())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"] and response["results"][0]["amount_abs"] < 100
+
+
+@pytest.mark.skipif(SearchEngine is None, reason="search_service not available")
+def test_amount_detection_filters_transactions():
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
+    openai_client = DummyOpenAIClient(
+        json.dumps(
+            {
+                "intent_type": "TRANSACTION_SEARCH",
+                "intent_category": "TRANSACTION_SEARCH",
+                "confidence": 0.9,
+                "entities": [
+                    {
+                        "entity_type": "AMOUNT",
+                        "value": "100€",
+                        "normalized_value": 100,
+                        "confidence": 0.9,
+                    }
+                ],
+            }
+        )
+    )
+    intent_agent = LLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
+    )
+    intent_data = asyncio.run(
+        intent_agent.detect_intent("transactions supérieures à 100 €", user_id=1)
+    )
+    intent_result = intent_data["metadata"]["intent_result"]
+    intent_result.suggested_actions = ["filter_by_amount_greater"]
+
+    search_agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    search_contract = asyncio.run(
+        search_agent._generate_search_contract(
+            intent_result, "transactions supérieures à 100 €", user_id=1
+        )
+    )
+    request_dict = search_contract.to_search_request()
+    engine = SearchEngine(
+        cache_enabled=False, elasticsearch_client=DummyElasticsearchClientHighAmount()
+    )
+    response = asyncio.run(engine.search(SearchRequest(**request_dict)))
+    assert len(response["results"]) == 2
 
 
 def test_agent_aggregates_paginated_results(monkeypatch):

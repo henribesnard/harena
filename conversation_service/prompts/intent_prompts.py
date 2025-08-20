@@ -73,8 +73,29 @@ ENTITÉS FINANCIÈRES À EXTRAIRE :
 - **périodes** : mensuel, hebdomadaire, ce trimestre
 
 FORMAT DE SORTIE STRICT :
+Réponds uniquement avec un JSON ayant la structure suivante :
 ```
 {
+  "intent_type": "...",
+  "intent_category": "...",
+  "confidence": 0.0-1.0,
+  "entities": [
+    {"entity_type": "...", "value": "...", "confidence": 0.0-1.0}
+  ]
+}
+```
+Chaque entité doit contenir les champs ``entity_type``, ``value`` et ``confidence``.
+
+**Exemple avec montant** :
+```
+MESSAGE: "transactions supérieures à 100 €"
+→ {
+  "intent_type": "TRANSACTION_SEARCH",
+  "intent_category": "TRANSACTION_SEARCH",
+  "confidence": 0.9,
+  "entities": [
+    {"entity_type": "AMOUNT", "value": "100", "confidence": 0.9}
+  ]
   "intent_type": "[intention_identifiée]",
   "intent_category": "[catégorie_benchmark]",
   "confidence": [0.0-1.0],

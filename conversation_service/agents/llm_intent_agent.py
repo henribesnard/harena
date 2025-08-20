@@ -166,8 +166,15 @@ class LLMIntentAgent(BaseFinancialAgent):
                             "entity_type": {"type": "string"},
                             "value": {"type": "string"},
                             "confidence": {"type": "number"},
+                            "normalized_value": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "number"},
+                                    {"type": "object"},
+                                ]
+                            },
                         },
-                        "required": ["entity_type", "value"],
+                        "required": ["entity_type", "value", "confidence"],
                     },
                 },
             },
@@ -304,6 +311,8 @@ class LLMIntentAgent(BaseFinancialAgent):
         for ent in entities_data:
             ent_type_str = str(ent.get("entity_type") or ent.get("type", "OTHER")).upper()
             value = ent.get("value")
+            ent_conf = float(ent.get("confidence", 0.9))
+            normalized = ent.get("normalized_value", value)
             try:
                 entity_type = EntityType(ent_type_str)
             except ValueError:
@@ -312,8 +321,8 @@ class LLMIntentAgent(BaseFinancialAgent):
                 FinancialEntity(
                     entity_type=entity_type,
                     raw_value=str(value),
-                    normalized_value=value,
-                    confidence=0.9,
+                    normalized_value=normalized,
+                    confidence=ent_conf,
                     start_position=None,
                     end_position=None,
                     detection_method=DetectionMethod.LLM_BASED,

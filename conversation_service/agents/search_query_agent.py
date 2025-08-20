@@ -41,6 +41,12 @@ from ..models.service_contracts import (
 from ..models.financial_models import IntentResult, FinancialEntity, EntityType
 from ..core.deepseek_client import DeepSeekClient
 from ..utils.validators import ContractValidator
+from ..prompts.search_prompts import (
+    SEARCH_GENERATION_SYSTEM_PROMPT,
+    format_search_prompt,
+    parse_search_response,
+)
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 # Dedicated logger for security/audit events
@@ -419,6 +425,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         deepseek_client: DeepSeekClient,
         search_service_url: str,
         config: Optional[AgentConfig] = None,
+        use_llm_query: Optional[bool] = None,
     ):
         """
         Initialize the search query agent.
@@ -456,6 +463,9 @@ class SearchQueryAgent(BaseFinancialAgent):
         self.query_optimizer = QueryOptimizer()
         self.default_limit = min(
             int(os.getenv("SEARCH_QUERY_DEFAULT_LIMIT", "100")), 100
+        )
+        self.use_llm_query = (
+            use_llm_query if use_llm_query is not None else settings.USE_LLM_QUERY
         )
 
         logger.info(
@@ -516,14 +526,37 @@ class SearchQueryAgent(BaseFinancialAgent):
 
             # Step 2: Generate search service query contract
             limit = limit or self.default_limit
-            search_query = await self._generate_search_contract(
-                intent_result,
-                user_message,
-                user_id,
-                enhanced_entities,
-                limit=limit,
-                offset=offset,
-            )
+            if self.use_llm_query:
+                try:
+                    search_query = await self.generate_query_with_llm(
+                        intent_result,
+                        user_message,
+                        user_id,
+                        enhanced_entities,
+                        limit=limit,
+                        offset=offset,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"LLM query generation failed: {e}, falling back to heuristic"
+                    )
+                    search_query = await self._generate_search_contract(
+                        intent_result,
+                        user_message,
+                        user_id,
+                        enhanced_entities,
+                        limit=limit,
+                        offset=offset,
+                    )
+            else:
+                search_query = await self._generate_search_contract(
+                    intent_result,
+                    user_message,
+                    user_id,
+                    enhanced_entities,
+                    limit=limit,
+                    offset=offset,
+                )
 
             logger.info(
                 "Search query generated: text=%s filters=%s",
@@ -557,13 +590,125 @@ class SearchQueryAgent(BaseFinancialAgent):
                 "token_usage": {
                     "prompt_tokens": 50,  # Estimated
                     "completion_tokens": 20,
-                    "total_tokens": 70,
+                "total_tokens": 70,
                 },
             }
 
         except Exception as e:
             logger.error(f"Search request processing failed: {e}")
             raise
+
+    async def generate_query_with_llm(
+        self,
+        intent_result: IntentResult,
+        user_message: str,
+        user_id: int,
+        enhanced_entities: Optional[List[FinancialEntity]] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> SearchServiceQuery:
+        """Generate a ``SearchServiceQuery`` using a DeepSeek LLM.
+
+        This method formats the intent and entities into a prompt, calls the
+        ``DeepSeekClient`` to create a search query and validates the returned
+        contract. Any validation error will raise ``ValueError`` to allow
+        fallback to the heuristic path.
+        """
+
+        # Merge entities
+        all_entities: List[FinancialEntity] = (
+            intent_result.entities.copy() if intent_result.entities else []
+        )
+        if enhanced_entities:
+            all_entities.extend(enhanced_entities)
+
+        entities_dict: Dict[str, List[str]] = {}
+        for ent in all_entities:
+            ent_type = getattr(ent.entity_type, "value", ent.entity_type)
+            entities_dict.setdefault(ent_type, []).append(str(ent.normalized_value))
+
+        intent_payload = {
+            "intent": intent_result.intent_type,
+            "confidence": intent_result.confidence,
+            "entities": entities_dict,
+        }
+
+        prompt = format_search_prompt(intent_payload, user_message)
+        response = await self.deepseek_client.generate_response(
+            messages=[
+                {"role": "system", "content": SEARCH_GENERATION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=settings.DEEPSEEK_QUERY_TEMPERATURE,
+            max_tokens=settings.DEEPSEEK_QUERY_MAX_TOKENS,
+            top_p=settings.DEEPSEEK_QUERY_TOP_P,
+            user=str(user_id),
+            use_cache=True,
+        )
+
+        query_dict = parse_search_response(response.content, str(user_id))
+
+        filters = query_dict.get("filters", {})
+        if "user_id" in filters:
+            try:
+                filters["user_id"] = int(filters["user_id"])
+            except (TypeError, ValueError):
+                filters["user_id"] = user_id
+
+        filters_obj = SearchFilters(**filters)
+
+        sorting = query_dict.get("sorting", [])
+        sort_by = None
+        sort_order = "desc"
+        if sorting and isinstance(sorting, list):
+            first = sorting[0]
+            if isinstance(first, dict):
+                sort_by, sort_order = next(iter(first.items()))
+
+        max_results = min(limit or query_dict.get("size", self.default_limit), 100)
+        search_params = SearchParameters(
+            search_text=query_dict.get("search_text"),
+            max_results=max_results,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            include_highlights=True,
+            fuzzy_matching=True,
+        )
+
+        aggregations = None
+        if query_dict.get("aggregations"):
+            agg = query_dict["aggregations"]
+            group_by = agg.get("group_by")
+            if isinstance(group_by, str):
+                group_by = [group_by]
+            aggregations = AggregationRequest(
+                group_by=group_by,
+                metrics=agg.get("metrics"),
+            )
+
+        query_metadata = QueryMetadata(
+            conversation_id=f"conv_{int(time.time())}",
+            user_id=user_id,
+            intent_type=intent_result.intent_type,
+            language="fr",
+            priority="normal",
+            source_agent=self.name,
+        )
+
+        search_query = SearchServiceQuery(
+            query_metadata=query_metadata,
+            search_parameters=search_params,
+            filters=filters_obj,
+            aggregations=aggregations,
+        )
+
+        validator = ContractValidator()
+        errors = validator.validate_search_query(search_query.dict())
+        if errors:
+            raise ValueError(f"Invalid LLM search query: {errors}")
+
+        return search_query
 
     async def _generate_search_contract(
         self,

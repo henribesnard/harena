@@ -14,3 +14,23 @@
       "intent_category": "ACCOUNT_BALANCE",
       "entities": []
     }
+
+- description: "Comparatif supérieur"
+  input: "Montre-moi les transactions plus de 100 €"
+  output: |
+    {
+      "intent_type": "TRANSACTION_SEARCH",
+      "intent_category": "TRANSACTION_SEARCH",
+      "entities": [{"entity_type": "AMOUNT", "value": "100 €"}],
+      "suggested_actions": ["filter_by_amount_greater"]
+    }
+
+- description: "Comparatif inférieur"
+  input: "Montre-moi les transactions moins que 50 €"
+  output: |
+    {
+      "intent_type": "TRANSACTION_SEARCH",
+      "intent_category": "TRANSACTION_SEARCH",
+      "entities": [{"entity_type": "AMOUNT", "value": "50 €"}],
+      "suggested_actions": ["filter_by_amount_less"]
+    }

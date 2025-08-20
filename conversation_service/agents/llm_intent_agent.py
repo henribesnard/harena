@@ -144,37 +144,6 @@ class LLMIntentAgent(BaseFinancialAgent):
         )
 
     @staticmethod
-    def _detect_amount_actions(message: str) -> Optional[List[str]]:
-        """Detect comparative keywords to suggest amount filters."""
-        normalized = unicodedata.normalize("NFD", message).encode(
-            "ascii", "ignore"
-        ).decode("utf-8").lower()
-
-        greater = [
-            "superieur",
-            "superieure",
-            "superieurs",
-            "superieures",
-            "plus de",
-            "plus que",
-        ]
-        less = [
-            "inferieur",
-            "inferieure",
-            "inferieurs",
-            "inferieures",
-            "moins de",
-            "moins que",
-        ]
-
-        actions: List[str] = []
-        if any(k in normalized for k in greater):
-            actions.append("filter_by_amount_greater")
-        if any(k in normalized for k in less):
-            actions.append("filter_by_amount_less")
-        return actions or None
-
-    @staticmethod
     def _detect_transaction_type(message: str) -> Optional[List[str]]:
         """Detect basic keywords implying transaction type.
 
@@ -406,10 +375,6 @@ class LLMIntentAgent(BaseFinancialAgent):
         suggested_actions = data.get("suggested_actions")
         if isinstance(suggested_actions, str):
             suggested_actions = [suggested_actions]
-        if not suggested_actions:
-            # When the LLM omits the field or returns an empty list we try to
-            # infer the action heuristically from the user message.
-            suggested_actions = self._detect_amount_actions(user_message)
 
         intent_type = data.get("intent_type", "OUT_OF_SCOPE")
         raw_category = data.get("intent_category", "GENERAL_QUESTION").upper()

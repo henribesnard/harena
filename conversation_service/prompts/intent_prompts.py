@@ -27,18 +27,42 @@ VOTRE MISSION :
 Analyser les messages utilisateur et identifier précisément leur intention financière, même quand le message est ambigu, conversationnel, ou complexe.
 
 TAXONOMIE DES INTENTIONS :
-1. **transaction_query** - Recherche de transactions spécifiques
-2. **spending_analysis** - Analyse des dépenses et habitudes
-3. **budget_inquiry** - Questions sur budget et planification
-4. **category_analysis** - Analyse par catégorie de dépenses
-5. **merchant_inquiry** - Questions sur marchands spécifiques
-6. **balance_inquiry** - Consultation soldes et positions
-7. **trend_analysis** - Analyse tendances et évolutions
-8. **comparison_query** - Comparaisons temporelles ou catégorielles
-9. **goal_tracking** - Suivi objectifs financiers
-10. **alert_management** - Gestion alertes et notifications
-11. **conversational** - Échange conversationnel sans intention financière spécifique
-12. **other** - Intentions non classifiables dans les catégories précédentes
+1. **TRANSACTION_SEARCH** - Toutes les transactions sans filtre
+2. **SEARCH_BY_DATE** - Transactions pour une date ou période
+3. **SEARCH_BY_AMOUNT** - Transactions par montant
+4. **SEARCH_BY_MERCHANT** - Transactions liées à un marchand
+5. **SEARCH_BY_CATEGORY** - Transactions par catégorie
+6. **SEARCH_BY_AMOUNT_AND_DATE** - Combinaison montant + date
+7. **SEARCH_BY_OPERATION_TYPE** - Transactions filtrées par type d'opération
+8. **SEARCH_BY_TEXT** - Recherche textuelle libre
+9. **COUNT_TRANSACTIONS** - Compter les transactions
+10. **MERCHANT_INQUIRY** - Analyse détaillée par marchand
+11. **FILTER_REQUEST** - Raffiner une requête transactionnelle
+12. **SPENDING_ANALYSIS** - Analyse globale des dépenses
+13. **SPENDING_ANALYSIS_BY_CATEGORY** - Analyse des dépenses par catégorie
+14. **SPENDING_ANALYSIS_BY_PERIOD** - Analyse des dépenses par période
+15. **SPENDING_COMPARISON** - Comparaison de périodes ou catégories
+16. **TREND_ANALYSIS** - Tendance ou évolution des dépenses
+17. **CATEGORY_ANALYSIS** - Répartition par catégories
+18. **COMPARISON_QUERY** - Comparaison ciblée
+19. **BALANCE_INQUIRY** - Solde global actuel
+20. **ACCOUNT_BALANCE_SPECIFIC** - Solde d'un compte précis
+21. **BALANCE_EVOLUTION** - Historique du solde
+22. **GREETING** - Salutation simple
+23. **CONFIRMATION** - Remerciement ou acquiescement
+24. **CLARIFICATION** - Demande de précision
+25. **GENERAL_QUESTION** - Question générale hors finance
+26. **TRANSFER_REQUEST** - Demande de virement (non supporté)
+27. **PAYMENT_REQUEST** - Paiement de facture (non supporté)
+28. **CARD_BLOCK** - Blocage de carte (non supporté)
+29. **BUDGET_INQUIRY** - Question sur le budget (non supporté)
+30. **GOAL_TRACKING** - Suivi d'objectif d'épargne (non supporté)
+31. **EXPORT_REQUEST** - Exporter des transactions (non supporté)
+32. **OUT_OF_SCOPE** - Requête hors domaine
+33. **UNCLEAR_INTENT** - Intention ambiguë
+34. **UNKNOWN** - Phrase inintelligible
+35. **TEST_INTENT** - Message de test
+36. **ERROR** - Entrée corrompue
 
 ENTITÉS FINANCIÈRES À EXTRAIRE :
 - **montants** : 50€, 1000 euros, moins de 100€
@@ -50,18 +74,19 @@ ENTITÉS FINANCIÈRES À EXTRAIRE :
 
 FORMAT DE SORTIE STRICT :
 ```
-INTENT: [intention_identifiée]
-CONFIDENCE: [0.0-1.0]
-ENTITIES: {json_des_entités_extraites}
-REASONING: [explication_courte_du_raisonnement]
+{
+  "intent_type": "[intention_identifiée]",
+  "intent_category": "[catégorie_benchmark]",
+  "confidence": [0.0-1.0],
+  "entities": [{"entity_type": "...", "value": "...", "confidence": [0.0-1.0]}]
+}
 ```
 
 INSTRUCTIONS IMPORTANTES :
 - Soyez précis mais pas trop restrictif dans la classification
 - Si l'intention est ambiguë, choisissez la plus probable et réduisez la confidence
 - Extrayez TOUTES les entités financières même approximatives
-- En cas d'incertitude majeure, utilisez "conversational" avec confidence < 0.5
-- Gardez le REASONING concis (max 1 phrase)
+- En cas d'incertitude majeure, utilisez "UNCLEAR_INTENT" avec confidence < 0.5
 - Respectez EXACTEMENT le format de sortie"""
 
 # =============================================================================
@@ -83,75 +108,48 @@ Répondez dans le format requis."""
 
 INTENT_EXAMPLES_FEW_SHOT = """EXEMPLES DE CLASSIFICATION :
 
-**Exemple 1 - Transaction Query Simple :**
-MESSAGE: "Mes achats chez Carrefour le mois dernier"
-INTENT: transaction_query
+**Exemple 1 - Recherche par montant :**
+MESSAGE: "Transactions de 50 euros"
+INTENT_TYPE: SEARCH_BY_AMOUNT
+INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.95
-ENTITIES: {"merchants": ["Carrefour"], "periods": ["mois dernier"]}
-REASONING: Recherche explicite de transactions avec marchand et période spécifiés.
+ENTITIES: {"amounts": ["50 euros"]}
 
-**Exemple 2 - Spending Analysis Complexe :**
-MESSAGE: "J'ai l'impression de trop dépenser en restaurant ces derniers temps"
-INTENT: spending_analysis
-CONFIDENCE: 0.85
-ENTITIES: {"categories": ["restaurant"], "periods": ["ces derniers temps"], "sentiment": ["trop dépenser"]}
-REASONING: Analyse subjective des habitudes de dépense dans une catégorie.
+**Exemple 2 - Recherche par date :**
+MESSAGE: "Transactions de mars 2024"
+INTENT_TYPE: SEARCH_BY_DATE
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.92
+ENTITIES: {"dates": ["mars 2024"]}
 
-**Exemple 3 - Budget Inquiry :**
-MESSAGE: "Il me reste combien sur mon budget courses ce mois-ci ?"
-INTENT: budget_inquiry
+**Exemple 3 - Analyse par catégorie :**
+MESSAGE: "Analyse des dépenses alimentaires"
+INTENT_TYPE: SPENDING_ANALYSIS_BY_CATEGORY
+INTENT_CATEGORY: SPENDING_ANALYSIS
 CONFIDENCE: 0.90
-ENTITIES: {"categories": ["courses"], "periods": ["ce mois-ci"], "budget_type": ["remaining"]}
-REASONING: Question directe sur le budget restant dans une catégorie.
+ENTITIES: {"categories": ["alimentaire"]}
 
-**Exemple 4 - Conversational Ambigu :**
-MESSAGE: "Salut ! Comment ça va ?"
-INTENT: conversational
+**Exemple 4 - Solde de compte :**
+MESSAGE: "Quel est mon solde actuel ?"
+INTENT_TYPE: BALANCE_INQUIRY
+INTENT_CATEGORY: ACCOUNT_BALANCE
+CONFIDENCE: 0.93
+ENTITIES: {}
+
+**Exemple 5 - Salutation :**
+MESSAGE: "Bonjour !"
+INTENT_TYPE: GREETING
+INTENT_CATEGORY: GREETING
 CONFIDENCE: 0.30
 ENTITIES: {}
-REASONING: Salutation sans intention financière identifiable.
 
-**Exemple 5 - Trend Analysis avec Montants :**
-MESSAGE: "Est-ce que je dépense plus que 500€ par mois en moyenne ?"
-INTENT: trend_analysis
-CONFIDENCE: 0.88
-ENTITIES: {"amounts": ["500€"], "periods": ["par mois"], "analysis_type": ["average", "comparison"]}
-REASONING: Analyse comparative des dépenses avec seuil monétaire.
-
-**Exemple 6 - Merchant Inquiry :**
-MESSAGE: "J'ai dépensé combien chez Amazon l'année dernière ?"
-INTENT: merchant_inquiry
-CONFIDENCE: 0.92
-ENTITIES: {"merchants": ["Amazon"], "periods": ["l'année dernière"]}
-REASONING: Question sur dépenses liées à un marchand spécifique.
-
-**Exemple 7 - Balance Inquiry :**
-MESSAGE: "Quel est le solde de mon compte épargne ?"
-INTENT: balance_inquiry
-CONFIDENCE: 0.93
-ENTITIES: {"accounts": ["compte épargne"]}
-REASONING: Demande explicite de solde d'un compte.
-
-**Exemple 8 - Goal Tracking :**
-MESSAGE: "Où en est mon objectif d'épargne de 5000€ ?"
-INTENT: goal_tracking
-CONFIDENCE: 0.88
-ENTITIES: {"categories": ["épargne"], "amounts": ["5000€"]}
-REASONING: Suivi d'un objectif financier défini.
-
-**Exemple 9 - Alert Management :**
-MESSAGE: "Préviens-moi si mes dépenses resto dépassent 200€."
-INTENT: alert_management
-CONFIDENCE: 0.90
-ENTITIES: {"categories": ["resto"], "amounts": ["200€"]}
-REASONING: Configuration d'une alerte basée sur un seuil de dépense.
-
-**Exemple 10 - Comparison Query :**
-MESSAGE: "Ai-je dépensé plus en transport ce mois-ci que le mois dernier ?"
-INTENT: comparison_query
-CONFIDENCE: 0.87
-ENTITIES: {"categories": ["transport"], "periods": ["ce mois-ci", "mois dernier"], "analysis_type": ["comparison"]}
-REASONING: Comparaison de dépenses entre deux périodes."""
+**Exemple 6 - Intention ambiguë :**
+MESSAGE: "Je ne sais pas, fais quelque chose"
+INTENT_TYPE: UNCLEAR_INTENT
+INTENT_CATEGORY: UNCLEAR_INTENT
+CONFIDENCE: 0.20
+ENTITIES: {}
+"""
 
 # =============================================================================
 # FONCTIONS DE FORMATAGE

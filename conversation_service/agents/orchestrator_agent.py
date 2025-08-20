@@ -215,6 +215,27 @@ class WorkflowExecutor:
                         if search_response.success:
                             # Store complete search response object for downstream agents
                             workflow_data["search_results"] = search_response
+
+                            # Extract and store search results metadata for workflow reporting
+                            metadata = getattr(search_response, "metadata", {}) or {}
+                            results = []
+                            results_count = metadata.get("search_results_count")
+                            if results_count is None:
+                                sr_meta = metadata.get("search_response", {})
+                                if isinstance(sr_meta, dict):
+                                    results = sr_meta.get("results", []) or []
+                                    rm = sr_meta.get("response_metadata", {})
+                                    results_count = rm.get("returned_results", len(results))
+                                else:
+                                    results_count = 0
+                            else:
+                                sr_meta = metadata.get("search_response", {})
+                                if isinstance(sr_meta, dict):
+                                    results = sr_meta.get("results", []) or []
+
+                            workflow_data["search_results_count"] = results_count
+                            workflow_data["search_results_sample"] = results[:3]
+
                             search_step.status = WorkflowStepStatus.COMPLETED
                             search_step.result = search_response
                         else:
@@ -605,17 +626,26 @@ class OrchestratorAgent(BaseFinancialAgent):
             # Extract workflow data for additional metadata
             workflow_data = workflow_result.get("workflow_data", {})
             intent_result = workflow_data.get("intent_result")
-            search_metadata = workflow_data.get("search_results") or {}
-            metadata = (
-                search_metadata.get("metadata", {})
-                if isinstance(search_metadata, dict)
-                else {}
-            )
-            search_results_count = metadata.get("search_results_count")
-            if search_results_count is None:
-                sr_meta = metadata.get("search_response", {}) if isinstance(metadata, dict) else {}
-                rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
-                search_results_count = rm.get("returned_results", 0)
+            search_results_count = workflow_data.get("search_results_count")
+            search_results = workflow_data.get("search_results_sample")
+            if search_results_count is None or search_results is None:
+                search_metadata = workflow_data.get("search_results") or {}
+                metadata = (
+                    search_metadata.get("metadata", {})
+                    if isinstance(search_metadata, dict)
+                    else {}
+                )
+                if search_results_count is None:
+                    search_results_count = metadata.get("search_results_count")
+                    if search_results_count is None:
+                        sr_meta = metadata.get("search_response", {}) if isinstance(metadata, dict) else {}
+                        rm = sr_meta.get("response_metadata", {}) if isinstance(sr_meta, dict) else {}
+                        search_results_count = rm.get("returned_results", 0)
+                if search_results is None and isinstance(metadata, dict):
+                    sr_meta = metadata.get("search_response", {}) if isinstance(metadata.get("search_response"), dict) else {}
+                    results = sr_meta.get("results") if isinstance(sr_meta, dict) else None
+                    if isinstance(results, list):
+                        search_results = results[:3]
 
             intent_result_dump = None
             if intent_result is not None:
@@ -645,7 +675,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                     "search_results_count": search_results_count,
                     "workflow_data": {
                         "search_results_count": search_results_count,
-                        "search_results": workflow_data.get("search_results"),
+                        "search_results": search_results,
                     },
                 },
                 "confidence_score": self._calculate_workflow_confidence(workflow_result),

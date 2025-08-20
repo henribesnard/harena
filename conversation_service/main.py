@@ -12,18 +12,11 @@ from contextlib import asynccontextmanager
 from typing import Dict, Any
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-
-from .api.middleware import GlobalExceptionMiddleware
-
 
 from .api.exception_middleware import GlobalExceptionMiddleware
 from .api.middleware import setup_middleware
-from .api.routes import router as api_router
-from .api.websocket import router as websocket_router
-
-from .api.middleware import setup_middleware
+from .api.routes import router as api_router, websocket_router
 
 
 from config.openai_config import OpenAISettings
@@ -83,16 +76,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
-    # Configure CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["X-Process-Time", "X-Agent-Used"]
-    )
-    
     # Configure trusted hosts (security)
     if environment == "production":
         app.add_middleware(
@@ -109,11 +92,7 @@ def create_app() -> FastAPI:
     setup_middleware(app)
 
     # Include routes
-    app.include_router(
-        api_router,
-        prefix="/api/v1",
-        tags=["conversation"],
-    )
+    app.include_router(api_router)
     app.include_router(websocket_router)
 
     # Add root endpoint
@@ -129,11 +108,6 @@ def create_app() -> FastAPI:
             "api_base": "/api/v1",
         }
     
-    """Create and configure the FastAPI application."""
-    app = FastAPI(title="Conversation Service")
-    setup_middleware(app)
-    app.include_router(api_router)
-
     return app
 
 

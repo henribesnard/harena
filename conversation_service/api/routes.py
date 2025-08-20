@@ -23,6 +23,9 @@ from .dependencies import (
     validate_conversation_request,
     validate_request_rate_limit,
 )
+from .websocket import ws_router
+from ..core.conversation_manager import ConversationManager
+
 from ..models.conversation_models import (
     ConversationRequest,
     ConversationResponse,
@@ -409,6 +412,11 @@ async def healthcheck() -> Dict[str, str]:
     return {"status": "ok"}
 
 
+# Include routers in main router
+router.include_router(chat_router)
+router.include_router(health_router)
+router.include_router(conversations_router)
+router.include_router(ws_router)
 @router.get("/metrics")
 async def metrics_endpoint(metrics: MetricsCollector = Depends(get_metrics_collector)) -> Dict[str, Any]:
     """Expose collected metrics."""

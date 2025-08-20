@@ -84,3 +84,16 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Fichiers binaires
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.mp3
+*.mp4
+*.wav
+*.zip
+*.tar
+*.gz

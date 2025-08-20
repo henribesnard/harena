@@ -680,6 +680,7 @@ class SearchQueryAgent(BaseFinancialAgent):
 
         aggregations = None
         if intent_result.intent_type in {
+            "SPENDING_ANALYSIS",
             "SPENDING_ANALYSIS_BY_PERIOD",
             "COUNT_TRANSACTIONS",
             "SPENDING_COMPARISON",

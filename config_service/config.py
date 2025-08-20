@@ -132,6 +132,8 @@ class GlobalSettings(BaseSettings):
     LLM_CACHE_ENABLED: bool = os.environ.get("LLM_CACHE_ENABLED", "True").lower() == "true"
     LLM_CACHE_TTL: int = int(os.environ.get("LLM_CACHE_TTL", "300"))
     LLM_CACHE_MAX_SIZE: int = int(os.environ.get("LLM_CACHE_MAX_SIZE", "1000"))
+    LLM_TEMPERATURE: float = float(os.environ.get("LLM_TEMPERATURE", "0.1"))
+    LLM_TOP_P: float = float(os.environ.get("LLM_TOP_P", os.environ.get("TOP_P", "0.95")))
     DEEPSEEK_EXPECTED_LATENCY_MS: int = int(os.environ.get("DEEPSEEK_EXPECTED_LATENCY_MS", "1500"))
     
     # ==========================================

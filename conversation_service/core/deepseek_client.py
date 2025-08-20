@@ -371,9 +371,15 @@ class DeepSeekClient:
         cache_data = {
             "messages": messages,
             "model": kwargs.get("model", "deepseek-chat"),
-            "temperature": kwargs.get("temperature", 1.0),
+            "temperature": kwargs.get(
+                "temperature",
+                float(os.getenv("LLM_TEMPERATURE", os.getenv("DEEPSEEK_TEMPERATURE", "0.1")))
+            ),
             "max_tokens": kwargs.get("max_tokens", 2048),
-            "top_p": kwargs.get("top_p", 0.95)
+            "top_p": kwargs.get(
+                "top_p",
+                float(os.getenv("LLM_TOP_P", os.getenv("DEEPSEEK_TOP_P", "0.95")))
+            ),
         }
         
         return generate_cache_key("deepseek_completion", **cache_data)
@@ -437,11 +443,19 @@ class DeepSeekClient:
 
         # Paramètres par défaut depuis env vars
         model = model or os.getenv('DEEPSEEK-CHAT-MODEL', 'deepseek-chat')
-        temperature = temperature if temperature is not None else float(os.getenv('DEEPSEEK_TEMPERATURE', '1.0'))
+        temperature = (
+            temperature
+            if temperature is not None
+            else float(os.getenv('LLM_TEMPERATURE', os.getenv('DEEPSEEK_TEMPERATURE', '0.1')))
+        )
         max_allowed = int(os.getenv('DEEPSEEK_MAX_TOKENS', '1024'))
         max_tokens = max_tokens or max_allowed
         max_tokens = min(max_tokens, max_allowed)
-        top_p = top_p if top_p is not None else float(os.getenv('DEEPSEEK_TOP_P', '0.95'))
+        top_p = (
+            top_p
+            if top_p is not None
+            else float(os.getenv('LLM_TOP_P', os.getenv('DEEPSEEK_TOP_P', '0.95')))
+        )
 
         # Optimisation des messages
         optimized_messages = DeepSeekOptimizer.optimize_messages(messages)
@@ -597,6 +611,15 @@ class DeepSeekClient:
         Returns:
             ChatCompletion response
         """
+        if "temperature" not in kwargs:
+            kwargs["temperature"] = float(
+                os.getenv("LLM_TEMPERATURE", os.getenv("DEEPSEEK_TEMPERATURE", "0.1"))
+            )
+        if "top_p" not in kwargs:
+            kwargs["top_p"] = float(
+                os.getenv("LLM_TOP_P", os.getenv("DEEPSEEK_TOP_P", "0.95"))
+            )
+
         return await self.create_completion(
             messages=messages,
             model=os.getenv('DEEPSEEK-CHAT-MODEL', 'deepseek-chat'),
@@ -636,8 +659,13 @@ class DeepSeekClient:
         # Paramètres optimisés pour Reasoner
         reasoner_params = {
             "model": os.getenv('DEEPSEEK-REASONER-MODEL', 'deepseek-reasoner'),
-            "temperature": 0.1,  # Plus déterministe pour le raisonnement
+            "temperature": float(
+                os.getenv('LLM_TEMPERATURE', os.getenv('DEEPSEEK_TEMPERATURE', '0.1'))
+            ),  # Plus déterministe pour le raisonnement
             "max_tokens": 2000,  # Reasoner génère plus de texte
+            "top_p": float(
+                os.getenv('LLM_TOP_P', os.getenv('DEEPSEEK_TOP_P', '0.95'))
+            ),
             **kwargs
         }
 

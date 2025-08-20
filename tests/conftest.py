@@ -138,21 +138,16 @@ def create_autogen_stub():
 def install_stubs():
     """Installe tous les stubs nécessaires."""
     
-    # Pydantic - toujours installer le stub en premier
-    # pour éviter les problèmes d'import avec FastAPI
-    if "pydantic" not in sys.modules:
+    # Pydantic - utiliser la vraie bibliothèque si disponible
+    try:
+        import pydantic
+        if not hasattr(pydantic, 'create_model'):
+            # Ajouter create_model si manquant
+            def _create_model(name, **fields):
+                return type(name, (pydantic.BaseModel,), fields)
+            pydantic.create_model = _create_model
+    except ImportError:
         sys.modules["pydantic"] = create_pydantic_stub()
-    else:
-        # Si pydantic est déjà importé, vérifier qu'il a create_model
-        try:
-            import pydantic
-            if not hasattr(pydantic, 'create_model'):
-                # Ajouter create_model si manquant
-                def _create_model(name, **fields):
-                    return type(name, (pydantic.BaseModel,), fields)
-                pydantic.create_model = _create_model
-        except ImportError:
-            sys.modules["pydantic"] = create_pydantic_stub()
     
     # OpenAI
     try:

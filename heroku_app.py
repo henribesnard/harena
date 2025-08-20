@@ -111,7 +111,6 @@ class ServiceLoader:
             logger.info(f"🔑 Clé API configurée: {api_key[:20]}...")
 
             # Import et initialisation du conversation service
-            from config_service.config import settings
             # Vérifier OPENAI_API_KEY
             openai_key = settings.OPENAI_API_KEY
             if not openai_key:

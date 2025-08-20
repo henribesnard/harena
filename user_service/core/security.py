@@ -5,7 +5,7 @@ import logging
 from jose import jwt
 from passlib.context import CryptContext
 
-from config_service.config import settings
+from config.settings import settings
 
 # Configuration des logs
 logging.basicConfig(level=logging.INFO)

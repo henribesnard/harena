@@ -874,3 +874,119 @@ def test_aggregation_request_added(intent_type):
         "metrics": ["sum"],
         "group_by": ["transaction_type"],
     }
+
+
+def _minimal_query(user_id: int = 1) -> SearchServiceQuery:
+    return SearchServiceQuery(
+        query_metadata=QueryMetadata(
+            conversation_id="c1",
+            user_id=user_id,
+            intent_type="TRANSACTION_SEARCH",
+            language="fr",
+            priority="normal",
+            source_agent="search_query_agent",
+        ),
+        search_parameters=SearchParameters(
+            search_text="test",
+            max_results=10,
+            offset=0,
+        ),
+        filters=SearchFilters(user_id=user_id),
+    )
+
+
+def _minimal_response() -> SearchServiceResponse:
+    return SearchServiceResponse(
+        response_metadata=ResponseMetadata(
+            query_id="q1",
+            processing_time_ms=1.0,
+            total_results=0,
+            returned_results=0,
+            has_more_results=False,
+            search_strategy_used="lexical",
+        ),
+        results=[],
+        success=True,
+    )
+
+
+def test_process_search_request_uses_llm(monkeypatch):
+    calls = {"llm": 0}
+
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+        use_llm_query=True,
+    )
+
+    async def dummy_extract(msg, intent, user_id):
+        return []
+
+    async def dummy_llm(*args, **kwargs):
+        calls["llm"] += 1
+        return _minimal_query()
+
+    async def dummy_execute(query):
+        return _minimal_response()
+
+    async def fail_fallback(*args, **kwargs):
+        raise AssertionError("fallback should not be used")
+
+    monkeypatch.setattr(agent, "_extract_additional_entities", dummy_extract)
+    monkeypatch.setattr(agent, "generate_query_with_llm", dummy_llm)
+    monkeypatch.setattr(agent, "_execute_search_query", dummy_execute)
+    monkeypatch.setattr(agent, "_generate_search_contract", fail_fallback)
+
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    asyncio.run(agent.process_search_request(intent_result, "msg", user_id=1))
+    assert calls["llm"] == 1
+
+
+def test_process_search_request_fallback_on_llm_error(monkeypatch):
+    calls = {"llm": 0, "fallback": 0}
+
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+        use_llm_query=True,
+    )
+
+    async def dummy_extract(msg, intent, user_id):
+        return []
+
+    async def failing_llm(*args, **kwargs):
+        calls["llm"] += 1
+        raise ValueError("bad")
+
+    async def fallback_generate(*args, **kwargs):
+        calls["fallback"] += 1
+        return _minimal_query()
+
+    async def dummy_execute(query):
+        return _minimal_response()
+
+    monkeypatch.setattr(agent, "_extract_additional_entities", dummy_extract)
+    monkeypatch.setattr(agent, "generate_query_with_llm", failing_llm)
+    monkeypatch.setattr(agent, "_generate_search_contract", fallback_generate)
+    monkeypatch.setattr(agent, "_execute_search_query", dummy_execute)
+
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    asyncio.run(agent.process_search_request(intent_result, "msg", user_id=1))
+    assert calls["llm"] == 1
+    assert calls["fallback"] == 1

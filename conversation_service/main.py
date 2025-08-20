@@ -17,7 +17,6 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from .api.middleware import GlobalExceptionMiddleware
 
 from .api.routes import router as api_router
-from .api.websocket import router as websocket_router
 from .api.middleware import setup_middleware
 
 from config.openai_config import OpenAISettings
@@ -122,6 +121,11 @@ def create_app() -> FastAPI:
             "health_check": "/health",
             "api_base": "/api/v1",
         }
+    
+    """Create and configure the FastAPI application."""
+    app = FastAPI(title="Conversation Service")
+    setup_middleware(app)
+    app.include_router(api_router)
 
     return app
 

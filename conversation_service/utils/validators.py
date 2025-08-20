@@ -20,7 +20,7 @@ import logging
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import re
-import os
+from config.settings import settings
 
 # Imports Pydantic pour validation
 from pydantic import ValidationError as PydanticValidationError
@@ -86,7 +86,7 @@ class ContractValidator:
         Args:
             strict_mode: Mode strict (défaut depuis env var)
         """
-        strict_env = os.getenv('VALIDATION_STRICT', 'true').lower() == 'true'
+        strict_env = settings.VALIDATION_STRICT
         self.strict_mode = strict_mode if strict_mode is not None else strict_env
         
         logger.debug(f"ContractValidator initialized: strict_mode={self.strict_mode}")

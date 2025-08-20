@@ -15,7 +15,6 @@ import asyncio
 import json
 import time
 import logging
-import os
 import unicodedata
 import re
 from typing import Any, Dict, List, Optional
@@ -42,6 +41,7 @@ from ..prompts.intent_prompts import (
     INTENT_EXAMPLES_FEW_SHOT,
 )
 from ..constants import TRANSACTION_TYPES
+from config.openai_config import OpenAISettings
 
 # Mapping to harmonise categories with internal enums
 CATEGORY_MAP: Dict[str, str] = {
@@ -88,7 +88,7 @@ class LLMIntentAgent(BaseFinancialAgent):
         config: Optional[AgentConfig] = None,
         openai_client: Optional[Any] = None,
     ) -> None:
-        api_key = os.getenv("OPENAI_API_KEY", "")
+        api_key = OpenAISettings().OPENAI_API_KEY
         if config is None:
             config = AgentConfig(
                 name="llm_intent_agent",
@@ -272,7 +272,7 @@ class LLMIntentAgent(BaseFinancialAgent):
     ) -> Dict[str, Any]:
         """Detect the intent of ``user_message``.
 
-        The DeepSeek client returns a JSON document describing the intent and any
+        The OpenAI client returns a JSON document describing the intent and any
         extracted entities.  This method converts that JSON into an
         :class:`IntentResult` and wraps it in the structure used by the rest of
         the service.

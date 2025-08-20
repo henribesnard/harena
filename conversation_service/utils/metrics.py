@@ -1,13 +1,12 @@
-"""
-Système de métriques et monitoring pour Conversation Service MVP.
+"""Système de métriques et monitoring pour Conversation Service MVP.
 
-Ce module fournit un système complet de collecte, agrégation et reporting
-des métriques de performance pour tous les agents AutoGen, le client DeepSeek
-et les opérations du service.
+Ce module fournit un système complet de collecte, d'agrégation et de
+reporting des métriques de performance pour tous les agents AutoGen et
+les opérations du service.
 
 Features :
 - Collecte temps réel des métriques agents
-- Monitoring performance DeepSeek (tokens, coûts, latence)
+- Monitoring performance LLM (tokens, coûts, latence)
 - Agrégation intelligente avec histogrammes
 - Alertes automatiques sur seuils
 - Export métriques pour monitoring externe
@@ -28,6 +27,8 @@ from enum import Enum
 import os
 import uuid
 import statistics
+
+from config.settings import settings
 try:  # pragma: no cover - psutil may not be available in all environments
     import psutil
 except Exception:  # pragma: no cover
@@ -155,8 +156,8 @@ class PerformanceMonitor:
         self._lock = threading.RLock()
         
         # Seuils d'alerte depuis env vars
-        self.performance_threshold_ms = float(os.getenv('PERFORMANCE_ALERT_THRESHOLD_MS', '1000'))
-        self.error_rate_threshold = float(os.getenv('ERROR_RATE_ALERT_THRESHOLD', '0.05'))
+        self.performance_threshold_ms = settings.PERFORMANCE_ALERT_THRESHOLD_MS
+        self.error_rate_threshold = settings.ERROR_RATE_ALERT_THRESHOLD
         
         logger.debug(f"PerformanceMonitor initialized: window={window_size}, threshold={self.performance_threshold_ms}ms")
     
@@ -309,8 +310,8 @@ class MetricsCollector:
         Args:
             collection_interval: Intervalle de collecte en secondes
         """
-        self.collection_interval = collection_interval or int(os.getenv('METRICS_COLLECTION_INTERVAL', '60'))
-        self.enabled = os.getenv('ENABLE_METRICS', 'true').lower() == 'true'
+        self.collection_interval = collection_interval or settings.METRICS_COLLECTION_INTERVAL
+        self.enabled = settings.ENABLE_METRICS
         self.start_time = time.time()
         
         # Stockage des métriques
@@ -494,36 +495,27 @@ class MetricsCollector:
                 level=AlertLevel.WARNING
             )
     
-    def record_deepseek_usage(
+    def record_llm_usage(
         self,
         model: str,
         input_tokens: int,
         output_tokens: int,
         duration_ms: float,
         cost_usd: float,
-        success: bool = True
+        success: bool = True,
     ) -> None:
-        """
-        Enregistre l'utilisation de DeepSeek.
-        
-        Args:
-            model: Modèle utilisé
-            input_tokens: Tokens d'entrée
-            output_tokens: Tokens de sortie
-            duration_ms: Durée de l'appel
-            cost_usd: Coût en USD
-            success: Succès de l'appel
-        """
+        """Enregistre l'utilisation d'un modèle LLM générique."""
+
         labels = {"model": model, "success": str(success)}
-        
-        self.record_counter("deepseek_requests_total", 1.0, labels)
-        self.record_counter("deepseek_input_tokens_total", input_tokens, labels)
-        self.record_counter("deepseek_output_tokens_total", output_tokens, labels)
-        self.record_counter("deepseek_cost_usd_total", cost_usd, labels)
-        self.record_timer("deepseek_request_duration_ms", duration_ms, labels)
-        
+
+        self.record_counter("llm_requests_total", 1.0, labels)
+        self.record_counter("llm_input_tokens_total", input_tokens, labels)
+        self.record_counter("llm_output_tokens_total", output_tokens, labels)
+        self.record_counter("llm_cost_usd_total", cost_usd, labels)
+        self.record_timer("llm_request_duration_ms", duration_ms, labels)
+
         if not success:
-            self.record_counter("deepseek_errors_total", 1.0, {"model": model})
+            self.record_counter("llm_errors_total", 1.0, {"model": model})
     
     def _make_key(self, name: str, labels: Optional[Dict[str, str]]) -> str:
         """Génère une clé unique pour une métrique avec labels."""
@@ -710,7 +702,7 @@ class MetricsCollector:
                 "alerts": [alert.to_dict() for alert in self._alerts[-10:]],  # 10 dernières alertes
                 "performance": {
                     name: self.performance_monitor.get_performance_stats(name)
-                    for name in ["agent_execution", "intent_detection", "deepseek_request"]
+                    for name in ["agent_execution", "intent_detection", "llm_request"]
                 }
             }
     

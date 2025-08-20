@@ -1,7 +1,7 @@
 """
 💬 Response Generation Prompts - Génération Réponses Contextuelles
 
-Ce module contient les prompts optimisés DeepSeek pour générer des réponses
+Ce module contient les prompts optimisés OpenAI pour générer des réponses
 finales enrichies, contextuelles et naturelles à partir des résultats du Search Service.
 """
 

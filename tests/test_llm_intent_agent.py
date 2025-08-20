@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime
 import pytest
 import conversation_service.agents.base_financial_agent as base_financial_agent
 base_financial_agent.AUTOGEN_AVAILABLE = True
@@ -95,7 +96,11 @@ def test_transaction_type_post_processing(message, expected):
 
 @pytest.mark.parametrize(
     "message, month_txt, month_num",
-    [("en mai ?", "mai", "05"), ("en juin ?", "juin", "06")],
+    [
+        ("en mai ?", "mai", "05"),
+        ("en juin ?", "juin", "06"),
+        ("transactions au mois de mai", "mai", "05"),
+    ],
 )
 def test_month_regex_fallback_and_injection(message, month_txt, month_num):
     os.environ["OPENAI_API_KEY"] = "openai-test-key"
@@ -108,7 +113,8 @@ def test_month_regex_fallback_and_injection(message, month_txt, month_num):
     result = asyncio.run(agent.detect_intent(message, user_id=1))
     intent_result = result["metadata"]["intent_result"]
     dates = [e for e in intent_result.entities if e.entity_type == EntityType.DATE]
-    assert dates and dates[0].normalized_value == month_txt
+    current_year = datetime.utcnow().year
+    assert dates and dates[0].normalized_value == f"{month_txt} {current_year}"
     assert intent_result.intent_type == "SEARCH_BY_DATE"
     assert intent_result.intent_category == IntentCategory.FINANCIAL_QUERY
     filters = QueryOptimizer.extract_date_filters(intent_result)

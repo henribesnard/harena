@@ -19,6 +19,7 @@ import os
 import unicodedata
 import re
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 try:  # pragma: no cover - library may be absent in tests
     from openai import AsyncOpenAI
@@ -66,7 +67,11 @@ FRENCH_MONTHS = [
     "décembre",
     "decembre",
 ]
-MONTH_REGEX = re.compile(r"\b(" + "|".join(FRENCH_MONTHS) + r")\b", re.IGNORECASE)
+# Regex capturing expressions like "en juin", "au mois de mai", optionally followed by a year
+MONTH_PHRASE_REGEX = re.compile(
+    r"(?:\b(?:en|au\s+mois\s+de|mois\s+de)\s+)?\b(" + "|".join(FRENCH_MONTHS) + r")\b(?:\s+(\d{4}))?",
+    re.IGNORECASE,
+)
 
 
 class LLMOutputParsingError(RuntimeError):
@@ -211,9 +216,16 @@ class LLMIntentAgent(BaseFinancialAgent):
         return value
 
     @staticmethod
-    def _extract_months(message: str) -> List[str]:
-        """Return list of French month names found in ``message``."""
-        return [m.lower() for m in MONTH_REGEX.findall(message.lower())]
+    def _extract_months(message: str) -> List[tuple[str, str]]:
+        """Return list of (raw_month, normalized_with_year) found in ``message``."""
+        current_year = datetime.utcnow().year
+        results: List[tuple[str, str]] = []
+        for match in MONTH_PHRASE_REGEX.finditer(message):
+            month = match.group(1).lower()
+            year = match.group(2) or str(current_year)
+            normalized = f"{month} {year}"
+            results.append((month, normalized))
+        return results
 
     def _regex_fallback(self, user_message: str) -> Dict[str, Any]:
         """Fallback intent detection using regex for French months."""
@@ -221,12 +233,12 @@ class LLMIntentAgent(BaseFinancialAgent):
         entities = [
             FinancialEntity(
                 entity_type=EntityType.DATE,
-                raw_value=m,
-                normalized_value=m,
+                raw_value=raw,
+                normalized_value=norm,
                 confidence=0.5,
                 detection_method=DetectionMethod.FALLBACK,
             )
-            for m in months
+            for raw, norm in months
         ]
         intent_type = "SEARCH_BY_DATE" if entities else "GENERAL_QUESTION"
         intent_category = (
@@ -407,11 +419,11 @@ class LLMIntentAgent(BaseFinancialAgent):
         if not any(e.entity_type == EntityType.DATE for e in entities):
             months = self._extract_months(user_message)
             if months:
-                for m in months:
+                for raw, norm in months:
                     ent = FinancialEntity(
                         entity_type=EntityType.DATE,
-                        raw_value=m,
-                        normalized_value=m,
+                        raw_value=raw,
+                        normalized_value=norm,
                         confidence=0.5,
                         detection_method=DetectionMethod.FALLBACK,
                     )
@@ -419,9 +431,9 @@ class LLMIntentAgent(BaseFinancialAgent):
                     data.setdefault("entities", []).append(
                         {
                             "entity_type": EntityType.DATE.value,
-                            "value": m,
+                            "value": raw,
                             "confidence": 0.5,
-                            "normalized_value": m,
+                            "normalized_value": norm,
                         }
                     )
                 if intent_type in {"GENERAL_QUESTION", "OUT_OF_SCOPE"}:

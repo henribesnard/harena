@@ -125,7 +125,10 @@ class LLMIntentAgent(BaseFinancialAgent):
         cached = self._intent_cache.get(user_message)
         if cached is not None:
             data = {
-                "intent": cached.intent_type,
+                "intent_type": cached.intent_type,
+                "intent_category": cached.intent_category.value
+                if hasattr(cached.intent_category, "value")
+                else str(cached.intent_category),
                 "confidence": cached.confidence,
                 "entities": [e.model_dump() for e in cached.entities],
             }
@@ -136,6 +139,7 @@ class LLMIntentAgent(BaseFinancialAgent):
                     "detection_method": DetectionMethod.LLM_BASED,
                     "confidence": cached.confidence,
                     "intent_type": cached.intent_type,
+                    "intent_category": data["intent_category"],
                     "entities": [e.model_dump() for e in cached.entities],
                     "cache_hit": True,
                 },
@@ -195,8 +199,8 @@ class LLMIntentAgent(BaseFinancialAgent):
         except Exception as err:  # pragma: no cover - parsing errors
             raise LLMOutputParsingError(f"Invalid JSON in LLM response: {err}") from err
 
-        intent_type = data.get("intent_type") or data.get("intent") or "OUT_OF_SCOPE"
-        raw_category = (data.get("intent_category") or "GENERAL_QUESTION").upper()
+        intent_type = data.get("intent_type", "OUT_OF_SCOPE")
+        raw_category = data.get("intent_category", "GENERAL_QUESTION").upper()
         mapped_category = CATEGORY_MAP.get(raw_category, raw_category)
         try:
             intent_category = IntentCategory(mapped_category)
@@ -240,6 +244,9 @@ class LLMIntentAgent(BaseFinancialAgent):
                 "detection_method": DetectionMethod.LLM_BASED,
                 "confidence": intent_result.confidence,
                 "intent_type": intent_result.intent_type,
+                "intent_category": intent_result.intent_category.value
+                if hasattr(intent_result.intent_category, "value")
+                else str(intent_result.intent_category),
                 "entities": [
                     e.model_dump() if hasattr(e, "model_dump") else e.__dict__
                     for e in intent_result.entities

@@ -5,6 +5,9 @@ This agent generates optimized search queries for the Search Service based on
 detected intents and user messages. It includes entity extraction, query
 optimization, and standardized search service communication.
 
+See README.md#entites-de-recherche-et-filtres-elasticsearch for the mapping
+between entities, their canonical values and the Elasticsearch filters used.
+
 Classes:
     - SearchQueryAgent: Main search query generation agent
     - QueryOptimizer: Helper class for query optimization

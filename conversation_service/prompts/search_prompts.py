@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Any, Union
 import json
 import logging
 from datetime import datetime, date
+from .example_loader import load_yaml_examples
 
 logger = logging.getLogger(__name__)
 
@@ -117,95 +118,9 @@ Répondez avec le JSON de requête dans le format spécifié."""
 # EXEMPLES FEW-SHOT POUR OPTIMISATION
 # =============================================================================
 
-SEARCH_EXAMPLES_FEW_SHOT = """EXEMPLES DE GÉNÉRATION DE REQUÊTES :
-
-**Exemple 1 - Transaction Query Simple :**
-INTENTION: transaction_query | ENTITÉS: {"merchants": ["Carrefour"], "periods": ["mois dernier"]}
-MESSAGE: "Mes achats chez Carrefour le mois dernier"
-
-REQUÊTE GÉNÉRÉE:
-```json
-{
-  "query_type": "lexical",
-  "search_text": "Carrefour",
-  "filters": {
-    "user_id": "USER_ID_PLACEHOLDER",
-    "date": {"gte": "2024-12-01", "lte": "2024-12-31"},
-    "merchants": ["carrefour"]
-  },
-  "sorting": [{"date": "desc"}],
-  "size": 20,
-  "explanation": "Recherche textuelle + filtre marchand et période pour transactions spécifiques"
-}
-```
-
-**Exemple 2 - Spending Analysis avec Agrégation :**
-INTENTION: spending_analysis | ENTITÉS: {"categories": ["restaurant"], "periods": ["ces 3 derniers mois"]}
-MESSAGE: "Combien j'ai dépensé en restaurant ces 3 derniers mois ?"
-
-REQUÊTE GÉNÉRÉE:
-```json
-{
-  "query_type": "aggregation",
-  "search_text": "",
-  "filters": {
-    "user_id": "USER_ID_PLACEHOLDER",
-    "date": {"gte": "2024-10-01", "lte": "2024-12-31"},
-    "categories": ["restaurant"],
-    "transaction_types": ["debit"]
-  },
-  "aggregations": {
-    "group_by": "month_year",
-    "metrics": ["sum", "count"],
-    "date_histogram": "monthly"
-  },
-  "size": 0,
-  "explanation": "Agrégation mensuelle pour analyse des dépenses restaurant sur période"
-}
-```
-
-**Exemple 3 - Trend Analysis Complexe :**
-INTENTION: trend_analysis | ENTITÉS: {"amounts": ["500€"], "periods": ["par mois"], "analysis_type": ["average"]}
-MESSAGE: "Est-ce que je dépense plus que 500€ par mois en moyenne ?"
-
-REQUÊTE GÉNÉRÉE:
-```json
-{
-  "query_type": "aggregation",
-  "search_text": "",
-  "filters": {
-    "user_id": "USER_ID_PLACEHOLDER",
-    "date": {"gte": "2024-01-01", "lte": "2024-12-31"},
-    "transaction_types": ["debit"]
-  },
-  "aggregations": {
-    "group_by": "month_year",
-    "metrics": ["sum", "avg"],
-    "date_histogram": "monthly"
-  },
-  "size": 0,
-  "explanation": "Analyse mensuelle pour calculer moyenne et comparer au seuil 500€"
-}
-```
-
-**Exemple 4 - Recherche Textuelle Libre :**
-INTENTION: transaction_query | ENTITÉS: {"periods": ["cette semaine"]}
-MESSAGE: "Mes achats pharmacie cette semaine"
-
-REQUÊTE GÉNÉRÉE:
-```json
-{
-  "query_type": "lexical",
-  "search_text": "pharmacie",
-  "filters": {
-    "user_id": "USER_ID_PLACEHOLDER",
-    "date": {"gte": "2024-12-23", "lte": "2024-12-29"}
-  },
-  "sorting": [{"date": "desc"}, {"amount_abs": "desc"}],
-  "size": 20,
-  "explanation": "Recherche textuelle 'pharmacie' sur période récente avec tri chronologique"
-}
-```"""
+SEARCH_EXAMPLES_FEW_SHOT = load_yaml_examples(
+    "search_query_agent_examples.yaml", "EXEMPLES DE GÉNÉRATION DE REQUÊTES :"
+)
 
 # =============================================================================
 # FONCTIONS DE FORMATAGE
@@ -263,8 +178,7 @@ def format_search_prompt(
         user_message=user_message.strip(),
         context_section=context_section
     )
-    
-    return user_prompt
+    return f"{user_prompt}\n\n{SEARCH_EXAMPLES_FEW_SHOT}"
 
 def build_date_range_from_period(period_text: str) -> Dict[str, str]:
     """

@@ -16,6 +16,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum
+from .example_loader import load_yaml_examples
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +229,7 @@ def format_orchestrator_prompt(
         default_constraints.update(constraints)
     
     # Formatage du prompt
-    return ORCHESTRATOR_WORKFLOW_TEMPLATE.format(
+    prompt = ORCHESTRATOR_WORKFLOW_TEMPLATE.format(
         user_message=user_message or context.get("user_message", ""),
         current_step=current_step.value,
         completed_agents=", ".join(completed_agents) if completed_agents else "Aucun",
@@ -240,6 +241,7 @@ def format_orchestrator_prompt(
         global_timeout=default_constraints["global_timeout"],
         quality_threshold=default_constraints["quality_threshold"]
     )
+    return f"{prompt}\n\n{ORCHESTRATOR_DECISION_EXAMPLES}"
 
 def format_agent_history(agent_history: List[Dict[str, Any]]) -> str:
     """
@@ -648,101 +650,9 @@ def validate_workflow_constraints(
 # EXEMPLES DE DÉCISIONS ORCHESTRATEUR
 # =============================================================================
 
-ORCHESTRATOR_DECISION_EXAMPLES = """EXEMPLES DE DÉCISIONS ORCHESTRATEUR :
-
-**Exemple 1 - Workflow Standard :**
-Message: "Combien j'ai dépensé en courses ce mois ?"
-Contexte: Nouveau utilisateur, message clair
-
-DÉCISION:
-```json
-{
-  "workflow_type": "standard",
-  "next_step": "intent_detection",
-  "agent_assignments": {
-    "primary_agent": "llm_intent_agent",
-    "fallback_agent": "response_agent"
-  },
-  "parameters": {
-    "timeout_ms": 4000,
-    "max_retries": 2,
-    "quality_threshold": 0.8
-  },
-  "reasoning": "Message clair mais entités à extraire, workflow complet optimal",
-  "estimated_cost": "~150 tokens",
-  "confidence": 0.9
-}
-```
-
-**Exemple 2 - Fast Track :**
-Message: "Mes dernières transactions"
-Contexte: Utilisateur connu, requête simple
-
-DÉCISION:
-```json
-{
-  "workflow_type": "fast_track",
-  "next_step": "search_generation",
-  "agent_assignments": {
-    "primary_agent": "search_query_agent"
-  },
-  "parameters": {
-    "timeout_ms": 2000,
-    "max_retries": 1,
-    "quality_threshold": 0.7
-  },
-  "reasoning": "Requête simple et fréquente, économie via fast track",
-  "estimated_cost": "~50 tokens",
-  "confidence": 0.85
-}
-```
-
-**Exemple 3 - Workflow Parallèle :**
-Message: "Compare mes dépenses restaurant vs courses les 3 derniers mois"
-Contexte: Requête complexe, multiple analyses
-
-DÉCISION:
-```json
-{
-  "workflow_type": "parallel",
-  "next_step": "search_generation",
-  "agent_assignments": {
-    "parallel_agents": ["search_query_agent", "search_query_agent"],
-    "primary_agent": "response_agent"
-  },
-  "parameters": {
-    "timeout_ms": 6000,
-    "max_retries": 1,
-    "quality_threshold": 0.85
-  },
-  "reasoning": "Comparaison nécessite 2 requêtes parallèles pour performance",
-  "estimated_cost": "~300 tokens",
-  "confidence": 0.8
-}
-```
-
-**Exemple 4 - Fallback après Échec :**
-Message: "Mes trucs bizarres de shopping"
-Contexte: Intent Agent a échoué, ambiguïté élevée
-
-DÉCISION:
-```json
-{
-  "workflow_type": "fallback",
-  "next_step": "response_generation",
-  "agent_assignments": {
-    "primary_agent": "response_agent"
-  },
-  "parameters": {
-    "timeout_ms": 3000,
-    "max_retries": 0,
-    "quality_threshold": 0.5
-  },
-  "reasoning": "Message trop ambigu, réponse générique de clarification",
-  "estimated_cost": "~80 tokens",
-  "confidence": 0.4
-}
-```"""
+ORCHESTRATOR_DECISION_EXAMPLES = load_yaml_examples(
+    'orchestrator_agent_examples.yaml', 'EXEMPLES DE DÉCISIONS ORCHESTRATEUR :'
+)
 
 # =============================================================================
 # CONSTANTES UTILES

@@ -4,6 +4,7 @@ from conversation_service.agents import base_financial_agent
 base_financial_agent.AUTOGEN_AVAILABLE = True
 
 from conversation_service.agents.search_query_agent import SearchQueryAgent, QueryOptimizer
+from conversation_service.agents.llm_intent_agent import LLMIntentAgent
 from conversation_service.models.financial_models import (
     FinancialEntity,
     EntityType,
@@ -22,6 +23,7 @@ from conversation_service.models.service_contracts import (
 import asyncio
 import pytest
 from datetime import datetime, timedelta
+from typing import Dict, Any
 
 try:
     from search_service.core.search_engine import SearchEngine
@@ -556,3 +558,65 @@ def test_netflix_search_returns_results_without_merchant_name():
     engine = SearchEngine(elasticsearch_client=DummyElasticsearchClientNoMerchant())
     response = asyncio.run(engine.search(SearchRequest(**request_dict)))
     assert response["results"]
+
+
+def test_amount_filter_sent_to_search_service():
+    """Ensure amount filters are forwarded to the Search Service."""
+
+    # LLM intent agent returns amount entity with euro units
+    class DummyOpenAIClient:
+        def __init__(self, content: str):
+            self._content = content
+
+            class _Completions:
+                async def create(_self, *args, **kwargs):
+                    class Choice:
+                        message = type("Msg", (), {"content": content})
+
+                    return type("Resp", (), {"choices": [Choice()]})
+
+            class _Chat:
+                def __init__(self):
+                    self.completions = _Completions()
+
+            self.chat = _Chat()
+
+    content = (
+        '{"intent_type": "TRANSACTION_SEARCH", "intent_category": "TRANSACTION_SEARCH", '
+        '"confidence": 0.9, "entities": [{"entity_type": "AMOUNT", "value": "100 euros", '
+        '"normalized_value": "100 euros", "confidence": 0.9}], '
+        '"suggested_actions": ["filter_by_amount_greater"]}'
+    )
+    intent_agent = LLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=DummyOpenAIClient(content)
+    )
+    intent_result = asyncio.run(
+        intent_agent.detect_intent("transactions supérieures à 100 euros", user_id=1)
+    )["metadata"]["intent_result"]
+
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+
+    async def dummy_extract(message, intent_result, user_id):
+        return []
+
+    agent._extract_additional_entities = dummy_extract
+
+    captured: Dict[str, Any] = {}
+
+    class CaptureHTTPClient:
+        async def post(self, url, json, headers):
+            captured["payload"] = json
+            return DummyHTTPResponse({"results": [], "response_metadata": {}, "success": True})
+
+    agent.http_client = CaptureHTTPClient()
+
+    asyncio.run(
+        agent.process_search_request(
+            intent_result, "transactions supérieures à 100 euros", user_id=1
+        )
+    )
+
+    assert captured["payload"]["filters"]["amount_abs"] == {"gte": 100.0}

@@ -329,7 +329,7 @@ def test_date_filter_with_french_month_name():
 
 @pytest.mark.parametrize(
     "french_month, month_num",
-    [("juin", "06"), ("fevrier", "02")],
+    [("juin", "06"), ("février", "02")],
 )
 def test_date_filter_handles_month_end_days(french_month, month_num):
     agent = SearchQueryAgent(
@@ -364,6 +364,39 @@ def test_date_filter_handles_month_end_days(french_month, month_num):
     max_day = calendar.monthrange(int(year), int(month_num))[1]
     assert date_filter["gte"] == f"{year}-{month_num}-01"
     assert date_filter["lte"] == f"{year}-{month_num}-{max_day:02d}"
+
+
+def test_date_filter_with_month_and_year_and_accent():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.DATE,
+                raw_value="février 2024",
+                normalized_value="février 2024",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(
+            intent_result, "dépenses en février 2024", user_id=1
+        )
+    )
+    request = search_query.to_search_request()
+    date_filter = request["filters"].get("date")
+
+    assert date_filter["gte"] == "2024-02-01"
+    assert date_filter["lte"] == "2024-02-29"
 
 
 def test_amount_filter_without_date():

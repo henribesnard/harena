@@ -4,6 +4,7 @@ This package exposes the main components required by the conversation
 service and provides helper functions for validating the runtime
 environment using a generic OpenAI configuration via
 :class:`~config.openai_config.OpenAISettings`.
+environment using :class:`~config.openai_config.OpenAISettings`.
 """
 
 from __future__ import annotations
@@ -204,19 +205,7 @@ def validate_core_setup() -> dict:
     if config["team_workflow_timeout"] < 30:
         results["warnings"].append("Team workflow timeout low - complex workflows may fail")
     
-    # Environment variable checks
-    import os
-    required_env_vars = ["DEEPSEEK_API_KEY"]
-    for var in required_env_vars:
-        if not getattr(settings, var, None):
-            results["errors"].append(f"Required environment variable missing: {var}")
-            results["valid"] = False
-    
     # Info messages
-        results["warnings"].append(
-            "Team workflow timeout low - complex workflows may fail"
-        )
-
     results["info"].append(f"Core package version: {__version__}")
     results["info"].append(
         f"Available components: {len(get_available_components())}"

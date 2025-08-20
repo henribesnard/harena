@@ -16,10 +16,9 @@ def build_app() -> FastAPI:
     async def chat_endpoint():
         return {"ok": True}
 
-    websocket = types.ModuleType("websocket")
-    websocket.router = APIRouter()
+    routes.websocket_router = APIRouter()
 
-    @websocket.router.websocket("/ws")
+    @routes.websocket_router.websocket("/ws")
     async def websocket_endpoint(ws):
         await ws.accept()
         await ws.close()
@@ -41,7 +40,6 @@ def build_app() -> FastAPI:
     middleware.GlobalExceptionMiddleware = GlobalExceptionMiddleware
 
     sys.modules["conversation_service.api.routes"] = routes
-    sys.modules["conversation_service.api.websocket"] = websocket
     sys.modules["conversation_service.api.middleware"] = middleware
     builtins.run_core_validation = lambda: None
 

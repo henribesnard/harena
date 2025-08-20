@@ -21,7 +21,8 @@ only implement lightweight placeholders so that the API can be exercised in
 isolation and tests can override these dependencies.
 """
 
-from typing import Any, Dict, Generator
+import logging
+from typing import Any, Dict, Generator, Optional, TYPE_CHECKING
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -34,28 +35,22 @@ from ..core.metrics_collector import MetricsCollector
 from ..core.cache_manager import CacheManager
 from ..repositories.conversation_repository import ConversationRepository
 from ..utils.logging import log_unauthorized_access
-from config_service.config import settings
+from config.settings import settings
 
 if TYPE_CHECKING:
     from ..core.mvp_team_manager import MVPTeamManager
 
-from ..models.conversation_models import ConversationRequest
-from ..utils.metrics import MetricsCollector
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
-_metrics_collector = MetricsCollector()
-
 # Global instances (singleton pattern)
 _team_manager: Optional["MVPTeamManager"] = None
 _conversation_manager: Optional[ConversationManager] = None
 _metrics_collector: Optional[MetricsCollector] = None
 _cache_manager: Optional[CacheManager] = None
-
-def get_metrics_collector() -> MetricsCollector:
-    """Return a singleton metrics collector."""
-    return _metrics_collector
 
 
 # ---------------------------------------------------------------------------

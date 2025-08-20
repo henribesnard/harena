@@ -99,42 +99,53 @@ class ServiceLoader:
             return False
     
     async def initialize_conversation_service(self, app: FastAPI):
-        """Initialise le conversation_service avec DeepSeek."""
+        """Initialise le conversation_service avec OpenAI."""
         logger.info("🤖 Initialisation du conversation_service...")
-        
+
         try:
-            # Vérifier DEEPSEEK_API_KEY
-            deepseek_key = settings.DEEPSEEK_API_KEY
-            if not deepseek_key:
-                raise ValueError("DEEPSEEK_API_KEY n'est pas configurée")
-            
-            logger.info(f"🔑 DEEPSEEK_API_KEY configurée: {deepseek_key[:20]}...")
-            
+            # Vérifier la clé API
+            api_key = settings.DEEPSEEK_API_KEY
+            if not api_key:
+                raise ValueError("Clé API non configurée")
+
+            logger.info(f"🔑 Clé API configurée: {api_key[:20]}...")
+
             # Import et initialisation du conversation service
             from config_service.config import settings
-            from conversation_service.core import deepseek_client
-            
+            # Vérifier OPENAI_API_KEY
+            openai_key = settings.OPENAI_API_KEY
+            if not openai_key:
+                raise ValueError("OPENAI_API_KEY n'est pas configurée")
+
+            logger.info(f"🔑 OPENAI_API_KEY configurée: {openai_key[:20]}...")
+
             # Validation de la configuration
+            from conversation_service.core import run_core_validation
+            from conversation_service.core.mvp_team_manager import MVPTeamManager
+
             logger.info("⚙️ Validation de la configuration...")
-            validation = settings.validate_configuration()
+            validation = run_core_validation()
             if not validation["valid"]:
                 raise ValueError(f"Configuration invalide: {validation['errors']}")
-            
+
             if validation["warnings"]:
                 logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
-            
-            # Test de connexion DeepSeek
-            logger.info("🔍 Test de connexion DeepSeek...")
-            health_check = await deepseek_client.health_check()
-            
-            if health_check["status"] != "healthy":
-                raise ValueError(f"DeepSeek non disponible: {health_check.get('error', 'Unknown error')}")
-            
-            logger.info(f"✅ DeepSeek connecté - Temps de réponse: {health_check['response_time']:.2f}s")
-            
+
+            # Test de connexion OpenAI
+            logger.info("🔍 Test de connexion OpenAI...")
+
             # Mettre les composants dans app.state
             app.state.conversation_service_initialized = True
-            app.state.deepseek_client = deepseek_client
+            if validation["warnings"]:
+                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
+
+            # Initialiser le gestionnaire d'équipe
+            team_manager = MVPTeamManager()
+            await team_manager.initialize_agents(initial_health_check=False)
+
+            # Mettre les composants dans app.state
+            app.state.conversation_service_initialized = True
+            app.state.team_manager = team_manager
             app.state.conversation_initialization_error = None
 
             self.conversation_service_initialized = True
@@ -151,10 +162,10 @@ class ServiceLoader:
         except Exception as e:
             error_msg = f"Erreur initialisation conversation_service: {str(e)}"
             logger.error(f"❌ {error_msg}")
-            
+
             # Marquer l'échec dans app.state
             app.state.conversation_service_initialized = False
-            app.state.deepseek_client = None
+            app.state.team_manager = None
             app.state.conversation_initialization_error = error_msg
 
             self.conversation_service_initialized = False
@@ -372,10 +383,10 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
-        # 5. ✅ CONVERSATION SERVICE - NOUVEAU avec DeepSeek
+        # 5. ✅ CONVERSATION SERVICE - NOUVEAU avec OpenAI
         logger.info("🤖 Chargement et initialisation du conversation_service...")
         try:
-            # D'abord initialiser les composants DeepSeek
+            # D'abord initialiser les composants OpenAI
             conversation_init_success = await loader.initialize_conversation_service(app)
             
             # Ensuite charger les routes
@@ -395,7 +406,9 @@ def create_app():
                         "prefix": "/api/v1/conversation",
                         "initialized": True,
                         "architecture": "llm_intent_agent",
-                        "model": "deepseek-chat",
+                        "model": "gpt-4o-mini",
+
+                        "model": settings.OPENAI_CHAT_MODEL,
                         "error": None,
                     })
                 else:
@@ -410,7 +423,8 @@ def create_app():
                         "initialized": False,
                         "error": loader.conversation_service_error,
                         "architecture": "llm_intent_agent",
-                        "model": "deepseek-chat",
+                        "model": "gpt-4o-mini",
+                        "model": settings.OPENAI_CHAT_MODEL,
                     })
 
             except ImportError as e:
@@ -500,7 +514,8 @@ def create_app():
                 "initialized": loader.conversation_service_initialized,
                 "error": loader.conversation_service_error,
                 "architecture": "llm_intent_agent",
-                "model": "deepseek-chat"
+                "model": "gpt-4o-mini"
+                "model": settings.OPENAI_CHAT_MODEL
             }
         }
 
@@ -515,7 +530,7 @@ def create_app():
                 "sync_service - Synchronisation Bridge API", 
                 "enrichment_service - Enrichissement IA",
                 "search_service - Recherche lexicale (Architecture simplifiée)",
-                "conversation_service - Assistant IA avec DeepSeek (MVP)"
+                "conversation_service - Assistant IA avec OpenAI (MVP)"
             ],
             "services_coming_soon": [
                 "conversation_service v2 - Assistant IA avec AutoGen + équipes d'agents"
@@ -530,7 +545,7 @@ def create_app():
                 "/api/v1/categories/*": "Catégories",
                 "/api/v1/enrichment/*": "Enrichissement IA",
                 "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
-                "/api/v1/conversation/*": "Assistant IA conversationnel (DeepSeek MVP)"
+                "/api/v1/conversation/*": "Assistant IA conversationnel (OpenAI MVP)"
             }
         }
 

@@ -1,9 +1,8 @@
 """API routes for the conversation service.
 
-This module exposes a single :class:`APIRouter` instance that handles both
-REST and WebSocket endpoints.  The implementation is intentionally lightweight
-so that it can be exercised in tests without requiring the full production
-stack.
+This module provides separate routers for REST and WebSocket endpoints. The
+implementation is intentionally lightweight so that it can be exercised in
+tests without requiring the full production stack.
 """
 
 from __future__ import annotations
@@ -63,9 +62,10 @@ except ImportError:  # pragma: no cover - fallback protocol for tests
 
 
 router = APIRouter()
+websocket_router = APIRouter()
 
 
-@router.websocket("/ws")
+@websocket_router.websocket("/ws")
 async def chat_websocket(
     websocket: WebSocket,
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],

@@ -419,16 +419,41 @@ def create_app():
             conv_init = await loader.initialize_conversation_service()
             if conv_init:
                 from conversation_service.api.routes import router as conversation_router
-                app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
-                routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
-                logger.info(f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation")
+                from conversation_service.api.websocket import router as conversation_ws_router
+
+                app.include_router(
+                    conversation_router,
+                    prefix="/api/v1/conversation",
+                    tags=["conversation"],
+                )
+                app.include_router(
+                    conversation_ws_router,
+                    prefix="/api/v1/conversation",
+                )
+
+                routes_count = (
+                    len(conversation_router.routes)
+                    if hasattr(conversation_router, "routes")
+                    else 0
+                )
+                ws_routes_count = (
+                    len(conversation_ws_router.routes)
+                    if hasattr(conversation_ws_router, "routes")
+                    else 0
+                )
+                logger.info(
+                    f"✅ conversation_service: {routes_count} routes et {ws_routes_count} websockets sur /api/v1/conversation"
+                )
                 loader.services_status.setdefault("conversation_service", {})
-                loader.services_status["conversation_service"].update({
-                    "status": "ok",
-                    "routes": routes_count,
-                    "prefix": "/api/v1/conversation",
-                    "error": None,
-                })
+                loader.services_status["conversation_service"].update(
+                    {
+                        "status": "ok",
+                        "routes": routes_count,
+                        "websocket_routes": ws_routes_count,
+                        "prefix": "/api/v1/conversation",
+                        "error": None,
+                    }
+                )
             else:
                 loader.services_status.setdefault("conversation_service", {})
                 loader.services_status["conversation_service"].update({

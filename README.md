@@ -60,6 +60,10 @@ detection. If not set, the agent falls back to the DeepSeek key.
 `http://localhost:8000/api/v1/search` and the service automatically appends
 `/search` when issuing queries.
 
+The `USE_MOCK_INTENT_AGENT` toggle has been removed. To exercise the
+`MockIntentAgent` (for example during tests), inject it explicitly instead of
+setting an environment variable.
+
 ## `metadata.workflow_data`
 
 The conversation API (`/conversation/chat`) includes a `metadata` object in its

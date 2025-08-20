@@ -27,7 +27,6 @@ except Exception:  # pragma: no cover - fall back to a stub
     AsyncOpenAI = None  # type: ignore
 
 from .base_financial_agent import BaseFinancialAgent
-from ..core.deepseek_client import DeepSeekClient
 from ..models.agent_models import AgentConfig
 from ..models.financial_models import (
     DetectionMethod,
@@ -86,15 +85,10 @@ class LLMIntentAgent(BaseFinancialAgent):
 
     def __init__(
         self,
-        deepseek_client: DeepSeekClient,
         config: Optional[AgentConfig] = None,
         openai_client: Optional[Any] = None,
     ) -> None:
-        # Prefer a dedicated OpenAI key if provided; otherwise reuse the
-        # DeepSeek key as a fallback for backward compatibility.
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            api_key = deepseek_client.api_key
+        api_key = os.getenv("OPENAI_API_KEY", "")
         if config is None:
             config = AgentConfig(
                 name="llm_intent_agent",
@@ -111,9 +105,9 @@ class LLMIntentAgent(BaseFinancialAgent):
                 timeout_seconds=8,
             )
         else:
-            config.model_client_config["api_key"] = api_key
+            config.model_client_config.setdefault("api_key", api_key)
 
-        super().__init__(name=config.name, config=config, deepseek_client=deepseek_client)
+        super().__init__(name=config.name, config=config)
         self._intent_cache = IntentResultCache(max_size=100)
         self._max_retries = 3
         if openai_client is not None:

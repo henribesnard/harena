@@ -32,7 +32,6 @@ from .response_agent import ResponseAgent, SEARCH_ERROR_MESSAGE
 from ..models.agent_models import AgentConfig, AgentResponse
 from types import SimpleNamespace
 from ..models.conversation_models import ConversationContext
-from ..core.deepseek_client import DeepSeekClient
 from ..core.conversation_manager import ConversationManager
 from ..core.metrics_collector import MetricsCollector
 from ..utils.metrics import get_default_metrics_collector
@@ -107,11 +106,10 @@ class WorkflowExecutor:
             The name of the next step to execute or ``None`` if the LLM
             response is invalid or unavailable.
         """
+        client = getattr(self.intent_agent, "llm_client", None)
+        if not client or not hasattr(client, "generate_response"):
+            return None
         try:
-            client = getattr(self.intent_agent, "deepseek_client", None)
-            if not client or not hasattr(client, "create_completion"):
-                return None
-
             step_states = {s.name: s.status.value for s in steps}
             messages = [
                 {
@@ -132,16 +130,10 @@ class WorkflowExecutor:
                     ),
                 },
             ]
-            response = await client.create_completion(
-                messages, temperature=0.0, max_tokens=10, use_cache=False
+            response = await client.generate_response(
+                messages=messages, temperature=0.0, max_tokens=10, use_cache=False
             )
-            content = (
-                getattr(response, "choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-                .lower()
-            )
+            content = getattr(response, "content", "").strip().lower()
             if content in {
                 "intent_detection",
                 "search_query",
@@ -600,63 +592,35 @@ class OrchestratorAgent(BaseFinancialAgent):
                  config: Optional[AgentConfig] = None,
                  performance_threshold_ms: int = 30000,
                  metrics_collector: Optional[MetricsCollector] = None):
-        """
-        Initialize the orchestrator agent.
-        
-        Args:
-            intent_agent: Intent detection agent
-            search_agent: Search query agent
-            response_agent: Response generation agent
-            config: Optional agent configuration
-            performance_threshold_ms: Maximum allowed workflow duration in milliseconds
-                (default 30000ms)
-        """
-        if config is None:
-            try:
-                config = AgentConfig(
-                    name="orchestrator_agent",
-                    model_client_config={
-                        "model": "deepseek-chat",
-                        "api_key": intent_agent.deepseek_client.api_key,
-                        "base_url": intent_agent.deepseek_client.base_url,
-                    },
-                    system_message=self._get_system_message(),
-                    max_consecutive_auto_reply=1,
-                    description="Multi-agent workflow orchestration agent",
-                    temperature=0.1,
-                    max_tokens=150,
-                    timeout_seconds=30,  # Higher timeout for workflow coordination
-                )
-            except TypeError:
-                # Fallback for environments with simplified AgentConfig stubs
-                config = SimpleNamespace(
-                    name="orchestrator_agent",
-                    model_client_config={
-                        "model": "deepseek-chat",
-                        "api_key": getattr(intent_agent.deepseek_client, "api_key", ""),
-                        "base_url": getattr(intent_agent.deepseek_client, "base_url", ""),
-                    },
-                    system_message=self._get_system_message(),
-                    max_consecutive_auto_reply=1,
-                    description="Multi-agent workflow orchestration agent",
-                    temperature=0.1,
-                    max_tokens=150,
-                    timeout_seconds=30,
-                )
+        """Initialize the orchestrator agent."""
 
-        try:
-            super().__init__(
-                name=config.name,
-                config=config,
-                deepseek_client=intent_agent.deepseek_client,
+        if config is None:
+            config = AgentConfig(
+                name="orchestrator_agent",
+                model_client_config={
+                    "model": "gpt-4o-mini",
+                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "base_url": "https://api.openai.com/v1",
+                },
+                system_message=self._get_system_message(),
+                max_consecutive_auto_reply=1,
+                description="Multi-agent workflow orchestration agent",
+                temperature=0.1,
+                max_tokens=150,
+                timeout_seconds=30,
             )
-        except TypeError:
-            # Minimal initialization when BaseFinancialAgent is not fully functional
-            self.name = config.name
-            self.config = config
-            self.deepseek_client = intent_agent.deepseek_client
-            self.metrics = None
-            self.domain = "financial"
+
+        super().__init__(
+            name=config.name,
+            config=config,
+            llm_client=getattr(intent_agent, "llm_client", None),
+        )
+
+        self.intent_agent = intent_agent
+        self.search_agent = search_agent
+        self.response_agent = response_agent
+        self.performance_threshold_ms = performance_threshold_ms
+        self.metrics = metrics_collector or get_default_metrics_collector()
         
         self.intent_agent = intent_agent
         self.search_agent = search_agent

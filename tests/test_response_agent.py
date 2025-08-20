@@ -13,19 +13,15 @@ from conversation_service.models.service_contracts import (
 from conversation_service.constants import TRANSACTION_TYPES
 
 
-class DummyDeepSeekClient:
-    api_key = "test-key"
-    base_url = "http://api.example.com"
-
+class DummyOpenAIClient:
     async def generate_response(self, messages, temperature, max_tokens, user, use_cache):
         class Raw:
             usage = type("Usage", (), {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})()
-        # Echo the user's prompt to make assertions on the built prompt
         return type("Resp", (), {"content": messages[-1]["content"], "raw": Raw()})()
 
 
 def test_response_agent_handles_full_search_results():
-    agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+    agent = ResponseAgent(llm_client=DummyOpenAIClient())
 
     search_response = SearchServiceResponse(
         response_metadata=ResponseMetadata(
@@ -64,7 +60,7 @@ def test_response_agent_handles_full_search_results():
 
 
 def test_response_agent_handles_no_transactions_current_month():
-    agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+    agent = ResponseAgent(llm_client=DummyOpenAIClient())
 
     search_response = SearchServiceResponse(
         response_metadata=ResponseMetadata(
@@ -97,7 +93,7 @@ def test_response_agent_handles_no_transactions_current_month():
 
 
 def test_response_agent_summarizes_large_result_set():
-    agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+    agent = ResponseAgent(llm_client=DummyOpenAIClient())
 
     results = [
         TransactionResult(
@@ -140,7 +136,7 @@ def test_response_agent_summarizes_large_result_set():
 
 
 def test_response_agent_displays_aggregated_amounts():
-    agent = ResponseAgent(deepseek_client=DummyDeepSeekClient())
+    agent = ResponseAgent(llm_client=DummyOpenAIClient())
 
     search_response = SearchServiceResponse(
         response_metadata=ResponseMetadata(

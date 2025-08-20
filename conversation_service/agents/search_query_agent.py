@@ -40,6 +40,22 @@ from ..utils.validators import ContractValidator
 logger = logging.getLogger(__name__)
 # Dedicated logger for security/audit events
 audit_logger = logging.getLogger("audit")
+
+# Mapping of French financial terms to their canonical English counterparts.
+# This helps normalize entity values before constructing search filters.
+SYNONYM_MAP = {
+    "virement": "transfer",
+}
+
+
+def _apply_synonym(value: str) -> str:
+    """Map a value to its synonym if available.
+
+    The lookup is case-insensitive and falls back to singular form when a
+    direct match isn't found (e.g. ``virements`` → ``virement``).
+    """
+    lower = value.lower()
+    return SYNONYM_MAP.get(lower, SYNONYM_MAP.get(lower.rstrip("s"), lower))
  
 
 def resolve_relative_date(normalized_value: str) -> Dict[str, Dict[str, str]]:
@@ -546,7 +562,7 @@ class SearchQueryAgent(BaseFinancialAgent):
 
         # Group entities by type for filter creation
         categories = [
-            str(e.normalized_value)
+            _apply_synonym(str(e.normalized_value))
             for e in all_entities
             if e.entity_type in {EntityType.CATEGORY, "CATEGORY"} and e.normalized_value
         ]
@@ -554,7 +570,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             search_filters["category_name"] = categories
 
         operation_types = [
-            str(e.normalized_value)
+            _apply_synonym(str(e.normalized_value))
             for e in all_entities
             if e.entity_type in {EntityType.OPERATION_TYPE, "OPERATION_TYPE"} and e.normalized_value
         ]

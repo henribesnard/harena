@@ -58,6 +58,21 @@ def _apply_synonym(value: str) -> str:
     return SYNONYM_MAP.get(lower, SYNONYM_MAP.get(lower.rstrip("s"), lower))
  
 
+FRENCH_MONTHS = {
+    "janvier": "01",
+    "fevrier": "02",
+    "mars": "03",
+    "avril": "04",
+    "mai": "05",
+    "juin": "06",
+    "juillet": "07",
+    "aout": "08",
+    "septembre": "09",
+    "octobre": "10",
+    "novembre": "11",
+    "decembre": "12",
+}
+
 def resolve_relative_date(normalized_value: str) -> Dict[str, Dict[str, str]]:
     """Resolve a relative date keyword into an absolute date range."""
     now = datetime.utcnow()
@@ -267,6 +282,31 @@ class QueryOptimizer:
 
                 if date:
                     date_filters["date"] = date
+                    break
+            if (
+                entity.entity_type == EntityType.DATE
+                and isinstance(entity.normalized_value, str)
+            ):
+                value = entity.normalized_value.lower().strip()
+                value = unicodedata.normalize("NFD", value)
+                value = "".join(
+                    ch for ch in value if unicodedata.category(ch) != "Mn"
+                )
+                parts = value.split()
+                year = None
+                month = None
+                for part in parts:
+                    if part.isdigit() and len(part) == 4:
+                        year = part
+                    elif part in FRENCH_MONTHS:
+                        month = FRENCH_MONTHS[part]
+                if month:
+                    if not year:
+                        year = datetime.utcnow().strftime("%Y")
+                    date_filters["date"] = {
+                        "gte": f"{year}-{month}-01",
+                        "lte": f"{year}-{month}-31",
+                    }
                     break
             if entity.entity_type == EntityType.RELATIVE_DATE and isinstance(
                 entity.normalized_value, str

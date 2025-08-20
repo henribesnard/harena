@@ -22,6 +22,10 @@ from datetime import datetime
 
 __all__ = ["AgentConfig", "AgentResponse", "TeamWorkflow"]
 
+# Accepted model name prefixes for LLM providers supported by the service.
+# This includes DeepSeek models and OpenAI's GPT family.
+SUPPORTED_MODEL_PREFIXES = ("deepseek-", "gpt-")
+
 
 class AgentConfig(BaseModel):
     """
@@ -30,11 +34,11 @@ class AgentConfig(BaseModel):
     This model defines the complete configuration for an AutoGen agent,
     including model client settings, system messages, and behavioral parameters.
     Optimized for financial domain specialization and compatible with multiple
-    LLM providers (e.g., DeepSeek, OpenAI GPT).
+    LLM providers (e.g., DeepSeek, OpenAI's GPT models).
     
     Attributes:
         name: Unique identifier for the agent
-        model_client_config: LLM model configuration (DeepSeek, OpenAI, etc.)
+        model_client_config: LLM model configuration (DeepSeek, OpenAI GPT, etc.)
         system_message: System prompt for the agent's behavior
         max_consecutive_auto_reply: Maximum consecutive auto-replies
         description: Optional description of agent's purpose
@@ -112,20 +116,23 @@ class AgentConfig(BaseModel):
     @field_validator("model_client_config")
     @classmethod
     def validate_model_config(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate model configuration for supported LLM providers."""
+        """Validate model configuration for supported LLM providers.
+
+        Currently accepts models from DeepSeek (``deepseek-``) and OpenAI's GPT
+        family (``gpt-``).
+        """
         required_keys = ["model", "api_key", "base_url"]
         for key in required_keys:
             if key not in v:
                 raise ValueError(f"Missing required key '{key}' in model_client_config")
-        
-        # Validate model format for known providers
-        supported_prefixes = ("deepseek-", "gpt-")
-        if not any(v["model"].startswith(prefix) for prefix in supported_prefixes):
+
+        # Validate model format for known providers using predefined prefixes
+        if not any(v["model"].startswith(prefix) for prefix in SUPPORTED_MODEL_PREFIXES):
             raise ValueError(
                 "Model must start with a supported prefix: "
-                + ", ".join(supported_prefixes)
+                + ", ".join(SUPPORTED_MODEL_PREFIXES)
             )
-            
+
         return v
     
     @field_validator("system_message")
@@ -141,6 +148,7 @@ class AgentConfig(BaseModel):
             "example": {
                 "name": "intent_classifier_agent",
                 "model_client_config": {
+                    # Example using an OpenAI GPT model
                     "model": "gpt-4o-mini",
                     "api_key": "sk-xxx",
                     "base_url": "https://api.openai.com/v1"

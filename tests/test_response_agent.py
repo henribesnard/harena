@@ -10,6 +10,7 @@ from conversation_service.models.service_contracts import (
     ResponseMetadata,
     TransactionResult,
 )
+from conversation_service.constants import TRANSACTION_TYPES
 
 
 class DummyDeepSeekClient:
@@ -50,6 +51,7 @@ def test_response_agent_handles_full_search_results():
         ],
         success=True,
     )
+    assert search_response.results[0].transaction_type in TRANSACTION_TYPES
 
     search_results = {"metadata": {"search_response": search_response}}
 
@@ -111,6 +113,7 @@ def test_response_agent_summarizes_large_result_set():
         )
         for i in range(25)
     ]
+    assert all(r.transaction_type in TRANSACTION_TYPES for r in results)
 
     search_response = SearchServiceResponse(
         response_metadata=ResponseMetadata(
@@ -159,6 +162,8 @@ def test_response_agent_displays_aggregated_amounts():
         },
         success=True,
     )
+    for bucket in search_response.aggregations["transaction_type_terms"]["buckets"]:
+        assert bucket["key"] in TRANSACTION_TYPES
 
     search_results = {"metadata": {"search_response": search_response}}
 

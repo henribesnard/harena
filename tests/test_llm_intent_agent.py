@@ -8,6 +8,7 @@ base_financial_agent.AUTOGEN_AVAILABLE = True
 from conversation_service.agents.llm_intent_agent import LLMIntentAgent
 from conversation_service.agents.search_query_agent import QueryOptimizer
 from conversation_service.models.financial_models import EntityType, IntentCategory
+from conversation_service.constants import TRANSACTION_TYPES
 
 
 class DummyDeepSeekClient:
@@ -92,6 +93,7 @@ def test_transaction_type_post_processing(message, expected):
     intent_result = result["metadata"]["intent_result"]
     tx = next(e for e in intent_result.entities if e.entity_type == EntityType.TRANSACTION_TYPE)
     assert tx.normalized_value == expected
+    assert tx.normalized_value in TRANSACTION_TYPES
 
 
 @pytest.mark.parametrize(

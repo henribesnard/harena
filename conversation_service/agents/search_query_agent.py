@@ -785,14 +785,21 @@ class SearchQueryAgent(BaseFinancialAgent):
                 search_filters["operation_type"] = operation_type
                 break
 
-        transaction_types = [
-            str(e.normalized_value).lower()
-            for e in all_entities
-            if e.entity_type in {EntityType.TRANSACTION_TYPE, "TRANSACTION_TYPE"} and e.normalized_value
-        ]
+        transaction_types: List[str] = []
+        for e in all_entities:
+            if (
+                e.entity_type in {EntityType.TRANSACTION_TYPE, "TRANSACTION_TYPE"}
+                and e.normalized_value
+            ):
+                value = e.normalized_value
+                if isinstance(value, list):
+                    transaction_types.extend(str(v).lower() for v in value)
+                else:
+                    transaction_types.append(str(value).lower())
         transaction_types = [t for t in transaction_types if t in TRANSACTION_TYPES]
-        if transaction_types:
-            search_filters["transaction_types"] = list(dict.fromkeys(transaction_types))
+        transaction_types = list(dict.fromkeys(transaction_types))
+        if len(transaction_types) == 1:
+            search_filters["transaction_types"] = transaction_types
 
         # Merchant name filtering is intentionally avoided. Some databases may
         # store transactions with an empty ``merchant_name`` field. Adding a

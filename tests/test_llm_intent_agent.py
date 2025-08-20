@@ -96,6 +96,20 @@ def test_transaction_type_post_processing(message, expected):
     assert tx.normalized_value in TRANSACTION_TYPES
 
 
+def test_transaction_type_post_processing_multiple():
+    os.environ["OPENAI_API_KEY"] = "openai-test-key"
+    openai_client = DummyOpenAIClient(
+        '{"intent_type": "TRANSACTION_SEARCH", "intent_category": "TRANSACTION_SEARCH", "confidence": 0.9, "entities": []}'
+    )
+    agent = LLMIntentAgent(
+        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
+    )
+    result = asyncio.run(agent.detect_intent("entrées et sorties", user_id=1))
+    intent_result = result["metadata"]["intent_result"]
+    tx = next(e for e in intent_result.entities if e.entity_type == EntityType.TRANSACTION_TYPE)
+    assert tx.normalized_value == ["debit", "credit"]
+
+
 @pytest.mark.parametrize(
     "message, month_txt, month_num",
     [

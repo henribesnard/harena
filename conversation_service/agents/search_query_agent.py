@@ -45,6 +45,7 @@ audit_logger = logging.getLogger("audit")
 # This helps normalize entity values before constructing search filters.
 SYNONYM_MAP = {
     "virement": "transfer",
+    "virements": "transfer",
 }
 
 
@@ -618,7 +619,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             search_filters["operation_type"] = operation_types[0]
 
         transaction_types = [
-            str(e.normalized_value)
+            _apply_synonym(str(e.normalized_value))
             for e in all_entities
             if e.entity_type in {EntityType.TRANSACTION_TYPE, "TRANSACTION_TYPE"} and e.normalized_value
         ]

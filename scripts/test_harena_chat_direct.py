@@ -3,21 +3,24 @@ Test minimal pour Harena : login → chat → analyse du workflow.
 ANALYSE PURE : récupère et affiche les données internes de l'agent sans refaire de recherche.
 """
 
-import base64
-import json
 import requests
 from datetime import datetime
 
 BASE_URL = "http://localhost:8000/api/v1"
 USERNAME = "test2@example.com"
 PASSWORD = "password123"
-QUESTION = "Transactions supérieures à 100 euros"
+QUESTIONS = [
+    "Combien ai-je fait de virements en mai ?",
+    "Combien ai-je dépensé en juin ?",
+    "Combien j'ai eu d'entrée d'argent en juin ?",
+    "Compare mes entrées et sorties d'argent en juin !",
+]
 
-def _decode_jwt(token: str) -> dict:
-    """Décodage manuel du payload JWT (sans vérification de signature)."""
-    payload = token.split(".")[1]
-    padding = "=" * (-len(payload) % 4)
-    return json.loads(base64.urlsafe_b64decode(payload + padding).decode())
+def run_question(session: requests.Session, question: str, conv_id: str) -> dict:
+    chat_payload = {"message": question, "conversation_id": conv_id}
+    chat_resp = session.post(f"{BASE_URL}/conversation/chat", json=chat_payload)
+    chat_resp.raise_for_status()
+    return chat_resp.json()
 
 def main() -> None:
     session = requests.Session()
@@ -31,18 +34,15 @@ def main() -> None:
     print("✅ OK client authentifié")
 
     session.headers.update({"Authorization": f"Bearer {token}"})
-    user_id = int(_decode_jwt(token)["sub"])
 
-    # ----- CONVERSATION AVEC L'AGENT ----------------------------------------
-    chat_payload = {"message": QUESTION, "conversation_id": "test-chat-analysis"}
-    chat_resp = session.post(f"{BASE_URL}/conversation/chat", json=chat_payload)
-    chat_resp.raise_for_status()
-    chat_data = chat_resp.json()
-    
-    print("✅ Conversation réussie")
-    print(f"🗨️ Question posée : {QUESTION}")
-    print(f"💬 Réponse générée : {chat_data['message']}")
-    print()
+    chat_data = None
+    for i, question in enumerate(QUESTIONS):
+        conversation_id = f"test-chat-analysis-{i}"
+        chat_data = run_question(session, question, conversation_id)
+        print("✅ Conversation réussie")
+        print(f"🗨️ Question posée : {question}")
+        print(f"💬 Réponse générée : {chat_data['message']}")
+        print()
 
     # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------
     intent_result = chat_data["metadata"]["intent_result"]
@@ -192,3 +192,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

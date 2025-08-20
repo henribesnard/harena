@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from ..core.deepseek_client import DeepSeekClient
 from ..agents.llm_intent_agent import LLMIntentAgent
-from ..agents.mock_intent_agent import MockIntentAgent
+from ..agents.mock_intent_agent import MockIntentAgent  # noqa: F401 - kept for manual injection
 from ..agents.search_query_agent import SearchQueryAgent
 from ..agents.response_agent import ResponseAgent
 from .conversation_manager import ConversationManager
@@ -445,10 +445,7 @@ class MVPTeamManager:
         """Initialize all specialized agents."""
         try:
             # Intent detection agent
-            intent_cls = LLMIntentAgent
-            if os.getenv("USE_MOCK_INTENT_AGENT", "false").lower() == "true":
-                intent_cls = MockIntentAgent
-            self.agents["intent_agent"] = intent_cls(
+            self.agents["intent_agent"] = LLMIntentAgent(
                 deepseek_client=self.deepseek_client
             )
             

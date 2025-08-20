@@ -708,9 +708,11 @@ MOCK_INTENT_RESPONSES: Dict[str, Dict[str, Any]] = {
 class MockIntentAgent(LLMIntentAgent):
     """Intent agent returning predefined results from ``MOCK_INTENT_RESPONSES``."""
 
-    def __init__(self, deepseek_client: Optional[Any] = None, dataset: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
-        dummy_client = deepseek_client or SimpleNamespace(api_key="mock", base_url="http://mock")
-        super().__init__(deepseek_client=dummy_client)
+    def __init__(self, dataset: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+        dummy_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=lambda *a, **k: None))
+        )
+        super().__init__(openai_client=dummy_client)
         self._dataset = dataset or MOCK_INTENT_RESPONSES
 
     async def detect_intent(self, user_message: str, user_id: int) -> Dict[str, Any]:

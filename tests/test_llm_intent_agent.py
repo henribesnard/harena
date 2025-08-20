@@ -12,11 +12,6 @@ from conversation_service.models.financial_models import EntityType, IntentCateg
 from conversation_service.constants import TRANSACTION_TYPES
 
 
-class DummyDeepSeekClient:
-    api_key = "test-key"
-    base_url = "https://api.openai.com/v1"
-
-
 class DummyOpenAIClient:
     def __init__(self, content: str):
         self._content = content
@@ -40,9 +35,7 @@ def test_llm_intent_agent_parses_output_correctly():
     openai_client = DummyOpenAIClient(
         '{"intent_type": "SEARCH_BY_MERCHANT", "intent_category": "TRANSACTION_SEARCH", "confidence": 0.77, "entities": [{"entity_type": "MERCHANT", "value": "Netflix", "confidence": 0.77}]}'
     )
-    agent = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = LLMIntentAgent(openai_client=openai_client)
     assert agent.config.model_client_config["api_key"] == "openai-test-key"
     assert agent.config.model_client_config["model"] == "gpt-4o-mini"
     result = asyncio.run(
@@ -63,9 +56,7 @@ def test_category_mapping_applied():
     openai_client = DummyOpenAIClient(
         '{"intent_type": "BALANCE_CHECK", "intent_category": "ACCOUNT_BALANCE", "confidence": 0.9, "entities": []}'
     )
-    agent = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = LLMIntentAgent(openai_client=openai_client)
     assert agent.config.model_client_config["api_key"] == "openai-test-key"
     result = asyncio.run(agent.detect_intent("Quel est mon solde ?", user_id=1))
     intent_result = result["metadata"]["intent_result"]
@@ -87,9 +78,7 @@ def test_transaction_type_post_processing(message, expected):
     openai_client = DummyOpenAIClient(
         '{"intent_type": "TRANSACTION_SEARCH", "intent_category": "TRANSACTION_SEARCH", "confidence": 0.9, "entities": []}'
     )
-    agent = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = LLMIntentAgent(openai_client=openai_client)
     result = asyncio.run(agent.detect_intent(message, user_id=1))
     intent_result = result["metadata"]["intent_result"]
     tx = next(e for e in intent_result.entities if e.entity_type == EntityType.TRANSACTION_TYPE)
@@ -102,9 +91,7 @@ def test_transaction_type_post_processing_multiple():
     openai_client = DummyOpenAIClient(
         '{"intent_type": "TRANSACTION_SEARCH", "intent_category": "TRANSACTION_SEARCH", "confidence": 0.9, "entities": []}'
     )
-    agent = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = LLMIntentAgent(openai_client=openai_client)
     result = asyncio.run(agent.detect_intent("entrées et sorties", user_id=1))
     intent_result = result["metadata"]["intent_result"]
     tx = next(e for e in intent_result.entities if e.entity_type == EntityType.TRANSACTION_TYPE)
@@ -124,9 +111,7 @@ def test_month_regex_fallback_and_injection(message, month_txt, month_num):
     openai_client = DummyOpenAIClient(
         '{"intent_type": "GENERAL_QUESTION", "intent_category": "GENERAL_QUESTION", "confidence": 0.0, "entities": []}'
     )
-    agent = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = LLMIntentAgent(openai_client=openai_client)
     result = asyncio.run(agent.detect_intent(message, user_id=1))
     intent_result = result["metadata"]["intent_result"]
     dates = [e for e in intent_result.entities if e.entity_type == EntityType.DATE]
@@ -159,9 +144,7 @@ def test_llm_intent_agent_returns_amount_actions(message, value, action):
         }
     )
     openai_client = DummyOpenAIClient(content)
-    agent = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = LLMIntentAgent(openai_client=openai_client)
     intent_result = asyncio.run(agent.detect_intent(message, user_id=1))["metadata"][
         "intent_result"
     ]

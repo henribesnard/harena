@@ -16,6 +16,7 @@ Version: 1.0.0 MVP - Contextual Response Generation
 
 import time
 import logging
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -23,10 +24,17 @@ from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig, AgentResponse
 from ..models.service_contracts import SearchServiceResponse
 from ..models.conversation_models import ConversationContext
-from ..core.deepseek_client import DeepSeekClient, DeepSeekResponse
 from ..constants import TRANSACTION_TYPES
 from ..utils.cache import MultiLevelCache, generate_cache_key, get_default_cache_sync
 from ..utils.metrics import get_default_metrics_collector, AlertLevel
+
+
+class LLMResponse:
+    """Simple container for LLM responses."""
+
+    def __init__(self, content: str, raw: Any = None):
+        self.content = content
+        self.raw = raw
 
 logger = logging.getLogger(__name__)
 
@@ -127,36 +135,23 @@ class ResponseFormatter:
 
 
 class ResponseAgent(BaseFinancialAgent):
-    """
-    Agent for generating contextual responses to financial queries.
-    
-    This agent takes search results and conversation context to generate
-    natural, helpful responses that:
-    1. Format financial data clearly
-    2. Provide relevant insights
-    3. Maintain conversation continuity
-    4. Suggest follow-up actions when appropriate
-    
-    Attributes:
-        formatter: Helper for formatting financial data
-        conversation_memory: Simple conversation context storage
-    """
-    
-    def __init__(self, deepseek_client: DeepSeekClient, config: Optional[AgentConfig] = None):
+    """Agent for generating contextual responses to financial queries."""
+
+    def __init__(self, llm_client: Any, config: Optional[AgentConfig] = None):
         """
         Initialize the response generation agent.
         
         Args:
-            deepseek_client: Configured DeepSeek client
+            llm_client: Configured LLM client
             config: Optional agent configuration
         """
         if config is None:
             config = AgentConfig(
                 name="response_agent",
                 model_client_config={
-                    "model": "deepseek-chat",
-                    "api_key": deepseek_client.api_key,
-                    "base_url": deepseek_client.base_url
+                    "model": "gpt-4o-mini",
+                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "base_url": "https://api.openai.com/v1"
                 },
                 system_message=self._get_system_message(),
                 max_consecutive_auto_reply=1,
@@ -166,11 +161,7 @@ class ResponseAgent(BaseFinancialAgent):
                 timeout_seconds=15
             )
         
-        super().__init__(
-            name=config.name,
-            config=config,
-            deepseek_client=deepseek_client
-        )
+        super().__init__(name=config.name, config=config, llm_client=llm_client)
         
         self.formatter = ResponseFormatter()
         self.conversation_memory = {}  # Simple in-memory storage
@@ -430,9 +421,8 @@ class ResponseAgent(BaseFinancialAgent):
         conversation_context: str,
         user_id: int,
         has_date_filter: bool,
-    ) -> DeepSeekResponse:
-        """
-        Generate AI response using DeepSeek.
+    ) -> LLMResponse:
+        """Generate AI response using the configured LLM client.
 
         Args:
             user_message: Original user message
@@ -441,7 +431,7 @@ class ResponseAgent(BaseFinancialAgent):
             user_id: ID of the requesting user
 
         Returns:
-            DeepSeekResponse containing response and raw completion
+            LLMResponse containing response content and raw completion
         """
         # Prepare prompt for response generation
         prompt = self._build_response_prompt(
@@ -457,7 +447,7 @@ class ResponseAgent(BaseFinancialAgent):
         )
         cached = await self.cache.get(cache_key)
         if cached:
-            return DeepSeekResponse(content=cached, raw=None)
+            return LLMResponse(content=cached, raw=None)
 
         try:
             logger.debug("Generating AI response for user_id=%s", user_id)
@@ -469,12 +459,12 @@ class ResponseAgent(BaseFinancialAgent):
                 user=str(user_id),
                 use_cache=True,
             )
-            sig = inspect.signature(self.deepseek_client.generate_response).parameters
+            sig = inspect.signature(self.llm_client.generate_response).parameters
             if "stream" in sig:
                 gen_kwargs["stream"] = False
             if "top_p" in sig:
                 gen_kwargs["top_p"] = 1.0
-            response = await self.deepseek_client.generate_response(
+            response = await self.llm_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_response_generation_prompt()},
                     {"role": "user", "content": prompt}
@@ -491,7 +481,7 @@ class ResponseAgent(BaseFinancialAgent):
             fallback = self._generate_fallback_response(
                 user_message, {"formatted_results": formatted_results}
             )
-            return DeepSeekResponse(content=fallback, raw=None)
+            return LLMResponse(content=fallback, raw=None)
     
     def _build_response_prompt(
         self,
@@ -631,7 +621,7 @@ Les valeurs autorisées pour transaction_type sont : {allowed}
 Toujours prioriser la clarté et l'utilité pour l'utilisateur."""
     
     def _get_response_generation_prompt(self) -> str:
-        """Get response generation prompt for DeepSeek."""
+        """Get response generation prompt for the LLM client."""
         allowed = " ou ".join(TRANSACTION_TYPES)
         return f"""Tu es un assistant financier expert qui génère des réponses contextuelles basées sur des données de transactions.
 

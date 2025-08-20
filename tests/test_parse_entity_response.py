@@ -6,15 +6,6 @@ def _make_agent(monkeypatch):
     """Create a SearchQueryAgent instance with minimal dependencies."""
     # Provide minimal modules to satisfy import requirements
     monkeypatch.setitem(sys.modules, "httpx", types.ModuleType("httpx"))
-    dummy_deepseek = types.ModuleType("deepseek_client")
-
-    class _DummyDeepSeek:
-        pass
-
-    dummy_deepseek.DeepSeekClient = _DummyDeepSeek
-    monkeypatch.setitem(
-        sys.modules, "conversation_service.core.deepseek_client", dummy_deepseek
-    )
 
     dummy_base = types.ModuleType("base_financial_agent")
 

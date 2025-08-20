@@ -12,10 +12,6 @@ from conversation_service.agents.llm_intent_agent import (
 )
 from conversation_service.models.financial_models import EntityType
 
-
-class DummyDeepSeekClient:
-    api_key = "test-key"
-
 THRESHOLD = 0.8
 
 def parse_intents_md(path: Path) -> Dict[str, str]:
@@ -116,10 +112,7 @@ def test_intents_full():
     query_mapping = {INTENT_QUERIES[i]: (i, intents[i]) for i in intents}
 
     async def run_tests():
-        agent = LLMIntentAgent(
-            deepseek_client=DummyDeepSeekClient(),
-            openai_client=make_dummy_client(query_mapping),
-        )
+        agent = LLMIntentAgent(openai_client=make_dummy_client(query_mapping))
 
         results = []
         for intent, query in INTENT_QUERIES.items():
@@ -170,10 +163,7 @@ def make_failing_client():
 
 def test_month_fallback_regex():
     async def run():
-        agent = LLMIntentAgent(
-            deepseek_client=DummyDeepSeekClient(),
-            openai_client=make_failing_client(),
-        )
+        agent = LLMIntentAgent(openai_client=make_failing_client())
         res = await agent.detect_intent("transactions en juin", user_id=1)
         intent_result = res["metadata"]["intent_result"]
         assert intent_result.intent_type == "SEARCH_BY_DATE"

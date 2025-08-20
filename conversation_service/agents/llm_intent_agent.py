@@ -49,6 +49,25 @@ CATEGORY_MAP: Dict[str, str] = {
 
 logger = logging.getLogger(__name__)
 
+FRENCH_MONTHS = [
+    "janvier",
+    "février",
+    "fevrier",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "aout",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+    "decembre",
+]
+MONTH_REGEX = re.compile(r"\b(" + "|".join(FRENCH_MONTHS) + r")\b", re.IGNORECASE)
+
 
 class LLMOutputParsingError(RuntimeError):
     """Raised when the LLM response cannot be parsed as JSON."""
@@ -191,6 +210,59 @@ class LLMIntentAgent(BaseFinancialAgent):
             }
         return value
 
+    @staticmethod
+    def _extract_months(message: str) -> List[str]:
+        """Return list of French month names found in ``message``."""
+        return [m.lower() for m in MONTH_REGEX.findall(message.lower())]
+
+    def _regex_fallback(self, user_message: str) -> Dict[str, Any]:
+        """Fallback intent detection using regex for French months."""
+        months = self._extract_months(user_message)
+        entities = [
+            FinancialEntity(
+                entity_type=EntityType.DATE,
+                raw_value=m,
+                normalized_value=m,
+                confidence=0.5,
+                detection_method=DetectionMethod.FALLBACK,
+            )
+            for m in months
+        ]
+        intent_type = "SEARCH_BY_DATE" if entities else "GENERAL_QUESTION"
+        intent_category = (
+            IntentCategory.FINANCIAL_QUERY
+            if entities
+            else IntentCategory.GENERAL_QUESTION
+        )
+        confidence = 0.5 if entities else 0.0
+        data = {
+            "intent_type": intent_type,
+            "intent_category": intent_category.value,
+            "confidence": confidence,
+            "entities": [e.model_dump() for e in entities],
+        }
+        intent_result = IntentResult(
+            intent_type=intent_type,
+            intent_category=intent_category,
+            confidence=confidence,
+            entities=entities,
+            method=DetectionMethod.FALLBACK,
+            processing_time_ms=0.0,
+        )
+        return {
+            "content": json.dumps(data),
+            "metadata": {
+                "intent_result": intent_result,
+                "detection_method": DetectionMethod.FALLBACK,
+                "confidence": confidence,
+                "intent_type": intent_type,
+                "intent_category": intent_category.value,
+                "entities": [e.model_dump() for e in entities],
+                "suggested_actions": None,
+            },
+            "confidence_score": confidence,
+        }
+
     # ------------------------------------------------------------------
     async def detect_intent(
         self, user_message: str, user_id: int
@@ -265,30 +337,33 @@ class LLMIntentAgent(BaseFinancialAgent):
             "required": ["intent_type", "intent_category", "confidence", "entities"],
         }
 
-        response = None
-        for attempt in range(self._max_retries):
-            try:
-                response = await self._openai_client.chat.completions.create(
-                    model=self.config.model_client_config["model"],
-                    messages=messages,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"name": "intent_result", "schema": schema},
-                    },
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens,
-                )
-                break
-            except Exception as err:  # pragma: no cover - retry logic
-                logger.warning("OpenAI call failed (attempt %s): %s", attempt + 1, err)
-                await asyncio.sleep(2 ** attempt)
-        if response is None:
-            raise RuntimeError("LLM call failed")
-
         try:
+            response = None
+            for attempt in range(self._max_retries):
+                try:
+                    response = await self._openai_client.chat.completions.create(
+                        model=self.config.model_client_config["model"],
+                        messages=messages,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {"name": "intent_result", "schema": schema},
+                        },
+                        temperature=self.config.temperature,
+                        max_tokens=self.config.max_tokens,
+                    )
+                    break
+                except Exception as err:  # pragma: no cover - retry logic
+                    logger.warning(
+                        "OpenAI call failed (attempt %s): %s", attempt + 1, err
+                    )
+                    await asyncio.sleep(2 ** attempt)
+            if response is None:
+                raise RuntimeError("LLM call failed")
+
             data = json.loads(response.choices[0].message.content)
-        except Exception as err:  # pragma: no cover - parsing errors
-            raise LLMOutputParsingError(f"Invalid JSON in LLM response: {err}") from err
+        except Exception as err:  # pragma: no cover - fallback on regex
+            logger.warning("LLM processing failed, using regex fallback: %s", err)
+            return self._regex_fallback(user_message)
         suggested_actions = data.get("suggested_actions")
         if isinstance(suggested_actions, str):
             suggested_actions = [suggested_actions]

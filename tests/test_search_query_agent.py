@@ -159,6 +159,35 @@ def test_transaction_type_synonym_applied():
     assert request["filters"]["transaction_types"] == ["transfer"]
 
 
+def test_operation_type_synonym_applied_without_transaction_types():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.OPERATION_TYPE,
+                raw_value="virements",
+                normalized_value="virements",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "virements", user_id=1)
+    )
+    request = search_query.to_search_request()
+    assert request["filters"]["operation_type"] == "transfer"
+    assert "transaction_types" not in request["filters"]
+
+
 def test_default_limit_capped_to_100(monkeypatch):
     monkeypatch.setenv("SEARCH_QUERY_DEFAULT_LIMIT", "150")
     agent = SearchQueryAgent(

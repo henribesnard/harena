@@ -46,7 +46,16 @@ from ..prompts.search_prompts import (
     format_search_prompt,
     parse_search_response,
 )
-from config_service.config import settings
+try:
+    from config_service.config import settings
+except Exception:  # pragma: no cover - fallback when config service is unavailable
+    class _DummySettings:
+        DEEPSEEK_QUERY_TEMPERATURE = 0.0
+        DEEPSEEK_QUERY_MAX_TOKENS = 1000
+        DEEPSEEK_QUERY_TOP_P = 1.0
+
+    settings = _DummySettings()
+from ..constants import TRANSACTION_TYPES
 
 logger = logging.getLogger(__name__)
 # Dedicated logger for security/audit events
@@ -634,9 +643,13 @@ class SearchQueryAgent(BaseFinancialAgent):
         }
 
         prompt = format_search_prompt(intent_payload, user_message)
+        allowed = " ou ".join(TRANSACTION_TYPES)
+        system_prompt = (
+            f"{SEARCH_GENERATION_SYSTEM_PROMPT}\nLes valeurs autorisées pour transaction_type sont : {allowed}"
+        )
         response = await self.deepseek_client.generate_response(
             messages=[
-                {"role": "system", "content": SEARCH_GENERATION_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             temperature=settings.DEEPSEEK_QUERY_TEMPERATURE,
@@ -773,14 +786,13 @@ class SearchQueryAgent(BaseFinancialAgent):
                 break
 
         transaction_types = [
-            _apply_synonym(str(e.normalized_value))
+            str(e.normalized_value).lower()
             for e in all_entities
             if e.entity_type in {EntityType.TRANSACTION_TYPE, "TRANSACTION_TYPE"} and e.normalized_value
         ]
+        transaction_types = [t for t in transaction_types if t in TRANSACTION_TYPES]
         if transaction_types:
-            search_filters["transaction_types"] = list(
-                dict.fromkeys(transaction_types)
-            )
+            search_filters["transaction_types"] = list(dict.fromkeys(transaction_types))
 
         # Merchant name filtering is intentionally avoided. Some databases may
         # store transactions with an empty ``merchant_name`` field. Adding a
@@ -1061,11 +1073,12 @@ class SearchQueryAgent(BaseFinancialAgent):
 
     def _get_system_message(self) -> str:
         """Get system message for the agent."""
-        return """Tu es un agent spécialisé dans la génération de requêtes de recherche pour les données financières.
+        allowed = " ou ".join(TRANSACTION_TYPES)
+        return f"""Tu es un agent spécialisé dans la génération de requêtes de recherche pour les données financières.
 
 Ton rôle est de:
 1. Analyser les intentions détectées et les messages utilisateur
-2. Extraire des entités financières supplémentaires 
+2. Extraire des entités financières supplémentaires
 3. Générer des requêtes optimisées pour le service de recherche
 4. Exécuter les requêtes et retourner les résultats structurés
 
@@ -1076,11 +1089,14 @@ Types d'entités à extraire:
 - DATE_RANGE: Dates et périodes
 - TRANSACTION_TYPE: Types de transactions (débit/crédit)
 
+Les valeurs autorisées pour transaction_type sont : {allowed}
+
 Optimise les requêtes pour la pertinence et la performance."""
 
     def _get_entity_extraction_prompt(self) -> str:
         """Get entity extraction prompt for DeepSeek."""
-        return """Extrais toutes les entités financières du message utilisateur.
+        allowed = " ou ".join(TRANSACTION_TYPES)
+        return f"""Extrais toutes les entités financières du message utilisateur.
 
 Types d'entités à rechercher:
 - MERCHANT: Noms de commerçants, magasins, services
@@ -1089,10 +1105,12 @@ Types d'entités à rechercher:
 - DATE_RANGE: Dates, périodes, mois, années
 - TRANSACTION_TYPE: Type de transaction (achat, virement, etc.)
 
+Les valeurs autorisées pour transaction_type sont : {allowed}
+
 Réponds uniquement avec un JSON valide au format:
 [
-  {"type": "MERCHANT", "value": "Carrefour"},
-  {"type": "DATE_RANGE", "value": "2023-01"}
+  {{"type": "MERCHANT", "value": "Carrefour"}},
+  {{"type": "DATE_RANGE", "value": "2023-01"}}
 ]
 
 Si aucune entité supplémentaire n'est trouvée, renvoie []."""

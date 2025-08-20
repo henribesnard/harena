@@ -24,6 +24,7 @@ from ..models.agent_models import AgentConfig, AgentResponse
 from ..models.service_contracts import SearchServiceResponse
 from ..models.conversation_models import ConversationContext
 from ..core.deepseek_client import DeepSeekClient, DeepSeekResponse
+from ..constants import TRANSACTION_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -553,7 +554,8 @@ Génère une réponse naturelle et utile qui:
     
     def _get_system_message(self) -> str:
         """Get system message for the agent."""
-        return """Tu es un assistant financier spécialisé dans la génération de réponses contextuelles.
+        allowed = " ou ".join(TRANSACTION_TYPES)
+        return f"""Tu es un assistant financier spécialisé dans la génération de réponses contextuelles.
 
 Ton rôle est de:
 1. Analyser les résultats de recherche financière
@@ -570,11 +572,14 @@ Principes de réponse:
 - Suggère des actions de suivi quand c'est pertinent
 - Adapte ton niveau de détail selon le contexte
 
+Les valeurs autorisées pour transaction_type sont : {allowed}
+
 Toujours prioriser la clarté et l'utilité pour l'utilisateur."""
     
     def _get_response_generation_prompt(self) -> str:
         """Get response generation prompt for DeepSeek."""
-        return """Tu es un assistant financier expert qui génère des réponses contextuelles basées sur des données de transactions.
+        allowed = " ou ".join(TRANSACTION_TYPES)
+        return f"""Tu es un assistant financier expert qui génère des réponses contextuelles basées sur des données de transactions.
 
 Instructions:
 1. Analyse la question utilisateur et les résultats de recherche
@@ -583,6 +588,8 @@ Instructions:
 4. Ajoute des insights pertinents basés sur les données
 5. Propose des actions de suivi si approprié
 6. Adapte ton ton selon le contexte conversationnel
+
+Les valeurs autorisées pour transaction_type sont : {allowed}
 
 Format de réponse:
 - Commence par répondre directement à la question

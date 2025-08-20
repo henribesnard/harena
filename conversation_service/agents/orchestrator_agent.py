@@ -19,6 +19,7 @@ import time
 import logging
 import asyncio
 import os
+import json
 from typing import Dict, Any, Optional, List, Deque
 from dataclasses import dataclass
 from enum import Enum
@@ -91,6 +92,65 @@ class WorkflowExecutor:
             "skipped_steps": len([s for s in steps if s.status == WorkflowStepStatus.SKIPPED]),
             "total_steps": len(steps),
         }
+
+    async def decide_next_step_with_llm(
+        self, workflow_data: Dict[str, Any], steps: List[WorkflowStep]
+    ) -> Optional[str]:
+        """Use an LLM to decide the next workflow step.
+
+        Args:
+            workflow_data: Current workflow data dictionary
+            steps: List of workflow steps with their status
+
+        Returns:
+            The name of the next step to execute or ``None`` if the LLM
+            response is invalid or unavailable.
+        """
+        try:
+            client = getattr(self.intent_agent, "deepseek_client", None)
+            if not client or not hasattr(client, "create_completion"):
+                return None
+
+            step_states = {s.name: s.status.value for s in steps}
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Decide the next workflow step. Choices: intent_detection, "
+                        "search_query, response_generation, finish. Respond with "
+                        "one of these tokens only."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "workflow_data": workflow_data,
+                            "step_states": step_states,
+                        }
+                    ),
+                },
+            ]
+            response = await client.create_completion(
+                messages, temperature=0.0, max_tokens=10, use_cache=False
+            )
+            content = (
+                getattr(response, "choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+                .lower()
+            )
+            if content in {
+                "intent_detection",
+                "search_query",
+                "response_generation",
+                "finish",
+            }:
+                return content
+        except Exception as e:
+            logger.warning(f"LLM step decision failed: {e}")
+        return None
         
     async def execute_workflow(
         self, user_message: str, conversation_id: str, user_id: int
@@ -131,264 +191,280 @@ class WorkflowExecutor:
             "final_response": None,
             "search_error": False
         }
-        
-        try:
-            # Step 1: Intent Detection
-            intent_step = steps[0]
-            logger.info("Starting intent_detection step")
-            intent_step.status = WorkflowStepStatus.RUNNING
-            intent_step.start_time = time.perf_counter()
-            intent_timer = metrics.performance_monitor.start_timer("intent_detection")
-            
-            try:
-                intent_response = None
-                for attempt in range(1, INTENT_MAX_RETRIES + 1):
-                    try:
-                        intent_response = await asyncio.wait_for(
-                            self.intent_agent.execute_with_metrics({"user_message": user_message}, user_id),
-                            timeout=INTENT_TIMEOUT_SECONDS,
-                        )
-                        if intent_response.success:
-                            intent_result = (
-                                intent_response.metadata.get("intent_result")
-                                if intent_response.metadata
-                                else None
-                            )
-                            logger.info(
-                                f"Intent: {intent_result.intent_type}, "
-                                f"Entities: {[e.model_dump() for e in getattr(intent_result, 'entities', [])]}"
-                            )
-                            workflow_data["intent_result"] = intent_result
-                            intent_step.status = WorkflowStepStatus.COMPLETED
-                            intent_step.result = intent_response
-                            break
-                        raise Exception(intent_response.error_message or "Intent detection failed")
-                    except Exception as e:
-                        logger.error(
-                            f"Intent detection attempt {attempt}/{INTENT_MAX_RETRIES} failed: {e}"
-                        )
-                        if attempt < INTENT_MAX_RETRIES:
-                            backoff = INTENT_BACKOFF_BASE * (2 ** (attempt - 1))
-                            if backoff > 0:
-                                await asyncio.sleep(backoff)
-                        else:
-                            raise
-            except Exception as e:
-                intent_step.status = WorkflowStepStatus.FAILED
-                intent_step.error = str(e)
-                logger.error(f"Intent detection step failed after retries: {e}")
+        execution_order = ["intent_detection", "search_query", "response_generation"]
+        step_indices = {name: idx for idx, name in enumerate(execution_order)}
 
-                # Try to continue with fallback intent
-                workflow_data["intent_result"] = self._create_fallback_intent()
-            
-            finally:
-                intent_step.end_time = time.perf_counter()
-                duration_ms = metrics.performance_monitor.end_timer(intent_timer)
-                metrics.record_timer("intent_detection_duration_ms", duration_ms)
-                for alert in metrics.performance_monitor.check_performance_alerts("intent_detection"):
-                    logger.warning(alert.message)
-                entities_count = 0
-                if workflow_data["intent_result"] and getattr(workflow_data["intent_result"], "entities", None):
-                    entities_count = len(workflow_data["intent_result"].entities)
-                logger.info(
-                    "Finished intent_detection step in %.2f ms with %d entities",
-                    intent_step.duration_ms,
-                    entities_count,
-                )
-            
-            # Step 2: Search Query (only if we have intent)
-            search_step = steps[1]
-            response_step = steps[2]
-            intent_result = workflow_data["intent_result"]
-            if intent_result:
-                search_required = getattr(intent_result, "search_required", True)
-                if search_required:
-                    logger.info("Starting search_query step")
-                    search_step.status = WorkflowStepStatus.RUNNING
-                    search_step.start_time = time.perf_counter()
-                    search_timer = metrics.performance_monitor.start_timer("search_query")
+        try:
+            current_step = "intent_detection"
+            iterations = 0
+            max_iterations = 10
+            while current_step and iterations < max_iterations:
+                iterations += 1
+                if current_step == "intent_detection":
+                    intent_step = steps[0]
+                    logger.info("Starting intent_detection step")
+                    intent_step.status = WorkflowStepStatus.RUNNING
+                    intent_step.start_time = time.perf_counter()
+                    intent_timer = metrics.performance_monitor.start_timer("intent_detection")
                     try:
-                        search_response = await self.search_agent.execute_with_metrics(
-                            {"intent_result": intent_result, "user_message": user_message},
+                        intent_response = None
+                        for attempt in range(1, INTENT_MAX_RETRIES + 1):
+                            try:
+                                intent_response = await asyncio.wait_for(
+                                    self.intent_agent.execute_with_metrics({"user_message": user_message}, user_id),
+                                    timeout=INTENT_TIMEOUT_SECONDS,
+                                )
+                                if intent_response.success:
+                                    intent_result = (
+                                        intent_response.metadata.get("intent_result")
+                                        if intent_response.metadata
+                                        else None
+                                    )
+                                    logger.info(
+                                        f"Intent: {intent_result.intent_type}, "
+                                        f"Entities: {[e.model_dump() for e in getattr(intent_result, 'entities', [])]}"
+                                    )
+                                    workflow_data["intent_result"] = intent_result
+                                    intent_step.status = WorkflowStepStatus.COMPLETED
+                                    intent_step.result = intent_response
+                                    break
+                                raise Exception(intent_response.error_message or "Intent detection failed")
+                            except Exception as e:
+                                logger.error(
+                                    f"Intent detection attempt {attempt}/{INTENT_MAX_RETRIES} failed: {e}"
+                                )
+                                if attempt < INTENT_MAX_RETRIES:
+                                    backoff = INTENT_BACKOFF_BASE * (2 ** (attempt - 1))
+                                    if backoff > 0:
+                                        await asyncio.sleep(backoff)
+                                else:
+                                    raise
+                    except Exception as e:
+                        intent_step.status = WorkflowStepStatus.FAILED
+                        intent_step.error = str(e)
+                        logger.error(f"Intent detection step failed after retries: {e}")
+                        workflow_data["intent_result"] = self._create_fallback_intent()
+                    finally:
+                        intent_step.end_time = time.perf_counter()
+                        duration_ms = metrics.performance_monitor.end_timer(intent_timer)
+                        metrics.record_timer("intent_detection_duration_ms", duration_ms)
+                        for alert in metrics.performance_monitor.check_performance_alerts("intent_detection"):
+                            logger.warning(alert.message)
+                        entities_count = 0
+                        if workflow_data["intent_result"] and getattr(workflow_data["intent_result"], "entities", None):
+                            entities_count = len(workflow_data["intent_result"].entities)
+                        logger.info(
+                            "Finished intent_detection step in %.2f ms with %d entities",
+                            intent_step.duration_ms,
+                            entities_count,
+                        )
+
+                elif current_step == "search_query":
+                    search_step = steps[1]
+                    response_step = steps[2]
+                    intent_result = workflow_data["intent_result"]
+                    if intent_result:
+                        search_required = getattr(intent_result, "search_required", True)
+                        if search_required:
+                            logger.info("Starting search_query step")
+                            search_step.status = WorkflowStepStatus.RUNNING
+                            search_step.start_time = time.perf_counter()
+                            search_timer = metrics.performance_monitor.start_timer("search_query")
+                            try:
+                                search_response = await self.search_agent.execute_with_metrics(
+                                    {"intent_result": intent_result, "user_message": user_message},
+                                    user_id,
+                                )
+                                if search_response.success:
+                                    workflow_data["search_results"] = search_response
+                                    metadata = getattr(search_response, "metadata", {}) or {}
+                                    results = []
+                                    results_count = metadata.get("search_results_count")
+                                    if results_count is None:
+                                        sr_meta = metadata.get("search_response", {})
+                                        if isinstance(sr_meta, dict):
+                                            results = sr_meta.get("results", []) or []
+                                            rm = sr_meta.get("response_metadata", {})
+                                            results_count = rm.get("returned_results", len(results))
+                                        else:
+                                            results_count = 0
+                                    else:
+                                        sr_meta = metadata.get("search_response", {})
+                                        if isinstance(sr_meta, dict):
+                                            results = sr_meta.get("results", []) or []
+                                    workflow_data["search_results_count"] = results_count
+                                    workflow_data["search_results_sample"] = results[:3]
+                                    search_step.status = WorkflowStepStatus.COMPLETED
+                                    search_step.result = search_response
+                                else:
+                                    raise Exception(search_response.error_message or "Search query failed")
+                            except Exception as e:
+                                search_step.status = WorkflowStepStatus.FAILED
+                                search_step.error = str(e)
+                                logger.error(f"Search query step failed: {e}")
+                                workflow_data["search_results"] = self._create_empty_search_results()
+                                workflow_data["search_error"] = True
+                                response_step.status = WorkflowStepStatus.RUNNING
+                                response_step.start_time = time.perf_counter()
+                                response_timer = metrics.performance_monitor.start_timer(
+                                    "response_generation"
+                                )
+                                try:
+                                    context = await self._create_conversation_context(
+                                        conversation_id
+                                    )
+                                    response_response = await self.response_agent.execute_with_metrics(
+                                        {
+                                            "user_message": user_message,
+                                            "search_results": workflow_data["search_results"],
+                                            "context": context,
+                                            "search_error": True,
+                                            "error_message": str(e),
+                                        },
+                                        user_id,
+                                    )
+                                    workflow_data["final_response"] = response_response.content
+                                    response_step.status = WorkflowStepStatus.FAILED
+                                    response_step.result = response_response
+                                    response_step.error = "Search query failed"
+                                except Exception as resp_error:
+                                    response_step.status = WorkflowStepStatus.FAILED
+                                    response_step.error = str(resp_error)
+                                    workflow_data["final_response"] = self._create_fallback_response(
+                                        user_message
+                                    )
+                                finally:
+                                    response_step.end_time = time.perf_counter()
+                                    duration_ms = metrics.performance_monitor.end_timer(
+                                        response_timer
+                                    )
+                                    metrics.record_timer(
+                                        "response_generation_duration_ms", duration_ms
+                                    )
+                                    for alert in metrics.performance_monitor.check_performance_alerts(
+                                        "response_generation"
+                                    ):
+                                        logger.warning(alert.message)
+                                    logger.info(
+                                        "Finished response_generation step in %.2f ms using %d results",
+                                        response_step.duration_ms,
+                                        0,
+                                    )
+                            finally:
+                                search_step.end_time = time.perf_counter()
+                                duration_ms = metrics.performance_monitor.end_timer(search_timer)
+                                metrics.record_timer("search_query_duration_ms", duration_ms)
+                                for alert in metrics.performance_monitor.check_performance_alerts("search_query"):
+                                    logger.warning(alert.message)
+                                results_count = 0
+                                if search_step.result and getattr(search_step.result, "metadata", None):
+                                    results_count = search_step.result.metadata.get("search_results_count", 0)
+                                logger.info(
+                                    "Finished search_query step in %.2f ms with %d results",
+                                    search_step.duration_ms,
+                                    results_count,
+                                )
+                        else:
+                            search_step.status = WorkflowStepStatus.SKIPPED
+                            search_step.error = "Search not required for intent"
+                            search_step.start_time = time.perf_counter()
+                            search_step.end_time = time.perf_counter()
+                            workflow_data["search_results"] = self._create_empty_search_results()
+                            if getattr(intent_result, "suggested_actions", None):
+                                workflow_data["final_response"] = intent_result.suggested_actions[0]
+                            else:
+                                workflow_data["final_response"] = "Bonjour !"
+                            response_step.status = WorkflowStepStatus.SKIPPED
+                            response_step.error = "Search not required for intent"
+                            response_step.start_time = time.perf_counter()
+                            response_step.end_time = time.perf_counter()
+                            logger.info("Search_query step skipped")
+                            logger.info("Response_generation step skipped")
+                    else:
+                        search_step.status = WorkflowStepStatus.SKIPPED
+                        search_step.error = "No valid intent result"
+                        workflow_data["search_results"] = self._create_empty_search_results()
+                        logger.info("Search_query step skipped - no intent result")
+
+                    if steps[2].status != WorkflowStepStatus.PENDING:
+                        break
+
+                elif current_step == "response_generation":
+                    response_step = steps[2]
+                    if response_step.status != WorkflowStepStatus.PENDING:
+                        break
+                    logger.info("Starting response_generation step")
+                    response_step.status = WorkflowStepStatus.RUNNING
+                    response_step.start_time = time.perf_counter()
+                    response_timer = metrics.performance_monitor.start_timer("response_generation")
+                    try:
+                        context = await self._create_conversation_context(
+                            conversation_id
+                        )
+                        logger.info(
+                            "Conversation context size before response: %d",
+                            len(context.turns) if context else 0,
+                        )
+                        response_response = await self.response_agent.execute_with_metrics(
+                            {
+                                "user_message": user_message,
+                                "search_results": workflow_data["search_results"],
+                                "context": context,
+                                "search_error": workflow_data.get("search_error", False),
+                            },
                             user_id,
                         )
-                        if search_response.success:
-                            # Store complete search response object for downstream agents
-                            workflow_data["search_results"] = search_response
-
-                            # Extract and store search results metadata for workflow reporting
-                            metadata = getattr(search_response, "metadata", {}) or {}
-                            results = []
-                            results_count = metadata.get("search_results_count")
-                            if results_count is None:
-                                sr_meta = metadata.get("search_response", {})
-                                if isinstance(sr_meta, dict):
-                                    results = sr_meta.get("results", []) or []
-                                    rm = sr_meta.get("response_metadata", {})
-                                    results_count = rm.get("returned_results", len(results))
-                                else:
-                                    results_count = 0
-                            else:
-                                sr_meta = metadata.get("search_response", {})
-                                if isinstance(sr_meta, dict):
-                                    results = sr_meta.get("results", []) or []
-
-                            workflow_data["search_results_count"] = results_count
-                            workflow_data["search_results_sample"] = results[:3]
-
-                            search_step.status = WorkflowStepStatus.COMPLETED
-                            search_step.result = search_response
-                        else:
-                            raise Exception(search_response.error_message or "Search query failed")
-                    except Exception as e:
-                        search_step.status = WorkflowStepStatus.FAILED
-                        search_step.error = str(e)
-                        logger.error(f"Search query step failed: {e}")
-                        workflow_data["search_results"] = self._create_empty_search_results()
-                        workflow_data["search_error"] = True
-
-                        # Generate an explicit error response for the user
-                        response_step.status = WorkflowStepStatus.RUNNING
-                        response_step.start_time = time.perf_counter()
-                        response_timer = metrics.performance_monitor.start_timer(
-                            "response_generation"
-                        )
-                        try:
-                            context = await self._create_conversation_context(
-                                conversation_id
-                            )
-                            response_response = await self.response_agent.execute_with_metrics(
-                                {
-                                    "user_message": user_message,
-                                    "search_results": workflow_data["search_results"],
-                                    "context": context,
-                                    "search_error": True,
-                                    "error_message": str(e),
-                                },
-                                user_id,
-                            )
+                        if workflow_data.get("search_error"):
                             workflow_data["final_response"] = response_response.content
                             response_step.status = WorkflowStepStatus.FAILED
                             response_step.result = response_response
                             response_step.error = "Search query failed"
-                        except Exception as resp_error:
-                            response_step.status = WorkflowStepStatus.FAILED
-                            response_step.error = str(resp_error)
-                            workflow_data["final_response"] = self._create_fallback_response(
-                                user_message
-                            )
-                        finally:
-                            response_step.end_time = time.perf_counter()
-                            duration_ms = metrics.performance_monitor.end_timer(
-                                response_timer
-                            )
-                            metrics.record_timer(
-                                "response_generation_duration_ms", duration_ms
-                            )
-                            for alert in metrics.performance_monitor.check_performance_alerts(
-                                "response_generation"
-                            ):
-                                logger.warning(alert.message)
-                            logger.info(
-                                "Finished response_generation step in %.2f ms using %d results",
-                                response_step.duration_ms,
-                                0,
-                            )
+                        elif response_response.success:
+                            workflow_data["final_response"] = response_response.content
+                            response_step.status = WorkflowStepStatus.COMPLETED
+                            response_step.result = response_response
+                        else:
+                            raise Exception(response_response.error_message or "Response generation failed")
+                    except Exception as e:
+                        response_step.status = WorkflowStepStatus.FAILED
+                        response_step.error = str(e)
+                        logger.error(f"Response generation step failed: {e}")
+                        workflow_data["final_response"] = self._create_fallback_response(user_message)
                     finally:
-                        search_step.end_time = time.perf_counter()
-                        duration_ms = metrics.performance_monitor.end_timer(search_timer)
-                        metrics.record_timer("search_query_duration_ms", duration_ms)
-                        for alert in metrics.performance_monitor.check_performance_alerts("search_query"):
+                        response_step.end_time = time.perf_counter()
+                        duration_ms = metrics.performance_monitor.end_timer(response_timer)
+                        metrics.record_timer("response_generation_duration_ms", duration_ms)
+                        for alert in metrics.performance_monitor.check_performance_alerts("response_generation"):
                             logger.warning(alert.message)
                         results_count = 0
-                        if search_step.result and getattr(search_step.result, "metadata", None):
-                            results_count = search_step.result.metadata.get("search_results_count", 0)
+                        if workflow_data.get("search_results") and getattr(workflow_data["search_results"], "metadata", None):
+                            results_count = workflow_data["search_results"].metadata.get("search_results_count", 0)
                         logger.info(
-                            "Finished search_query step in %.2f ms with %d results",
-                            search_step.duration_ms,
+                            "Finished response_generation step in %.2f ms using %d results",
+                            response_step.duration_ms,
                             results_count,
                         )
-                else:
-                    search_step.status = WorkflowStepStatus.SKIPPED
-                    search_step.error = "Search not required for intent"
-                    search_step.start_time = time.perf_counter()
-                    search_step.end_time = time.perf_counter()
-                    workflow_data["search_results"] = self._create_empty_search_results()
-                    if getattr(intent_result, "suggested_actions", None):
-                        workflow_data["final_response"] = intent_result.suggested_actions[0]
-                    else:
-                        workflow_data["final_response"] = "Bonjour !"
-                    response_step.status = WorkflowStepStatus.SKIPPED
-                    response_step.error = "Search not required for intent"
-                    response_step.start_time = time.perf_counter()
-                    response_step.end_time = time.perf_counter()
-                    logger.info("Search_query step skipped")
-                    logger.info("Response_generation step skipped")
-            else:
-                search_step.status = WorkflowStepStatus.SKIPPED
-                search_step.error = "No valid intent result"
-                workflow_data["search_results"] = self._create_empty_search_results()
-                logger.info("Search_query step skipped - no intent result")
 
-            # Step 3: Response Generation
-            if response_step.status == WorkflowStepStatus.PENDING:
-                logger.info("Starting response_generation step")
-                response_step.status = WorkflowStepStatus.RUNNING
-                response_step.start_time = time.perf_counter()
-                response_timer = metrics.performance_monitor.start_timer("response_generation")
-                try:
-                    context = await self._create_conversation_context(
-                        conversation_id
-                    )
-                    logger.info(
-                        "Conversation context size before response: %d",
-                        len(context.turns) if context else 0,
-                    )
-                    response_response = await self.response_agent.execute_with_metrics(
-                        {
-                            "user_message": user_message,
-                            "search_results": workflow_data["search_results"],
-                            "context": context,
-                            "search_error": workflow_data.get("search_error", False),
-                        },
-                        user_id,
-                    )
-                    if workflow_data.get("search_error"):
-                        # Propagate search failure to the workflow and avoid normal response
-                        workflow_data["final_response"] = response_response.content
-                        response_step.status = WorkflowStepStatus.FAILED
-                        response_step.result = response_response
-                        response_step.error = "Search query failed"
-                    elif response_response.success:
-                        workflow_data["final_response"] = response_response.content
-                        response_step.status = WorkflowStepStatus.COMPLETED
-                        response_step.result = response_response
-                    else:
-                        raise Exception(response_response.error_message or "Response generation failed")
-                except Exception as e:
-                    response_step.status = WorkflowStepStatus.FAILED
-                    response_step.error = str(e)
-                    logger.error(f"Response generation step failed: {e}")
-                    workflow_data["final_response"] = self._create_fallback_response(user_message)
-                finally:
-                    response_step.end_time = time.perf_counter()
-                    duration_ms = metrics.performance_monitor.end_timer(response_timer)
-                    metrics.record_timer("response_generation_duration_ms", duration_ms)
-                    for alert in metrics.performance_monitor.check_performance_alerts("response_generation"):
-                        logger.warning(alert.message)
-                    results_count = 0
-                    if workflow_data.get("search_results") and getattr(workflow_data["search_results"], "metadata", None):
-                        results_count = workflow_data["search_results"].metadata.get("search_results_count", 0)
-                    logger.info(
-                        "Finished response_generation step in %.2f ms using %d results",
-                        response_step.duration_ms,
-                        results_count,
-                    )
-            
+                # Determine next step with LLM
+                next_step = await self.decide_next_step_with_llm(workflow_data, steps)
+                if next_step == "finish":
+                    break
+                if next_step and next_step in step_indices:
+                    current_step = next_step
+                else:
+                    # Fallback to next pending step in order
+                    idx = execution_order.index(current_step)
+                    next_step = None
+                    for name in execution_order[idx + 1 :]:
+                        step_obj = steps[step_indices[name]]
+                        if step_obj.status == WorkflowStepStatus.PENDING:
+                            next_step = name
+                            break
+                    current_step = next_step
+
             # Compile workflow results
             workflow_end = time.perf_counter()
             total_duration = (workflow_end - workflow_start) * 1000
-            
             return {
                 "success": any(step.status == WorkflowStepStatus.COMPLETED for step in steps),
                 "final_response": workflow_data["final_response"],
@@ -401,14 +477,13 @@ class WorkflowExecutor:
                             "agent": step.agent_name,
                             "status": step.status.value,
                             "duration_ms": step.duration_ms,
-                            "error": step.error
+                            "error": step.error,
                         }
                         for step in steps
-                    ]
+                    ],
                 },
-                "performance_summary": self._build_performance_summary(steps)
+                "performance_summary": self._build_performance_summary(steps),
             }
-            
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
             return {
@@ -424,12 +499,12 @@ class WorkflowExecutor:
                             "agent": step.agent_name,
                             "status": step.status.value,
                             "duration_ms": step.duration_ms,
-                            "error": step.error
+                            "error": step.error,
                         }
                         for step in steps
-                    ]
+                    ],
                 },
-                "performance_summary": self._build_performance_summary(steps)
+                "performance_summary": self._build_performance_summary(steps),
             }
     
     def _create_fallback_intent(self) -> Dict[str, Any]:

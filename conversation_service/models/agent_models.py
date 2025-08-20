@@ -3,8 +3,8 @@ Agent models for AutoGen v0.4 integration in Conversation Service MVP.
 
 This module defines the core data models for AutoGen agents, including
 configuration, responses, and team workflow management. While initially
-optimized for the financial conversation use case with DeepSeek LLM, the
-models now support additional LLM providers such as OpenAI's GPT family.
+optimized for the financial conversation use case, the models now support
+OpenAI's GPT family of LLMs.
 
 Classes:
     - AgentConfig: Configuration model for AutoGen agents
@@ -22,9 +22,14 @@ from datetime import datetime
 
 __all__ = ["AgentConfig", "AgentResponse", "TeamWorkflow"]
 
-# Accepted model name prefixes for LLM providers supported by the service.
-# This includes DeepSeek models and OpenAI's GPT family.
-SUPPORTED_MODEL_PREFIXES = ("deepseek-", "gpt-")
+# Accepted model name prefixes for OpenAI models supported by the service.
+SUPPORTED_MODEL_PREFIXES = (
+    "gpt-",
+    "o1-",
+    "o3-",
+    "text-",
+    "chatgpt",
+)
 
 
 class AgentConfig(BaseModel):
@@ -118,8 +123,8 @@ class AgentConfig(BaseModel):
     def validate_model_config(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Validate model configuration for supported LLM providers.
 
-        Currently accepts models from DeepSeek (``deepseek-``) and OpenAI's GPT
-        family (``gpt-``).
+        Currently accepts models from OpenAI's GPT family (``gpt-``) and other
+        OpenAI models (e.g. ``o1-`` series).
         """
         required_keys = ["model", "api_key", "base_url"]
         for key in required_keys:

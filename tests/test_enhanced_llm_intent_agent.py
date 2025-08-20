@@ -16,11 +16,6 @@ from conversation_service.models.financial_models import (
 )
 
 
-class DummyDeepSeekClient:
-    api_key = "test-key"
-    base_url = "https://api.openai.com/v1"
-
-
 class DummyOpenAIClient:
     def __init__(self, content: str):
         self._content = content
@@ -87,9 +82,7 @@ def test_full_flow_detects_intent_and_latency():
                 }
             )
     )
-    agent = EnhancedLLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = EnhancedLLMIntentAgent(openai_client=openai_client)
     assert agent.config.model_client_config["api_key"] == "openai-test-key"
     result = asyncio.run(agent.detect_intent("Combien j’ai dépensé pour Netflix ?", 1))
     intent_result = result["metadata"]["intent_result"]
@@ -100,7 +93,6 @@ def test_full_flow_detects_intent_and_latency():
 def test_fallback_when_llm_errors():
     os.environ["OPENAI_API_KEY"] = "openai-test-key"
     agent = EnhancedLLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(),
         openai_client=ErrorOpenAIClient(),
         fallback_agent=FallbackAgent(),
     )
@@ -132,9 +124,7 @@ def test_latency_measurement(monkeypatch):
             }
         )
     )
-    agent = EnhancedLLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
-    )
+    agent = EnhancedLLMIntentAgent(openai_client=openai_client)
     assert agent.config.model_client_config["api_key"] == "openai-test-key"
     result = asyncio.run(agent.detect_intent("ping", 1))
     intent_result = result["metadata"]["intent_result"]
@@ -163,12 +153,8 @@ def test_matches_old_llm_intent_agent_output():
             }
         )
     )
-    enhanced = EnhancedLLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client1
-    )
-    legacy = LLMIntentAgent(
-        deepseek_client=DummyDeepSeekClient(), openai_client=openai_client2
-    )
+    enhanced = EnhancedLLMIntentAgent(openai_client=openai_client1)
+    legacy = LLMIntentAgent(openai_client=openai_client2)
     assert enhanced.config.model_client_config["api_key"] == "openai-test-key"
     assert legacy.config.model_client_config["api_key"] == "openai-test-key"
     res_new = asyncio.run(enhanced.detect_intent("Combien ?", 1))

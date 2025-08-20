@@ -16,7 +16,6 @@ from typing import Any, Dict, Optional
 
 from .llm_intent_agent import LLMIntentAgent
 from .base_financial_agent import BaseFinancialAgent
-from ..core.deepseek_client import DeepSeekClient
 from ..models.agent_models import AgentConfig
 from ..models.financial_models import (
     DetectionMethod,
@@ -32,12 +31,11 @@ class EnhancedLLMIntentAgent(LLMIntentAgent):
 
     def __init__(
         self,
-        deepseek_client: DeepSeekClient,
         fallback_agent: Optional[BaseFinancialAgent] = None,
         config: Optional[AgentConfig] = None,
         openai_client: Optional[Any] = None,
     ) -> None:
-        super().__init__(deepseek_client=deepseek_client, config=config, openai_client=openai_client)
+        super().__init__(config=config, openai_client=openai_client)
         self.fallback_agent = fallback_agent
 
     async def detect_intent(self, user_message: str, user_id: int) -> Dict[str, Any]:

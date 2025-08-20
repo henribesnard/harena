@@ -2,9 +2,9 @@
 Base Financial Agent class for AutoGen v0.4 integration.
 
 This module provides the foundational class for all specialized financial agents
-in the conversation service. It includes common functionality like metrics tracking,
-error handling, and DeepSeek client integration. Performance monitoring now tracks
-percentile distributions (p95, p99) and uses a 30-second threshold for health checks.
+in the conversation service. It includes common functionality like metrics tracking
+and error handling. Performance monitoring now tracks percentile distributions
+(p95, p99) and uses a 30-second threshold for health checks.
 
 Classes:
     - BaseFinancialAgent: Base class extending AutoGen AssistantAgent
@@ -32,7 +32,6 @@ except ImportError:
             pass
 
 from ..models.agent_models import AgentConfig, AgentResponse
-from ..core.deepseek_client import DeepSeekClient
 
 logger = logging.getLogger(__name__)
 
@@ -201,19 +200,19 @@ class BaseFinancialAgent(AssistantAgent):
     Attributes:
         name: Unique identifier for the agent
         config: Agent configuration
-        deepseek_client: DeepSeek LLM client
+        llm_client: Optional LLM client
         metrics: Performance metrics tracker
         domain: Financial domain context
     """
     
-    def __init__(self, name: str, config: AgentConfig, deepseek_client: DeepSeekClient):
+    def __init__(self, name: str, config: AgentConfig, llm_client: Optional[Any] = None):
         """
         Initialize the base financial agent.
         
         Args:
             name: Unique identifier for the agent
             config: Agent configuration including model settings
-            deepseek_client: Configured DeepSeek client instance
+            llm_client: Optional configured LLM client instance
         """
         if not AUTOGEN_AVAILABLE:
             raise ImportError("AutoGen is required but not available")
@@ -235,7 +234,7 @@ class BaseFinancialAgent(AssistantAgent):
         )
         
         self.config = config
-        self.deepseek_client = deepseek_client
+        self.llm_client = llm_client
         self.metrics = AgentMetrics()
         self.domain = "financial"
         

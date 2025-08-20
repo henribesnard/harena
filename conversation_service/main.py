@@ -25,16 +25,10 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.exception_handlers import (
-    http_exception_handler,
-    request_validation_exception_handler
-)
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from .api.middleware import GlobalExceptionMiddleware
 
 from .api.routes import router as api_router
 from .api.dependencies import cleanup_dependencies
@@ -196,6 +190,7 @@ def create_app() -> FastAPI:
     # Add custom middleware
     app.middleware("http")(add_process_time_header)
     app.middleware("http")(log_requests)
+    app.add_middleware(GlobalExceptionMiddleware)
     
     # Include API routes
     app.include_router(
@@ -216,11 +211,6 @@ def create_app() -> FastAPI:
             "health_check": "/health",
             "api_base": "/api/v1"
         }
-    
-    # Configure exception handlers
-    app.add_exception_handler(HTTPException, custom_http_exception_handler)
-    app.add_exception_handler(RequestValidationError, custom_validation_exception_handler)
-    app.add_exception_handler(Exception, global_exception_handler)
     
     return app
 
@@ -355,56 +345,6 @@ async def log_requests(request: Request, call_next):
         logger.info(f"✅ {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
     return response
-
-
-# Exception handlers
-async def custom_http_exception_handler(request: Request, exc: HTTPException):
-    """Custom HTTP exception handler with structured logging."""
-    logger.warning(f"HTTP {exc.status_code}: {exc.detail} - {request.method} {request.url}")
-    
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": True,
-            "status_code": exc.status_code,
-            "message": exc.detail,
-            "timestamp": time.time(),
-            "path": str(request.url.path)
-        }
-    )
-
-
-async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Custom validation exception handler."""
-    logger.warning(f"Validation error: {exc} - {request.method} {request.url}")
-    
-    return JSONResponse(
-        status_code=422,
-        content={
-            "error": True,
-            "status_code": 422,
-            "message": "Request validation failed",
-            "details": exc.errors(),
-            "timestamp": time.time(),
-            "path": str(request.url.path)
-        }
-    )
-
-
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler for unhandled exceptions."""
-    logger.error(f"Unhandled exception: {exc} - {request.method} {request.url}", exc_info=True)
-    
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": True,
-            "status_code": 500,
-            "message": "Internal server error",
-            "timestamp": time.time(),
-            "path": str(request.url.path)
-        }
-    )
 
 
 # Create application instance

@@ -13,7 +13,16 @@ from typing import Annotated, Any, Dict, List, Optional, Protocol
 from datetime import datetime
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import JSONResponse
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -59,6 +68,24 @@ except ImportError:
 
 router = APIRouter()
 
+
+
+@chat_router.websocket("/ws")
+async def chat_websocket(
+    websocket: WebSocket,
+    team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
+):
+    """Simple WebSocket endpoint forwarding messages to the team manager."""
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            result = await team_manager.process_user_message_with_metadata(
+                user_message=data, user_id=0, conversation_id="websocket"
+            )
+            await websocket.send_text(result["content"])
+    except WebSocketDisconnect:
+        logger.info("WebSocket connection closed")
 
 
 @chat_router.post(

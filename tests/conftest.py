@@ -5,6 +5,9 @@ pour permettre l'exécution des tests sans les vraies dépendances.
 """
 import sys
 import types
+import pytest
+import json
+from conversation_service.utils.cache import LRUCache
 
 
 def create_pydantic_stub():
@@ -182,5 +185,44 @@ def reset_stubs():
     for module in modules_to_remove:
         if module in sys.modules:
             del sys.modules[module]
-    
+
     install_stubs()
+
+
+# Fixtures for tests
+class DummyOpenAIClient:
+    """Simple OpenAI client stub returning preconfigured content."""
+
+    def __init__(self, content: str):
+        self._content = content
+
+        class _Completions:
+            async def create(_self, *args, **kwargs):
+                choice = types.SimpleNamespace(
+                    message=types.SimpleNamespace(content=content)
+                )
+                return types.SimpleNamespace(choices=[choice])
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        self.chat = _Chat()
+
+
+@pytest.fixture
+def openai_mock():
+    """Provide a mock OpenAI client with deterministic content."""
+    payload = {
+        "intent_type": "GREETING",
+        "intent_category": "GREETING",
+        "confidence": 0.9,
+        "entities": [],
+    }
+    return DummyOpenAIClient(json.dumps(payload))
+
+
+@pytest.fixture
+def cache():
+    """Provide an in-memory LRU cache for tests."""
+    return LRUCache(maxsize=16)

@@ -28,12 +28,13 @@ from collections import deque
 from .base_financial_agent import BaseFinancialAgent
 from .llm_intent_agent import LLMIntentAgent
 from .search_query_agent import SearchQueryAgent
-from .response_agent import ResponseAgent
+from .response_agent import ResponseAgent, SEARCH_ERROR_MESSAGE
 from ..models.agent_models import AgentConfig, AgentResponse
 from types import SimpleNamespace
 from ..models.conversation_models import ConversationContext
 from ..core.deepseek_client import DeepSeekClient
 from ..core.conversation_manager import ConversationManager
+from ..core.metrics_collector import MetricsCollector
 from ..utils.metrics import get_default_metrics_collector
 
 logger = logging.getLogger(__name__)
@@ -174,7 +175,7 @@ class WorkflowExecutor:
                   entirely.
         """
         workflow_start = time.perf_counter()
-        metrics = get_default_metrics_collector()
+        metrics = self.metrics if hasattr(self, "metrics") else get_default_metrics_collector()
         
         # Initialize workflow steps
         steps = [
@@ -220,8 +221,9 @@ class WorkflowExecutor:
                                         if intent_response.metadata
                                         else None
                                     )
+                                    intent_logged = getattr(intent_result, "intent_type", "unknown")
                                     logger.info(
-                                        f"Intent: {intent_result.intent_type}, "
+                                        f"Intent: {intent_logged}, "
                                         f"Entities: {[e.model_dump() for e in getattr(intent_result, 'entities', [])]}"
                                     )
                                     workflow_data["intent_result"] = intent_result
@@ -350,6 +352,7 @@ class WorkflowExecutor:
                                         response_step.duration_ms,
                                         0,
                                     )
+                                current_step = None
                             finally:
                                 search_step.end_time = time.perf_counter()
                                 duration_ms = metrics.performance_monitor.end_timer(search_timer)
@@ -595,7 +598,8 @@ class OrchestratorAgent(BaseFinancialAgent):
                  search_agent: SearchQueryAgent,
                  response_agent: ResponseAgent,
                  config: Optional[AgentConfig] = None,
-                 performance_threshold_ms: int = 30000):
+                 performance_threshold_ms: int = 30000,
+                 metrics_collector: Optional[MetricsCollector] = None):
         """
         Initialize the orchestrator agent.
         
@@ -658,6 +662,7 @@ class OrchestratorAgent(BaseFinancialAgent):
         self.search_agent = search_agent
         self.response_agent = response_agent
         self.workflow_executor = WorkflowExecutor(intent_agent, search_agent, response_agent)
+        self.metrics = metrics_collector or get_default_metrics_collector()
 
         # Performance monitoring
         self.performance_threshold_ms = performance_threshold_ms  # 30s default threshold

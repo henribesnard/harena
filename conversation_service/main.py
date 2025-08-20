@@ -14,12 +14,11 @@ from typing import Dict, Any
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from .api.middleware import GlobalExceptionMiddleware
-from fastapi import FastAPI
 
+from .api.exception_middleware import GlobalExceptionMiddleware
+from .api.middleware import setup_middleware
 from .api.routes import router as api_router
 from .api.websocket import router as websocket_router
-from .api.middleware import setup_middleware
 
 from config.openai_config import OpenAISettings
 from config.autogen_config import AutoGenSettings

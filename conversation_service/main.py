@@ -18,7 +18,6 @@ from .api.middleware import GlobalExceptionMiddleware
 from fastapi import FastAPI
 
 from .api.routes import router as api_router
-from .api.websocket import router as websocket_router
 from .api.middleware import setup_middleware
 
 from config.openai_config import OpenAISettings
@@ -121,7 +120,6 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Conversation Service")
     setup_middleware(app)
     app.include_router(api_router)
-    app.include_router(websocket_router)
     return app
 
 

@@ -17,7 +17,8 @@ def test_agent_config_accepts_deepseek_model():
     assert config.model_client_config["model"] == "deepseek-chat"
 
 
-def test_agent_config_accepts_gpt_model():
+def test_agent_config_accepts_openai_gpt_model():
+    """Ensure that models with the ``gpt-`` prefix are considered valid."""
     config = AgentConfig(
         name="test-gpt",
         model_client_config={

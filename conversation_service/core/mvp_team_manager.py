@@ -416,9 +416,9 @@ class MVPTeamManager:
     def _load_config_from_env(self) -> Dict[str, Any]:
         """Load configuration from environment variables."""
         return {
-            'DEEPSEEK_API_KEY': settings.DEEPSEEK_API_KEY,
-            'DEEPSEEK_BASE_URL': settings.DEEPSEEK_BASE_URL,
-            'DEEPSEEK_TIMEOUT': settings.DEEPSEEK_TIMEOUT,
+            'OPENAI_API_KEY': settings.OPENAI_API_KEY,
+            'OPENAI_BASE_URL': settings.OPENAI_BASE_URL,
+            'OPENAI_TIMEOUT': settings.OPENAI_TIMEOUT,
             'SEARCH_SERVICE_URL': settings.SEARCH_SERVICE_URL,
             'MAX_CONVERSATION_HISTORY': settings.MAX_CONVERSATION_HISTORY,
             'WORKFLOW_TIMEOUT_SECONDS': settings.WORKFLOW_TIMEOUT_SECONDS,

@@ -10,6 +10,7 @@ from conversation_service.agents.llm_intent_agent import (
     LLMIntentAgent,
     CATEGORY_MAP,
 )
+from conversation_service.models.financial_models import EntityType
 
 
 class DummyDeepSeekClient:
@@ -158,3 +159,27 @@ def test_intents_full():
             assert res.confidence >= THRESHOLD
 
     asyncio.run(run_tests())
+
+
+def make_failing_client():
+    async def create(*, messages, **kwargs):
+        raise RuntimeError("LLM failure")
+
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+
+def test_month_fallback_regex():
+    async def run():
+        agent = LLMIntentAgent(
+            deepseek_client=DummyDeepSeekClient(),
+            openai_client=make_failing_client(),
+        )
+        res = await agent.detect_intent("transactions en juin", user_id=1)
+        intent_result = res["metadata"]["intent_result"]
+        assert intent_result.intent_type == "SEARCH_BY_DATE"
+        assert any(
+            e.entity_type == EntityType.DATE and e.raw_value.lower() == "juin"
+            for e in intent_result.entities
+        )
+
+    asyncio.run(run())

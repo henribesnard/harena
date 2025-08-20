@@ -194,6 +194,22 @@ INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.95
 ENTITIES: {"amounts": ["50 €"]}
 SUGGESTED_ACTIONS: ["filter_by_amount_less"]
+
+**Exemple 9 - Recherche par mois (juin) :**
+MESSAGE: "Transactions en juin"
+INTENT_TYPE: SEARCH_BY_DATE
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.91
+ENTITIES: {"dates": ["juin"]}
+SUGGESTED_ACTIONS: []
+
+**Exemple 10 - Recherche par mois (mai) :**
+MESSAGE: "Transactions au mois de mai"
+INTENT_TYPE: SEARCH_BY_DATE
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.91
+ENTITIES: {"dates": ["mai"]}
+SUGGESTED_ACTIONS: []
 """
 
 # =============================================================================

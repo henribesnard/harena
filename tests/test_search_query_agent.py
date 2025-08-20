@@ -363,7 +363,7 @@ def test_execute_search_query_converts_fields():
     assert result["account_id"] == "987"
 
 
-def test_pagination_updates_offset(monkeypatch):
+def test_search_query_single_call(monkeypatch):
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),
         search_service_url="http://search.example.com",
@@ -375,12 +375,14 @@ def test_pagination_updates_offset(monkeypatch):
     async def dummy_extract(message, intent_result, user_id):
         return []
 
-    async def dummy_generate(intent_result, user_message, user_id, enhanced_entities=None):
+    async def dummy_generate(
+        intent_result, user_message, user_id, enhanced_entities=None, limit=None, offset=0
+    ):
         return SearchServiceQuery(
             query_metadata=QueryMetadata(
                 conversation_id="conv1", user_id=user_id, intent_type="TEST_INTENT"
             ),
-            search_parameters=SearchParameters(max_results=1, offset=0),
+            search_parameters=SearchParameters(max_results=1, offset=offset),
             filters=SearchFilters(),
         )
 
@@ -393,7 +395,7 @@ def test_pagination_updates_offset(monkeypatch):
             processing_time_ms=1.0,
             total_results=2,
             returned_results=1,
-            has_more_results=query.search_parameters.offset == 0,
+            has_more_results=True,
             search_strategy_used="semantic",
         )
         return SearchServiceResponse(
@@ -416,7 +418,7 @@ def test_pagination_updates_offset(monkeypatch):
     )
 
     asyncio.run(agent.process_search_request(intent_result, "msg", user_id=1))
-    assert calls == [0, 1]
+    assert calls == [0]
 
 
 class DummyElasticsearchClientNoMerchant:

@@ -25,6 +25,8 @@ from ..models.service_contracts import SearchServiceResponse
 from ..models.conversation_models import ConversationContext
 from ..core.deepseek_client import DeepSeekClient, DeepSeekResponse
 from ..constants import TRANSACTION_TYPES
+from ..utils.cache import MultiLevelCache, generate_cache_key, get_default_cache_sync
+from ..utils.metrics import get_default_metrics_collector, AlertLevel
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +162,7 @@ class ResponseAgent(BaseFinancialAgent):
                 max_consecutive_auto_reply=1,
                 description="Contextual response generation agent for financial conversations",
                 temperature=0.3,  # Slightly higher for more natural responses
-                max_tokens=300,   # Limit tokens for faster responses
+                max_tokens=200,   # Reduced token limit for faster responses
                 timeout_seconds=15
             )
         
@@ -172,6 +174,8 @@ class ResponseAgent(BaseFinancialAgent):
         
         self.formatter = ResponseFormatter()
         self.conversation_memory = {}  # Simple in-memory storage
+        self.cache: MultiLevelCache = get_default_cache_sync()
+        self.metrics = get_default_metrics_collector()
         
         logger.info("Initialized ResponseAgent with conversation context")
     
@@ -293,6 +297,15 @@ class ResponseAgent(BaseFinancialAgent):
                 )
 
             execution_time = (time.perf_counter() - start_time) * 1000
+            self.metrics.record_timer("response_generation_duration_ms", execution_time)
+            if execution_time > 10000:
+                self.metrics._maybe_generate_alert(
+                    name="response_generation_duration_ms_exceeded",
+                    message=f"Response generation took {execution_time:.1f}ms",
+                    threshold=10000,
+                    actual=execution_time,
+                    level=AlertLevel.WARNING,
+                )
 
             return {
                 "content": ai_response.content,
@@ -319,7 +332,16 @@ class ResponseAgent(BaseFinancialAgent):
             # Fallback response
             fallback_response = self._generate_fallback_response(user_message, search_results)
             execution_time = (time.perf_counter() - start_time) * 1000
-            
+            self.metrics.record_timer("response_generation_duration_ms", execution_time)
+            if execution_time > 10000:
+                self.metrics._maybe_generate_alert(
+                    name="response_generation_duration_ms_exceeded",
+                    message=f"Response generation took {execution_time:.1f}ms",
+                    threshold=10000,
+                    actual=execution_time,
+                    level=AlertLevel.WARNING,
+                )
+
             return {
                 "content": fallback_response,
                 "metadata": {
@@ -372,24 +394,34 @@ class ResponseAgent(BaseFinancialAgent):
         """
         if not context:
             return "Nouvelle conversation."
-        
+
+        cache_key = generate_cache_key(
+            "context_summary",
+            getattr(context, "conversation_id", ""),
+            len(getattr(context, "turns", []) or []),
+        )
+        cached = await self.cache.get(cache_key)
+        if cached:
+            return cached
+
         # Build context summary
         context_parts = []
-        
+
         if context.turns:
             recent_turns = context.turns[-3:]  # Last 3 turns
             context_parts.append(f"Historique récent ({len(recent_turns)} tours):")
-            
+
             for turn in recent_turns:
                 context_parts.append(f"- Utilisateur: {turn.user_message[:100]}...")
                 if turn.intent_result and turn.intent_result.intent_type:
                     context_parts.append(f"  Intent: {turn.intent_result.intent_type}")
-        
+
         if context.context_summary:
             context_parts.append(f"Résumé: {context.context_summary}")
-        
-        
-        return "\n".join(context_parts) if context_parts else "Contexte minimal disponible."
+
+        summary = "\n".join(context_parts) if context_parts else "Contexte minimal disponible."
+        await self.cache.set(cache_key, summary)
+        return summary
     
     async def _generate_ai_response(
         self,
@@ -416,6 +448,17 @@ class ResponseAgent(BaseFinancialAgent):
             user_message, formatted_results, conversation_context, has_date_filter
         )
 
+        cache_key = generate_cache_key(
+            "ai_response",
+            user_id,
+            user_message,
+            formatted_results,
+            conversation_context,
+        )
+        cached = await self.cache.get(cache_key)
+        if cached:
+            return DeepSeekResponse(content=cached, raw=None)
+
         try:
             logger.debug("Generating AI response for user_id=%s", user_id)
             response = await self.deepseek_client.generate_response(
@@ -427,9 +470,12 @@ class ResponseAgent(BaseFinancialAgent):
                 max_tokens=self.config.max_tokens,
                 user=str(user_id),
                 use_cache=True,
+                stream=False,
+                top_p=1.0,
             )
 
             response.content = response.content.strip()
+            await self.cache.set(cache_key, response.content)
             return response
 
         except Exception as e:

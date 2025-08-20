@@ -369,7 +369,9 @@ class SearchQueryAgent(BaseFinancialAgent):
         self.search_service_url = search_service_url.rstrip("/")
         self.http_client = httpx.AsyncClient(timeout=30.0)
         self.query_optimizer = QueryOptimizer()
-        self.default_limit = int(os.getenv("SEARCH_QUERY_DEFAULT_LIMIT", "336"))
+        self.default_limit = min(
+            int(os.getenv("SEARCH_QUERY_DEFAULT_LIMIT", "100")), 100
+        )
 
         logger.info(
             f"Initialized SearchQueryAgent with service URL: {search_service_url}"
@@ -560,9 +562,10 @@ class SearchQueryAgent(BaseFinancialAgent):
         default_limit = (
             100 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10
         )
+        limit = min(limit or default_limit, 100)
         search_params = SearchParameters(
             search_text=search_text,
-            max_results=limit or default_limit,
+            max_results=limit,
             offset=offset,
             include_highlights=True,
             boost_recent=intent_result.intent_type

@@ -34,6 +34,7 @@ from .dependencies import (
     get_conversation_service,
     get_conversation_read_service,
 )
+from .websocket import ws_router
 from ..core.conversation_manager import ConversationManager
 from ..models.conversation_models import (
     ConversationRequest,
@@ -626,3 +627,4 @@ async def store_conversation_turn(
 router.include_router(chat_router)
 router.include_router(health_router)
 router.include_router(conversations_router)
+router.include_router(ws_router)

@@ -47,7 +47,8 @@ from .dependencies import (
 from .routes import (
     chat_router,
     health_router,
-    router as main_router
+    router as main_router,
+    ws_router
 )
 
 # API Models for external use
@@ -79,8 +80,9 @@ __all__ = [
     
     # Routers
     "chat_router",
-    "health_router", 
+    "health_router",
     "main_router",
+    "ws_router",
     
     # API Models
     "ConversationRequest",
@@ -99,9 +101,10 @@ API_PREFIX = f"/api/{API_VERSION}"
 ENDPOINTS_SUMMARY = {
     "POST /chat": "Main conversation endpoint with AutoGen multi-agent processing",
     "GET /health": "Service health check with component status",
-    "GET /metrics": "Performance metrics and agent statistics", 
+    "GET /metrics": "Performance metrics and agent statistics",
     "GET /docs": "Interactive API documentation",
-    "GET /redoc": "Alternative API documentation"
+    "GET /redoc": "Alternative API documentation",
+    "WS /ws/chat": "WebSocket chat endpoint with incremental agent messages"
 }
 
 # Rate limiting configuration

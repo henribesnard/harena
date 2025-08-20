@@ -105,7 +105,7 @@ def test_fallback_when_llm_errors():
         fallback_agent=FallbackAgent(),
     )
     assert agent.config.model_client_config["api_key"] == "openai-test-key"
-    result = asyncio.run(agent.detect_intent("Bonjour", 1))
+    result = asyncio.run(agent.detect_intent("Salut", 1))
     intent_result = result["metadata"]["intent_result"]
     assert intent_result.intent_type == "FALLBACK_INTENT"
     assert intent_result.method == DetectionMethod.FALLBACK

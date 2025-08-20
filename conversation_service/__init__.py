@@ -1,9 +1,7 @@
 """
 Conversation Service MVP Package
 
-Service de conversation intelligent basé sur AutoGen v0.4 et DeepSeek
-pour le domaine financier avec détection d'intentions entièrement LLM.
-pour le domaine financier avec détection d'intentions LLM-only.
+Service de conversation intelligent basé sur AutoGen v0.4 et OpenAI
 pour le domaine financier avec détection d'intentions assistée par LLM.
 """
 
@@ -19,7 +17,7 @@ __all__ = ["__version__", "__author__", "agents"]
 # avoid this, the behaviour is now opt-in via a configuration flag.
 from config.settings import settings
 
-if settings.CS_AUTO_IMPORT_SUBPACKAGES == 1:
+if getattr(settings, "CS_AUTO_IMPORT_SUBPACKAGES", 0) == 1:
     for _mod in ["api", "core", "models", "services", "utils"]:
         try:
             globals()[_mod] = __import__(f"{__name__}.{_mod}", fromlist=["*"])

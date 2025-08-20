@@ -1,5 +1,4 @@
-"""
-FastAPI dependencies for Conversation Service MVP.
+"""Minimal dependency definitions for the conversation service.
 
 This module provides dependency injection functions for FastAPI endpoints,
 managing AutoGen team managers, conversation context, authentication,
@@ -13,10 +12,8 @@ Dependencies:
     - validate_request_rate_limit: Rate limiting validation
     - get_metrics_collector: Metrics collection dependency
 
-"""Minimal dependency definitions for the conversation service.
-
 The real project contains a rich set of dependencies for authentication,
-metrics, database access and agent management.  For the purposes of the kata we
+metrics, database access and agent management. For the purposes of the kata we
 only implement lightweight placeholders so that the API can be exercised in
 isolation and tests can override these dependencies.
 """
@@ -302,6 +299,3 @@ async def cleanup_dependencies():
     _metrics_collector = None
     _cache_manager = None
 
-async def cleanup_dependencies() -> None:
-    """Cleanup hook called on application shutdown."""
-    return None

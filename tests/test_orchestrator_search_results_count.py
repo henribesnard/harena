@@ -3,21 +3,19 @@ from types import SimpleNamespace
 
 from conversation_service.agents.orchestrator_agent import OrchestratorAgent
 from conversation_service.models.agent_models import AgentResponse
+from types import SimpleNamespace
 
 
-class DummyDeepSeekClient:
-    api_key = "test-key"
-    base_url = "http://api.example.com"
+class DummyIntentResult(SimpleNamespace):
+    def model_dump(self):
+        return {}
 
 
 class DummyIntentAgent:
     name = "intent_agent"
 
-    def __init__(self):
-        self.deepseek_client = DummyDeepSeekClient()
-
     async def execute_with_metrics(self, input_data, user_id):
-        intent_result = SimpleNamespace(search_required=True, suggested_actions=None)
+        intent_result = DummyIntentResult(search_required=True, suggested_actions=None)
         return AgentResponse(
             agent_name=self.name,
             content="intent",

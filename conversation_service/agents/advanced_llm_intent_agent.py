@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, Optional, Tuple
 
 from .llm_intent_agent import LLMIntentAgent
@@ -31,11 +32,11 @@ class AdvancedLLMIntentAgent(LLMIntentAgent):
 
     def __init__(
         self,
-        deepseek_client,
         config: Optional[AgentConfig] = None,
         cache: Optional[Any] = None,
         max_retries: int = 3,
         backoff_factor: float = 0.5,
+        openai_client: Optional[Any] = None,
     ) -> None:
         self.cache = cache or llm_intent_cache
         self.max_retries = max_retries
@@ -45,9 +46,9 @@ class AdvancedLLMIntentAgent(LLMIntentAgent):
             config = AgentConfig(
                 name="advanced_llm_intent_agent",
                 model_client_config={
-                    "model": "deepseek-chat",
-                    "api_key": deepseek_client.api_key,
-                    "base_url": deepseek_client.base_url,
+                    "model": "gpt-4o-mini",
+                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._build_system_message(),
                 max_consecutive_auto_reply=1,
@@ -57,7 +58,7 @@ class AdvancedLLMIntentAgent(LLMIntentAgent):
                 timeout_seconds=8,
             )
 
-        super().__init__(deepseek_client=deepseek_client, config=config)
+        super().__init__(config=config, openai_client=openai_client)
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -104,7 +105,7 @@ class AdvancedLLMIntentAgent(LLMIntentAgent):
             "All retries failed for AdvancedLLMIntentAgent, falling back: %s",
             last_error,
         )
-        fallback_agent = LLMIntentAgent(deepseek_client=self.deepseek_client)
+        fallback_agent = LLMIntentAgent(openai_client=self._openai_client)
         return await fallback_agent.detect_intent(user_message, user_id)
 
 __all__ = ["AdvancedLLMIntentAgent"]

@@ -39,7 +39,6 @@ from ..models.service_contracts import (
     AggregationRequest,
 )
 from ..models.financial_models import IntentResult, FinancialEntity, EntityType
-from ..core.deepseek_client import DeepSeekClient
 from ..utils.validators import ContractValidator
 from ..prompts.search_prompts import (
     SEARCH_GENERATION_SYSTEM_PROMPT,
@@ -451,7 +450,7 @@ class SearchQueryAgent(BaseFinancialAgent):
 
     def __init__(
         self,
-        deepseek_client: DeepSeekClient,
+        llm_client: Any,
         search_service_url: str,
         config: Optional[AgentConfig] = None,
         use_llm_query: Optional[bool] = None,
@@ -460,7 +459,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         Initialize the search query agent.
 
         Args:
-            deepseek_client: Configured DeepSeek client
+            llm_client: Configured LLM client
             search_service_url: Base URL for Search Service
             config: Optional agent configuration
         """
@@ -468,9 +467,9 @@ class SearchQueryAgent(BaseFinancialAgent):
             config = AgentConfig(
                 name="search_query_agent",
                 model_client_config={
-                    "model": "deepseek-chat",
-                    "api_key": deepseek_client.api_key,
-                    "base_url": deepseek_client.base_url,
+                    "model": "gpt-4o-mini",
+                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._get_system_message(),
                 max_consecutive_auto_reply=1,
@@ -480,9 +479,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 timeout_seconds=12,
             )
 
-        super().__init__(
-            name=config.name, config=config, deepseek_client=deepseek_client
-        )
+        super().__init__(name=config.name, config=config, llm_client=llm_client)
 
         # Ensure a local name attribute exists without overriding base class behavior
         self._name = config.name
@@ -636,10 +633,10 @@ class SearchQueryAgent(BaseFinancialAgent):
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> SearchServiceQuery:
-        """Generate a ``SearchServiceQuery`` using a DeepSeek LLM.
+        """Generate a ``SearchServiceQuery`` using the configured LLM.
 
         This method formats the intent and entities into a prompt, calls the
-        ``DeepSeekClient`` to create a search query and validates the returned
+        LLM client to create a search query and validates the returned
         contract. Any validation error will raise ``ValueError`` to allow
         fallback to the heuristic path.
         """
@@ -667,7 +664,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         system_prompt = (
             f"{SEARCH_GENERATION_SYSTEM_PROMPT}\nLes valeurs autorisées pour transaction_type sont : {allowed}"
         )
-        response = await self.deepseek_client.generate_response(
+        response = await self.llm_client.generate_response(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
@@ -1006,9 +1003,9 @@ class SearchQueryAgent(BaseFinancialAgent):
                 message, existing_entities
             )
 
-            # Call DeepSeek for entity extraction
+            # Call LLM for entity extraction
             logger.debug("Extracting additional entities for user_id=%s", user_id)
-            response = await self.deepseek_client.generate_response(
+            response = await self.llm_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_entity_extraction_prompt()},
                     {"role": "user", "content": context},
@@ -1121,7 +1118,7 @@ Les valeurs autorisées pour transaction_type sont : {allowed}
 Optimise les requêtes pour la pertinence et la performance."""
 
     def _get_entity_extraction_prompt(self) -> str:
-        """Get entity extraction prompt for DeepSeek."""
+        """Get entity extraction prompt for the LLM client."""
         allowed = " ou ".join(TRANSACTION_TYPES)
         return f"""Extrais toutes les entités financières du message utilisateur.
 

@@ -3,37 +3,6 @@
 from . import routes, dependencies, websocket, middleware
 from .routes import router
 
-The API layer handles HTTP/WebSocket communication, request validation,
-authentication, and integrates with the AutoGen MVPTeamManager for
-multi-agent conversation processing.
-
-Exports:
-    Dependencies:
-        - get_team_manager: Dependency for MVPTeamManager instance
-        - get_current_user: Authentication dependency with JWT decoding fallback
-        - validate_conversation_request: Request validation
-    
-    Router:
-        - chat_router: Main conversation endpoints router
-        - health_router: Health check endpoints
-    
-    Models:
-        - ConversationRequest: API request model
-        - ConversationResponse: API response model
-        - HealthResponse: Health check response
-        - MetricsResponse: Metrics response
-
-Architecture:
-    - FastAPI with async/await for high performance
-    - AutoGen v0.4 integration for multi-agent workflows
-    - Pydantic V2 for request/response validation
-    - Structured logging and metrics collection
-
-Author: Conversation Service Team
-Created: 2025-01-31
-Version: 1.0.0 MVP - FastAPI API Layer
-"""
-
 from .dependencies import (
     get_team_manager,
     get_current_user,

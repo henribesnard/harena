@@ -1,55 +1,52 @@
-"""
-FastAPI routes for Conversation Service MVP.
+"""HTTP API routes for the conversation service.
 
-This module defines the main API endpoints for the AutoGen-based conversation
-service, including chat processing, health checks, and metrics collection.
-
-Routes:
-    POST /chat - Main conversation endpoint with multi-agent processing
-    GET /health - Service health check with component status
-    GET /metrics - Performance metrics and agent statistics
-    GET /status - Service status and configuration
-
-Author: Conversation Service Team
-Created: 2025-01-31
-Version: 1.0.0 MVP - FastAPI Routes
+Only a very small subset of the original project is implemented here.  The
+endpoints are intentionally lightweight so that they can be exercised in tests
+without requiring the full production stack.
 """
 
 import asyncio
 import logging
 import time
+import hashlib
 from typing import Annotated, Any, Dict, List, Optional, Protocol
+from datetime import datetime
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
 
 from .dependencies import (
     get_team_manager,
-    get_current_user,
-    validate_conversation_request,
     get_conversation_manager,
-    validate_request_rate_limit,
+
+    get_current_user,
     get_metrics_collector,
+    get_conversation_repository,
     get_conversation_service,
     get_conversation_read_service,
+    validate_conversation_request,
+    validate_request_rate_limit,
 )
+from .websocket import ws_router
 from ..core.conversation_manager import ConversationManager
+
 from ..models.conversation_models import (
     ConversationRequest,
     ConversationResponse,
     ConversationOut,
-    ConversationTurn,
-    ConversationTurnsResponse,
 )
 from ..models.financial_models import IntentResult
 import os
 
 from ..utils.logging import log_unauthorized_access
-from ..services.conversation_db import ConversationService as ConversationDBService
-from ..services.conversation_service import ConversationService
+from ..repositories.conversation_repository import ConversationRepository
+from ..core.metrics_collector import MetricsCollector
 from ..utils.metrics import MetricsCollector
 from db_service.session import get_db
+from ..utils.cache_client import cache_client
+from ..utils.decorators import rate_limit
 
 try:
     from ..core.mvp_team_manager import MVPTeamManager
@@ -60,24 +57,8 @@ except ImportError:
         ) -> Any:
             ...
 
-        async def process_user_message_with_metadata(
-            self, user_message: str, user_id: int, conversation_id: str
-        ) -> Dict[str, Any]:
-            ...
-
-        async def get_health_status(self) -> Dict[str, Any]:
-            ...
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
-# Create main router
 router = APIRouter()
 
-# Create specialized routers
-chat_router = APIRouter(prefix="/chat", tags=["conversation"])
-health_router = APIRouter(prefix="/health", tags=["monitoring"])
-conversations_router = APIRouter(prefix="/conversations", tags=["conversation"])
 
 
 @chat_router.post(
@@ -92,14 +73,16 @@ conversations_router = APIRouter(prefix="/conversations", tags=["conversation"])
         503: {"description": "Service temporarily unavailable"}
     }
 )
+@rate_limit(calls=5, period=60)
+@router.post("/chat", response_model=ConversationResponse)
 async def chat_endpoint(
     background_tasks: BackgroundTasks,
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
     metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
-    conversation_service: Annotated[
-        ConversationDBService, Depends(get_conversation_service)
+    conversation_repo: Annotated[
+        ConversationRepository, Depends(get_conversation_repository)
     ],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validate_request_rate_limit)],
@@ -129,11 +112,11 @@ async def chat_endpoint(
     start_time = time.time()
     conversation_id = validated_request.conversation_id
     user_id = user["user_id"]
-    
+
     logger.info(f"Processing conversation for user {user_id}, conversation {conversation_id}")
 
     try:
-        conversation = conversation_service.get_or_create_conversation(
+        conversation = conversation_repo.get_or_create_conversation(
             user_id, conversation_id
         )
     except PermissionError:
@@ -152,6 +135,13 @@ async def chat_endpoint(
     logger.info(
         f"Processing conversation for user {user_id}, conversation {conversation_id}"
     )
+
+    cache_key = f"chat:{user_id}:{hashlib.md5(validated_request.message.encode()).hexdigest()}"
+    cached_response = await cache_client.get(cache_key)
+    if cached_response:
+        return ConversationResponse(**cached_response)
+
+    await cache_client.set(f"prompt:{user_id}", validated_request.message, ttl=300)
     
     try:
         # Record request metrics
@@ -234,7 +224,7 @@ async def chat_endpoint(
         processing_time = int((time.time() - start_time) * 1000)
 
         try:
-            conversation_service.add_turn(
+            conversation_repo.add_turn(
                 conversation_id=conversation.conversation_id,
                 user_id=user_id,
                 user_message=validated_request.message,
@@ -269,6 +259,8 @@ async def chat_endpoint(
             error_code=None if team_result["success"] else "TEAM_PROCESSING_ERROR",
         )
 
+        await cache_client.set(cache_key, response.dict(), ttl=300)
+
         # Record metrics based on success
         if team_result["success"]:
             metrics.record_response_time("chat", processing_time)
@@ -302,6 +294,7 @@ async def chat_endpoint(
         503: {"description": "Service is unhealthy"}
     }
 )
+@rate_limit(calls=10, period=60)
 async def health_check(
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
@@ -309,170 +302,72 @@ async def health_check(
 ) -> Dict[str, Any]:
     """
     Comprehensive health check for all service components.
+    validated_request: ConversationRequest = Depends(validate_conversation_request),
+    team_manager: Any = Depends(get_team_manager),
+    conversation_manager: Any = Depends(get_conversation_manager),
+    user: Dict[str, Any] = Depends(get_current_user),
+    metrics: MetricsCollector = Depends(get_metrics_collector),
+    conversation_service: Any = Depends(get_conversation_service),
+    _: None = Depends(validate_request_rate_limit),
+) -> ConversationResponse:
+    """Process a chat message through the team manager and store the result."""
+    metrics.record_request("chat", user.get("user_id", 0))
+    start = datetime.utcnow()
+    result = await team_manager.process_user_message_with_metadata(
+        validated_request.message,
+        user.get("user_id", 0),
+        validated_request.conversation_id,
+    )
+    processing_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+    metrics.record_response_time("chat", processing_ms)
+    metrics.record_success("chat")
 
-    Returns:
-        Dict containing health status of all components
-    """
-    start_time = time.time()
-    health_status = {
-        "status": "healthy",
-        "timestamp": time.time(),
-        "service": "conversation_service_mvp",
-        "version": "1.0.0",
-        "components": {},
-        "errors": []
-    }
-    component_timeout = 2
+    # Ensure a conversation exists
+    conv = conversation_service.get_or_create_conversation(
+        user.get("user_id", 0), validated_request.conversation_id
+    )
+    conversation_id = getattr(conv, "conversation_id", validated_request.conversation_id)
 
+    # Persist turn via conversation manager and service (best effort)
     try:
-        # Check AutoGen team manager with timeout
-        try:
-            team_health = await asyncio.wait_for(
-                team_manager.health_check(), timeout=component_timeout
-            )
-            details = team_health.get("details", {})
-            last_health_check = details.get("last_health_check")
-            health_status["components"]["team_manager"] = {
-                "status": "healthy" if team_health.get("healthy") else "unhealthy",
-                "agents_loaded": len(details.get("agent_statuses", {})),
-                "last_activity": last_health_check if isinstance(last_health_check, str) else last_health_check.isoformat() if last_health_check else None
-            }
-            if not team_health.get("healthy"):
-                health_status["status"] = "degraded"
-                health_status["errors"].append({"component": "team_manager", "error": "unhealthy"})
-        except Exception as e:
-            logger.error(f"Team manager health check failed: {e}")
-            health_status["status"] = "degraded"
-            health_status["components"]["team_manager"] = {
-                "status": "unavailable",
-                "error": str(e)
-            }
-            health_status["errors"].append({"component": "team_manager", "error": str(e)})
-            health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
-            return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
-
-        # Check conversation manager
-        try:
-            conv_stats = await conversation_manager.get_stats()
-            health_status["components"]["conversation_manager"] = {
-                "status": "healthy",
-                "active_conversations": conv_stats.get("active_conversations", 0),
-                "total_turns": conv_stats.get("total_turns", 0)
-            }
-        except Exception as e:
-            logger.error(f"Conversation manager health check failed: {e}")
-            health_status["status"] = "degraded"
-            health_status["components"]["conversation_manager"] = {
-                "status": "unavailable",
-                "error": str(e)
-            }
-            health_status["errors"].append({"component": "conversation_manager", "error": str(e)})
-            health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
-            return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
-
-        # Check metrics collector
-        try:
-            metrics_summary = metrics.get_summary()
-            health_status["components"]["metrics"] = {
-                "status": "healthy",
-                "requests_processed": metrics_summary.get("total_requests", 0),
-                "average_response_time": metrics_summary.get("avg_response_time", 0)
-            }
-        except Exception as e:
-            logger.warning(f"Metrics health check failed: {e}")
-            health_status["status"] = "degraded"
-            health_status["components"]["metrics"] = {
-                "status": "unavailable",
-                "error": str(e)
-            }
-            health_status["errors"].append({"component": "metrics", "error": str(e)})
-            health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
-            return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
-
-        health_status["response_time_ms"] = int((time.time() - start_time) * 1000)
-        return JSONResponse(status_code=status.HTTP_200_OK, content=health_status)
-
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        error_response = {
-            "status": "unhealthy",
-            "timestamp": time.time(),
-            "error": "Health check system failure",
-            "response_time_ms": int((time.time() - start_time) * 1000)
-        }
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content=error_response
+        await conversation_manager.add_turn(
+            conversation_id=conversation_id,
+            user_id=user.get("user_id", 0),
+            user_msg=validated_request.message,
+            assistant_msg=result.get("content", ""),
+            processing_time_ms=processing_ms,
         )
-@router.get(
-    "/metrics",
-    summary="Service performance metrics",
-    description="Detailed performance metrics and agent statistics",
-    responses={
-        200: {"description": "Metrics retrieved successfully"},
-        503: {"description": "Metrics service unavailable"}
-    },
-    tags=["monitoring"],
-)
-async def get_metrics(
-    metrics: Annotated[MetricsCollector, Depends(get_metrics_collector)],
-    team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)]
-) -> Dict[str, Any]:
-    """
-    Get detailed performance metrics and statistics.
-    
-    Returns:
-        Dict containing comprehensive service metrics
-    """
-    try:
-        # Get metrics summary
-        metrics_summary = metrics.get_summary()
-        
-        # Get team performance
-        team_performance = await team_manager.get_team_performance()
-        
-        # Compile comprehensive metrics
-        comprehensive_metrics = {
-            "timestamp": time.time(),
-            "service_metrics": metrics_summary,
-            "agent_metrics": team_performance,
-            "system_info": {
-                "uptime_seconds": time.time() - metrics.start_time,
-                "memory_usage": metrics.get_memory_usage(),
-                "cpu_usage": metrics.get_cpu_usage()
-            }
-        }
-        
-        return comprehensive_metrics
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Metrics endpoint error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Metrics service temporarily unavailable"
+        conversation_service.add_turn(
+            conversation_id=conversation_id,
+            user_id=user.get("user_id", 0),
+            user_message=validated_request.message,
+            assistant_response=result.get("content", ""),
+            processing_time_ms=processing_ms,
         )
+    except Exception:
+        # Failure to persist should not break the response
+        metrics.record_error("chat_storage", "persist_failed")
+
+    return ConversationResponse(
+        message=result.get("content", ""),
+        conversation_id=conversation_id,
+        processing_time_ms=processing_ms,
+        agent_used=result.get("agent_used"),
+        confidence=result.get("confidence_score"),
+        metadata=result.get("metadata", {}),
+        success=result.get("success", True),
+    )
 
 
-@conversations_router.get(
-    "",
-    response_model=List[ConversationOut],
-    summary="List user conversations",
-    description="Return conversations for the authenticated user",
-    responses={
-        200: {"description": "Conversations retrieved successfully"},
-        401: {"description": "Unauthorized"},
-    },
-)
+@router.get("/conversations", response_model=List[ConversationOut])
 async def list_conversations(
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    service: Annotated[ConversationService, Depends(get_conversation_read_service)],
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> List[ConversationOut]:
     """List conversations belonging to the current user."""
-    conversations = service.get_conversations(user["user_id"], limit=limit, offset=offset)
+    conversations = repo.list_conversations(user["user_id"])[offset : offset + limit]
     return [
         ConversationOut(
             conversation_id=c.conversation_id,
@@ -499,13 +394,11 @@ async def list_conversations(
 async def get_conversation_turns(
     conversation_id: str,
     user: Annotated[Dict[str, Any], Depends(get_current_user)],
-    db_service: Annotated[ConversationDBService, Depends(get_conversation_service)],
-    service: Annotated[ConversationService, Depends(get_conversation_read_service)],
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
     limit: int = Query(10, ge=1, le=50),
 ) -> ConversationTurnsResponse:
     """Return the turns for a specific conversation."""
-    _ = db_service  # dependency for potential future use
-    conversation = service.get_conversation(conversation_id)
+    conversation = repo.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
@@ -513,11 +406,7 @@ async def get_conversation_turns(
     if conversation.user_id != user["user_id"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
-    turns_raw = (
-        service.get_conversation_turns(conversation_id)
-        if hasattr(service, "get_conversation_turns")
-        else db_service.get_turns(conversation)
-    )
+    turns_raw = repo.get_conversation_turns(conversation_id)
 
     turns: List[ConversationTurn] = []
     for t in turns_raw[:limit]:
@@ -534,9 +423,30 @@ async def get_conversation_turns(
                 confidence_score=t.confidence_score,
                 error_occurred=t.error_occurred,
                 agent_chain=t.agent_chain,
+
+    user: Dict[str, Any] = Depends(get_current_user),
+    service: Any = Depends(get_conversation_read_service),
+) -> List[ConversationOut]:
+    """Return conversations for the current user."""
+    conversations = service.get_conversations(user.get("user_id", 0))
+    results: List[ConversationOut] = []
+    for c in conversations:
+        last_activity = getattr(c, "last_activity_at", datetime.utcnow())
+        if isinstance(last_activity, str):
+            try:
+                last_activity = datetime.fromisoformat(last_activity)
+            except ValueError:
+                last_activity = datetime.utcnow()
+        results.append(
+            ConversationOut(
+                conversation_id=getattr(c, "conversation_id", ""),
+                title=getattr(c, "title", None),
+                status=getattr(c, "status", "active"),
+                total_turns=getattr(c, "total_turns", 0),
+                last_activity_at=last_activity,
             )
         )
-    return {"conversation_id": conversation_id, "turns": turns}
+    return results
 
 
 @router.get(
@@ -545,10 +455,11 @@ async def get_conversation_turns(
     description="Basic service status and configuration",
     tags=["monitoring"]
 )
+@rate_limit(calls=10, period=60)
 async def get_status() -> Dict[str, Any]:
     """
     Get basic service status and configuration information.
-    
+
     Returns:
         Dict containing service status
     """
@@ -620,9 +531,18 @@ async def store_conversation_turn(
     except Exception as e:
         logger.error(f"Failed to store conversation turn: {e}")
         metrics.record_error("conversation_storage", str(e))
+@router.get("/health")
+async def healthcheck() -> Dict[str, str]:
+    """Basic health check endpoint."""
+    return {"status": "ok"}
 
 
 # Include routers in main router
 router.include_router(chat_router)
 router.include_router(health_router)
 router.include_router(conversations_router)
+router.include_router(ws_router)
+@router.get("/metrics")
+async def metrics_endpoint(metrics: MetricsCollector = Depends(get_metrics_collector)) -> Dict[str, Any]:
+    """Expose collected metrics."""
+    return metrics.get_summary()

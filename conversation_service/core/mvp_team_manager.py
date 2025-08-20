@@ -29,6 +29,8 @@ from ..agents.mock_intent_agent import MockIntentAgent  # noqa: F401 - kept for 
 from ..agents.search_query_agent import SearchQueryAgent
 from ..agents.response_agent import ResponseAgent
 from .conversation_manager import ConversationManager
+from .cache_manager import CacheManager
+from .metrics_collector import MetricsCollector
 
 if TYPE_CHECKING:
     from ..agents.orchestrator_agent import OrchestratorAgent
@@ -81,7 +83,9 @@ class MVPTeamManager:
         is_initialized: Whether the team is fully initialized
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None, team_config: Optional[TeamConfiguration] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, team_config: Optional[TeamConfiguration] = None,
+                 cache_manager: Optional[CacheManager] = None,
+                 metrics_collector: Optional[MetricsCollector] = None):
         """
         Initialize the MVP team manager.
         
@@ -101,6 +105,8 @@ class MVPTeamManager:
         self.agents: Dict[str, Any] = {}
         self.orchestrator: Optional["OrchestratorAgent"] = None
         self.conversation_manager: Optional[ConversationManager] = None
+        self.cache = cache_manager or CacheManager()
+        self.metrics = metrics_collector or MetricsCollector()
 
         # Team status
         self.team_health: Optional[TeamHealth] = None
@@ -214,14 +220,15 @@ class MVPTeamManager:
                 conversation_id, user_id, user_message
             )
 
-            # Process through orchestrator
-            response_data = await self.orchestrator.execute_with_metrics(
-                {
-                    "user_message": user_message,
-                    "conversation_id": conversation_id,
-                },
-                user_id,
-            )
+            # Process through orchestrator with metrics timing
+            with self.metrics.timer("team_process", {"conversation_id": conversation_id}):
+                response_data = await self.orchestrator.execute_with_metrics(
+                    {
+                        "user_message": user_message,
+                        "conversation_id": conversation_id,
+                    },
+                    user_id,
+                )
 
             execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
             if response_data.success:
@@ -252,6 +259,7 @@ class MVPTeamManager:
                     return response_data
 
                 self._update_team_stats(False, execution_time)
+                self.metrics.record_error("team_process", error_msg)
 
                 # Return graceful error response while preserving metadata
                 response_data.content = self._generate_error_response(user_message, error_msg)
@@ -261,6 +269,7 @@ class MVPTeamManager:
         except Exception as e:
             execution_time = (asyncio.get_event_loop().time() - start_time) * 1000
             self._update_team_stats(False, execution_time)
+            self.metrics.record_error("team_process", str(e))
 
             logger.error(f"Message processing failed: {e}")
 
@@ -481,6 +490,7 @@ class MVPTeamManager:
                 search_agent=self.agents["search_query_agent"],
                 response_agent=self.agents["response_agent"],
                 performance_threshold_ms=self.team_config.performance_threshold_ms,
+                metrics_collector=self.metrics,
             )
 
             logger.info(
@@ -671,6 +681,10 @@ class MVPTeamManager:
         Returns:
             Dictionary containing current health status
         """
+        cached = self.cache.get("team_health")
+        if cached:
+            return cached
+
         await self._perform_health_check()
 
         details = self.team_health.__dict__.copy() if self.team_health else None
@@ -682,11 +696,14 @@ class MVPTeamManager:
                 " and automatically reactivated when healthy."
             )
 
-        return {
+        result = {
             "healthy": self.team_health.overall_healthy if self.team_health else False,
             "timestamp": datetime.utcnow().isoformat(),
             "details": details
         }
+
+        self.cache.set("team_health", result, ttl_seconds=30)
+        return result
 
     async def get_health_status(self) -> Dict[str, Any]:
         """

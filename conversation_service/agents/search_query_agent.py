@@ -135,6 +135,15 @@ class QueryOptimizer:
             words remain, ``None`` is returned so that the search relies solely
             on structured filters.
         """
+        # Prefer merchant name if present
+        merchants = [
+            str(e.normalized_value).lower()
+            for e in intent_result.entities or []
+            if getattr(e, "entity_type", None) in {EntityType.MERCHANT, "MERCHANT"} and e.normalized_value
+        ]
+        if merchants:
+            return merchants[0]
+
         # Start with clean user message
         search_text = user_message.lower().strip()
 
@@ -485,7 +494,7 @@ class SearchQueryAgent(BaseFinancialAgent):
             int(os.getenv("SEARCH_QUERY_DEFAULT_LIMIT", "100")), 100
         )
         self.use_llm_query = (
-            use_llm_query if use_llm_query is not None else settings.USE_LLM_QUERY
+            use_llm_query if use_llm_query is not None else getattr(settings, "USE_LLM_QUERY", False)
         )
 
         logger.info(

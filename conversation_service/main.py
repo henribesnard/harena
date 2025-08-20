@@ -1,22 +1,8 @@
-"""
-Main FastAPI application for Conversation Service MVP.
+"""FastAPI application entrypoint for the conversation service.
 
-This module creates and configures the complete FastAPI application with
-AutoGen multi-agent integration, providing a production-ready conversation
-service with health monitoring, metrics collection, and graceful lifecycle management.
-
-Features:
-    - AutoGen v0.4 multi-agent conversation processing
-    - DeepSeek LLM integration for cost-effective AI
-    - Comprehensive health checks and monitoring
-    - Rate limiting and authentication
-    - Graceful startup and shutdown procedures
-    - CORS configuration for frontend integration
-    - Structured logging and error handling
-
-Author: Conversation Service Team
-Created: 2025-01-31
-Version: 1.0.0 MVP - Production Ready
+This module creates the FastAPI application, applies common middleware and
+includes the API routers.  It exposes an ``app`` object that can be used by
+ASGI servers such as Uvicorn.
 """
 
 import logging
@@ -29,98 +15,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from .api.middleware import GlobalExceptionMiddleware
+from fastapi import FastAPI
 
 from .api.routes import router as api_router
-from .api.dependencies import cleanup_dependencies
-from .core import run_core_validation
-import os
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('conversation_service.log')
-    ]
-)
-
-logger = logging.getLogger(__name__)
-
-# Global application state
-app_state: Dict[str, Any] = {
-    "startup_time": None,
-    "shutdown_initiated": False,
-    "health_status": "starting"
-}
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Manage FastAPI application lifespan with proper startup and shutdown procedures.
-    
-    Handles:
-        - Service initialization and dependency setup
-        - Health status management
-        - Graceful shutdown and resource cleanup
-        - Error handling during lifecycle events
-    
-    Args:
-        app: FastAPI application instance
-    """
-    startup_start = time.time()
-    logger.info("🚀 Starting Conversation Service MVP")
-    
-    try:
-        # Startup procedures
-        environment = os.getenv("ENVIRONMENT", "development")
-        debug = os.getenv("DEBUG", "false").lower() == "true"
-        
-        # Initialize application state
-        app_state["startup_time"] = time.time()
-        app_state["health_status"] = "initializing"
-        
-        # Validate critical configuration
-        await validate_configuration()
-        
-        # Pre-initialize dependencies to catch errors early
-        await pre_initialize_dependencies()
-        
-        # Mark as ready
-        app_state["health_status"] = "healthy"
-        startup_time = time.time() - startup_start
-        
-        port = int(os.getenv("PORT", "8000"))
-        logger.info(f"✅ Conversation Service MVP started successfully in {startup_time:.2f}s")
-        logger.info(f"🌐 API available at: http://localhost:{port}")
-        logger.info(f"📚 Documentation: http://localhost:{port}/docs")
-        logger.info(f"🔍 Health check: http://localhost:{port}/health")
-        
-        yield  # Application runs here
-        
-    except Exception as e:
-        logger.error(f"❌ Startup failed: {e}")
-        app_state["health_status"] = "unhealthy"
-        raise
-    
-    finally:
-        # Shutdown procedures
-        logger.info("🛑 Initiating graceful shutdown")
-        app_state["shutdown_initiated"] = True
-        app_state["health_status"] = "shutting_down"
-        
-        try:
-            # Cleanup dependencies and resources
-            await cleanup_dependencies()
-            
-            # Allow time for background tasks to complete
-            await asyncio.sleep(1.0)
-            
-            logger.info("✅ Graceful shutdown completed")
-            
-        except Exception as e:
-            logger.error(f"❌ Error during shutdown: {e}")
+from .api.websocket import router as websocket_router
+from .api.middleware import setup_middleware
 
 
 def create_app() -> FastAPI:
@@ -212,6 +111,11 @@ def create_app() -> FastAPI:
             "api_base": "/api/v1"
         }
     
+    """Create and configure the FastAPI application."""
+    app = FastAPI(title="Conversation Service")
+    setup_middleware(app)
+    app.include_router(api_router)
+    app.include_router(websocket_router)
     return app
 
 
@@ -272,7 +176,7 @@ async def pre_initialize_dependencies() -> None:
         # Test import of critical modules
         from .core import load_team_manager
         from .core.conversation_manager import ConversationManager
-        from .utils.metrics import MetricsCollector
+        from .core.metrics_collector import MetricsCollector
 
         MVPTeamManager, _ = load_team_manager()
         if MVPTeamManager is None:
@@ -350,22 +254,8 @@ async def log_requests(request: Request, call_next):
 # Create application instance
 app = create_app()
 
-# Run application
-if __name__ == "__main__":
+
+if __name__ == "__main__":  # pragma: no cover - manual launch helper
     import uvicorn
-    
-    port = int(os.getenv("PORT", "8000"))
-    debug = os.getenv("DEBUG", "false").lower() == "true"
-    
-    logger.info(f"🚀 Starting Conversation Service MVP on port {port}")
-    
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        reload=debug,
-        access_log=True,
-        server_header=False,
-        date_header=False
-    )
+
+    uvicorn.run("conversation_service.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -404,7 +404,7 @@ class SearchServiceQuery(BaseModel):
             self.filters.dict(exclude_none=True) if self.filters else {}
         )
         filters_dict.pop("user_id", None)
-        return {
+        payload = {
             "user_id": self.query_metadata.user_id,
             "query": self.search_parameters.search_text or "",
             "filters": filters_dict,
@@ -416,6 +416,9 @@ class SearchServiceQuery(BaseModel):
                 "source_agent": self.query_metadata.source_agent,
             },
         }
+        if self.aggregations:
+            payload["aggregations"] = self.aggregations.dict(exclude_none=True)
+        return payload
 
     def with_offset(self, offset: int) -> "SearchServiceQuery":
         """Return a copy of this query with an updated offset.
@@ -655,7 +658,7 @@ class SearchServiceResponse(BaseModel):
         ..., description="List of transaction results"
     )
 
-    aggregations: Optional[List[AggregationResult]] = Field(
+    aggregations: Optional[Dict[str, Any]] = Field(
         default=None, description="Optional aggregation results"
     )
 

@@ -129,32 +129,31 @@ class QueryBuilder:
             "primary_description", "merchant_name", "category_name", "operation_type"
         ]
     
-    def build_aggregation_query(self, request: SearchRequest, agg_fields: List[str]) -> Dict[str, Any]:
+    def build_aggregation_query(self, request: SearchRequest, aggregation: Dict[str, Any]) -> Dict[str, Any]:
         """Construction d'une requête avec agrégations simples"""
         base_query = self.build_query(request)
-        
-        # Ajout d'agrégations basiques
-        aggregations = {}
-        
-        for field in agg_fields:
-            if field in ['amount', 'amount_abs']:
-                # Agrégations numériques
-                aggregations[f"{field}_stats"] = {
-                    "stats": {"field": field}
-                }
-            else:
-                # Agrégations par termes
+
+        aggregations: Dict[str, Any] = {}
+        group_by = (aggregation or {}).get("group_by", [])
+        metrics = (aggregation or {}).get("metrics", [])
+
+        if group_by:
+            for field in group_by:
                 field_name = self._get_filter_field_name(field)
-                aggregations[f"{field}_terms"] = {
-                    "terms": {
-                        "field": field_name,
-                        "size": 10
-                    }
+                agg_def: Dict[str, Any] = {
+                    "terms": {"field": field_name, "size": 10}
                 }
-        
+                sub_aggs: Dict[str, Any] = {}
+                if "sum" in metrics:
+                    sub_aggs["amount_sum"] = {"sum": {"field": "amount"}}
+                if sub_aggs:
+                    agg_def["aggs"] = sub_aggs
+                aggregations[f"{field}_terms"] = agg_def
+        elif "sum" in metrics:
+            aggregations["amount_sum"] = {"sum": {"field": "amount"}}
+
         if aggregations:
             base_query["aggs"] = aggregations
-            # Limiter les résultats si on fait surtout des agrégations
             base_query["size"] = min(request.limit, 10)
 
         return base_query

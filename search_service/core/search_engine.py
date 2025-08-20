@@ -144,7 +144,12 @@ class SearchEngine:
                     self.cache_misses += 1
 
             # Construction requête Elasticsearch
-            es_query = self.query_builder.build_query(request)
+            if request.aggregations:
+                es_query = self.query_builder.build_aggregation_query(
+                    request, request.aggregations
+                )
+            else:
+                es_query = self.query_builder.build_query(request)
 
             logger.debug(
                 f"Executing search for user {request.user_id} with query: '{request.query}'"

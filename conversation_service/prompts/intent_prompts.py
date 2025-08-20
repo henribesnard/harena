@@ -200,7 +200,7 @@ MESSAGE: "Transactions en juin"
 INTENT_TYPE: SEARCH_BY_DATE
 INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.91
-ENTITIES: {"dates": ["juin"]}
+ENTITIES: {"dates": ["juin 2025"]}
 SUGGESTED_ACTIONS: []
 
 **Exemple 10 - Recherche par mois (mai) :**
@@ -208,7 +208,7 @@ MESSAGE: "Transactions au mois de mai"
 INTENT_TYPE: SEARCH_BY_DATE
 INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.91
-ENTITIES: {"dates": ["mai"]}
+ENTITIES: {"dates": ["mai 2025"]}
 SUGGESTED_ACTIONS: []
 """
 

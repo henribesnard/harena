@@ -20,7 +20,16 @@ import logging
 import time
 from typing import Annotated, Any, Dict, List, Optional, Protocol
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -78,6 +87,24 @@ router = APIRouter()
 chat_router = APIRouter(prefix="/chat", tags=["conversation"])
 health_router = APIRouter(prefix="/health", tags=["monitoring"])
 conversations_router = APIRouter(prefix="/conversations", tags=["conversation"])
+
+
+@chat_router.websocket("/ws")
+async def chat_websocket(
+    websocket: WebSocket,
+    team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
+):
+    """Simple WebSocket endpoint forwarding messages to the team manager."""
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            result = await team_manager.process_user_message_with_metadata(
+                user_message=data, user_id=0, conversation_id="websocket"
+            )
+            await websocket.send_text(result["content"])
+    except WebSocketDisconnect:
+        logger.info("WebSocket connection closed")
 
 
 @chat_router.post(

@@ -1,7 +1,6 @@
 import logging
 import time
 import json
-import os
 import asyncio
 from datetime import datetime
 from collections import deque, defaultdict
@@ -11,6 +10,7 @@ from conversation_service.utils.cache import (
     MultiLevelCache,
     generate_cache_key,
 )
+from config.settings import settings
 from search_service.models.request import SearchRequest
 from search_service.models.response import SearchResult
 from .query_builder import QueryBuilder
@@ -52,12 +52,8 @@ class SearchEngine:
         self.cache_misses = 0
 
         # Rate limiting (par utilisateur)
-        self.requests_per_minute = int(
-            os.getenv("SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
-        )
-        self.rate_limit_window = int(
-            os.getenv("SEARCH_RATE_LIMIT_WINDOW_SECONDS", "60")
-        )
+        self.requests_per_minute = settings.SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE
+        self.rate_limit_window = settings.SEARCH_RATE_LIMIT_WINDOW_SECONDS
         self._rate_limit_storage: Dict[int, deque] = defaultdict(deque)
     
     def set_elasticsearch_client(self, client):
@@ -194,8 +190,7 @@ class SearchEngine:
 
             # Mise en cache du résultat
             if self.cache_enabled:
-                cache_ttl = int(os.getenv("SEARCH_CACHE_TTL", "30"))
-                await self.cache.set(cache_key, response, ttl=cache_ttl)
+                await self.cache.set(cache_key, response, ttl=settings.SEARCH_CACHE_TTL)
 
             logger.info(
                 f"Search completed: {returned_results}/{total_results} results in {execution_time}ms"
@@ -229,8 +224,8 @@ class SearchEngine:
     async def _execute_search(self, es_query: Dict[str, Any], request: SearchRequest) -> Dict[str, Any]:
         """Exécute la recherche via le client Elasticsearch avec retries."""
 
-        max_retries = int(os.getenv("SEARCH_MAX_RETRIES", "3"))
-        backoff_base = float(os.getenv("SEARCH_BACKOFF_BASE", "0.5"))
+        max_retries = settings.INTENT_MAX_RETRIES
+        backoff_base = settings.INTENT_BACKOFF_BASE
         retry_statuses = {429, 500, 502, 503, 504}
 
         for attempt in range(max_retries):

@@ -27,6 +27,8 @@ from enum import Enum
 import os
 import uuid
 import statistics
+
+from config.settings import settings
 try:  # pragma: no cover - psutil may not be available in all environments
     import psutil
 except Exception:  # pragma: no cover
@@ -154,8 +156,8 @@ class PerformanceMonitor:
         self._lock = threading.RLock()
         
         # Seuils d'alerte depuis env vars
-        self.performance_threshold_ms = float(os.getenv('PERFORMANCE_ALERT_THRESHOLD_MS', '1000'))
-        self.error_rate_threshold = float(os.getenv('ERROR_RATE_ALERT_THRESHOLD', '0.05'))
+        self.performance_threshold_ms = settings.PERFORMANCE_ALERT_THRESHOLD_MS
+        self.error_rate_threshold = settings.ERROR_RATE_ALERT_THRESHOLD
         
         logger.debug(f"PerformanceMonitor initialized: window={window_size}, threshold={self.performance_threshold_ms}ms")
     
@@ -308,8 +310,8 @@ class MetricsCollector:
         Args:
             collection_interval: Intervalle de collecte en secondes
         """
-        self.collection_interval = collection_interval or int(os.getenv('METRICS_COLLECTION_INTERVAL', '60'))
-        self.enabled = os.getenv('ENABLE_METRICS', 'true').lower() == 'true'
+        self.collection_interval = collection_interval or settings.METRICS_COLLECTION_INTERVAL
+        self.enabled = settings.ENABLE_METRICS
         self.start_time = time.time()
         
         # Stockage des métriques

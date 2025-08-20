@@ -23,10 +23,12 @@ import unicodedata
 import re
 import json
 import httpx
-import os
 import calendar
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
+
+from config.settings import settings
+from config.openai_config import OpenAISettings
 
 from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
@@ -45,15 +47,6 @@ from ..prompts.search_prompts import (
     format_search_prompt,
     parse_search_response,
 )
-try:
-    from config_service.config import settings
-except Exception:  # pragma: no cover - fallback when config service is unavailable
-    class _DummySettings:
-        DEEPSEEK_QUERY_TEMPERATURE = 0.0
-        DEEPSEEK_QUERY_MAX_TOKENS = 1000
-        DEEPSEEK_QUERY_TOP_P = 1.0
-
-    settings = _DummySettings()
 from ..constants import TRANSACTION_TYPES
 
 logger = logging.getLogger(__name__)
@@ -468,7 +461,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 name="search_query_agent",
                 model_client_config={
                     "model": "gpt-4o-mini",
-                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "api_key": OpenAISettings().OPENAI_API_KEY,
                     "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._get_system_message(),
@@ -487,9 +480,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         self.search_service_url = search_service_url.rstrip("/")
         self.http_client = httpx.AsyncClient(timeout=30.0)
         self.query_optimizer = QueryOptimizer()
-        self.default_limit = min(
-            int(os.getenv("SEARCH_QUERY_DEFAULT_LIMIT", "100")), 100
-        )
+        self.default_limit = min(settings.SEARCH_QUERY_DEFAULT_LIMIT, 100)
         self.use_llm_query = (
             use_llm_query if use_llm_query is not None else getattr(settings, "USE_LLM_QUERY", False)
         )

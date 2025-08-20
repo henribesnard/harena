@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any, Dict, Optional, Tuple
+
+from config.openai_config import OpenAISettings
 
 from .llm_intent_agent import LLMIntentAgent
 from ..models.agent_models import AgentConfig
@@ -47,7 +48,7 @@ class AdvancedLLMIntentAgent(LLMIntentAgent):
                 name="advanced_llm_intent_agent",
                 model_client_config={
                     "model": "gpt-4o-mini",
-                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "api_key": OpenAISettings().OPENAI_API_KEY,
                     "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._build_system_message(),

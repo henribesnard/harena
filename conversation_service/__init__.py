@@ -16,11 +16,10 @@ __all__ = ["__version__", "__author__", "agents"]
 
 # Automatic import of subpackages can lead to unexpected side effects
 # (e.g., loading configuration) when simply importing this package. To
-# avoid this, the behaviour is now opt-in via the environment variable
-# ``CS_AUTO_IMPORT_SUBPACKAGES``.
-import os
+# avoid this, the behaviour is now opt-in via a configuration flag.
+from config.settings import settings
 
-if os.getenv("CS_AUTO_IMPORT_SUBPACKAGES") == "1":
+if settings.CS_AUTO_IMPORT_SUBPACKAGES == 1:
     for _mod in ["api", "core", "models", "services", "utils"]:
         try:
             globals()[_mod] = __import__(f"{__name__}.{_mod}", fromlist=["*"])

@@ -5,23 +5,15 @@ from types import SimpleNamespace
 from typing import Dict, Tuple
 
 import pytest
-import sys
-import types
 
-
-class _DummyClient:
-    def __init__(self, *args, **kwargs):
-        pass
-
-
-sys.modules["openai"] = types.SimpleNamespace(
-    OpenAI=_DummyClient, AsyncOpenAI=_DummyClient
+from conversation_service.agents.llm_intent_agent import (
+    LLMIntentAgent,
+    CATEGORY_MAP,
 )
-sys.modules["dotenv"] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: None)
 
-from scripts.quick_intent_test import HarenaIntentAgent
-from scripts.intent_utils import parse_intents_md
-from scripts.quick_intent_test import HarenaIntentAgent, CATEGORY_MAP
+
+class DummyDeepSeekClient:
+    api_key = "test-key"
 
 THRESHOLD = 0.8
 
@@ -99,8 +91,7 @@ class DummyResponse:
 
 def make_dummy_client(mapping: Dict[str, Tuple[str, str]]):
     async def create(*, messages, **kwargs):
-        user_prompt = messages[1]["content"]
-        user_message = user_prompt.split("IntentResult: ", 1)[1]
+        user_message = messages[1]["content"]
         intent_type, category = mapping[user_message]
         response_json = json.dumps(
             {
@@ -124,14 +115,17 @@ def test_intents_full():
     query_mapping = {INTENT_QUERIES[i]: (i, intents[i]) for i in intents}
 
     async def run_tests():
-        agent = HarenaIntentAgent(api_key="test")
-        agent.async_client = make_dummy_client(query_mapping)
+        agent = LLMIntentAgent(
+            deepseek_client=DummyDeepSeekClient(),
+            openai_client=make_dummy_client(query_mapping),
+        )
 
         results = []
         for intent, query in INTENT_QUERIES.items():
             expected_category = intents[intent]
-            res = await agent.detect_intent_async(query)
-            results.append((intent, expected_category, res))
+            res_dict = await agent.detect_intent(query, user_id=1)
+            intent_result = res_dict["metadata"]["intent_result"]
+            results.append((intent, expected_category, intent_result))
 
         success_count = 0
         confidence_total = 0.0

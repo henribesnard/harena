@@ -21,6 +21,7 @@ import re
 import json
 import httpx
 import os
+import calendar
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
@@ -305,9 +306,10 @@ class QueryOptimizer:
                 if month:
                     if not year:
                         year = datetime.utcnow().strftime("%Y")
+                    max_day = calendar.monthrange(int(year), int(month))[1]
                     date_filters["date"] = {
                         "gte": f"{year}-{month}-01",
-                        "lte": f"{year}-{month}-31",
+                        "lte": f"{year}-{month}-{max_day:02d}",
                     }
                     break
             if entity.entity_type == EntityType.RELATIVE_DATE and isinstance(

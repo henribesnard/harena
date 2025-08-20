@@ -20,7 +20,7 @@ import asyncio
 import logging
 import os
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 from ..core.deepseek_client import DeepSeekClient
@@ -113,7 +113,11 @@ class MVPTeamManager:
         # Agent health tracking
         self.agent_failure_counts: Dict[str, int] = {}
         self.disabled_agents = set()
+        self.agent_disabled_since: Dict[str, datetime] = {}
         self.failure_threshold = int(self.config.get('AGENT_FAILURE_THRESHOLD', 3))
+        self.reactivation_cooldown_seconds = int(
+            self.config.get('AGENT_REACTIVATION_COOLDOWN_SECONDS', 60)
+        )
         
         # Performance tracking
         self.team_stats = {
@@ -406,6 +410,7 @@ class MVPTeamManager:
             'INITIAL_HEALTH_CHECK': os.getenv('INITIAL_HEALTH_CHECK', 'false').lower() == 'true',
             'AGENT_FAILURE_THRESHOLD': int(os.getenv('AGENT_FAILURE_THRESHOLD', '3')),
             'ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS': int(os.getenv('ORCHESTRATOR_PERFORMANCE_THRESHOLD_MS', '30000')),
+            'AGENT_REACTIVATION_COOLDOWN_SECONDS': int(os.getenv('AGENT_REACTIVATION_COOLDOWN_SECONDS', '60')),
         }
     
     async def _initialize_deepseek_client(self) -> None:
@@ -504,9 +509,22 @@ class MVPTeamManager:
                 if is_healthy:
                     self.agent_failure_counts[agent_name] = 0
                     if agent_name in self.disabled_agents:
-                        self.disabled_agents.remove(agent_name)
-                        logger.info(f"Agent {agent_name} reactivated after health recovery")
-                    agent_statuses[agent_name] = True
+                        disabled_since = self.agent_disabled_since.get(agent_name)
+                        if disabled_since and datetime.utcnow() - disabled_since < timedelta(seconds=self.reactivation_cooldown_seconds):
+                            agent_statuses[agent_name] = False
+                            issues.append(f"Agent {agent_name} cooling down before reactivation")
+                            logger.info(
+                                f"Agent {agent_name} healthy but in cooldown; reactivation deferred"
+                            )
+                        else:
+                            self.disabled_agents.remove(agent_name)
+                            self.agent_disabled_since.pop(agent_name, None)
+                            logger.info(
+                                f"Agent {agent_name} reactivated after health recovery"
+                            )
+                            agent_statuses[agent_name] = True
+                    else:
+                        agent_statuses[agent_name] = True
                 else:
                     count = self.agent_failure_counts.get(agent_name, 0) + 1
                     self.agent_failure_counts[agent_name] = count
@@ -514,6 +532,7 @@ class MVPTeamManager:
                         agent_statuses[agent_name] = False
                         if agent_name not in self.disabled_agents:
                             self.disabled_agents.add(agent_name)
+                            self.agent_disabled_since[agent_name] = datetime.utcnow()
                             issues.append(
                                 f"Agent {agent_name} disabled after {count} consecutive failures"
                             )
@@ -535,9 +554,20 @@ class MVPTeamManager:
                 if orchestrator_healthy:
                     self.agent_failure_counts[name] = 0
                     if name in self.disabled_agents:
-                        self.disabled_agents.remove(name)
-                        logger.info("Orchestrator reactivated after health recovery")
-                    agent_statuses[name] = True
+                        disabled_since = self.agent_disabled_since.get(name)
+                        if disabled_since and datetime.utcnow() - disabled_since < timedelta(seconds=self.reactivation_cooldown_seconds):
+                            agent_statuses[name] = False
+                            issues.append("Orchestrator cooling down before reactivation")
+                            logger.info(
+                                "Orchestrator healthy but in cooldown; reactivation deferred"
+                            )
+                        else:
+                            self.disabled_agents.remove(name)
+                            self.agent_disabled_since.pop(name, None)
+                            logger.info("Orchestrator reactivated after health recovery")
+                            agent_statuses[name] = True
+                    else:
+                        agent_statuses[name] = True
                 else:
                     count = self.agent_failure_counts.get(name, 0) + 1
                     self.agent_failure_counts[name] = count
@@ -545,6 +575,7 @@ class MVPTeamManager:
                         agent_statuses[name] = False
                         if name not in self.disabled_agents:
                             self.disabled_agents.add(name)
+                            self.agent_disabled_since[name] = datetime.utcnow()
                             issues.append(
                                 f"Orchestrator disabled after {count} consecutive failures"
                             )

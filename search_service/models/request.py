@@ -23,7 +23,11 @@ class SearchRequest(BaseModel):
         default_factory=dict,
         description="Métadonnées pour debug et contexte"
     )
-    
+
+    aggregations: Optional[Dict[str, Any]] = Field(
+        default=None, description="Requête d'agrégation optionnelle"
+    )
+
     @field_validator('query')
     @classmethod
     def validate_query(cls, v: str) -> str:

@@ -32,6 +32,7 @@ from ..models.service_contracts import (
     QueryMetadata,
     SearchParameters,
     SearchFilters,
+    AggregationRequest,
 )
 from ..models.financial_models import IntentResult, FinancialEntity, EntityType
 from ..core.deepseek_client import DeepSeekClient
@@ -672,10 +673,21 @@ class SearchQueryAgent(BaseFinancialAgent):
             SearchFilters(**search_filters) if search_filters else SearchFilters()
         )
 
+        aggregations = None
+        if intent_result.intent_type in {
+            "SPENDING_ANALYSIS_BY_PERIOD",
+            "COUNT_TRANSACTIONS",
+            "SPENDING_COMPARISON",
+        }:
+            aggregations = AggregationRequest(
+                metrics=["sum"], group_by=["transaction_type"]
+            )
+
         search_query = SearchServiceQuery(
             query_metadata=query_metadata,
             search_parameters=search_params,
             filters=filters_obj,
+            aggregations=aggregations,
         )
 
         # Validate the query

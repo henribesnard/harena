@@ -78,34 +78,34 @@ class ResponseFormatter:
         """Format summary statistics from search response."""
         if not search_response.aggregations:
             return ""
-        
+
         agg = search_response.aggregations
-        summary_parts = []
-        
-        if agg.transaction_count > 0:
-            summary_parts.append(f"**{agg.transaction_count} transactions trouvées**")
-        
-        if agg.total_amount is not None:
-            formatted_amount = ResponseFormatter.format_amount(agg.total_amount)
-            summary_parts.append(f"Montant total: {formatted_amount}")
-        
-        if agg.average_amount is not None:
-            avg_formatted = ResponseFormatter.format_amount(agg.average_amount)
-            summary_parts.append(f"Montant moyen: {avg_formatted}")
-        
-        if agg.date_range:
-            date_range = agg.date_range
-            summary_parts.append(f"Période: {date_range.get('start_date', '')} à {date_range.get('end_date', '')}")
-        
-        return "\n".join(summary_parts)
+        tx_buckets = agg.get("transaction_type_terms", {}).get("buckets", [])
+        if not tx_buckets:
+            return ""
+
+        lines = ["**Montants par type de transaction:**"]
+        total = 0.0
+        for bucket in tx_buckets:
+            amount = bucket.get("amount_sum", {}).get("value", 0.0)
+            total += amount
+            tx_type = bucket.get("key", "inconnu")
+            lines.append(
+                f"• {tx_type}: {ResponseFormatter.format_amount(amount)}"
+            )
+        lines.append(f"Total: {ResponseFormatter.format_amount(total)}")
+        return "\n".join(lines)
     
     @staticmethod
     def format_category_breakdown(search_response: SearchServiceResponse) -> str:
         """Format category breakdown if available."""
-        if not search_response.aggregations or not search_response.aggregations.category_breakdown:
+        if (
+            not search_response.aggregations
+            or "category_breakdown" not in search_response.aggregations
+        ):
             return ""
-        
-        breakdown = search_response.aggregations.category_breakdown
+
+        breakdown = search_response.aggregations.get("category_breakdown", [])
         lines = ["**Répartition par catégorie:**"]
         
         for category_data in breakdown[:5]:  # Top 5 categories

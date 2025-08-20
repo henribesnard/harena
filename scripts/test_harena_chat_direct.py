@@ -95,24 +95,25 @@ def main() -> None:
     print("🔍 ANALYSE DE LA RECHERCHE :")
     
     # Extraire les informations de recherche depuis les métadonnées
-    # Nouvel affichage : utiliser la taille réelle des résultats de recherche
     metadata = chat_data.get("metadata", {})
     workflow_data = metadata.get("workflow_data", {})
 
-    search_results = []
+    search_results_count = 0
     if isinstance(workflow_data, dict):
-        sr = workflow_data.get("search_results")
-        if isinstance(sr, dict):
-            # Structure attendue : {"metadata": {"search_response": {"results": [...]}}}
-            search_response = sr.get("metadata", {}).get("search_response", {})
-            results = search_response.get("results") if isinstance(search_response, dict) else None
-            if isinstance(results, list):
-                search_results = results
-        elif isinstance(sr, list):
-            # Certains scénarios peuvent fournir directement une liste
-            search_results = sr
+        # Priorité à la clé directe fournie par l'orchestrateur
+        if isinstance(workflow_data.get("search_results_count"), int):
+            search_results_count = workflow_data["search_results_count"]
+        else:
+            # Rétrocompatibilité : calculer à partir de la structure détaillée
+            sr = workflow_data.get("search_results")
+            if isinstance(sr, dict):
+                search_response = sr.get("metadata", {}).get("search_response", {})
+                results = search_response.get("results") if isinstance(search_response, dict) else None
+                if isinstance(results, list):
+                    search_results_count = len(results)
+            elif isinstance(sr, list):
+                search_results_count = len(sr)
 
-    search_results_count = len(search_results)
     print(f"   📊 Résultats trouvés par l'agent : {search_results_count}")
     
     # Analyser les entités pour comprendre la requête générée

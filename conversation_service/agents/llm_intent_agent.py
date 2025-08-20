@@ -167,6 +167,23 @@ class LLMIntentAgent(BaseFinancialAgent):
         return actions or None
 
     @staticmethod
+    def _detect_transaction_type(message: str) -> Optional[str]:
+        """Detect basic keywords implying transaction type."""
+
+        normalized = unicodedata.normalize("NFD", message).encode(
+            "ascii", "ignore"
+        ).decode("utf-8").lower()
+
+        if any(k in normalized for k in ["depense", "depens", "sortie", "sorties"]):
+            return "debit"
+        if any(
+            k in normalized
+            for k in ["entree d argent", "entree d'argent", "gains", "gain"]
+        ):
+            return "credit"
+        return None
+
+    @staticmethod
     def _normalise_amount(value: Any) -> Any:
         """Convert amount-like strings to floats.
 
@@ -385,6 +402,29 @@ class LLMIntentAgent(BaseFinancialAgent):
                     confidence=ent_conf,
                     detection_method=DetectionMethod.LLM_BASED,
                 )
+            )
+
+        # Apply simple keyword-based transaction type heuristics
+        tx_type = self._detect_transaction_type(user_message)
+        if tx_type and not any(
+            e.entity_type == EntityType.TRANSACTION_TYPE for e in entities
+        ):
+            entities.append(
+                FinancialEntity(
+                    entity_type=EntityType.TRANSACTION_TYPE,
+                    raw_value=tx_type,
+                    normalized_value=tx_type,
+                    confidence=confidence,
+                    detection_method=DetectionMethod.RULE_BASED,
+                )
+            )
+            data.setdefault("entities", []).append(
+                {
+                    "entity_type": EntityType.TRANSACTION_TYPE.value,
+                    "value": tx_type,
+                    "confidence": confidence,
+                    "normalized_value": tx_type,
+                }
             )
 
         if suggested_actions is not None:

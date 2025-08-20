@@ -41,6 +41,7 @@ from ..prompts.intent_prompts import (
     INTENT_SYSTEM_PROMPT,
     INTENT_EXAMPLES_FEW_SHOT,
 )
+from ..constants import TRANSACTION_TYPES
 
 # Mapping to harmonise categories with internal enums
 CATEGORY_MAP: Dict[str, str] = {
@@ -135,9 +136,10 @@ class LLMIntentAgent(BaseFinancialAgent):
     @staticmethod
     def _build_system_message() -> str:
         """Construct the system prompt given to the LLM."""
-
+        allowed = " ou ".join(TRANSACTION_TYPES)
         return (
-            f"{INTENT_SYSTEM_PROMPT}\n\n{INTENT_EXAMPLES_FEW_SHOT}"
+            f"{INTENT_SYSTEM_PROMPT}\nLes valeurs autorisées pour transaction_type sont : {allowed}."
+            f"\n\n{INTENT_EXAMPLES_FEW_SHOT}"
             "\n\nRéponds uniquement avec un JSON strict."
         )
 

@@ -2,7 +2,14 @@
 
 ## Tests unitaires
 
-Les tests peuvent être exécutés avec `pytest` :
+Les tests nécessitent l'extra `ag2[openai]`. Installez les dépendances puis
+cet extra :
+
+```bash
+pip install -r requirements.txt && pip install "ag2[openai]"
+```
+
+Les tests peuvent ensuite être exécutés avec `pytest` :
 
 ```bash
 pytest
@@ -13,6 +20,9 @@ Chaque fichier de test peut également être lancé directement :
 ```bash
 python test_metrics_endpoint.py
 ```
+
+Sans accès réseau, configurez les agents avec `llm_config=False` pour éviter les
+appels externes pendant les tests.
 
 ## Test du détecteur d'intentions avec un modèle personnalisé
 

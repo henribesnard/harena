@@ -112,10 +112,19 @@ class ServiceLoader:
 
             # Import et initialisation du conversation service
             from config_service.config import settings
+            # Vérifier OPENAI_API_KEY
+            openai_key = settings.OPENAI_API_KEY
+            if not openai_key:
+                raise ValueError("OPENAI_API_KEY n'est pas configurée")
+
+            logger.info(f"🔑 OPENAI_API_KEY configurée: {openai_key[:20]}...")
 
             # Validation de la configuration
+            from conversation_service.core import run_core_validation
+            from conversation_service.core.mvp_team_manager import MVPTeamManager
+
             logger.info("⚙️ Validation de la configuration...")
-            validation = settings.validate_configuration()
+            validation = run_core_validation()
             if not validation["valid"]:
                 raise ValueError(f"Configuration invalide: {validation['errors']}")
 
@@ -127,6 +136,16 @@ class ServiceLoader:
 
             # Mettre les composants dans app.state
             app.state.conversation_service_initialized = True
+            if validation["warnings"]:
+                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
+
+            # Initialiser le gestionnaire d'équipe
+            team_manager = MVPTeamManager()
+            await team_manager.initialize_agents(initial_health_check=False)
+
+            # Mettre les composants dans app.state
+            app.state.conversation_service_initialized = True
+            app.state.team_manager = team_manager
             app.state.conversation_initialization_error = None
 
             self.conversation_service_initialized = True
@@ -146,6 +165,7 @@ class ServiceLoader:
 
             # Marquer l'échec dans app.state
             app.state.conversation_service_initialized = False
+            app.state.team_manager = None
             app.state.conversation_initialization_error = error_msg
 
             self.conversation_service_initialized = False
@@ -387,6 +407,8 @@ def create_app():
                         "initialized": True,
                         "architecture": "llm_intent_agent",
                         "model": "gpt-4o-mini",
+
+                        "model": settings.OPENAI_CHAT_MODEL,
                         "error": None,
                     })
                 else:
@@ -402,6 +424,7 @@ def create_app():
                         "error": loader.conversation_service_error,
                         "architecture": "llm_intent_agent",
                         "model": "gpt-4o-mini",
+                        "model": settings.OPENAI_CHAT_MODEL,
                     })
 
             except ImportError as e:
@@ -492,6 +515,7 @@ def create_app():
                 "error": loader.conversation_service_error,
                 "architecture": "llm_intent_agent",
                 "model": "gpt-4o-mini"
+                "model": settings.OPENAI_CHAT_MODEL
             }
         }
 

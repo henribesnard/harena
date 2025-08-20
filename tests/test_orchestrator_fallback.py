@@ -83,7 +83,7 @@ class FailingSearchAgent:
     name = "search_agent"
 
     async def execute_with_metrics(self, input_data, user_id):
-        raise Exception("search failed")
+        raise Exception("période invalide")
 
 
 class DummyDeepSeekClient:
@@ -105,7 +105,10 @@ def test_search_error_informs_user():
     result = asyncio.run(executor.execute_workflow("hello", "c2", 1))
 
     assert result["workflow_data"]["search_error"] is True
-    assert result["final_response"] == SEARCH_ERROR_MESSAGE
+    assert (
+        result["final_response"]
+        == f"{SEARCH_ERROR_MESSAGE} Raison: période invalide"
+    )
     response_step = next(
         step for step in result["execution_details"]["steps"] if step["name"] == "response_generation"
     )

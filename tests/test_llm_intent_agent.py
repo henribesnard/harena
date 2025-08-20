@@ -39,6 +39,7 @@ def test_llm_intent_agent_parses_output_correctly():
         deepseek_client=DummyDeepSeekClient(), openai_client=openai_client
     )
     assert agent.config.model_client_config["api_key"] == "openai-test-key"
+    assert agent.config.model_client_config["model"] == "gpt-4o-mini"
     result = asyncio.run(
         agent.detect_intent("Combien j’ai dépensé pour Netflix ce mois ?", user_id=1)
     )

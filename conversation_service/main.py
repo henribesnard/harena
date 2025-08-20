@@ -5,6 +5,16 @@ includes the API routers.  It exposes an ``app`` object that can be used by
 ASGI servers such as Uvicorn.
 """
 
+import logging
+import time
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Dict, Any
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from .api.middleware import GlobalExceptionMiddleware
 from fastapi import FastAPI
 
 from .api.routes import router as api_router
@@ -13,6 +23,94 @@ from .api.middleware import setup_middleware
 
 
 def create_app() -> FastAPI:
+    """
+    Create and configure the FastAPI application.
+    
+    Returns:
+        FastAPI: Configured application instance
+    """
+    # Load configuration from environment
+    environment = os.getenv("ENVIRONMENT", "development")
+    cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
+    allowed_hosts = ["localhost", "127.0.0.1"] + cors_origins
+
+    # Validate core setup after environment configuration
+    run_core_validation()
+    
+    # Create FastAPI app with metadata
+    app = FastAPI(
+        title="Conversation Service MVP",
+        description="""
+        🤖 **AutoGen Multi-Agent Conversation Service**
+        
+        Sophisticated conversation AI powered by AutoGen v0.4 and DeepSeek LLM,
+        providing intelligent financial conversation processing with:
+        
+        - **Multi-Agent Architecture**: Specialized agents for intent detection, 
+          entity extraction, query generation, and response synthesis
+        - **Cost-Effective**: DeepSeek LLM with 90% cost savings vs GPT-4
+        - **Real-time Processing**: Async conversation handling with context memory
+        - **Production Ready**: Health monitoring, metrics, rate limiting
+        
+        **Architecture**: AutoGen RoundRobinGroupChat + DeepSeek + Elasticsearch Integration
+        """,
+        version="1.0.0",
+        contact={
+            "name": "Harena Conversation Team",
+            "email": "tech@harena.ai"
+        },
+        license_info={
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        openapi_url=f"/api/v1/openapi.json",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        lifespan=lifespan
+    )
+    
+    # Configure CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["X-Process-Time", "X-Agent-Used"]
+    )
+    
+    # Configure trusted hosts (security)
+    if environment == "production":
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=allowed_hosts
+        )
+    
+    # Add custom middleware
+    app.middleware("http")(add_process_time_header)
+    app.middleware("http")(log_requests)
+    app.add_middleware(GlobalExceptionMiddleware)
+    
+    # Include API routes
+    app.include_router(
+        api_router,
+        prefix="/api/v1",
+        tags=["conversation"]
+    )
+    
+    # Add root endpoint
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Root endpoint with service information."""
+        return {
+            "service": "conversation_service_mvp",
+            "version": "1.0.0",
+            "status": app_state["health_status"],
+            "documentation": "/docs",
+            "health_check": "/health",
+            "api_base": "/api/v1"
+        }
+    
     """Create and configure the FastAPI application."""
     app = FastAPI(title="Conversation Service")
     setup_middleware(app)
@@ -151,56 +249,6 @@ async def log_requests(request: Request, call_next):
         logger.info(f"✅ {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
     return response
-
-
-# Exception handlers
-async def custom_http_exception_handler(request: Request, exc: HTTPException):
-    """Custom HTTP exception handler with structured logging."""
-    logger.warning(f"HTTP {exc.status_code}: {exc.detail} - {request.method} {request.url}")
-    
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": True,
-            "status_code": exc.status_code,
-            "message": exc.detail,
-            "timestamp": time.time(),
-            "path": str(request.url.path)
-        }
-    )
-
-
-async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Custom validation exception handler."""
-    logger.warning(f"Validation error: {exc} - {request.method} {request.url}")
-    
-    return JSONResponse(
-        status_code=422,
-        content={
-            "error": True,
-            "status_code": 422,
-            "message": "Request validation failed",
-            "details": exc.errors(),
-            "timestamp": time.time(),
-            "path": str(request.url.path)
-        }
-    )
-
-
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler for unhandled exceptions."""
-    logger.error(f"Unhandled exception: {exc} - {request.method} {request.url}", exc_info=True)
-    
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": True,
-            "status_code": 500,
-            "message": "Internal server error",
-            "timestamp": time.time(),
-            "path": str(request.url.path)
-        }
-    )
 
 
 # Create application instance

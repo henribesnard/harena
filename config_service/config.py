@@ -136,6 +136,9 @@ class GlobalSettings(BaseSettings):
     LLM_CACHE_MAX_SIZE: int = int(os.environ.get("LLM_CACHE_MAX_SIZE", "1000"))
     LLM_TEMPERATURE: float = float(os.environ.get("LLM_TEMPERATURE", "0.1"))
     LLM_TOP_P: float = float(os.environ.get("LLM_TOP_P", os.environ.get("TOP_P", "0.95")))
+    INTENT_TIMEOUT_SECONDS: int = int(os.environ.get("INTENT_TIMEOUT_SECONDS", "10"))
+    INTENT_MAX_RETRIES: int = int(os.environ.get("INTENT_MAX_RETRIES", "3"))
+    INTENT_BACKOFF_BASE: float = float(os.environ.get("INTENT_BACKOFF_BASE", "1"))
     
     # ==========================================
     # CONFIGURATION OPENAI POUR LES EMBEDDINGS

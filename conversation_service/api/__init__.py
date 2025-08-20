@@ -1,8 +1,7 @@
-"""
-API package for Conversation Service MVP.
+"""API package for the conversation service."""
 
-This module provides the main API components for the AutoGen-based conversation
-service, including FastAPI routes, dependencies, and endpoint configurations.
+from . import routes, dependencies, websocket, middleware
+from .routes import router
 
 The API layer handles HTTP/WebSocket communication, request validation,
 authentication, and integrates with the AutoGen MVPTeamManager for
@@ -47,7 +46,8 @@ from .dependencies import (
 from .routes import (
     chat_router,
     health_router,
-    router as main_router
+    router as main_router,
+    ws_router
 )
 
 # API Models for external use
@@ -79,8 +79,9 @@ __all__ = [
     
     # Routers
     "chat_router",
-    "health_router", 
+    "health_router",
     "main_router",
+    "ws_router",
     
     # API Models
     "ConversationRequest",
@@ -99,9 +100,10 @@ API_PREFIX = f"/api/{API_VERSION}"
 ENDPOINTS_SUMMARY = {
     "POST /chat": "Main conversation endpoint with AutoGen multi-agent processing",
     "GET /health": "Service health check with component status",
-    "GET /metrics": "Performance metrics and agent statistics", 
+    "GET /metrics": "Performance metrics and agent statistics",
     "GET /docs": "Interactive API documentation",
-    "GET /redoc": "Alternative API documentation"
+    "GET /redoc": "Alternative API documentation",
+    "WS /ws/chat": "WebSocket chat endpoint with incremental agent messages"
 }
 
 # Rate limiting configuration
@@ -149,3 +151,4 @@ LOGGING_CONFIG = {
         }
     }
 }
+__all__ = ["routes", "dependencies", "websocket", "middleware", "router"]

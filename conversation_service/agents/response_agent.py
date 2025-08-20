@@ -461,17 +461,25 @@ class ResponseAgent(BaseFinancialAgent):
 
         try:
             logger.debug("Generating AI response for user_id=%s", user_id)
+            import inspect
+
+            gen_kwargs = dict(
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                user=str(user_id),
+                use_cache=True,
+            )
+            sig = inspect.signature(self.deepseek_client.generate_response).parameters
+            if "stream" in sig:
+                gen_kwargs["stream"] = False
+            if "top_p" in sig:
+                gen_kwargs["top_p"] = 1.0
             response = await self.deepseek_client.generate_response(
                 messages=[
                     {"role": "system", "content": self._get_response_generation_prompt()},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
-                user=str(user_id),
-                use_cache=True,
-                stream=False,
-                top_p=1.0,
+                **gen_kwargs,
             )
 
             response.content = response.content.strip()

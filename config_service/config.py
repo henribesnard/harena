@@ -135,7 +135,7 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_EXPECTED_LATENCY_MS: int = int(os.environ.get("DEEPSEEK_EXPECTED_LATENCY_MS", "1500"))
     
     # ==========================================
-    # CONFIGURATION OPENAI POUR LES EMBEDDINGS
+    # CONFIGURATION OPENAI POUR LES EMBEDDINGS ET L'INTENT DETECTION
     # ==========================================
     OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
     EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")

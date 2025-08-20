@@ -3,8 +3,9 @@ Base Financial Agent class for AutoGen v0.4 integration.
 
 This module provides the foundational class for all specialized financial agents
 in the conversation service. It includes common functionality like metrics tracking
-and error handling. Performance monitoring now tracks percentile distributions
-(p95, p99) and uses a 30-second threshold for health checks.
+and error handling for agents leveraging OpenAI's LLM API. Performance monitoring
+now tracks percentile distributions (p95, p99) and uses a 30-second threshold for
+health checks.
 
 Classes:
     - BaseFinancialAgent: Base class extending AutoGen AssistantAgent
@@ -12,7 +13,7 @@ Classes:
 
 Author: Conversation Service Team
 Created: 2025-01-31
-Version: 1.0.0 MVP - AutoGen v0.4 + DeepSeek
+Version: 1.0.0 MVP - AutoGen v0.4 + OpenAI
 """
 
 import time
@@ -194,7 +195,7 @@ class BaseFinancialAgent(AssistantAgent):
     Base class for all financial agents in the conversation service.
     
     This class extends AutoGen's AssistantAgent with financial domain-specific
-    functionality, including DeepSeek integration, metrics tracking, and
+    functionality, including OpenAI integration, metrics tracking, and
     standardized error handling.
     
     Attributes:

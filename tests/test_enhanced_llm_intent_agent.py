@@ -79,13 +79,13 @@ def test_full_flow_detects_intent_and_latency():
     os.environ["OPENAI_API_KEY"] = "openai-test-key"
     openai_client = DummyOpenAIClient(
         json.dumps(
-            {
-                "intent_type": "SEARCH_BY_MERCHANT",
-                "intent_category": "TRANSACTION_SEARCH",
-                "confidence": 0.9,
-                "entities": [{"entity_type": "MERCHANT", "value": "Netflix"}],
-            }
-        )
+                {
+                    "intent_type": "SEARCH_BY_MERCHANT",
+                    "intent_category": "TRANSACTION_SEARCH",
+                    "confidence": 0.9,
+                    "entities": [{"entity_type": "MERCHANT", "value": "Netflix", "confidence": 0.9}],
+                }
+            )
     )
     agent = EnhancedLLMIntentAgent(
         deepseek_client=DummyDeepSeekClient(), openai_client=openai_client

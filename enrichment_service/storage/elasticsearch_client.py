@@ -11,7 +11,7 @@ import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from config_service.config import settings
+from config.settings import settings
 
 logger = logging.getLogger("enrichment_service.elasticsearch")
 

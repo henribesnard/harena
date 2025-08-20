@@ -256,7 +256,7 @@ def setup_middleware(app: FastAPI) -> None:
     logger.info("Logging middleware configured")
     
     # Ajouter le middleware de limitation de taux conditionnellement
-    from config_service.config import settings
+    from config.settings import settings
     
     if getattr(settings, "RATE_LIMIT_ENABLED", False):
         rate_limit = getattr(settings, "RATE_LIMIT_REQUESTS", 60)
@@ -307,7 +307,7 @@ def create_error_handlers(app: FastAPI) -> None:
         )
         
         # Déterminer le niveau de détail selon l'environnement
-        from config_service.config import settings
+        from config.settings import settings
         is_dev = getattr(settings, "ENVIRONMENT", "production").lower() in ["development", "dev", "local"]
         
         error_content = {
@@ -336,7 +336,7 @@ def create_error_handlers(app: FastAPI) -> None:
         )
         
         # Déterminer le niveau de détail selon l'environnement
-        from config_service.config import settings
+        from config.settings import settings
         is_dev = getattr(settings, "ENVIRONMENT", "production").lower() in ["development", "dev", "local"]
         
         error_content = {

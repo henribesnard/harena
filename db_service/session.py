@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 from contextlib import contextmanager
 
-from config_service.config import settings
+from config.settings import settings
 
 # Création de l'engine central
 engine = create_engine(settings.SQLALCHEMY_DATABASE_URI, pool_pre_ping=True)

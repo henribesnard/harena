@@ -10,7 +10,7 @@ from user_service.schemas.user import (
 )
 from user_service.api.deps import get_db, get_current_active_user
 from user_service.services import users, bridge
-from config_service.config import settings
+from config.settings import settings
 from user_service.core.security import create_access_token
 
 router = APIRouter()

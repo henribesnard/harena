@@ -418,8 +418,10 @@ def create_app():
         try:
             conv_init = await loader.initialize_conversation_service()
             if conv_init:
-                from conversation_service.api.routes import router as conversation_router
-                from conversation_service.api.websocket import router as conversation_ws_router
+                from conversation_service.api.routes import (
+                    router as conversation_router,
+                    websocket_router as conversation_ws_router,
+                )
 
                 app.include_router(
                     conversation_router,

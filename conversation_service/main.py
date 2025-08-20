@@ -21,6 +21,12 @@ from .api.routes import router as api_router
 from .api.websocket import router as websocket_router
 from .api.middleware import setup_middleware
 
+from config.openai_config import OpenAISettings
+from config.autogen_config import AutoGenSettings
+
+openai_settings = OpenAISettings()
+autogen_settings = AutoGenSettings()
+
 
 def create_app() -> FastAPI:
     """
@@ -30,8 +36,8 @@ def create_app() -> FastAPI:
         FastAPI: Configured application instance
     """
     # Load configuration from environment
-    environment = os.getenv("ENVIRONMENT", "development")
-    cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
+    environment = autogen_settings.ENVIRONMENT
+    cors_origins = autogen_settings.CORS_ORIGINS.split(",")
     allowed_hosts = ["localhost", "127.0.0.1"] + cors_origins
 
     # Validate core setup after environment configuration
@@ -42,17 +48,17 @@ def create_app() -> FastAPI:
         title="Conversation Service MVP",
         description="""
         🤖 **AutoGen Multi-Agent Conversation Service**
-        
-        Sophisticated conversation AI powered by AutoGen v0.4 and DeepSeek LLM,
+
+        Sophisticated conversation AI powered by AutoGen v0.4 and OpenAI LLM,
         providing intelligent financial conversation processing with:
         
         - **Multi-Agent Architecture**: Specialized agents for intent detection, 
           entity extraction, query generation, and response synthesis
-        - **Cost-Effective**: DeepSeek LLM with 90% cost savings vs GPT-4
+        - **Cost-Effective**: OpenAI models
         - **Real-time Processing**: Async conversation handling with context memory
         - **Production Ready**: Health monitoring, metrics, rate limiting
         
-        **Architecture**: AutoGen RoundRobinGroupChat + DeepSeek + Elasticsearch Integration
+        **Architecture**: AutoGen RoundRobinGroupChat + OpenAI + Elasticsearch Integration
         """,
         version="1.0.0",
         contact={
@@ -128,30 +134,27 @@ async def validate_configuration() -> None:
     """
     logger.info("🔧 Validating configuration")
     
-    # Check DeepSeek configuration
-    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-    if not deepseek_key or len(deepseek_key) < 10:
-        logger.warning("⚠️ DEEPSEEK_API_KEY not configured - using mock responses")
-    
+    # Check OpenAI configuration
+    if not openai_settings.OPENAI_API_KEY or len(openai_settings.OPENAI_API_KEY) < 10:
+        logger.warning("⚠️ OPENAI_API_KEY not configured - using mock responses")
+
     # Check database configuration
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
+    if not autogen_settings.DATABASE_URL:
         logger.warning("⚠️ DATABASE_URL not configured - using memory storage")
-    
+
     # Check Redis configuration
-    redis_url = os.getenv("REDIS_URL")
-    if not redis_url:
+    if not autogen_settings.REDIS_URL:
         logger.warning("⚠️ REDIS_URL not configured - using memory cache")
-    
+
     # Validate port
-    port = int(os.getenv("PORT", "8000"))
+    port = autogen_settings.PORT
     if not (1000 <= port <= 65535):
         raise ValueError(f"Invalid port: {port}")
-    
+
     # Check environment-specific settings
-    environment = os.getenv("ENVIRONMENT", "development")
-    debug = os.getenv("DEBUG", "false").lower() == "true"
-    secret_key = os.getenv("SECRET_KEY", "")
+    environment = autogen_settings.ENVIRONMENT
+    debug = autogen_settings.DEBUG
+    secret_key = autogen_settings.SECRET_KEY
     
     if environment == "production":
         if debug:
@@ -190,7 +193,7 @@ async def pre_initialize_dependencies() -> None:
             await manager.shutdown()
 
         # Test configuration loading
-        environment = os.getenv("ENVIRONMENT", "development")
+        environment = autogen_settings.ENVIRONMENT
         logger.info(f"✅ Settings loaded for environment: {environment}")
 
     except ImportError as e:

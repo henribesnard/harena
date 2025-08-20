@@ -87,6 +87,7 @@ def test_prepare_entity_context_with_string_entity_type():
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),
         search_service_url="http://search.example.com",
+        use_llm_query=False,
     )
     entity = FinancialEntity(
         entity_type=EntityType.MERCHANT,
@@ -188,6 +189,35 @@ def test_operation_type_synonym_applied_without_transaction_types():
     )
     request = search_query.to_search_request()
     assert request["filters"]["operation_type"] == "transfer"
+    assert "transaction_types" not in request["filters"]
+
+
+def test_transaction_type_filter_skipped_for_multiple_types():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+        use_llm_query=False,
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.TRANSACTION_TYPE,
+                raw_value="entrées et sorties",
+                normalized_value=["debit", "credit"],
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "entrées et sorties", user_id=1)
+    )
+    request = search_query.to_search_request()
     assert "transaction_types" not in request["filters"]
 
 

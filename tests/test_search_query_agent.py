@@ -737,3 +737,37 @@ def test_operation_type_synonym_conversion():
     )
     request = search_query.to_search_request()
     assert request["filters"]["operation_type"] == "transfer"
+
+
+@pytest.mark.parametrize(
+    "intent_type",
+    [
+        "SPENDING_ANALYSIS_BY_PERIOD",
+        "COUNT_TRANSACTIONS",
+        "SPENDING_COMPARISON",
+    ],
+)
+def test_aggregation_request_added(intent_type):
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type=intent_type,
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "", user_id=1)
+    )
+    assert search_query.aggregations is not None
+    assert search_query.aggregations.metrics == ["sum"]
+    assert search_query.aggregations.group_by == ["transaction_type"]
+    request = search_query.to_search_request()
+    assert request["aggregations"] == {
+        "metrics": ["sum"],
+        "group_by": ["transaction_type"],
+    }

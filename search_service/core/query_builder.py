@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from search_service.models.request import SearchRequest
 
 logger = logging.getLogger(__name__)
@@ -129,13 +129,22 @@ class QueryBuilder:
             "primary_description", "merchant_name", "category_name", "operation_type"
         ]
     
-    def build_aggregation_query(self, request: SearchRequest, aggregation: Dict[str, Any]) -> Dict[str, Any]:
-        """Construction d'une requête avec agrégations simples"""
+    def build_aggregation_query(
+        self, request: SearchRequest, aggregation: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Construction d'une requête avec agrégations simples.
+
+        Args:
+            request: Requête de recherche de base.
+            aggregation: Paramètres d'agrégation optionnels comprenant
+                ``group_by`` et ``metrics``.
+        """
         base_query = self.build_query(request)
 
+        aggregation = aggregation or {}
         aggregations: Dict[str, Any] = {}
-        group_by = (aggregation or {}).get("group_by", [])
-        metrics = (aggregation or {}).get("metrics", [])
+        group_by = aggregation.get("group_by") or []
+        metrics = aggregation.get("metrics") or []
 
         if group_by:
             for field in group_by:

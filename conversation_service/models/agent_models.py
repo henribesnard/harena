@@ -38,6 +38,12 @@ class AgentConfig(BaseModel):
     
     This model defines the complete configuration for an AutoGen agent,
     including model client settings, system messages, and behavioral parameters.
+    Optimized for financial domain specialization and compatible with OpenAI's
+    GPT family of models.
+    
+    Attributes:
+        name: Unique identifier for the agent
+        model_client_config: LLM model configuration for OpenAI GPT models
     Optimized for financial domain specialization and compatible with multiple
     LLM providers such as OpenAI's GPT models.
     

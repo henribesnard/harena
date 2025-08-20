@@ -103,6 +103,15 @@ class ServiceLoader:
         logger.info("🤖 Initialisation du conversation_service...")
 
         try:
+            # Vérifier la clé API
+            api_key = settings.DEEPSEEK_API_KEY
+            if not api_key:
+                raise ValueError("Clé API non configurée")
+
+            logger.info(f"🔑 Clé API configurée: {api_key[:20]}...")
+
+            # Import et initialisation du conversation service
+            from config_service.config import settings
             # Vérifier OPENAI_API_KEY
             openai_key = settings.OPENAI_API_KEY
             if not openai_key:
@@ -118,6 +127,15 @@ class ServiceLoader:
             validation = run_core_validation()
             if not validation["valid"]:
                 raise ValueError(f"Configuration invalide: {validation['errors']}")
+
+            if validation["warnings"]:
+                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
+
+            # Test de connexion OpenAI
+            logger.info("🔍 Test de connexion OpenAI...")
+
+            # Mettre les composants dans app.state
+            app.state.conversation_service_initialized = True
             if validation["warnings"]:
                 logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
 
@@ -388,6 +406,8 @@ def create_app():
                         "prefix": "/api/v1/conversation",
                         "initialized": True,
                         "architecture": "llm_intent_agent",
+                        "model": "gpt-4o-mini",
+
                         "model": settings.OPENAI_CHAT_MODEL,
                         "error": None,
                     })
@@ -403,6 +423,7 @@ def create_app():
                         "initialized": False,
                         "error": loader.conversation_service_error,
                         "architecture": "llm_intent_agent",
+                        "model": "gpt-4o-mini",
                         "model": settings.OPENAI_CHAT_MODEL,
                     })
 
@@ -493,6 +514,7 @@ def create_app():
                 "initialized": loader.conversation_service_initialized,
                 "error": loader.conversation_service_error,
                 "architecture": "llm_intent_agent",
+                "model": "gpt-4o-mini"
                 "model": settings.OPENAI_CHAT_MODEL
             }
         }

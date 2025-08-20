@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from calendar import monthrange
 from datetime import datetime
 
 from conversation_service.agents import base_financial_agent
@@ -644,9 +645,10 @@ def test_sum_debits_and_credits_in_june():
     )
     request_dict = search_contract.to_search_request()
     year = datetime.utcnow().strftime("%Y")
+    last_day = monthrange(int(year), 6)[1]
     assert request_dict["filters"]["date"] == {
         "gte": f"{year}-06-01",
-        "lte": f"{year}-06-31",
+        "lte": f"{year}-06-{last_day:02d}",
     }
     assert request_dict["aggregations"] == {
         "metrics": ["sum"],

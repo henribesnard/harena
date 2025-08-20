@@ -16,8 +16,11 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from .api.exception_middleware import GlobalExceptionMiddleware
 from .api.middleware import setup_middleware
-from .api.routes import router as api_router, websocket_router
 
+app_state: Dict[str, Any] = {"health_status": "starting"}
+
+from .api.routes import router as api_router, websocket_router
+from .api.dependencies import cleanup_dependencies
 
 from config.openai_config import OpenAISettings
 from config.autogen_config import AutoGenSettings
@@ -210,6 +213,22 @@ async def initialize_dependencies() -> None:
     except Exception as e:
         logger.error(f"❌ Dependency initialization failed: {e}")
         raise
+
+
+# Application lifespan
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage startup and shutdown events."""
+    try:
+        await validate_configuration()
+        await initialize_dependencies()
+        app_state["health_status"] = "healthy"
+        yield
+    except Exception:
+        app_state["health_status"] = "error"
+        raise
+    finally:
+        await cleanup_dependencies()
 
 
 # Middleware functions

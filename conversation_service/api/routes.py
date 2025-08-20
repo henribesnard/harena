@@ -49,6 +49,8 @@ from ..utils.cache_client import cache_client
 from ..utils.decorators import rate_limit
 from db_service.session import get_db
 
+from ..main import app_state
+
 logger = logging.getLogger(__name__)
 
 try:  # pragma: no cover - used only when the real implementation is present
@@ -269,7 +271,7 @@ async def list_conversations(
 @router.get("/health")
 async def healthcheck() -> Dict[str, str]:
     """Basic health check endpoint."""
-    return {"status": "ok"}
+    return {"status": app_state["health_status"]}
 
 
 @router.get("/metrics")

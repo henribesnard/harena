@@ -237,6 +237,38 @@ def test_relative_date_current_month():
     assert date_filter["lte"] == end.strftime("%Y-%m-%d")
 
 
+def test_date_filter_with_french_month_name():
+    agent = SearchQueryAgent(
+        deepseek_client=DummyDeepSeekClient(),
+        search_service_url="http://search.example.com",
+    )
+    intent_result = IntentResult(
+        intent_type="TRANSACTION_SEARCH",
+        intent_category=IntentCategory.TRANSACTION_SEARCH,
+        confidence=0.9,
+        entities=[
+            FinancialEntity(
+                entity_type=EntityType.DATE,
+                raw_value="mai",
+                normalized_value="mai",
+                confidence=0.9,
+            )
+        ],
+        method=DetectionMethod.LLM_BASED,
+        processing_time_ms=1.0,
+    )
+
+    search_query = asyncio.run(
+        agent._generate_search_contract(intent_result, "dépenses en mai", user_id=1)
+    )
+    request = search_query.to_search_request()
+    date_filter = request["filters"].get("date")
+
+    year = datetime.utcnow().strftime("%Y")
+    assert date_filter["gte"] == f"{year}-05-01"
+    assert date_filter["lte"] == f"{year}-05-31"
+
+
 def test_amount_filter_without_date():
     agent = SearchQueryAgent(
         deepseek_client=DummyDeepSeekClient(),

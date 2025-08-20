@@ -20,6 +20,7 @@ import unicodedata
 import re
 import json
 import httpx
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
@@ -368,6 +369,7 @@ class SearchQueryAgent(BaseFinancialAgent):
         self.search_service_url = search_service_url.rstrip("/")
         self.http_client = httpx.AsyncClient(timeout=30.0)
         self.query_optimizer = QueryOptimizer()
+        self.default_limit = int(os.getenv("SEARCH_QUERY_DEFAULT_LIMIT", "336"))
 
         logger.info(
             f"Initialized SearchQueryAgent with service URL: {search_service_url}"
@@ -395,7 +397,12 @@ class SearchQueryAgent(BaseFinancialAgent):
         return await self.process_search_request(intent_result, user_message, user_id)
 
     async def process_search_request(
-        self, intent_result: IntentResult, user_message: str, user_id: int
+        self,
+        intent_result: IntentResult,
+        user_message: str,
+        user_id: int,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> Dict[str, Any]:
         """
         Process a search request end-to-end.
@@ -417,8 +424,14 @@ class SearchQueryAgent(BaseFinancialAgent):
             )
 
             # Step 2: Generate search service query contract
+            limit = limit or self.default_limit
             search_query = await self._generate_search_contract(
-                intent_result, user_message, user_id, enhanced_entities
+                intent_result,
+                user_message,
+                user_id,
+                enhanced_entities,
+                limit=limit,
+                offset=offset,
             )
 
             logger.info(
@@ -427,32 +440,10 @@ class SearchQueryAgent(BaseFinancialAgent):
                 search_query.filters,
             )
 
-            # Step 3: Execute search query with pagination support
+            # Step 3: Execute search query (single call)
             search_response = await self._execute_search_query(search_query)
 
             results = list(getattr(search_response, "results", []) or [])
-            metadata = getattr(search_response, "response_metadata", None)
-            returned_results = getattr(metadata, "returned_results", len(results))
-            has_more = getattr(metadata, "has_more_results", False)
-
-            offset = search_query.search_parameters.offset
-            limit = search_query.search_parameters.max_results
-
-            while has_more:
-                offset += limit
-                next_query = search_query.with_offset(offset)
-                page = await self._execute_search_query(next_query)
-                results.extend(getattr(page, "results", []) or [])
-                page_meta = getattr(page, "response_metadata", None)
-                returned_results += getattr(
-                    page_meta, "returned_results", len(getattr(page, "results", []) or [])
-                )
-                has_more = getattr(page_meta, "has_more_results", False)
-
-            search_response.results = results
-            if metadata:
-                metadata.returned_results = len(results)
-                metadata.has_more_results = False
 
             execution_time = (time.perf_counter() - start_time) * 1000
 
@@ -489,6 +480,8 @@ class SearchQueryAgent(BaseFinancialAgent):
         user_message: str,
         user_id: int,
         enhanced_entities: Optional[List[FinancialEntity]] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> SearchServiceQuery:
         """
         Generate a SearchServiceQuery contract from intent and message.
@@ -564,9 +557,13 @@ class SearchQueryAgent(BaseFinancialAgent):
         )
 
         # Create search parameters based on intent
+        default_limit = (
+            100 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10
+        )
         search_params = SearchParameters(
             search_text=search_text,
-            max_results=100 if intent_result.intent_type == "TRANSACTION_SEARCH" else 10,
+            max_results=limit or default_limit,
+            offset=offset,
             include_highlights=True,
             boost_recent=intent_result.intent_type
             in [
@@ -598,7 +595,7 @@ class SearchQueryAgent(BaseFinancialAgent):
     async def _execute_search_query(
         self, query: SearchServiceQuery
     ) -> SearchServiceResponse:
-        """Execute search query against the Search Service and aggregate all pages."""
+        """Execute a single search query against the Search Service."""
         try:
             url = f"{self.search_service_url}/search"
             headers = {
@@ -629,87 +626,37 @@ class SearchQueryAgent(BaseFinancialAgent):
                 query.filters.model_dump(exclude_none=True),
             )
 
-            original_offset = query.search_parameters.offset
-            current_offset = original_offset
-            aggregated_response: Optional[SearchServiceResponse] = None
-            all_results: List[Any] = []
-            total_processing_time = 0.0
+            request_payload = (
+                query.to_search_request()
+                if hasattr(query, "to_search_request")
+                else query.dict()
+            )
+            logger.debug("Search request payload: %s", request_payload)
 
-            while True:
-                query.search_parameters.offset = current_offset
-                request_payload = (
-                    query.to_search_request()
-                    if hasattr(query, "to_search_request")
-                    else query.dict()
-                )
-                request_payload["offset"] = current_offset
-                logger.debug("Search request payload: %s", request_payload)
+            response = await self.http_client.post(
+                url=url, json=request_payload, headers=headers
+            )
+            response.raise_for_status()
+            response_data = response.json()
 
-                response = await self.http_client.post(
-                    url=url, json=request_payload, headers=headers
-                )
-                response.raise_for_status()
-                response_data = response.json()
+            for result in response_data.get("results", []):
+                if "currency_code" in result and "currency" not in result:
+                    result["currency"] = result.pop("currency_code")
+                if "primary_description" in result and "description" not in result:
+                    result["description"] = result.pop("primary_description")
+                if "merchant_name" in result and "merchant" not in result:
+                    result["merchant"] = result.pop("merchant_name")
+                if "category_name" in result and "category" not in result:
+                    result["category"] = result.pop("category_name")
+                if "account_id" in result and isinstance(result["account_id"], int):
+                    result["account_id"] = str(result["account_id"])
 
-                for result in response_data.get("results", []):
-                    if "currency_code" in result and "currency" not in result:
-                        result["currency"] = result.pop("currency_code")
-                    if "primary_description" in result and "description" not in result:
-                        result["description"] = result.pop("primary_description")
-                    if "merchant_name" in result and "merchant" not in result:
-                        result["merchant"] = result.pop("merchant_name")
-                    if "category_name" in result and "category" not in result:
-                        result["category"] = result.pop("category_name")
-                    if "account_id" in result and isinstance(result["account_id"], int):
-                        result["account_id"] = str(result["account_id"])
-
-                page_response = SearchServiceResponse(**response_data)
-                if aggregated_response is None:
-                    aggregated_response = page_response
-
-                all_results.extend(page_response.results)
-                page_meta = page_response.response_metadata
-                processing_time = (
-                    page_meta.get("processing_time_ms", 0.0)
-                    if isinstance(page_meta, dict)
-                    else getattr(page_meta, "processing_time_ms", 0.0)
-                )
-                total_processing_time += processing_time
-                total_results_page = (
-                    page_meta.get("total_results", 0)
-                    if isinstance(page_meta, dict)
-                    else getattr(page_meta, "total_results", 0)
-                )
-                has_more = (
-                    page_meta.get("has_more_results", False)
-                    if isinstance(page_meta, dict)
-                    else getattr(page_meta, "has_more_results", False)
-                )
-
-                current_offset += len(page_response.results)
-                if current_offset >= total_results_page or not has_more:
-                    break
-
-            query.search_parameters.offset = original_offset
-
-            aggregated_response.results = all_results
-            meta = aggregated_response.response_metadata
-            if isinstance(meta, dict):
-                meta["total_results"] = len(all_results)
-                meta["returned_results"] = len(all_results)
-                meta["has_more_results"] = False
-                meta["processing_time_ms"] = total_processing_time
-            else:
-                meta.total_results = len(all_results)
-                meta.returned_results = len(all_results)
-                meta.has_more_results = False
-                meta.processing_time_ms = total_processing_time
-
-            results_len = len(aggregated_response.results or [])
+            search_response = SearchServiceResponse(**response_data)
+            results_len = len(search_response.results or [])
             logger.info("Search service returned %s results", results_len)
-            if aggregated_response.results:
-                logger.info("First search result: %s", aggregated_response.results[0])
-            meta = aggregated_response.response_metadata
+            if search_response.results:
+                logger.info("First search result: %s", search_response.results[0])
+            meta = search_response.response_metadata
             total_res = (
                 meta.get("total_results", 0)
                 if isinstance(meta, dict)
@@ -725,7 +672,7 @@ class SearchQueryAgent(BaseFinancialAgent):
                 "Search query executed successfully: %s results", returned_res
             )
 
-            return aggregated_response
+            return search_response
 
         except httpx.HTTPStatusError as e:
             logger.error(

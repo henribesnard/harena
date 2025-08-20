@@ -136,6 +136,8 @@ class GlobalSettings(BaseSettings):
     
     # ==========================================
     # CONFIGURATION OPENAI POUR LES EMBEDDINGS ET L'INTENT DETECTION
+    # Clé API dédiée à OpenAI (llm_intent_agent). Si elle est absente,
+    # la clé DeepSeek est utilisée en repli.
     # ==========================================
     OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
     EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")

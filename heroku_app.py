@@ -110,8 +110,7 @@ class ServiceLoader:
             
             # Import et initialisation du conversation service
             from config_service.config import settings
-            from conversation_service.clients import deepseek_client
-            from conversation_service.agents import intent_classifier
+            from conversation_service.core import deepseek_client
             
             # Validation de la configuration
             logger.info("⚙️ Validation de la configuration...")
@@ -131,15 +130,9 @@ class ServiceLoader:
             
             logger.info(f"✅ DeepSeek connecté - Temps de réponse: {health_check['response_time']:.2f}s")
             
-            # Test de l'agent de classification
-            logger.info("🤖 Test de l'agent de classification...")
-            agent_metrics = intent_classifier.get_metrics()
-            logger.info(f"✅ Agent initialisé - Seuil confiance: {settings.MIN_CONFIDENCE_THRESHOLD}")
-            
             # Mettre les composants dans app.state
             app.state.conversation_service_initialized = True
             app.state.deepseek_client = deepseek_client
-            app.state.intent_classifier = intent_classifier
             app.state.conversation_initialization_error = None
 
             self.conversation_service_initialized = True
@@ -160,7 +153,6 @@ class ServiceLoader:
             # Marquer l'échec dans app.state
             app.state.conversation_service_initialized = False
             app.state.deepseek_client = None
-            app.state.intent_classifier = None
             app.state.conversation_initialization_error = error_msg
 
             self.conversation_service_initialized = False
@@ -400,7 +392,7 @@ def create_app():
                         "routes": routes_count,
                         "prefix": "/api/v1/conversation",
                         "initialized": True,
-                        "architecture": "mvp_intent_classifier",
+                        "architecture": "llm_intent_agent",
                         "model": "deepseek-chat",
                         "error": None,
                     })
@@ -415,7 +407,7 @@ def create_app():
                         "prefix": "/api/v1/conversation",
                         "initialized": False,
                         "error": loader.conversation_service_error,
-                        "architecture": "mvp_intent_classifier",
+                        "architecture": "llm_intent_agent",
                         "model": "deepseek-chat",
                     })
 
@@ -425,7 +417,7 @@ def create_app():
                 loader.services_status["conversation_service"].update({
                     "status": "error",
                     "error": f"Routes import failed: {str(e)}",
-                    "architecture": "mvp_intent_classifier",
+                    "architecture": "llm_intent_agent",
                 })
 
         except Exception as e:
@@ -434,7 +426,7 @@ def create_app():
             loader.services_status["conversation_service"].update({
                 "status": "error",
                 "error": str(e),
-                "architecture": "mvp_intent_classifier",
+                "architecture": "llm_intent_agent",
             })
 
         # Compter les services réussis
@@ -505,7 +497,7 @@ def create_app():
             "conversation_service_details": {
                 "initialized": loader.conversation_service_initialized,
                 "error": loader.conversation_service_error,
-                "architecture": "mvp_intent_classifier",
+                "architecture": "llm_intent_agent",
                 "model": "deepseek-chat"
             }
         }

@@ -18,10 +18,30 @@ QUESTIONS = [
 ]
 
 def run_question(session: requests.Session, question: str, conv_id: str) -> dict:
+    """Exécute une question de chat et affiche le résultat."""
+
     chat_payload = {"message": question, "conversation_id": conv_id}
     chat_resp = session.post(f"{BASE_URL}/conversation/chat", json=chat_payload)
     chat_resp.raise_for_status()
-    return chat_resp.json()
+    chat_data = chat_resp.json()
+
+    print("✅ Conversation réussie")
+    print(f"🗨️ Question posée : {question}")
+    print(f"💬 Réponse générée : {chat_data['message']}")
+
+    aggregations = (
+        chat_data.get("metadata", {})
+        .get("workflow_data", {})
+        .get("search_results", {})
+        .get("metadata", {})
+        .get("search_response", {})
+        .get("aggregations")
+    )
+    if aggregations:
+        print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
+    print()
+
+    return chat_data
 
 def main() -> None:
     session = requests.Session()
@@ -36,25 +56,9 @@ def main() -> None:
 
     session.headers.update({"Authorization": f"Bearer {token}"})
 
-    chat_data = None
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
         chat_data = run_question(session, question, conversation_id)
-        print("✅ Conversation réussie")
-        print(f"🗨️ Question posée : {question}")
-        print(f"💬 Réponse générée : {chat_data['message']}")
-
-        aggregations = (
-            chat_data.get("metadata", {})
-            .get("workflow_data", {})
-            .get("search_results", {})
-            .get("metadata", {})
-            .get("search_response", {})
-            .get("aggregations")
-        )
-        if aggregations:
-            print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
-        print()
 
     # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------
     intent_result = chat_data["metadata"]["intent_result"]

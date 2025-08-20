@@ -175,8 +175,13 @@ class LLMIntentAgent(BaseFinancialAgent):
         return actions or None
 
     @staticmethod
-    def _detect_transaction_type(message: str) -> Optional[str]:
-        """Detect basic keywords implying transaction type."""
+    def _detect_transaction_type(message: str) -> Optional[List[str]]:
+        """Detect basic keywords implying transaction type.
+
+        Returns a list of detected transaction types.  Multiple types may be
+        returned when the message mentions both credits and debits (e.g.
+        "entrées et sorties").
+        """
 
         normalized = unicodedata.normalize("NFD", message).encode(
             "ascii", "ignore"
@@ -202,11 +207,13 @@ class LLMIntentAgent(BaseFinancialAgent):
             "credit",
             "credits",
         ]
+
+        types: List[str] = []
         if any(k in normalized for k in debit_keywords):
-            return "debit"
+            types.append("debit")
         if any(k in normalized for k in credit_keywords):
-            return "credit"
-        return None
+            types.append("credit")
+        return types or None
 
     @staticmethod
     def _normalise_amount(value: Any) -> Any:
@@ -469,15 +476,17 @@ class LLMIntentAgent(BaseFinancialAgent):
                     )
 
         # Apply simple keyword-based transaction type heuristics
-        tx_type = self._detect_transaction_type(user_message)
-        if tx_type and not any(
+        tx_types = self._detect_transaction_type(user_message)
+        if tx_types and not any(
             e.entity_type == EntityType.TRANSACTION_TYPE for e in entities
         ):
+            raw_value = ", ".join(tx_types)
+            normalized_value: Any = tx_types[0] if len(tx_types) == 1 else tx_types
             entities.append(
                 FinancialEntity(
                     entity_type=EntityType.TRANSACTION_TYPE,
-                    raw_value=tx_type,
-                    normalized_value=tx_type,
+                    raw_value=raw_value,
+                    normalized_value=normalized_value,
                     confidence=confidence,
                     detection_method=DetectionMethod.RULE_BASED,
                 )
@@ -485,9 +494,9 @@ class LLMIntentAgent(BaseFinancialAgent):
             data.setdefault("entities", []).append(
                 {
                     "entity_type": EntityType.TRANSACTION_TYPE.value,
-                    "value": tx_type,
+                    "value": raw_value,
                     "confidence": confidence,
-                    "normalized_value": tx_type,
+                    "normalized_value": normalized_value,
                 }
             )
 

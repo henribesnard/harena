@@ -48,7 +48,7 @@ audit_logger = logging.getLogger("audit")
 
 # Mapping of French financial terms to their canonical English counterparts.
 # This helps normalize entity values before constructing search filters.
-SYNONYM_MAP = {
+SYNONYM_MAP: Dict[str, str] = {
     "virement": "transfer",
     "virements": "transfer",
 }
@@ -622,9 +622,9 @@ class SearchQueryAgent(BaseFinancialAgent):
                 entity.entity_type in {EntityType.OPERATION_TYPE, "OPERATION_TYPE"}
                 and entity.normalized_value
             ):
-                search_filters["operation_type"] = _apply_synonym(
-                    str(entity.normalized_value)
-                )
+                # Normalize common synonyms like "virements"
+                operation_type = _apply_synonym(str(entity.normalized_value))
+                search_filters["operation_type"] = operation_type
                 break
 
         transaction_types = [

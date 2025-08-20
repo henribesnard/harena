@@ -3,6 +3,7 @@ Test minimal pour Harena : login → chat → analyse du workflow.
 ANALYSE PURE : récupère et affiche les données internes de l'agent sans refaire de recherche.
 """
 
+import json
 import requests
 from datetime import datetime
 
@@ -42,6 +43,17 @@ def main() -> None:
         print("✅ Conversation réussie")
         print(f"🗨️ Question posée : {question}")
         print(f"💬 Réponse générée : {chat_data['message']}")
+
+        aggregations = (
+            chat_data.get("metadata", {})
+            .get("workflow_data", {})
+            .get("search_results", {})
+            .get("metadata", {})
+            .get("search_response", {})
+            .get("aggregations")
+        )
+        if aggregations:
+            print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
         print()
 
     # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------

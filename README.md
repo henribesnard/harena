@@ -43,6 +43,19 @@ The conversation service now performs a full agent health check during
 startup. If any agent reports an unhealthy status, initialization fails and
 the process exits instead of running in a degraded state.
 
+## Local data seed
+
+For development, populate the `harena_transactions` Elasticsearch index with a
+few sample debit and credit transactions for 2025:
+
+```bash
+./scripts/dev_init.sh
+```
+
+This script runs `search_service/scripts/seed_transactions.py` and requires an
+Elasticsearch instance accessible via the `BONSAI_URL` environment variable
+or a local node at `http://localhost:9200`.
+
 ## Authentication
 
 Most endpoints, including `/conversation/chat`, require an OAuth2 Bearer token.

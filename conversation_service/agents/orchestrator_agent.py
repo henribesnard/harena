@@ -246,6 +246,54 @@ class WorkflowExecutor:
                         logger.error(f"Search query step failed: {e}")
                         workflow_data["search_results"] = self._create_empty_search_results()
                         workflow_data["search_error"] = True
+
+                        # Generate an explicit error response for the user
+                        response_step.status = WorkflowStepStatus.RUNNING
+                        response_step.start_time = time.perf_counter()
+                        response_timer = metrics.performance_monitor.start_timer(
+                            "response_generation"
+                        )
+                        try:
+                            context = await self._create_conversation_context(
+                                conversation_id
+                            )
+                            response_response = await self.response_agent.execute_with_metrics(
+                                {
+                                    "user_message": user_message,
+                                    "search_results": workflow_data["search_results"],
+                                    "context": context,
+                                    "search_error": True,
+                                    "error_message": str(e),
+                                },
+                                user_id,
+                            )
+                            workflow_data["final_response"] = response_response.content
+                            response_step.status = WorkflowStepStatus.FAILED
+                            response_step.result = response_response
+                            response_step.error = "Search query failed"
+                        except Exception as resp_error:
+                            response_step.status = WorkflowStepStatus.FAILED
+                            response_step.error = str(resp_error)
+                            workflow_data["final_response"] = self._create_fallback_response(
+                                user_message
+                            )
+                        finally:
+                            response_step.end_time = time.perf_counter()
+                            duration_ms = metrics.performance_monitor.end_timer(
+                                response_timer
+                            )
+                            metrics.record_timer(
+                                "response_generation_duration_ms", duration_ms
+                            )
+                            for alert in metrics.performance_monitor.check_performance_alerts(
+                                "response_generation"
+                            ):
+                                logger.warning(alert.message)
+                            logger.info(
+                                "Finished response_generation step in %.2f ms using %d results",
+                                response_step.duration_ms,
+                                0,
+                            )
                     finally:
                         search_step.end_time = time.perf_counter()
                         duration_ms = metrics.performance_monitor.end_timer(search_timer)

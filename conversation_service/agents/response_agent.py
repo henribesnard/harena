@@ -189,8 +189,12 @@ class ResponseAgent(BaseFinancialAgent):
         user_message = input_data.get("user_message", "")
         context = input_data.get("context")
         if input_data.get("search_error"):
+            message = SEARCH_ERROR_MESSAGE
+            error_detail = input_data.get("error_message")
+            if error_detail:
+                message = f"{message} Raison: {error_detail}"
             return {
-                "content": SEARCH_ERROR_MESSAGE,
+                "content": message,
                 "metadata": {"error": "search_failed", "fallback_used": True},
                 "confidence_score": 0.0,
             }

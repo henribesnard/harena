@@ -210,6 +210,22 @@ INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.91
 ENTITIES: {"dates": ["mai 2025"]}
 SUGGESTED_ACTIONS: []
+
+**Exemple 11 - Transactions en sorties (débits) :**
+MESSAGE: "Montre mes sorties"
+INTENT_TYPE: SEARCH_BY_OPERATION_TYPE
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.90
+ENTITIES: {"transaction_type": ["debit"]}
+SUGGESTED_ACTIONS: []
+
+**Exemple 12 - Transactions en entrées (crédits) :**
+MESSAGE: "Liste mes gains"
+INTENT_TYPE: SEARCH_BY_OPERATION_TYPE
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.90
+ENTITIES: {"transaction_type": ["credit"]}
+SUGGESTED_ACTIONS: []
 """
 
 # =============================================================================

@@ -100,19 +100,7 @@ def main() -> None:
 
     search_results_count = 0
     if isinstance(workflow_data, dict):
-        # Priorité à la clé directe fournie par l'orchestrateur
-        if isinstance(workflow_data.get("search_results_count"), int):
-            search_results_count = workflow_data["search_results_count"]
-        else:
-            # Rétrocompatibilité : calculer à partir de la structure détaillée
-            sr = workflow_data.get("search_results")
-            if isinstance(sr, dict):
-                search_response = sr.get("metadata", {}).get("search_response", {})
-                results = search_response.get("results") if isinstance(search_response, dict) else None
-                if isinstance(results, list):
-                    search_results_count = len(results)
-            elif isinstance(sr, list):
-                search_results_count = len(sr)
+        search_results_count = workflow_data.get("search_results_count", 0)
 
     print(f"   📊 Résultats trouvés par l'agent : {search_results_count}")
     

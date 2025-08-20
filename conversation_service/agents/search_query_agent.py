@@ -289,34 +289,35 @@ class QueryOptimizer:
                 if date:
                     date_filters["date"] = date
                     break
-            if (
+            elif (
                 entity.entity_type == EntityType.DATE
                 and isinstance(entity.normalized_value, str)
             ):
-                value = entity.normalized_value.lower().strip()
-                value = unicodedata.normalize("NFD", value)
+                value = unicodedata.normalize(
+                    "NFD", entity.normalized_value.lower().strip()
+                )
                 value = "".join(
                     ch for ch in value if unicodedata.category(ch) != "Mn"
                 )
                 parts = value.split()
-                year = None
-                month = None
-                for part in parts:
-                    if part.isdigit() and len(part) == 4:
-                        year = part
-                    elif part in FRENCH_MONTHS:
-                        month = FRENCH_MONTHS[part]
+                year = next(
+                    (p for p in parts if p.isdigit() and len(p) == 4), None
+                )
+                month = next(
+                    (FRENCH_MONTHS[p] for p in parts if p in FRENCH_MONTHS), None
+                )
                 if month:
-                    if not year:
+                    if year is None:
                         year = datetime.utcnow().strftime("%Y")
-                    max_day = calendar.monthrange(int(year), int(month))[1]
+                    _, last_day = calendar.monthrange(int(year), int(month))
                     date_filters["date"] = {
                         "gte": f"{year}-{month}-01",
-                        "lte": f"{year}-{month}-{max_day:02d}",
+                        "lte": f"{year}-{month}-{last_day:02d}",
                     }
                     break
-            if entity.entity_type == EntityType.RELATIVE_DATE and isinstance(
-                entity.normalized_value, str
+            elif (
+                entity.entity_type == EntityType.RELATIVE_DATE
+                and isinstance(entity.normalized_value, str)
             ):
                 relative = resolve_relative_date(str(entity.normalized_value))
                 if relative:

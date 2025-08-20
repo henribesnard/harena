@@ -5,6 +5,11 @@ endpoints are intentionally lightweight so that they can be exercised in tests
 without requiring the full production stack.
 """
 
+import asyncio
+import logging
+import time
+import hashlib
+from typing import Annotated, Any, Dict, List, Optional, Protocol
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -15,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .dependencies import (
     get_team_manager,
     get_conversation_manager,
+
     get_current_user,
     get_metrics_collector,
     get_conversation_repository,
@@ -38,10 +44,36 @@ from ..utils.logging import log_unauthorized_access
 from ..repositories.conversation_repository import ConversationRepository
 from ..core.metrics_collector import MetricsCollector
 from ..utils.metrics import MetricsCollector
+from db_service.session import get_db
+from ..utils.cache_client import cache_client
+from ..utils.decorators import rate_limit
+
+try:
+    from ..core.mvp_team_manager import MVPTeamManager
+except ImportError:
+    class MVPTeamManager(Protocol):
+        async def process_user_message(
+            self, user_message: str, user_id: int, conversation_id: str
+        ) -> Any:
+            ...
 
 router = APIRouter()
 
 
+
+@chat_router.post(
+    "",
+    response_model=ConversationResponse,
+    summary="Process conversation with AutoGen multi-agents",
+    description="Main conversation endpoint that processes user messages through AutoGen multi-agent team",
+    responses={
+        200: {"description": "Successful conversation processing"},
+        422: {"description": "Invalid request format"},
+        429: {"description": "Rate limit exceeded"},
+        503: {"description": "Service temporarily unavailable"}
+    }
+)
+@rate_limit(calls=5, period=60)
 @router.post("/chat", response_model=ConversationResponse)
 async def chat_endpoint(
     background_tasks: BackgroundTasks,
@@ -52,6 +84,7 @@ async def chat_endpoint(
     conversation_repo: Annotated[
         ConversationRepository, Depends(get_conversation_repository)
     ],
+    db: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validate_request_rate_limit)],
     validated_request: Annotated[ConversationRequest, Depends(validate_conversation_request)]
 ) -> ConversationResponse:
@@ -79,7 +112,7 @@ async def chat_endpoint(
     start_time = time.time()
     conversation_id = validated_request.conversation_id
     user_id = user["user_id"]
-    
+
     logger.info(f"Processing conversation for user {user_id}, conversation {conversation_id}")
 
     try:
@@ -102,6 +135,13 @@ async def chat_endpoint(
     logger.info(
         f"Processing conversation for user {user_id}, conversation {conversation_id}"
     )
+
+    cache_key = f"chat:{user_id}:{hashlib.md5(validated_request.message.encode()).hexdigest()}"
+    cached_response = await cache_client.get(cache_key)
+    if cached_response:
+        return ConversationResponse(**cached_response)
+
+    await cache_client.set(f"prompt:{user_id}", validated_request.message, ttl=300)
     
     try:
         # Record request metrics
@@ -219,6 +259,8 @@ async def chat_endpoint(
             error_code=None if team_result["success"] else "TEAM_PROCESSING_ERROR",
         )
 
+        await cache_client.set(cache_key, response.dict(), ttl=300)
+
         # Record metrics based on success
         if team_result["success"]:
             metrics.record_response_time("chat", processing_time)
@@ -252,6 +294,7 @@ async def chat_endpoint(
         503: {"description": "Service is unhealthy"}
     }
 )
+@rate_limit(calls=10, period=60)
 async def health_check(
     team_manager: Annotated[MVPTeamManager, Depends(get_team_manager)],
     conversation_manager: Annotated[ConversationManager, Depends(get_conversation_manager)],
@@ -406,6 +449,88 @@ async def get_conversation_turns(
     return results
 
 
+@router.get(
+    "/status",
+    summary="Service status information",
+    description="Basic service status and configuration",
+    tags=["monitoring"]
+)
+@rate_limit(calls=10, period=60)
+async def get_status() -> Dict[str, Any]:
+    """
+    Get basic service status and configuration information.
+
+    Returns:
+        Dict containing service status
+    """
+    environment = os.getenv("ENVIRONMENT", "development")
+    enable_auth = True
+    
+    return {
+        "service": "conversation_service_mvp",
+        "version": "1.0.0",
+        "status": "running",
+        "timestamp": time.time(),
+        "environment": environment,
+        "autogen_version": "0.4.0",
+        "api_version": "v1",
+        "features": {
+            "authentication": enable_auth,
+            "rate_limiting": True,
+            "metrics_collection": True,
+            "conversation_memory": True
+        }
+    }
+
+
+# Background task functions
+async def store_conversation_turn(
+    conversation_manager: ConversationManager,
+    conversation_id: str,
+    user_id: int,
+    user_message: str,
+    assistant_message: str,
+    processing_time_ms: int,
+    metrics: MetricsCollector,
+    intent_result: Optional[Dict[str, Any]] = None,
+    agent_chain: Optional[List[str]] = None,
+    search_results_count: Optional[int] = None,
+    confidence_score: Optional[float] = None,
+) -> None:
+    """
+    Background task to store conversation turn.
+    
+    Args:
+        conversation_manager: Conversation manager instance
+        conversation_id: Conversation identifier
+        user_id: User identifier
+        user_message: User's message
+        assistant_message: Assistant's response
+        processing_time_ms: Processing time in milliseconds
+        metrics: Metrics collector
+        intent_result: Result of intent detection
+        agent_chain: Chain of agents involved in processing
+        search_results_count: Number of results returned by search
+        confidence_score: Confidence score of the response
+    """
+    try:
+        intent_obj = IntentResult(**intent_result) if intent_result else None
+        await conversation_manager.add_turn(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            user_msg=user_message,
+            assistant_msg=assistant_message,
+            processing_time_ms=float(processing_time_ms),
+            intent_result=intent_obj,
+            agent_chain=agent_chain,
+            search_results_count=search_results_count,
+            confidence_score=confidence_score,
+        )
+        logger.debug(f"Stored conversation turn for {conversation_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to store conversation turn: {e}")
+        metrics.record_error("conversation_storage", str(e))
 @router.get("/health")
 async def healthcheck() -> Dict[str, str]:
     """Basic health check endpoint."""

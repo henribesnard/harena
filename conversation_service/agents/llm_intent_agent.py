@@ -273,10 +273,12 @@ class LLMIntentAgent(BaseFinancialAgent):
         except Exception as err:  # pragma: no cover - parsing errors
             raise LLMOutputParsingError(f"Invalid JSON in LLM response: {err}") from err
         suggested_actions = data.get("suggested_actions")
-        if suggested_actions is None:
-            suggested_actions = self._detect_amount_actions(user_message)
-        elif isinstance(suggested_actions, str):
+        if isinstance(suggested_actions, str):
             suggested_actions = [suggested_actions]
+        if not suggested_actions:
+            # When the LLM omits the field or returns an empty list we try to
+            # infer the action heuristically from the user message.
+            suggested_actions = self._detect_amount_actions(user_message)
 
         intent_type = data.get("intent_type", "OUT_OF_SCOPE")
         raw_category = data.get("intent_category", "GENERAL_QUESTION").upper()

@@ -1,5 +1,11 @@
 # Harena
 
+## Organisation du code
+
+Les anciens modules `agents`, `clients`, `models` et `utils` ont été supprimés.
+Leur implémentation est désormais centralisée sous le package
+`conversation_service`.
+
 ## Tests unitaires
 
 Les tests nécessitent l'extra `ag2[openai]`. Installez les dépendances puis

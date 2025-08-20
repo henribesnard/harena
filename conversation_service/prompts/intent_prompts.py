@@ -88,7 +88,8 @@ Réponds uniquement avec un JSON ayant la structure suivante :
 Chaque entité doit contenir les champs ``entity_type``, ``value`` et ``confidence``.
 
 Inclure le champ optionnel ``suggested_actions`` lorsque le message contient des
-comparatifs de montant ("supérieur", "plus de", "inférieur", "moins de").
+comparatifs de montant ("supérieur", "plus de", "inférieur", "moins de") en
+utilisant ``filter_by_amount_greater`` ou ``filter_by_amount_less`` selon le cas.
 
 **Exemple avec montant** :
 ```
@@ -185,6 +186,14 @@ INTENT_CATEGORY: FINANCIAL_QUERY
 CONFIDENCE: 0.96
 ENTITIES: {"amounts": ["100 €"]}
 SUGGESTED_ACTIONS: ["filter_by_amount_greater"]
+
+**Exemple 8 - Comparatif montant inférieur :**
+MESSAGE: "Transactions inférieures à 50 €"
+INTENT_TYPE: SEARCH_BY_AMOUNT
+INTENT_CATEGORY: FINANCIAL_QUERY
+CONFIDENCE: 0.95
+ENTITIES: {"amounts": ["50 €"]}
+SUGGESTED_ACTIONS: ["filter_by_amount_less"]
 """
 
 # =============================================================================

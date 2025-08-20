@@ -171,6 +171,25 @@ Example response:
 }
 ```
 
+## Entités de recherche et filtres Elasticsearch
+
+Le `SearchQueryAgent` normalise certaines entités afin de construire des filtres
+Elasticsearch. Le tableau suivant décrit la valeur canonique produite pour
+chaque entité reconnue et le filtre appliqué :
+
+| Entité (`EntityType`) | Valeur canonique | Filtre ES |
+| --- | --- | --- |
+| `CATEGORY` | terme anglais normalisé (`virement(s)` → `transfer`) | `category_name` |
+| `OPERATION_TYPE` | terme anglais normalisé | `operation_type` |
+| `TRANSACTION_TYPE` | termes anglais normalisés (liste unique) | `transaction_types` |
+| `DATE_RANGE` | `{ "gte": "...", "lte": "..." }` | `date` |
+| `DATE` | convertie en `YYYY-MM` ou `YYYY-MM-DD` puis en plage | `date` |
+| `RELATIVE_DATE` | résolue via mots‑clés (`current_month`, `current_week`…) | `date` |
+| `AMOUNT` | nombre avec marge de ±10 % ou comparaison absolue | `amount` / `amount_abs` |
+
+> Les entités non listées ne créent pas de filtres et servent uniquement à
+> enrichir la recherche textuelle.
+
 ## Restes à faire
 
 - Trouver une solution efficace pour la détection d'intentions.

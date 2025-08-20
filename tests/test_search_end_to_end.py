@@ -470,23 +470,28 @@ def test_agent_aggregates_paginated_results(monkeypatch):
     async def dummy_extract(message, intent_result, user_id):
         return []
 
-    async def dummy_generate(intent_result, user_message, user_id, enhanced_entities=None):
+    async def dummy_generate(
+        intent_result, user_message, user_id, enhanced_entities=None, limit=None, offset=0
+    ):
         return SearchServiceQuery(
             query_metadata=QueryMetadata(
                 conversation_id="c1", user_id=user_id, intent_type="TEST"
             ),
-            search_parameters=SearchParameters(max_results=1, offset=0),
+            search_parameters=SearchParameters(max_results=1, offset=offset),
             filters=SearchFilters(),
         )
 
+    calls = []
+
     async def dummy_execute(query):
         offset = query.search_parameters.offset
+        calls.append(offset)
         meta = ResponseMetadata(
             query_id="q1",
             processing_time_ms=1.0,
             total_results=3,
             returned_results=1,
-            has_more_results=offset < 2,
+            has_more_results=True,
             search_strategy_used="semantic",
         )
         return SearchServiceResponse(
@@ -510,5 +515,6 @@ def test_agent_aggregates_paginated_results(monkeypatch):
 
     response = asyncio.run(agent.process_search_request(intent_result, "msg", user_id=1))
     results = response["metadata"]["search_response"]["results"]
-    assert len(results) == 3
+    assert len(results) == 1
+    assert calls == [0]
 

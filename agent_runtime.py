@@ -1,9 +1,8 @@
-"""Runtime helpers for executing an AutoGen team."""
+"""Runtime helpers for executing a team of assistant agents."""
 
 from __future__ import annotations
 
-from autogen_agentchat.agents import AssistantAgent
-
+from agent_types import AssistantAgent
 from teams.team_orchestrator import TeamOrchestrator
 
 
@@ -41,4 +40,3 @@ def create_runtime(
         responder=responder,
     )
     return AgentRuntime(team)
-

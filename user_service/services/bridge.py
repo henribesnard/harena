@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from db_service.models.user import User, BridgeConnection
-from config.settings import settings
+from config_service.config import settings
 
 
 # Configuration des logs

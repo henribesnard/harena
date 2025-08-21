@@ -23,4 +23,5 @@ class EntityExtractorAgent(BaseFinancialAgent):
         self, input_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Return a placeholder list of entities."""
-        return {"input": input_data, "entities": []}
+        context = input_data.get("context", {})
+        return {"input": input_data, "context": context, "entities": []}

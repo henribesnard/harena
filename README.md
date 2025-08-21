@@ -21,6 +21,12 @@ Les tests peuvent ensuite être exécutés avec `pytest` :
 pytest
 ```
 
+Pour lancer uniquement les tests du *conversation service* :
+
+```bash
+pytest conversation_service/tests
+```
+
 Chaque fichier de test peut également être lancé directement :
 
 ```bash

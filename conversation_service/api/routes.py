@@ -6,7 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
-from models.conversation_models import (
+from ..models.conversation_models import (
     AgentQueryRequest,
     AgentQueryResponse,
     ConversationHistoryResponse,

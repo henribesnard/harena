@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
+from ..prompts.entity_prompts import load_prompt, get_examples
 from ..prompts import entity_prompts
 
 

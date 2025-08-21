@@ -23,4 +23,5 @@ class IntentClassifierAgent(BaseFinancialAgent):
         self, input_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Return a placeholder intent classification result."""
-        return {"input": input_data, "intent": "UNKNOWN"}
+        context = input_data.get("context", {})
+        return {"input": input_data, "context": context, "intent": "UNKNOWN"}

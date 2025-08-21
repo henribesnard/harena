@@ -21,13 +21,13 @@ class CacheClient:
         self._prefix = prefix
         self._client = redis.from_url(url, decode_responses=True)
 
-    def _format_key(self, key: str) -> str:
-        return f"{self._prefix}{key}"
+    def _format_key(self, user_id: int, key: str) -> str:
+        return f"{self._prefix}{user_id}:{key}"
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, user_id: int, key: str) -> Optional[Any]:
         """Retrieve a value from the cache."""
 
-        raw = await self._client.get(self._format_key(key))
+        raw = await self._client.get(self._format_key(user_id, key))
         if raw is None:
             return None
         try:
@@ -35,15 +35,15 @@ class CacheClient:
         except json.JSONDecodeError:
             return raw
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    async def set(self, user_id: int, key: str, value: Any, ttl: Optional[int] = None) -> None:
         """Store ``value`` under ``key`` with an optional TTL in seconds."""
 
         if not isinstance(value, str):
             value = json.dumps(value)
-        await self._client.set(self._format_key(key), value, ex=ttl)
+        await self._client.set(self._format_key(user_id, key), value, ex=ttl)
 
-    async def delete(self, key: str) -> None:
-        await self._client.delete(self._format_key(key))
+    async def delete(self, user_id: int, key: str) -> None:
+        await self._client.delete(self._format_key(user_id, key))
 
     async def close(self) -> None:
         await self._client.close()

@@ -13,6 +13,7 @@ from ..clients import CacheClient, OpenAIClient, SearchClient
 from config.autogen_config import AutogenConfig, autogen_settings
 from config_service.config import settings
 from openai_config import openai_config
+from config.autogen_config import AutogenConfig, autogen_settings
 
 
 _openai_client: Optional[OpenAIClient] = None
@@ -65,6 +66,18 @@ def get_cache_client() -> CacheClient:
         _cache_client = CacheClient(
             settings.REDIS_URL,
             prefix=settings.REDIS_CACHE_PREFIX,
+async def get_cache_client() -> CacheClient:
+    """Return a shared :class:`CacheClient` instance.
+
+    Requires ``REDIS_URL`` and ``REDIS_CACHE_PREFIX`` to be set in the
+    application settings.
+    """
+
+    global _cache_client
+    if _cache_client is None:
+        redis_url = settings.REDIS_URL
+        _cache_client = CacheClient(
+            redis_url, prefix=settings.REDIS_CACHE_PREFIX
         )
     return _cache_client
 

@@ -23,7 +23,8 @@ class ResponseGeneratorAgent(BaseFinancialAgent):
         self, input_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Return a placeholder response."""
-        return {"input": input_data, "response": ""}
+        context = input_data.get("context", {})
+        return {"input": input_data, "context": context, "response": ""}
 """Lightweight response generation utilities.
 
 This module provides a minimal asynchronous generator used by the websocket

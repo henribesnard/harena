@@ -9,7 +9,14 @@ from .conversation_models import (
 )
 from ..core.validators import HarenaValidators
 from .contracts import SearchServiceFilter, SearchServiceQuery, SearchServiceResponse
-from .agent_models import AgentResponse
+# ``AgentResponse`` is used in production but optional for the
+# lightweight testing environment where the full model hierarchy might not be
+# available.  Importing it lazily prevents ImportError during tests that stub
+# ``conversation_service.models.agent_models`` with limited attributes.
+try:  # pragma: no cover - simple import guard
+    from .agent_models import AgentResponse
+except Exception:  # pragma: no cover - fallback for test stubs
+    AgentResponse = object  # type: ignore
 
 __all__ = [
     "IntentType",

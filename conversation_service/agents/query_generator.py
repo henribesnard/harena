@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, Optional
 
+from .query_generator_agent import QueryOptimizer
+
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..prompts.query_prompts import load_prompt, get_examples

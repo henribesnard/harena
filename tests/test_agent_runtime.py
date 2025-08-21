@@ -1,23 +1,18 @@
 import asyncio
 
-from autogen_agentchat.agents import AssistantAgent, BaseChatAgent
-from autogen_agentchat.base import Response
-from autogen_agentchat.messages import TextMessage
-
+from agent_types import ChatMessage, Response
 from agent_runtime import create_runtime
 
 
-class DummyAgent(AssistantAgent):
+class DummyAgent:
     """Assistant that returns a preconfigured reply."""
 
-    produced_message_types = [TextMessage]
-
     def __init__(self, name: str, reply: str) -> None:
-        BaseChatAgent.__init__(self, name=name, description="dummy")
+        self.name = name
         self._reply = reply
 
-    async def on_messages(self, messages, cancellation_token):  # type: ignore[override]
-        return Response(chat_message=TextMessage(content=self._reply, source=self.name))
+    async def on_messages(self, messages, cancellation_token):
+        return Response(chat_message=ChatMessage(content=self._reply, source=self.name))
 
     async def on_reset(self, cancellation_token) -> None:  # pragma: no cover - stateless
         return None
@@ -40,4 +35,3 @@ def test_full_workflow_context_sharing() -> None:
         "query": "sql",
         "response": "done",
     }
-

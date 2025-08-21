@@ -16,7 +16,9 @@ class IntentClassificationCache:
     """Simple in-memory cache for intent classification results."""
 
     def __init__(self) -> None:
-        self._store: Dict[str, Tuple[float, IntentResult]] = {}
+        # Store the cached result alongside the time it was inserted so
+        # we can easily expire entries based on a TTL.
+        self._store: Dict[str, Tuple[IntentResult, float]] = {}
         self.hits: int = 0
 
     @staticmethod
@@ -28,8 +30,9 @@ class IntentClassificationCache:
         entry = self._store.get(key)
         if entry is None:
             return None
-        inserted_at, result = entry
-        if time.time() - inserted_at > ttl:
+        result, timestamp = entry
+        if time.time() - timestamp > ttl:
+            # Remove expired entry
             self._store.pop(key, None)
             return None
         self.hits += 1
@@ -37,7 +40,7 @@ class IntentClassificationCache:
 
     def set(self, user_id: str, message: str, result: IntentResult, ttl: int = 300) -> None:
         key = self._make_key(user_id, message)
-        self._store[key] = (time.time(), result)
+        self._store[key] = (result, time.time())
 
     def clear(self) -> None:
         self._store.clear()

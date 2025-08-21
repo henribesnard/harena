@@ -8,7 +8,7 @@ import types
 import pytest
 import json
 from conversation_service.utils.cache import LRUCache
-from config.openai_config import OpenAISettings
+from config_service.config import settings, GlobalSettings
 
 
 def create_pydantic_stub():
@@ -212,13 +212,14 @@ class DummyOpenAIClient:
 
 
 @pytest.fixture(scope="session")
-def openai_settings() -> OpenAISettings:
+def openai_settings() -> GlobalSettings:
     """Centralized OpenAI configuration for tests."""
-    return OpenAISettings(OPENAI_API_KEY="test-key")
+    settings.OPENAI_API_KEY = settings.OPENAI_API_KEY or "test-key"
+    return settings
 
 
 @pytest.fixture
-def openai_mock(openai_settings: OpenAISettings, monkeypatch: pytest.MonkeyPatch):
+def openai_mock(openai_settings: GlobalSettings, monkeypatch: pytest.MonkeyPatch):
     """Provide a mock OpenAI client with deterministic content."""
     monkeypatch.setenv("OPENAI_API_KEY", openai_settings.OPENAI_API_KEY)
     payload = {

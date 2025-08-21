@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from config.settings import settings
+from config_service.config import settings
 
 # Configuration du logging
 logging.basicConfig(
@@ -82,7 +82,7 @@ available_services = {}
 try:
     from user_service.main import create_app as create_user_app
     user_app = create_user_app()
-    from config.settings import settings as user_settings
+    from config_service.config import settings as user_settings
     logger.info("User Service importé avec succès")
     available_services["user_service"] = {
         "app": user_app,

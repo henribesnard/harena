@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from sync_service.api.router import register_routers, setup_middleware
-from config.settings import settings
+from config_service.config import settings
 from sync_service.utils.logging import setup_logging
 
 # Configuration du logging

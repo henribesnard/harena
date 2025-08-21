@@ -20,11 +20,9 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
-from config.settings import settings
+from config_service.config import settings
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-
-from config.openai_config import OpenAISettings
 try:  # pragma: no cover - openai may be optional in some environments
     from openai import AsyncOpenAI
 except Exception:  # pragma: no cover - handled gracefully if missing
@@ -107,7 +105,7 @@ class MVPTeamManager:
         )
 
         # OpenAI settings and LLM client
-        self.openai_settings = OpenAISettings()
+        self.openai_settings = settings
         self.llm_client: Optional[Any] = None
 
         # Core components

@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
-from config.settings import settings
+from config_service.config import settings
 
 # Charger le fichier .env en priorité
 load_dotenv()

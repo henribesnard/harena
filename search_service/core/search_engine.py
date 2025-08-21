@@ -10,7 +10,7 @@ from conversation_service.utils.cache import (
     MultiLevelCache,
     generate_cache_key,
 )
-from config.settings import settings
+from config_service.config import settings
 from search_service.models.request import SearchRequest
 from search_service.models.response import SearchResult
 from .query_builder import QueryBuilder

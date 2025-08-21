@@ -11,7 +11,7 @@ import asyncio
 from datetime import datetime
 import os
 
-from config.settings import settings
+from config_service.config import settings
 
 # Ensure an Elasticsearch endpoint is configured for local runs
 os.environ.setdefault("BONSAI_URL", settings.BONSAI_URL or "http://localhost:9200")

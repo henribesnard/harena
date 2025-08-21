@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlencode
 
-from config.settings import settings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 

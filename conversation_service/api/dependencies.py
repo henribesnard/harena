@@ -1,5 +1,9 @@
 from fastapi import WebSocket, HTTPException, status
 
+from clients.cache_client import CacheClient
+from clients.openai_client import OpenAIClient
+from config.autogen_config import AutogenConfig, autogen_settings
+
 async def get_session_id(websocket: WebSocket) -> str:
     """Authenticate websocket connections using a session token.
 
@@ -15,3 +19,22 @@ async def get_session_id(websocket: WebSocket) -> str:
             detail="Session non authentifiée"
         )
     return session_id
+
+
+_cache_client = CacheClient()
+_openai_client = OpenAIClient(cache=_cache_client)
+
+
+def get_cache_client() -> CacheClient:
+    """Return the shared cache client instance."""
+    return _cache_client
+
+
+def get_openai_client() -> OpenAIClient:
+    """Return the shared OpenAI client configured with caching."""
+    return _openai_client
+
+
+def get_autogen_config() -> AutogenConfig:
+    """Provide AutoGen configuration settings."""
+    return autogen_settings

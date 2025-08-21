@@ -97,3 +97,14 @@ yarn-error.log*
 *.zip
 *.tar
 *.gz
+*.ico
+*.bmp
+*.tiff
+*.svg
+*.pkl
+*.pickle
+*.bin
+*.dll
+*.exe
+*.class
+*.obj

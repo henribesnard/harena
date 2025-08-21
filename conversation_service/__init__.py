@@ -7,10 +7,8 @@ pour le domaine financier avec détection d'intentions assistée par LLM.
 
 __version__ = "1.0.0"
 __author__ = "Conversation Service Team"
-from . import agents
-
 # Expose commonly used subpackages when available
-__all__ = ["__version__", "__author__", "agents"]
+__all__ = ["__version__", "__author__"]
 
 # Automatic import of subpackages can lead to unexpected side effects
 # (e.g., loading configuration) when simply importing this package. To

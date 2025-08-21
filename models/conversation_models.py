@@ -3,7 +3,7 @@ from __future__ import annotations
 """Pydantic models for conversation API."""
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -44,10 +44,13 @@ class AgentQueryResponse(BaseModel):
 
 
 class ConversationMessage(BaseModel):
-    """Single message in the conversation history."""
+    """Single message persisted in the conversation history."""
 
-    role: Literal["user", "assistant"]
+    user_id: int
+    conversation_id: str
+    role: str
     content: str
+    timestamp: datetime
 
 
 class ConversationHistoryResponse(BaseModel):

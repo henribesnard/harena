@@ -6,7 +6,7 @@ from datetime import datetime
 from collections import deque, defaultdict
 from typing import Dict, Any
 
-from conversation_service.utils.cache import (
+from search_service.utils.cache import (
     MultiLevelCache,
     generate_cache_key,
 )

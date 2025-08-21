@@ -48,14 +48,15 @@ class QueryGeneratorAgent(BaseFinancialAgent):
 
         context = input_data.get("context", {})
         user_id = context.get("user_id")
-        filters = {**dict(context.get("filters", {})), "user_id": user_id}
 
         payload = {
             "user_id": user_id,
             "query": context.get("query", ""),
-            "filters": filters,
+            "filters": context.get("filters") or {},
             "aggregations": context.get("aggregations"),
         }
+
+        payload["filters"]["user_id"] = user_id
 
         try:
             search_request = SearchRequest(**payload)

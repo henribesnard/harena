@@ -333,7 +333,21 @@ class BaseFinancialAgent(ABC):
         cache_manager: Optional[CacheManager] = None,
         metrics_collector: Optional[MetricsCollector] = None,
     ):
-        """Initialize base financial agent."""
+        """Initialize base financial agent.
+
+        Parameters
+        ----------
+        config:
+            Agent configuration describing model and behavioural settings.
+        openai_client:
+            Optional OpenAI client instance. When ``None`` no AutoGen
+            ``AssistantAgent`` will be created and direct OpenAI calls are
+            disabled.
+        cache_manager:
+            Optional cache manager instance.
+        metrics_collector:
+            Optional metrics collector instance.
+        """
 
         self.config = config
         self.openai_client = openai_client
@@ -345,6 +359,7 @@ class BaseFinancialAgent(ABC):
         self.prompt_optimizer = PromptOptimizer()
 
         # Create AutoGen AssistantAgent only when an OpenAI client is provided
+        self.agent = None
         if self.openai_client is not None and AssistantAgent is not None:
             self.agent = AssistantAgent(
                 name=config.name,
@@ -356,8 +371,6 @@ class BaseFinancialAgent(ABC):
                     "timeout": config.timeout_seconds,
                 },
             )
-        else:
-            self.agent = None
         
         # Agent state
         self.is_initialized = True

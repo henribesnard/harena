@@ -99,7 +99,8 @@ class _DummySearchClient:
 
 def test_query_generator_injects_user_id_into_filters():
     search_client = _DummySearchClient()
-    agent = QueryGeneratorAgent(search_client=search_client)
+    agent = QueryGeneratorAgent(search_client=search_client, openai_client=None)
+    assert agent.agent is None
     input_data = {
         "intent": "any_intent",
         "entities": {"foo": "bar"},

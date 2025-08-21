@@ -13,7 +13,12 @@ from db_service.models.sync import (
 )
 
 # NOUVEAU : Import modèles de conversation IA
-from db_service.models.conversation import Conversation, ConversationTurn, ConversationSummary
+from db_service.models.conversation import (
+    Conversation,
+    ConversationTurn,
+    ConversationSummary,
+    ConversationMessage,
+)
 
 # Exporter tous les modèles
 __all__ = [
@@ -25,5 +30,5 @@ __all__ = [
     'RawStock', 'AccountInformation', 'BridgeInsight', 'SyncTask', 'SyncStat',
     
     # NOUVEAU : Modèles conversation IA
-    'Conversation', 'ConversationTurn', 'ConversationSummary'
+    'Conversation', 'ConversationTurn', 'ConversationSummary', 'ConversationMessage'
 ]

@@ -193,3 +193,28 @@ class ConversationSummary(Base, TimestampMixin):
     
     def __repr__(self):
         return f"<ConversationSummary(conv_id={self.conversation_id}, turns={self.start_turn}-{self.end_turn})>"
+
+
+class ConversationMessage(Base, TimestampMixin):
+    """Store individual messages exchanged in a conversation."""
+
+    __tablename__ = "conversation_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(
+        String(255),
+        ForeignKey("conversations.conversation_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+
+    def __repr__(self) -> str:  # pragma: no cover - simple repr
+        return f"<ConversationMessage(conv_id={self.conversation_id}, role={self.role})>"

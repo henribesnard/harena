@@ -50,7 +50,7 @@ async def get_history(
     conv = repo.get_by_conversation_id(conversation_id)
     if conv is None or conv.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    history = orchestrator.get_history(conversation_id)
+    history = orchestrator.get_history(conversation_id, db)
     if history is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return ConversationHistoryResponse(
@@ -70,5 +70,7 @@ async def query_agents(
     conv = repo.get_by_conversation_id(conversation_id)
     if conv is None or conv.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    reply = await orchestrator.query_agents(conversation_id, payload.message)
+    reply = await orchestrator.query_agents(
+        conversation_id, payload.message, current_user.id, db
+    )
     return AgentQueryResponse(conversation_id=conversation_id, reply=reply)

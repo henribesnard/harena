@@ -14,7 +14,11 @@ from search_service.models import SearchRequest
 class QueryGeneratorAgent(BaseFinancialAgent):
     """Generate search queries based on extracted data."""
 
-    def __init__(self, openai_client, search_client: SearchClient):
+    def __init__(
+        self,
+        search_client: SearchClient,
+        openai_client: Optional[Any] = None,
+    ):
         config = AgentConfig(
             name="query_generator",
             system_message=query_prompts.get_prompt(),

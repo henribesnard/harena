@@ -46,6 +46,14 @@ __all__ = ["BaseFinancialAgent", "AgentPerformanceTracker", "PromptOptimizer"]
 # Configure logging
 logger = get_structured_logger(__name__)
 
+# Default cache TTL (seconds) per agent
+AGENT_CACHE_TTLS = {
+    "intent_classifier": 600,
+    "entity_extractor": 900,
+    "query_generator": 120,
+    "response_generator": 60,
+}
+
 # ================================
 # PERFORMANCE TRACKING SYSTEM
 # ================================
@@ -374,9 +382,12 @@ class BaseFinancialAgent(ABC):
             
             # Check cache first
             cache_key = None
+            user_id = str(input_data.get("user_id", "anonymous"))
             if self.cache_manager:
                 cache_key = self._generate_cache_key(input_data)
                 cached_result_data = await self.cache_manager.get(cache_key)
+
+                cached_result_data = await self.cache_manager.get(cache_key, user_id)
                 
                 if cached_result_data:
                     processing_time_ms = int((time.time() - start_time) * 1000)
@@ -395,7 +406,16 @@ class BaseFinancialAgent(ABC):
                         cache_key=cache_key[:16] + "...",
                         processing_time_ms=processing_time_ms
                     )
-                    
+
+                    if self.metrics_collector:
+                        await self.metrics_collector.record_agent_call(
+                            agent_name=self.config.name,
+                            success=True,
+                            processing_time_ms=processing_time_ms,
+                            tokens_used=0,
+                            cached=True,
+                        )
+
                     return AgentResponse(
                         agent_name=self.config.name,
                         success=True,
@@ -411,8 +431,8 @@ class BaseFinancialAgent(ABC):
             
             # Cache successful result
             if self.cache_manager and result and cache_key:
-                cache_ttl = getattr(self.config, 'cache_ttl', 300)  # 5 minutes default
-                await self.cache_manager.set(cache_key, result, ttl=cache_ttl)
+                cache_ttl = AGENT_CACHE_TTLS.get(self.config.name, 300)
+                await self.cache_manager.set(cache_key, result, user_id=user_id, ttl=cache_ttl)
             
             # Record successful call
             confidence = result.get("confidence") if isinstance(result, dict) else None
@@ -436,7 +456,8 @@ class BaseFinancialAgent(ABC):
                     agent_name=self.config.name,
                     success=True,
                     processing_time_ms=processing_time_ms,
-                    tokens_used=tokens_used
+                    tokens_used=tokens_used,
+                    cached=False,
                 )
             
             logger.debug(
@@ -478,7 +499,8 @@ class BaseFinancialAgent(ABC):
                     agent_name=self.config.name,
                     success=False,
                     processing_time_ms=processing_time_ms,
-                    error=error_message
+                    error=error_message,
+                    cached=False,
                 )
             
             logger.error(

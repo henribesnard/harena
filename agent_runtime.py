@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from agent_types import AssistantAgent
+from sqlalchemy.orm import Session
 from teams.team_orchestrator import TeamOrchestrator
 
 
@@ -12,10 +13,24 @@ class AgentRuntime:
     def __init__(self, team: TeamOrchestrator) -> None:
         self.team = team
 
-    async def run(self, message: str) -> str:
-        """Execute the agent pipeline for a user message."""
+    async def run(self, message: str, user_id: int, db: Session) -> str:
+        """Execute the agent pipeline for a user message.
 
-        response = await self.team.run(task=message)
+        Parameters
+        ----------
+        message:
+            The user's message to process.
+        user_id:
+            Identifier of the user sending the message.
+        db:
+            Database session used for persistence.
+        """
+
+        if self.team._conversation_id is None:
+            # Initialise conversation lazily if not already started.
+            self.team.start_conversation(user_id, db)
+
+        response = await self.team.run(task=message, user_id=user_id, db=db)
         return getattr(response.chat_message, "content", "")
 
     def get_context(self) -> dict[str, str]:

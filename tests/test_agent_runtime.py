@@ -1,32 +1,31 @@
 import asyncio
 
 from agent_types import ChatMessage, Response
-from agent_runtime import create_runtime
+from agent_runtime import AgentRuntime
 
 
-class DummyAgent:
-    """Assistant that returns a preconfigured reply."""
+class DummyTeam:
+    """Minimal team that returns a static response and context."""
 
-    def __init__(self, name: str, reply: str) -> None:
-        self.name = name
-        self._reply = reply
+    def __init__(self) -> None:
+        self.context = {
+            "classification": "intent",
+            "extraction": "entities",
+            "query": "sql",
+            "response": "done",
+        }
+        self._conversation_id = "conv"
 
-    async def on_messages(self, messages, cancellation_token):
-        return Response(chat_message=ChatMessage(content=self._reply, source=self.name))
-
-    async def on_reset(self, cancellation_token) -> None:  # pragma: no cover - stateless
-        return None
+    async def run(self, task: str, user_id: int, db) -> Response:
+        return Response(
+            chat_message=ChatMessage(content="done", source="assistant")
+        )
 
 
 def test_full_workflow_context_sharing() -> None:
-    runtime = create_runtime(
-        classifier=DummyAgent("classification", "intent"),
-        extractor=DummyAgent("extraction", "entities"),
-        query_agent=DummyAgent("query", "sql"),
-        responder=DummyAgent("response", "done"),
-    )
+    runtime = AgentRuntime(DummyTeam())
 
-    result = asyncio.run(runtime.run("hello"))
+    result = asyncio.run(runtime.run("hello", user_id=1, db=None))
 
     assert result == "done"
     assert runtime.get_context() == {

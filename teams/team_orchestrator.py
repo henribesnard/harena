@@ -64,11 +64,21 @@ class TeamOrchestrator:
         self._user_id: Optional[int] = None
         self._db: Optional[Session] = None
 
-    async def run(self, task: str) -> Response:
-        """Execute the agent pipeline and wrap the final reply in a Response."""
+    async def run(self, task: str, user_id: int, db: Session) -> Response:
+        """Execute the agent pipeline and wrap the final reply in a Response.
 
-        if self._conversation_id is None or self._user_id is None or self._db is None:
-            raise RuntimeError("Conversation not initialised")
+        If the conversation has not yet been started, it is automatically
+        created along with its initial context.
+        """
+
+        if self._conversation_id is None:
+            # Lazily initialise conversation and context
+            self.start_conversation(user_id, db)
+        else:
+            # Ensure persistence attributes are set for subsequent calls
+            self._user_id = self._user_id or user_id
+            self._db = self._db or db
+
         reply = await self.query_agents(
             self._conversation_id, task, self._user_id, self._db
         )

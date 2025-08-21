@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..prompts import query_prompts
-from ..clients import SearchClient
+from ..clients import SearchClient, OpenAIClient
 from search_service.models import SearchRequest
 
 
@@ -17,8 +17,19 @@ class QueryGeneratorAgent(BaseFinancialAgent):
     def __init__(
         self,
         search_client: SearchClient,
-        openai_client: Optional[Any] = None,
+        openai_client: Optional[OpenAIClient] = None,
     ):
+        """Create a new :class:`QueryGeneratorAgent`.
+
+        Parameters
+        ----------
+        search_client:
+            Client used to execute search queries.
+        openai_client:
+            Optional OpenAI client instance forwarded to
+            :class:`BaseFinancialAgent`. When ``None``, the base class will not
+            create an AutoGen ``AssistantAgent``.
+        """
         config = AgentConfig(
             name="query_generator",
             system_message=query_prompts.get_prompt(),

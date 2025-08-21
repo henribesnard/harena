@@ -13,6 +13,9 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from utils.logging import StructuredLoggingMiddleware
+from core.errors import BusinessError, wrap_business_errors
 from typing import Dict, List, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -73,6 +76,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Middleware de journalisation structurée
+app.add_middleware(StructuredLoggingMiddleware)
+
 # Liste pour suivre les services disponibles
 available_services = {}
 
@@ -132,6 +138,7 @@ for service_name, service_info in available_services.items():
 # ======== ENDPOINTS DE BASE ========
 
 @app.get("/", tags=["health"])
+@wrap_business_errors
 async def root():
     """
     Point d'entrée racine pour vérifier que l'application est en ligne.
@@ -147,6 +154,7 @@ async def root():
     }
 
 @app.get("/health", tags=["health"])
+@wrap_business_errors
 async def health_check():
     """
     Vérification de l'état de santé de tous les services.
@@ -174,6 +182,16 @@ async def health_check():
     }
 
 # ======== GESTIONNAIRE D'EXCEPTIONS ========
+
+@app.exception_handler(BusinessError)
+async def business_exception_handler(request: Request, exc: BusinessError):
+    """Gestionnaire pour les erreurs métiers."""
+    logger.warning(f"Erreur métier: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"status": "error", "message": str(exc)},
+    )
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

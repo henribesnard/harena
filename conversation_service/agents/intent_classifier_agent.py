@@ -1,6 +1,4 @@
-"""Minimal utilities for intent classification agents used in tests."""
 """Utilities for intent classification agents used in tests."""
-
 from __future__ import annotations
 
 from typing import Dict, Optional

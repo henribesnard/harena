@@ -2,7 +2,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from config.settings import settings
+from config_service.config import settings
 
 # Construire l'URL de base de données depuis la configuration
 database_url = settings.DATABASE_URL or "sqlite://"

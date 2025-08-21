@@ -17,7 +17,7 @@ from db_service.models.sync import SyncItem, SyncAccount
 from db_service.models.user import User, BridgeConnection
 
 # Import des services
-from config.settings import settings
+from config_service.config import settings
 from sync_service.utils.logging import get_contextual_logger
 
 # Import des gestionnaires spécifiques

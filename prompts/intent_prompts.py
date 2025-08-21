@@ -13,6 +13,10 @@ DEFAULT_PROMPT = "Analyse l'intention du message utilisateur."
 
 _EXAMPLES: List[Dict[str, str]] = [
     {"input": "Bonjour", "output": "GREETING"},
+    {
+        "input": "Quel est le solde de mon compte ?",
+        "output": "BALANCE_INQUIRY",
+    },
 ]
 
 _PROMPT_CACHE: Dict[str, str] = {}
@@ -35,6 +39,16 @@ def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] =
         cache[cache_key] = prompt
         return prompt
     return DEFAULT_PROMPT
+
+
+def get_prompt(
+    path: Optional[str] = None,
+    *,
+    cache: Optional[Dict[str, str]] = None,
+    cache_key: str = "default",
+) -> str:
+    """Retourner le prompt à utiliser par l'agent."""
+    return load_prompt(path=path, cache=cache, cache_key=cache_key)
 
 
 def get_examples() -> List[Dict[str, str]]:

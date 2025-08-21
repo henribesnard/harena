@@ -38,8 +38,8 @@ class QueryGeneratorAgent(BaseFinancialAgent):
         context = input_data.get("context", {})
         user_id = context.get("user_id")
         filters = dict(context.get("filters", {}))
-        if user_id is not None:
-            filters.setdefault("user_id", user_id)
+        filters["user_id"] = user_id
+
         payload = {
             "user_id": user_id,
             "query": context.get("query", ""),
@@ -48,18 +48,18 @@ class QueryGeneratorAgent(BaseFinancialAgent):
         }
 
         try:
-            request_model = SearchRequest(**payload)
+            search_request = SearchRequest(**payload)
         except ValidationError:
             # If validation fails we do not query the search service
             return None
 
         response = await self.search_client.search(
-            request_model.user_id, request_model.model_dump()
+            search_request.user_id, search_request.model_dump()
         )
 
         return {
             "input": input_data,
             "context": context,
-            "search_request": request_model.model_dump(),
+            "search_request": search_request.model_dump(),
             "search_response": response,
         }

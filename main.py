@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from config_service.config import settings
+from config import get_settings
 
 # Configuration du logging
 logging.basicConfig(
@@ -28,6 +28,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
 )
 logger = logging.getLogger("harena")
+settings = get_settings()
 
 # ======== GESTION DU CYCLE DE VIE DE L'APPLICATION ========
 

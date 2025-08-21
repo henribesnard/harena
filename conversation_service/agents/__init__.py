@@ -1,12 +1,7 @@
-"""Expose conversation agents for easy imports.
+"""Expose conversation agents for easy imports."""
 
-This package aggregates the primary agent classes used throughout the
-conversation service so they can be imported directly from
-``conversation_service.agents``.
-"""
-
-from .entity_extractor_agent import EntityExtractionCache, EntityExtractorAgent
-from .intent_classifier_agent import IntentClassificationCache, IntentClassifierAgent
+from .intent_classifier_agent import IntentClassifierAgent, IntentClassificationCache
+from .entity_extractor_agent import EntityExtractorAgent, EntityExtractionCache
 from .query_generator_agent import QueryGeneratorAgent, QueryOptimizer
 from .response_generator_agent import ResponseGeneratorAgent
 

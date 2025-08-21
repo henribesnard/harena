@@ -1,13 +1,12 @@
 """
 Application Harena pour développement local.
-Version avec conversation_service activé.
+Version sans conversation_service.
 
 ✅ SERVICES DISPONIBLES:
 - User Service: Gestion utilisateurs
 - Sync Service: Synchronisation Bridge API
 - Enrichment Service: Elasticsearch uniquement (v2.0)
 - Search Service: Recherche lexicale simplifiée
-- Conversation Service: IA conversationnelle AutoGen
 """
 
 import logging
@@ -49,8 +48,6 @@ class ServiceLoader:
         self.services_status = {}
         self.search_service_initialized = False
         self.search_service_error = None
-        self.conversation_service_initialized = False
-        self.conversation_service_error = None
     
     async def initialize_search_service(self, app: FastAPI):
         """Initialise le search_service - COPIE EXACTE"""
@@ -109,45 +106,6 @@ class ServiceLoader:
             self.search_service_error = error_msg
             return False
 
-    async def initialize_conversation_service(self):
-        """Valide la configuration du conversation_service"""
-        logger.info("🗣️ Validation du conversation_service...")
-
-        try:
-            from conversation_service.main import (
-                validate_configuration,
-                pre_initialize_dependencies,
-                initialize_dependencies,
-            )
-
-            await validate_configuration()
-            await pre_initialize_dependencies()
-            await initialize_dependencies()
-
-            self.conversation_service_initialized = True
-            self.conversation_service_error = None
-            self.services_status["conversation_service"] = {
-                "status": "ok",
-                "dependencies_ready": True,
-                "error": None,
-            }
-
-            logger.info("✅ conversation_service prêt")
-            return True
-
-        except Exception as e:
-            error_msg = f"Erreur initialisation conversation_service: {str(e)}"
-            logger.error(f"❌ {error_msg}")
-
-            self.conversation_service_initialized = False
-            self.conversation_service_error = error_msg
-            self.services_status["conversation_service"] = {
-                "status": "error",
-                "dependencies_ready": False,
-                "error": error_msg,
-            }
-            return False
-    
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
         """Charge et enregistre un router de service"""
         try:
@@ -413,63 +371,6 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
-        # 5. Conversation Service
-        logger.info("🗣️ Chargement du conversation_service...")
-        try:
-            conv_init = await loader.initialize_conversation_service()
-            if conv_init:
-                from conversation_service.api.routes import (
-                    router as conversation_router,
-                    websocket_router as conversation_ws_router,
-                )
-
-                app.include_router(
-                    conversation_router,
-                    prefix="/api/v1/conversation",
-                    tags=["conversation"],
-                )
-                app.include_router(
-                    conversation_ws_router,
-                    prefix="/api/v1/conversation",
-                )
-
-                routes_count = (
-                    len(conversation_router.routes)
-                    if hasattr(conversation_router, "routes")
-                    else 0
-                )
-                ws_routes_count = (
-                    len(conversation_ws_router.routes)
-                    if hasattr(conversation_ws_router, "routes")
-                    else 0
-                )
-                logger.info(
-                    f"✅ conversation_service: {routes_count} routes et {ws_routes_count} websockets sur /api/v1/conversation"
-                )
-                loader.services_status.setdefault("conversation_service", {})
-                loader.services_status["conversation_service"].update(
-                    {
-                        "status": "ok",
-                        "routes": routes_count,
-                        "websocket_routes": ws_routes_count,
-                        "prefix": "/api/v1/conversation",
-                        "error": None,
-                    }
-                )
-            else:
-                loader.services_status.setdefault("conversation_service", {})
-                loader.services_status["conversation_service"].update({
-                    "status": "error",
-                    "error": loader.conversation_service_error,
-                })
-        except Exception as e:
-            logger.error(f"❌ conversation_service: {e}")
-            loader.services_status.setdefault("conversation_service", {})
-            loader.services_status["conversation_service"].update({
-                "status": "error",
-                "error": str(e),
-            })
-
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
         logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")
@@ -490,17 +391,11 @@ def create_app():
         try:
             yield
         finally:
-            logger.info("🛑 Arrêt de Harena - nettoyage conversation_service")
-            try:
-                from conversation_service.api.dependencies import cleanup_dependencies
-                await cleanup_dependencies()
-                logger.info("✅ Ressources conversation_service libérées")
-            except Exception as e:
-                logger.error(f"❌ Erreur cleanup conversation_service: {e}")
+            logger.info("🛑 Arrêt de Harena")
 
     app = FastAPI(
         title="Harena Finance Platform - Local Dev",
-        description="Plateforme de gestion financière - Version développement avec conversation_service",
+        description="Plateforme de gestion financière - Version développement sans conversation_service",
         version="1.0.0-dev",
         lifespan=lifespan
     )
@@ -522,10 +417,9 @@ def create_app():
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détails spéciaux pour search_service, enrichment_service et conversation_service
+        # Détails spéciaux pour search_service et enrichment_service
         search_status = loader.services_status.get("search_service", {})
         enrichment_status = loader.services_status.get("enrichment_service", {})
-        conversation_status = loader.services_status.get("conversation_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -549,12 +443,6 @@ def create_app():
                 "elasticsearch_available": enrichment_status.get("elasticsearch_available", False),
                 "initialized": enrichment_status.get("initialized", False),
                 "error": enrichment_status.get("error")
-            },
-            "conversation_service": {
-                "status": conversation_status.get("status"),
-                "initialized": loader.conversation_service_initialized,
-                "error": conversation_status.get("error"),
-                "prefix": conversation_status.get("prefix")
             }
         }
 
@@ -580,13 +468,10 @@ def create_app():
                     "User sync operations"
                 ]
             },
-            "conversation_service_details": {
-                "initialized": loader.conversation_service_initialized,
-                "error": loader.conversation_service_error,
-                "prefix": "/api/v1/conversation"
-            }
+            
         }
 
+    
     @app.get("/")
     async def root():
         """Page d'accueil"""
@@ -598,94 +483,12 @@ def create_app():
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
                 "search_service - Recherche lexicale (Architecture simplifiée)",
-                "conversation_service - Service de conversation AutoGen"
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
                 "/status": "Statut des services",
                 "/docs": "Documentation interactive",
-                "/api/v1/users/*": "Gestion utilisateurs",
-                "/api/v1/sync/*": "Synchronisation",
-                "/api/v1/transactions/*": "Transactions",
-                "/api/v1/accounts/*": "Comptes",
-                "/api/v1/categories/*": "Catégories",
-                "/api/v1/enrichment/elasticsearch/*": "Enrichissement Elasticsearch (v2.0)",
-                "/api/v1/search/*": "Recherche lexicale (Architecture unifiée)",
-                "/api/v1/conversation/chat": "Chat conversationnel",
-                "/api/v1/conversation/health": "Santé du conversation_service",
-                "/api/v1/conversation/metrics": "Métriques du conversation_service",
-                "/api/v1/conversation/status": "Statut du conversation_service"
             },
-            "development_mode": {
-                "hot_reload": True,
-                "debug_logs": True,
-                "local_services": ["PostgreSQL", "Redis", "Elasticsearch (requis pour enrichment + search)"],
-                "docs_url": "http://localhost:8000/docs"
-            },
-            "architecture_updates": {
-                "core_services_only": {
-                    "description": "Version allégée sans intelligence conversationnelle",
-                    "maintained_services": [
-                        "user_service - API utilisateurs complète",
-                        "sync_service - Synchronisation Bridge API",
-                        "enrichment_service - Elasticsearch v2.0",
-                        "search_service - Recherche lexicale optimisée"
-                    ],
-                    "benefits": [
-                        "🚀 Démarrage plus rapide",
-                        "💾 Moins d'utilisation mémoire",
-                        "🔧 Maintenance simplifiée",
-                        "📦 Architecture core stable"
-                    ]
-                },
-                "enrichment_service": {
-                    "version": "2.0.0-elasticsearch",
-                    "changes": [
-                        "Suppression complète de Qdrant et embeddings",
-                        "Architecture Elasticsearch uniquement",
-                        "Nouveaux endpoints: /api/v1/enrichment/elasticsearch/*",
-                        "Performance optimisée pour l'indexation bulk",
-                        "Simplification drastique du code"
-                    ]
-                },
-                "search_service": {
-                    "version": "simplified_unified",
-                    "changes": [
-                        "Recherche lexicale pure Elasticsearch",
-                        "Architecture simplifiée sans IA",
-                        "Performance optimisée < 50ms",
-                        "Cache intelligent des résultats"
-                    ]
-                }
-            },
-            "available_features": {
-                "user_management": {
-                    "endpoints": "/api/v1/users/*",
-                    "features": ["Registration", "Authentication", "Profile management"]
-                },
-                "data_sync": {
-                    "endpoints": "/api/v1/sync/*, /api/v1/transactions/*",
-                    "features": ["Bridge API sync", "Transaction management", "Account sync"]
-                },
-                "data_enrichment": {
-                    "endpoints": "/api/v1/enrichment/elasticsearch/*",
-                    "features": ["Transaction enrichment", "Elasticsearch indexing", "Batch processing"]
-                },
-                "search": {
-                    "endpoints": "/api/v1/search/*",
-                    "features": ["Lexical search", "Transaction filtering", "Performance optimization"]
-                }
-            },
-            "testing": {
-                "status": "Tous les services core testables",
-                "quick_tests": {
-                    "health": "GET /health",
-                    "user_service": "GET /api/v1/users/me",
-                    "enrichment": "GET /api/v1/enrichment/health",
-                    "search": "GET /api/v1/search/health",
-                    "conversation": "GET /api/v1/conversation/health"
-                }
-            }
         }
 
     return app
@@ -699,8 +502,7 @@ if __name__ == "__main__":
     logger.info("📡 Accès: http://localhost:8000")
     logger.info("📚 Docs: http://localhost:8000/docs")
     logger.info("🔍 Status: http://localhost:8000/status")
-    logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
-    logger.info("🗣️ Conversation Service: Activé")
+    logger.info("🏦 Services Core: User, Sync, Enrichment, Search")
     logger.info("✅ Architecture allégée pour développement core")
     
     uvicorn.run(

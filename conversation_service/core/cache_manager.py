@@ -1,17 +1,22 @@
-"""Utility caching module for Harena conversation service.
+"""Asynchronous cache manager backed by Redis with in-memory fallback.
 
-Provides a simple in-memory cache with time-to-live (TTL) support and
-least-recently-used eviction.  The implementation is intentionally
-lightweight and dependency free so it can be reused by agents or other
-components without additional infrastructure.
+This utility composes cache keys using a configurable prefix and the
+``user_id`` to ensure isolation between users. It stores data in Redis
+through :class:`CacheClient` when available and transparently falls back
+to an in-memory LRU cache if Redis is unavailable.  Each ``set`` call can
+specify a TTL allowing different agents to cache values for distinct
+periods.
 """
 
 from __future__ import annotations
 
+import os
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Optional
+
+from ..clients.cache_client import CacheClient
 
 __all__ = ["CacheManager"]
 
@@ -23,33 +28,74 @@ class _CacheEntry:
 
 
 class CacheManager:
-    """Simple in-memory cache with TTL and LRU eviction."""
+    """Manage caching with Redis and in-memory fallback."""
 
-    def __init__(self, ttl_seconds: int = 300, max_size: int = 128) -> None:
-        self.ttl = ttl_seconds
-        self.max_size = max_size
-        self._store: "OrderedDict[str, _CacheEntry]" = OrderedDict()
+    def __init__(
+        self,
+        cache_client: Optional[CacheClient] = None,
+        *,
+        default_ttl: int = 300,
+        max_size: int = 128,
+        prefix: Optional[str] = None,
+    ) -> None:
+        self._client = cache_client
+        self._default_ttl = default_ttl
+        self._max_size = max_size
+        self._fallback: "OrderedDict[str, _CacheEntry]" = OrderedDict()
+        self._prefix = prefix or os.getenv("REDIS_CACHE_PREFIX", "conversation_service")
 
-    def get(self, key: str) -> Optional[Any]:
-        entry = self._store.get(key)
-        if not entry:
+    # ------------------------------------------------------------------
+    def _compose_key(self, key: str, user_id: str) -> str:
+        return f"{self._prefix}:{user_id}:{key}"
+
+    # ------------------------------------------------------------------
+    async def get(self, key: str, user_id: str) -> Optional[Any]:
+        """Retrieve ``key`` for ``user_id`` from cache."""
+
+        composed = self._compose_key(key, user_id)
+        if self._client is not None:
+            try:
+                value = await self._client.get(composed)
+                if value is not None:
+                    return value
+            except Exception:
+                # Redis unavailable; fall back to memory
+                pass
+        entry = self._fallback.get(composed)
+        if not entry or entry.expires_at < time.time():
+            self._fallback.pop(composed, None)
             return None
-        if entry.expires_at < time.time():
-            del self._store[key]
-            return None
-        # mark as recently used
-        self._store.move_to_end(key)
+        self._fallback.move_to_end(composed)
         return entry.value
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
-        if key in self._store:
-            self._store.move_to_end(key)
-        elif len(self._store) >= self.max_size:
-            # remove least recently used item
-            self._store.popitem(last=False)
-        expires = time.time() + (ttl if ttl is not None else self.ttl)
-        self._store[key] = _CacheEntry(value=value, expires_at=expires)
+    # ------------------------------------------------------------------
+    async def set(
+        self,
+        key: str,
+        value: Any,
+        user_id: str,
+        *,
+        ttl: Optional[int] = None,
+    ) -> None:
+        """Store ``value`` for ``user_id`` under ``key``."""
 
+        ttl = ttl if ttl is not None else self._default_ttl
+        composed = self._compose_key(key, user_id)
+        if self._client is not None:
+            try:
+                await self._client.set(composed, value, ttl)
+                return
+            except Exception:
+                # Redis unavailable; fall back to memory
+                pass
+        if composed in self._fallback:
+            self._fallback.move_to_end(composed)
+        elif len(self._fallback) >= self._max_size:
+            self._fallback.popitem(last=False)
+        self._fallback[composed] = _CacheEntry(value=value, expires_at=time.time() + ttl)
+
+    # ------------------------------------------------------------------
     def clear(self) -> None:
-        """Remove all cached items."""
-        self._store.clear()
+        """Clear the in-memory fallback cache."""
+
+        self._fallback.clear()

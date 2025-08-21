@@ -55,22 +55,20 @@ fileConfig(config.config_file_name)
 # Configuration de la connexion à la base de données
 # -----------------------------------------------------------------------------
 
-# Gestion de l'URL de base de données fournie par Heroku ou l'environnement
-database_url = os.environ.get("DATABASE_URL")
+# Gestion de l'URL de base de données à partir de la configuration
+database_url = settings.DATABASE_URL or getattr(settings, "SQLALCHEMY_DATABASE_URI", "") or "sqlite://"
 
 if database_url:
     # Heroku utilise "postgres://" mais SQLAlchemy 1.4+ requiert "postgresql://"
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
         logger.info("URL de base de données convertie de postgres:// à postgresql://")
-    
-    # Utiliser DATABASE_URL de l'environnement au lieu de la configuration locale
+
+    # Utiliser l'URL depuis settings
     config.set_main_option("sqlalchemy.url", database_url)
-    logger.info("Utilisation de l'URL de base de données depuis l'environnement")
+    logger.info("Utilisation de l'URL de base de données depuis settings")
 else:
-    # Utiliser la configuration locale depuis settings
-    config.set_main_option("sqlalchemy.url", str(settings.SQLALCHEMY_DATABASE_URI))
-    logger.info("Utilisation de l'URL de base de données depuis la configuration")
+    logger.error("Aucune URL de base de données configurée")
 
 # -----------------------------------------------------------------------------
 # Définition des métadonnées cibles pour les migrations

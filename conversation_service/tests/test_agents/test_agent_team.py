@@ -1,7 +1,6 @@
-import pytest
+import asyncio
 
 from conversation_service.agents.agent_team import AgentTeam
-from conversation_service.agents.context_manager import ContextManager
 from conversation_service.models.core_models import AgentResponse
 
 
@@ -21,9 +20,24 @@ class DummyAgent:
         )
 
 
-@pytest.mark.asyncio
-async def test_agent_team_context_flow() -> None:
-    ctx = ContextManager()
+class DummyContextManager:
+    """Minimal context manager replicating expected interface."""
+
+    def __init__(self) -> None:
+        self._ctx = {}
+
+    def update(self, **kwargs):
+        self._ctx.update(kwargs)
+
+    def get(self, key, default=None):
+        return self._ctx.get(key, default)
+
+    def get_context(self):
+        return dict(self._ctx)
+
+
+def test_agent_team_context_flow() -> None:
+    ctx = DummyContextManager()
     team = AgentTeam(
         DummyAgent("intent", {"intent": "BALANCE_INQUIRY"}),
         DummyAgent("entity", {"entities": []}),
@@ -32,7 +46,7 @@ async def test_agent_team_context_flow() -> None:
         context_manager=ctx,
     )
 
-    final_response = await team.run("hello")
+    final_response = asyncio.run(team.run("hello"))
 
     assert final_response.result == {"text": "ok"}
     context = ctx.get_context()

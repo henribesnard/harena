@@ -5,6 +5,7 @@ Ce package fournit des modules simples pour gérer différents types de prompts
 fonctionnalités pour charger dynamiquement un prompt et manipuler des exemples
 few‑shot.
 """
+from . import intent_prompts, entity_prompts, query_prompts, response_prompts
 
 __all__ = [
     "intent_prompts",

@@ -30,13 +30,15 @@ from dataclasses import dataclass
 
 # AutoGen imports
 from autogen import AssistantAgent
-from openai import AsyncOpenAI
+
+from ..clients.openai_client import OpenAIClient
 
 # Local imports
 from ..models.agent_models import AgentConfig, AgentResponse
-from ..models.core_models import HarenaValidators, FinancialEntity
+from ..models.core_models import FinancialEntity
 from ..core.cache_manager import CacheManager
 from ..core.metrics_collector import MetricsCollector
+from ..core.validators import HarenaValidators
 from ..utils.logging import get_structured_logger
 
 __all__ = ["BaseFinancialAgent", "AgentPerformanceTracker", "PromptOptimizer"]
@@ -309,7 +311,7 @@ class BaseFinancialAgent(ABC):
     def __init__(
         self,
         config: AgentConfig,
-        openai_client: AsyncOpenAI,
+        openai_client: OpenAIClient,
         cache_manager: Optional[CacheManager] = None,
         metrics_collector: Optional[MetricsCollector] = None
     ):
@@ -546,13 +548,13 @@ class BaseFinancialAgent(ABC):
         
         # Call OpenAI
         try:
-            response = await self.openai_client.chat.completions.create(
+            response = await self.openai_client.chat_completion(
                 model=self.config.model_name,
                 messages=messages,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
                 timeout=self.config.timeout_seconds,
-                **kwargs
+                **kwargs,
             )
             
             return {

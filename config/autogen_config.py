@@ -31,7 +31,7 @@ class AutoGenConfig(BaseSettings):
     max_consecutive_auto_reply: int = 1
     description: str = "Harena financial assistant"
 
-    model_config = SettingsConfigDict(env_prefix="AUTOGEN_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="AUTOGEN_", env_file=".env", extra="ignore")
 
     def build_agent_params(
         self,

@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 # Configuration du logger
 logger = logging.getLogger(__name__)
 
-from conversation_service.api.dependencies import get_db
+from db_service.session import get_db
 from config_service.config import settings
 from sync_service.webhook_handler.processor import process_webhook, validate_webhook
 

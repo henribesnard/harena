@@ -46,16 +46,22 @@ class ConversationMessageRepository:
         )
 
     def list_models(self, conversation_id: str) -> List[ConversationMessageModel]:
-        """Return conversation messages as API models.
+        """Return user/assistant messages as pydantic models.
 
-        This helper converts the SQLAlchemy models returned by
-        :meth:`list_by_conversation` into the pydantic models used by the
-        public API.  It ensures callers don't need to be aware of the
-        underlying ORM implementation and provides a serialisable structure
-        suitable for passing to other services or agents.
+        The underlying ORM model includes all internal agent messages.  For
+        conversational context we only expose user and assistant messages,
+        converting each row to the public :class:`ConversationMessage` model
+        with an explicit timestamp.
         """
 
         return [
-            ConversationMessageModel(role=m.role, content=m.content)
+            ConversationMessageModel(
+                user_id=m.user_id,
+                conversation_id=m.conversation_id,
+                role=m.role,
+                content=m.content,
+                timestamp=m.created_at,
+            )
             for m in self.list_by_conversation(conversation_id)
+            if m.role in {"user", "assistant"}
         ]

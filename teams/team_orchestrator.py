@@ -119,13 +119,13 @@ class TeamOrchestrator:
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
         start = time.time()
-        repo = ConversationMessageRepository(db)
-        history_models = repo.list_models(conversation_id)
+        history_models = self.get_history(conversation_id, db) or []
         context: Dict[str, Any] = {
             "user_message": message,
             "user_id": user_id,
             "history": [m.model_dump() for m in history_models],
         }
+        repo = ConversationMessageRepository(db)
         repo.add(
             conversation_id=conversation_id,
             user_id=user_id,

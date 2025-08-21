@@ -385,7 +385,6 @@ class BaseFinancialAgent(ABC):
         
         start_time = time.time()
         processing_time_ms = 0
-        cached_result = False
         
         try:
             # Input validation
@@ -395,54 +394,11 @@ class BaseFinancialAgent(ABC):
             if self._is_circuit_breaker_open():
                 raise Exception("Circuit breaker is open - agent temporarily unavailable")
             
-            # Check cache first
+            # Prepare cache key for potential caching
             cache_key = None
             user_id = str(input_data.get("user_id", "anonymous"))
             if self.cache_manager:
                 cache_key = self._generate_cache_key(input_data)
-                cached_result_data = await self.cache_manager.get(
-                    self.config.name,
-                    user_id,
-                    cache_key,
-                )
-
-                if cached_result_data:
-                    processing_time_ms = int((time.time() - start_time) * 1000)
-                    cached_result = True
-                    
-                    # Record cache hit
-                    self.performance_tracker.record_call(
-                        success=True,
-                        processing_time_ms=processing_time_ms,
-                        cached=True
-                    )
-                    
-                    logger.debug(
-                        "Cache hit for agent",
-                        extra={
-                            "agent_name": self.config.name,
-                            "cache_key": cache_key[:16] + "...",
-                            "processing_time_ms": processing_time_ms,
-                        },
-                    )
-
-                    if self.metrics_collector:
-                        await self.metrics_collector.record_agent_call(
-                            agent_name=self.config.name,
-                            success=True,
-                            processing_time_ms=processing_time_ms,
-                            tokens_used=0,
-                            cached=True,
-                        )
-
-                    return AgentResponse(
-                        agent_name=self.config.name,
-                        success=True,
-                        result=cached_result_data,
-                        processing_time_ms=processing_time_ms,
-                        tokens_used=0,
-                        cached=True
-                    )
             
             # Process with implementation
             result = await self._process_implementation(input_data)

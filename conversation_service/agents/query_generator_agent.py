@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict
 
+
 try:  # pragma: no cover - optional dependency
     from .query_generator import QueryGeneratorAgent  # type: ignore
 except Exception:  # pragma: no cover - dependency not available
@@ -20,6 +21,7 @@ class QueryOptimizer:
 
     @staticmethod
     def optimize_query(base_query: Dict[str, Any], intent: IntentType) -> Dict[str, Any]:
+        """Return an optimised copy of ``base_query``."""
         """Return an optimized copy of ``base_query``."""
         query = deepcopy(base_query)
         params = query.setdefault("search_parameters", {})

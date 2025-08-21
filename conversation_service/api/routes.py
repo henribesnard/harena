@@ -13,7 +13,7 @@ from models.conversation_models import (
     ConversationStartRequest,
     ConversationStartResponse,
 )
-from teams.team_orchestrator import TeamOrchestrator
+from conversation_service.teams.team_orchestrator import TeamOrchestrator
 
 router = APIRouter(tags=["conversation"])
 

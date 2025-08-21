@@ -52,8 +52,16 @@ class SearchEngine:
         self.cache_misses = 0
 
         # Rate limiting (par utilisateur)
-        self.requests_per_minute = settings.SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE
-        self.rate_limit_window = settings.SEARCH_RATE_LIMIT_WINDOW_SECONDS
+        self.requests_per_minute = getattr(
+            settings,
+            "SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE",
+            getattr(settings, "RATE_LIMIT_REQUESTS_PER_MINUTE", 60),
+        )
+        self.rate_limit_window = getattr(
+            settings,
+            "SEARCH_RATE_LIMIT_WINDOW_SECONDS",
+            getattr(settings, "RATE_LIMIT_PERIOD", 60),
+        )
         self._rate_limit_storage: Dict[int, deque] = defaultdict(deque)
     
     def set_elasticsearch_client(self, client):

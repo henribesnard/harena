@@ -1,31 +1,22 @@
-"""Core conversation agents and utilities."""
+"""Expose conversation agents for easy imports.
 
-# Import submodules to expose them at package level
-from . import (
-    base_agent,
-    context_manager,
-    entity_extractor_agent,
-    intent_classifier_agent,
-    query_generator,
-    response_generator_agent,
-)
+This package aggregates the primary agent classes used throughout the
+conversation service so they can be imported directly from
+``conversation_service.agents``.
+"""
 
-from .base_agent import BaseFinancialAgent, CacheManager
-from .context_manager import ContextManager
 from .entity_extractor_agent import EntityExtractionCache, EntityExtractorAgent
 from .intent_classifier_agent import IntentClassificationCache, IntentClassifierAgent
-from .query_generator import QueryGeneratorAgent
+from .query_generator_agent import QueryGeneratorAgent, QueryOptimizer
 from .response_generator_agent import ResponseGeneratorAgent
 
 __all__ = [
-    "BaseFinancialAgent",
-    "CacheManager",
-    "ContextManager",
     "IntentClassifierAgent",
     "IntentClassificationCache",
     "EntityExtractorAgent",
     "EntityExtractionCache",
     "QueryGeneratorAgent",
+    "QueryOptimizer",
     "ResponseGeneratorAgent",
 ]
 

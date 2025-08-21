@@ -6,6 +6,22 @@ import re
 
 from .enums import IntentType, EntityType
 
+
+class AgentQueryRequest(BaseModel):
+    """Request payload for querying the agent team."""
+
+    message: str
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("message must not be empty")
+        return v
+
+
 class IntentResult(BaseModel):
     """
     Result of intent classification with Harena scope validation.
@@ -630,4 +646,10 @@ class ConversationState(BaseModel):
 # AGENT RESPONSE MODEL
 # ================================
 
-__all__ = ["IntentResult", "QueryResult", "ResponseResult", "ConversationState"]
+__all__ = [
+    "AgentQueryRequest",
+    "IntentResult",
+    "QueryResult",
+    "ResponseResult",
+    "ConversationState",
+]

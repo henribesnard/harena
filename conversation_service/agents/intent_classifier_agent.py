@@ -1,8 +1,14 @@
 """Minimal utilities for intent classification agents used in tests."""
+"""Utilities for intent classification agents used in tests."""
 
 from __future__ import annotations
 
 from typing import Dict, Optional
+
+try:  # pragma: no cover - optional dependency
+    from .intent_classifier import IntentClassifierAgent  # type: ignore
+except Exception:  # pragma: no cover - dependency not available
+    IntentClassifierAgent = None  # type: ignore
 
 from ..models.core_models import IntentResult
 
@@ -28,4 +34,4 @@ class IntentClassificationCache:
         self.hits = 0
 
 
-__all__ = ["IntentClassificationCache"]
+__all__ = ["IntentClassifierAgent", "IntentClassificationCache"]

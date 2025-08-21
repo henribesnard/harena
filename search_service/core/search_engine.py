@@ -74,7 +74,6 @@ class SearchEngine:
         """Génère une clé de cache basée sur les paramètres de la requête."""
         return generate_cache_key(
             "search",
-            user_id=request.user_id,
             query=request.query,
             filters=json.dumps(request.filters, sort_keys=True),
             offset=request.offset,
@@ -139,7 +138,7 @@ class SearchEngine:
             cache_key = None
             if self.cache_enabled:
                 cache_key = self._generate_cache_key(request)
-                cached = await self.cache.get(cache_key)
+                cached = await self.cache.get(request.user_id, cache_key)
                 if cached:
                     self.cache_hits += 1
                     cached["response_metadata"]["cache_hit"] = True
@@ -200,7 +199,7 @@ class SearchEngine:
 
             # Mise en cache du résultat
             if self.cache_enabled:
-                await self.cache.set(cache_key, response, ttl=settings.SEARCH_CACHE_TTL)
+                await self.cache.set(request.user_id, cache_key, response, ttl=settings.SEARCH_CACHE_TTL)
 
             logger.info(
                 f"Search completed: {returned_results}/{total_results} results in {execution_time}ms"

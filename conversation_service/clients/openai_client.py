@@ -78,7 +78,8 @@ class OpenAIClient:
                 self.total_cost_usd += cost
 
                 logger.debug(
-                    "OpenAI call succeeded", model=model, tokens=tokens, cost=cost
+                    "OpenAI call succeeded",
+                    extra={"model": model, "tokens": tokens, "cost": cost},
                 )
                 return response
             except Exception as exc:  # pragma: no cover - network errors

@@ -4,6 +4,9 @@ from __future__ import annotations
 import time
 from typing import Dict, Optional, Tuple
 
+# Default cache time-to-live for intent classification results (seconds)
+DEFAULT_TTL = 300
+
 try:  # pragma: no cover - optional dependency
     from .intent_classifier import IntentClassifierAgent  # type: ignore
 except Exception:  # pragma: no cover - dependency not available
@@ -13,7 +16,13 @@ from ..models.core_models import IntentResult
 
 
 class IntentClassificationCache:
-    """Simple in-memory cache for intent classification results."""
+    """Simple in-memory cache for intent classification results.
+
+    Cached entries are identified by the combination of ``user_id`` and
+    the original ``message`` (``"{user_id}:{message}"``) and expire after
+    ``DEFAULT_TTL`` seconds unless a different ``ttl`` is explicitly
+    provided when calling :meth:`set` or :meth:`get`.
+    """
 
     def __init__(self) -> None:
         # Store the cached result alongside the time it was inserted so
@@ -25,7 +34,9 @@ class IntentClassificationCache:
     def _make_key(user_id: str, message: str) -> str:
         return f"{user_id}:{message}"
 
-    def get(self, user_id: str, message: str, ttl: int = 300) -> Optional[IntentResult]:
+    def get(
+        self, user_id: str, message: str, ttl: int = DEFAULT_TTL
+    ) -> Optional[IntentResult]:
         key = self._make_key(user_id, message)
         entry = self._store.get(key)
         if entry is None:
@@ -38,7 +49,9 @@ class IntentClassificationCache:
         self.hits += 1
         return result
 
-    def set(self, user_id: str, message: str, result: IntentResult, ttl: int = 300) -> None:
+    def set(
+        self, user_id: str, message: str, result: IntentResult, ttl: int = DEFAULT_TTL
+    ) -> None:
         key = self._make_key(user_id, message)
         self._store[key] = (result, time.time())
 

@@ -185,12 +185,13 @@ class TeamOrchestrator:
 
         context.update(result)
         name = getattr(agent, "name", agent.__class__.__name__)
-        repo.add(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            role=name,
-            content=json.dumps(result, ensure_ascii=False),
-        )
+        if result:
+            repo.add(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                role=name,
+                content=json.dumps(result, ensure_ascii=False),
+            )
 
         await self._metrics.record_agent_call(
             agent_name=name, success=True, processing_time_ms=duration_ms

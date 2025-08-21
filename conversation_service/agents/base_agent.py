@@ -400,7 +400,11 @@ class BaseFinancialAgent(ABC):
             user_id = str(input_data.get("user_id", "anonymous"))
             if self.cache_manager:
                 cache_key = self._generate_cache_key(input_data)
-                cached_result_data = await self.cache_manager.get(cache_key, user_id)
+                cached_result_data = await self.cache_manager.get(
+                    self.config.name,
+                    user_id,
+                    cache_key,
+                )
 
                 if cached_result_data:
                     processing_time_ms = int((time.time() - start_time) * 1000)

@@ -44,7 +44,7 @@ class QueryGeneratorAgent(BaseFinancialAgent):
         """Build and execute a search request based on ``input_data``."""
 
         if input_data.get("intent") is None or input_data.get("entities") is None:
-            return {"error": "intent and entities are required"}
+            raise ValueError("intent and entities are required")
 
         context = input_data.get("context", {})
         user_id = context.get("user_id")
@@ -56,7 +56,7 @@ class QueryGeneratorAgent(BaseFinancialAgent):
             "aggregations": context.get("aggregations"),
         }
 
-        payload["filters"]["user_id"] = user_id
+        payload.setdefault("filters", {})["user_id"] = user_id
 
         try:
             search_request = SearchRequest(**payload)

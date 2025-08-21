@@ -1,18 +1,18 @@
-"""Conversation agents package."""
+"""Core conversation agents and utilities."""
 
-from .query_generator_agent import QueryOptimizer
+from .base_agent import BaseFinancialAgent, CacheManager
+from .intent_classifier_agent import IntentClassificationCache, IntentClassifierAgent
+from .entity_extractor_agent import EntityExtractionCache, EntityExtractorAgent
+from .query_generator import QueryGeneratorAgent
+from .response_generator_agent import ResponseGeneratorAgent
 
 __all__ = [
-    "QueryOptimizer",
-    "base_agent",
-    "context_manager",
-    "entity_extractor",
-    "entity_extractor_agent",
-    "intent_classifier",
-    "intent_classifier_agent",
-    "query_generator",
-    "query_generator_agent",
-    "response_generator",
-    "response_generator_agent",
+    "BaseFinancialAgent",
+    "CacheManager",
+    "IntentClassificationCache",
+    "IntentClassifierAgent",
+    "EntityExtractionCache",
+    "EntityExtractorAgent",
+    "QueryGeneratorAgent",
+    "ResponseGeneratorAgent",
 ]
-

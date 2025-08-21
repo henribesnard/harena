@@ -2,6 +2,7 @@
 query generation and response production."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -95,39 +96,51 @@ class TeamOrchestrator:
         self._total_calls += 1
         success = True
         try:
-            pipeline = [
-                (
-                    self._classifier,
-                    lambda c: {"user_message": message},
-                ),
-                (
-                    self._extractor,
-                    lambda c: {
-                        "user_message": message,
-                        "intent": c.get("intent"),
-                    },
-                ),
-                (
-                    self._query_agent,
-                    lambda c: {
-                        "intent": c.get("intent"),
-                        "entities": c.get("entities"),
-                    },
-                ),
-                (
-                    self._responder,
-                    lambda c: {"search_response": c.get("search_response")},
-                ),
-            ]
-            for agent, builder in pipeline:
-                ctx = await self._call_agent(
-                    agent,
-                    builder(ctx),
-                    ctx,
-                    repo,
-                    conversation_id,
-                    user_id,
+            tasks = []
+            if self._classifier is not None:
+                tasks.append(
+                    self._call_agent(
+                        self._classifier,
+                        {"user_message": message},
+                        ctx,
+                        repo,
+                        conversation_id,
+                        user_id,
+                    )
                 )
+            if self._extractor is not None:
+                tasks.append(
+                    self._call_agent(
+                        self._extractor,
+                        {"user_message": message},
+                        ctx,
+                        repo,
+                        conversation_id,
+                        user_id,
+                    )
+                )
+            if tasks:
+                await asyncio.gather(*tasks)
+
+            ctx = await self._call_agent(
+                self._query_agent,
+                {
+                    "intent": ctx.get("intent"),
+                    "entities": ctx.get("entities"),
+                },
+                ctx,
+                repo,
+                conversation_id,
+                user_id,
+            )
+            ctx = await self._call_agent(
+                self._responder,
+                {"search_response": ctx.get("search_response")},
+                ctx,
+                repo,
+                conversation_id,
+                user_id,
+            )
             reply = ctx.get("response", "")
         except Exception:  # pragma: no cover - defensive
             success = False

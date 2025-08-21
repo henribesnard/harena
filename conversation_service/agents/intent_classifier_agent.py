@@ -1,3 +1,4 @@
+"""Minimal utilities for intent classification agents used in tests."""
 """Intent classification utilities with Redis-backed cache."""
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from ..models.core_models import IntentResult
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 class IntentClassificationCache:
+
     """Cache for intent classification results using Redis when available."""
 
     def __init__(self, ttl: int = 600) -> None:
@@ -50,6 +52,7 @@ class IntentClassificationCache:
         return result
 
     def set(self, message: str, result: IntentResult) -> None:
+
         asyncio.run(self._cache.set(message, result, user_id=self._user_id))
 
     def clear(self) -> None:
@@ -61,4 +64,4 @@ class IntentClassificationCache:
         self.hits = 0
 
 
-__all__ = ["IntentClassifierAgent", "IntentClassificationCache"]
+__all__ = ["IntentClassificationCache"]

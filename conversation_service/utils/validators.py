@@ -20,7 +20,7 @@ import logging
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import re
-from config.settings import settings
+from config_service.config import settings
 
 # Imports Pydantic pour validation
 from pydantic import ValidationError as PydanticValidationError

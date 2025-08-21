@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config.settings import settings
+from config_service.config import settings
 from .api import router, initialize_search_engine
 
 # Configuration du logging

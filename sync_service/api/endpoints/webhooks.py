@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 from conversation_service.api.dependencies import get_db
-from config.settings import settings
+from config_service.config import settings
 from sync_service.webhook_handler.processor import process_webhook, validate_webhook
 
 router = APIRouter()

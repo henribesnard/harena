@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from contextlib import contextmanager
 
-from config.settings import settings
+from config_service.config import settings
 
 # Récupérer l'URL de connexion, fallback sur SQLite pour les tests
 database_url = settings.DATABASE_URL or "sqlite://"

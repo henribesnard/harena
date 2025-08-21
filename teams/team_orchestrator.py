@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from sqlalchemy.orm import Session
+
 from agent_types import ChatMessage, TaskResult
 from conversation_service.agents.entity_extractor_agent import EntityExtractorAgent
 from conversation_service.agents.intent_classifier_agent import IntentClassifierAgent

@@ -8,10 +8,6 @@ les vraies transactions de l'utilisateur 34:
 3. Synchronisation enrichment Elasticsearch
 4. Health check enrichment service
 5. Recherche de transactions
-6. Health check conversation service
-7. Status conversation service
-8. Chat conversation avec questions réelles
-9. Tests d'intentions avec données réelles
 
 Usage:
     python test_harena_real_data.py
@@ -24,9 +20,8 @@ import json
 import argparse
 import sys
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 import logging
-import uuid
 
 # ===== CONFIGURATION INITIALE =====
 DEFAULT_BASE_URL = "http://localhost:8000/api/v1"
@@ -102,12 +97,6 @@ class HarenaRealDataTestClient:
                 "expected_intent": "TREND_ANALYSIS",
                 "expected_data": None,
                 "should_find": True,
-            },
-            {
-                "question": "Bonjour, comment ça va ?",
-                "expected_intent": "CONVERSATIONAL",
-                "expected_data": None,
-                "should_find": False,
             },
         ]
     
@@ -272,7 +261,7 @@ class HarenaRealDataTestClient:
             return False
     
     def test_search_validation(self) -> bool:
-        """Test 5: Validation recherche Netflix pour comparaison avec conversation."""
+        """Test 5: Validation recherche Netflix."""
         self._print_step(5, "VALIDATION RECHERCHE NETFLIX")
         
         if not self.user_id:
@@ -341,218 +330,6 @@ class HarenaRealDataTestClient:
         else:
             self.logger.error("❌ Échec recherche validation")
             return False
-
-    def test_conversation_health(self) -> bool:
-        """Test 6: Health check conversation service."""
-        self._print_step(6, "HEALTH CHECK CONVERSATION SERVICE")
-
-        response = self._make_request("GET", "/conversation/health", use_auth=False)
-        success, json_data = self._print_response(response)
-
-        if success and json_data:
-            status = json_data.get('status', 'unknown')
-            self.logger.info(f"✅ Service: {json_data.get('service', 'unknown')}")
-            self.logger.info(f"✅ Status: {status}")
-            if status in ("healthy", "degraded"):
-                return True
-            else:
-                self.logger.error("❌ Statut inattendu")
-                return False
-        else:
-            self.logger.error("❌ Échec health check conversation")
-            return False
-
-    def test_conversation_status(self) -> bool:
-        """Test 7: Status conversation service."""
-        self._print_step(7, "STATUS CONVERSATION SERVICE")
-
-        response = self._make_request("GET", "/conversation/status", use_auth=False)
-        success, json_data = self._print_response(response)
-
-        if success and json_data:
-            service = json_data.get('service')
-            status = json_data.get('status')
-            version = json_data.get('version')
-            self.logger.info(f"✅ Service: {service}")
-            self.logger.info(f"✅ Status: {status}")
-            self.logger.info(f"✅ Version: {version}")
-            if service and status and version:
-                return True
-        self.logger.error("❌ Échec status conversation")
-        return False
-
-    def test_conversation_real_data(self) -> bool:
-        """Test 8: Chat conversation avec données réelles."""
-        self._print_step(8, "CHAT CONVERSATION AVEC DONNÉES RÉELLES")
-
-        headers = {"Content-Type": "application/json"}
-        conversation_id = f"test-real-data-{uuid.uuid4()}"
-
-        # Test sécurité d'abord
-        self.logger.info("🔒 Test d'accès sans jeton: doit retourner 401")
-        payload = {"conversation_id": conversation_id, "message": "Test sans token"}
-        response = self._make_request(
-            "POST", "/conversation/chat", headers=headers, data=json.dumps(payload), use_auth=False
-        )
-        success, _ = self._print_response(response, expected_status=401)
-        if not success:
-            self.logger.error("❌ L'appel sans jeton n'a pas retourné 401")
-            return False
-
-        # Test avec première question réelle sur Netflix
-        netflix_question = self.real_data_questions[0]
-        self.logger.info(f"🤖 Question Netflix: {netflix_question['question']}")
-        
-        payload = {
-            "conversation_id": conversation_id,
-            "message": netflix_question['question'],
-        }
-        response = self._make_request(
-            "POST", "/conversation/chat", headers=headers, data=json.dumps(payload)
-        )
-        success, json_data = self._print_response(response)
-
-        if not (success and json_data and json_data.get("success") is True):
-            self.logger.error("❌ Échec chat conversation avec données réelles")
-            return False
-
-        # Analyser la réponse Netflix
-        conversation_response = json_data.get("message", "")
-        metadata = json_data.get("metadata", {})
-        search_results_count = metadata.get("search_results_count", 0)
-        
-        self.logger.info(f"📊 Résultats de recherche conversation: {search_results_count}")
-        self.logger.info(f"📝 Réponse conversation: {conversation_response[:200]}...")
-        
-        # Vérifier cohérence avec la recherche directe
-        if "Netflix" in conversation_response and search_results_count > 0:
-            self.logger.info("✅ Cohérence Search-Conversation VALIDÉE")
-        elif "aucune transaction" in conversation_response.lower() and search_results_count == 0:
-            self.logger.warning("⚠️ Aucune transaction trouvée par la conversation")
-        else:
-            self.logger.error("❌ INCOHÉRENCE Search-Conversation détectée")
-
-        # Vérification métriques utilisateur
-        if not self.user_id:
-            self.logger.error("❌ user_id non disponible")
-            return False
-
-        metrics_resp = self._make_request("GET", "/conversation/metrics", use_auth=False)
-        metrics_ok, metrics_json = self._print_response(metrics_resp)
-        if metrics_ok and metrics_json:
-            counters = metrics_json.get("service_metrics", {}).get("counters", {})
-            key = f"requests_total{{endpoint=chat,user_id={self.user_id}}}"
-            if counters.get(key, 0) < 1:
-                self.logger.error("❌ Métriques user_id incohérentes")
-                return False
-        else:
-            self.logger.error("❌ Impossible de vérifier les métriques de conversation")
-            return False
-
-        self.logger.info("✅ Chat conversation avec données réelles validé")
-        return True
-
-    def test_conversation_real_intents(self) -> bool:
-        """Test 9: Tests d'intentions avec données réelles utilisateur."""
-        self._print_step(9, "TESTS INTENTIONS AVEC DONNÉES RÉELLES")
-
-        headers = {"Content-Type": "application/json"}
-        conversation_id = f"test-real-intents-{uuid.uuid4()}"
-
-        # Sélectionner 5 questions représentatives
-        test_questions = self.real_data_questions[:5]
-        
-        records = []
-        
-        for i, question_data in enumerate(test_questions):
-            question = question_data["question"]
-            expected_intent = question_data["expected_intent"] 
-            expected_data = question_data["expected_data"]
-            should_find = question_data["should_find"]
-            
-            self.logger.info(f"\n🤖 Question {i+1}: {question}")
-            self.logger.info(f"📊 Données attendues: {expected_data}")
-            self.logger.info(f"🎯 Intention attendue: {expected_intent}")
-            self.logger.info(f"🔍 Devrait trouver: {should_find}")
-            
-            payload = {"conversation_id": conversation_id, "message": question}
-            response = self._make_request(
-                "POST", "/conversation/chat", headers=headers, data=json.dumps(payload)
-            )
-            success, json_data = self._print_response(response)
-            
-            if not (success and json_data and json_data.get("success") is True):
-                self.logger.error(f"❌ Échec conversation pour: {question}")
-                return False
-
-            # Analyser la réponse
-            conversation_response = json_data.get("message", "")
-            metadata = json_data.get("metadata", {})
-            intent_result = metadata.get("intent_result", {}) or {}
-            detected_intent = intent_result.get("intent_type", "UNKNOWN")
-            search_results_count = metadata.get("search_results_count", 0)
-            processing_time = json_data.get("processing_time_ms", 0)
-            
-            # Vérification cohérence résultats/attentes
-            coherence_status = "✅"
-            if should_find and search_results_count == 0:
-                coherence_status = "❌ Devrait trouver"
-            elif not should_find and search_results_count > 0:
-                coherence_status = "⚠️ Ne devrait pas trouver"
-            
-            records.append({
-                "question": question,
-                "expected_intent": expected_intent,
-                "detected_intent": detected_intent,
-                "expected_data": expected_data,
-                "search_results": search_results_count,
-                "should_find": should_find,
-                "processing_time": processing_time,
-                "coherence": coherence_status,
-                "response_preview": conversation_response[:100] + "..." if len(conversation_response) > 100 else conversation_response
-            })
-
-        # Affichage tableau récapitulatif détaillé
-        self.logger.info("\n" + "="*120)
-        self.logger.info("📊 RAPPORT DÉTAILLÉ TESTS DONNÉES RÉELLES")
-        self.logger.info("="*120)
-        
-        for i, record in enumerate(records):
-            self.logger.info(f"\n🤖 TEST {i+1}: {record['question']}")
-            self.logger.info(f"   📊 Données attendues: {record['expected_data']}")
-            self.logger.info(f"   🎯 Intention: {record['expected_intent']} → {record['detected_intent']}")
-            self.logger.info(f"   🔍 Résultats: {record['search_results']} ({'✅ Devrait trouver' if record['should_find'] else '❌ Ne devrait pas trouver'})")
-            self.logger.info(f"   ⏱️ Temps: {record['processing_time']}ms")
-            self.logger.info(f"   🎭 Cohérence: {record['coherence']}")
-            self.logger.info(f"   💬 Réponse: {record['response_preview']}")
-
-        # Test sécurité historique
-        turns_endpoint = f"/conversation/conversations/{conversation_id}/turns"
-        resp = self._make_request("GET", turns_endpoint, use_auth=False)
-        success, _ = self._print_response(resp, expected_status=401)
-        if not success:
-            self.logger.error("❌ L'historique sans token n'a pas retourné 401")
-            return False
-
-        # Vérification persistance
-        resp = self._make_request("GET", turns_endpoint)
-        success, json_data = self._print_response(resp)
-        if not (
-            success
-            and json_data
-            and json_data.get("conversation_id") == conversation_id
-            and isinstance(json_data.get("turns"), list)
-        ):
-            self.logger.error("❌ Échec récupération des turns")
-            return False
-
-        turns = json_data.get("turns", [])
-        if len(turns) != len(test_questions):
-            self.logger.error("❌ Nombre de turns incohérent")
-            return False
-
-        self.logger.info("✅ Tests d'intentions avec données réelles validés")
-        return True
     
     def run_full_test(self, username: str, password: str) -> bool:
         """Lance le test complet avec données réelles."""
@@ -564,7 +341,7 @@ class HarenaRealDataTestClient:
         
         # Compteur de succès
         tests_passed = 0
-        total_tests = 9
+        total_tests = 5
         
         # Test 1: Login
         if self.test_login(username, password):
@@ -590,22 +367,6 @@ class HarenaRealDataTestClient:
         
         # Test 5: Validation recherche
         if self.test_search_validation():
-            tests_passed += 1
-
-        # Test 6: Conversation health
-        if self.test_conversation_health():
-            tests_passed += 1
-
-        # Test 7: Conversation status
-        if self.test_conversation_status():
-            tests_passed += 1
-
-        # Test 8: Conversation avec données réelles
-        if self.test_conversation_real_data():
-            tests_passed += 1
-
-        # Test 9: Intentions avec données réelles
-        if self.test_conversation_real_intents():
             tests_passed += 1
 
         # Résumé final

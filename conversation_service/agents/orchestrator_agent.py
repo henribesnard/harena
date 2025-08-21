@@ -36,8 +36,7 @@ from ..core.conversation_manager import ConversationManager
 from ..core.metrics_collector import MetricsCollector
 from ..utils.metrics import get_default_metrics_collector
 
-from config.settings import settings
-from config.openai_config import OpenAISettings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -602,7 +601,7 @@ class OrchestratorAgent(BaseFinancialAgent):
                 name="orchestrator_agent",
                 model_client_config={
                     "model": "gpt-4o-mini",
-                    "api_key": OpenAISettings().OPENAI_API_KEY,
+                    "api_key": settings.OPENAI_API_KEY,
                     "base_url": "https://api.openai.com/v1",
                 },
                 system_message=self._get_system_message(),

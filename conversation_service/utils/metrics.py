@@ -28,7 +28,7 @@ import os
 import uuid
 import statistics
 
-from config.settings import settings
+from config_service.config import settings
 try:  # pragma: no cover - psutil may not be available in all environments
     import psutil
 except Exception:  # pragma: no cover

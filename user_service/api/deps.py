@@ -8,7 +8,7 @@ from typing import Optional, List
 from conversation_service.api.dependencies import get_db
 from db_service.models.user import User
 from user_service.services.users import get_user_by_id
-from config.settings import settings
+from config_service.config import settings
 from user_service.core.security import ALGORITHM
 from user_service.schemas.user import TokenData
 

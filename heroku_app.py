@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config.settings import settings
+from config_service.config import settings
 
 # Configuration du logging simple
 logging.basicConfig(

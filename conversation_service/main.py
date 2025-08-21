@@ -22,13 +22,9 @@ app_state: Dict[str, Any] = {"health_status": "starting"}
 from .api.routes import router as api_router, websocket_router
 from .api.dependencies import cleanup_dependencies
 
-from config.openai_config import OpenAISettings
-from config.autogen_config import AutoGenSettings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
-
-openai_settings = OpenAISettings()
-autogen_settings = AutoGenSettings()
 
 
 def create_app() -> FastAPI:
@@ -39,12 +35,12 @@ def create_app() -> FastAPI:
         FastAPI: Configured application instance
     """
     # Load configuration from environment
-    environment = autogen_settings.ENVIRONMENT
-    cors_origins = autogen_settings.CORS_ORIGINS.split(",")
+    environment = settings.ENVIRONMENT
+    cors_origins = settings.CORS_ORIGINS.split(",")
     allowed_hosts = ["localhost", "127.0.0.1"] + cors_origins
 
     # Basic OpenAI configuration check (replaces run_core_validation)
-    if not openai_settings.OPENAI_API_KEY or len(openai_settings.OPENAI_API_KEY) < 10:
+    if not settings.OPENAI_API_KEY or len(settings.OPENAI_API_KEY) < 10:
         logger.warning("OPENAI_API_KEY not configured - using mock responses")
     
     # Create FastAPI app with metadata

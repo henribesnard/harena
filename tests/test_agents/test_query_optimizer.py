@@ -111,6 +111,8 @@ def test_query_generator_injects_user_id_into_filters():
 
     result = asyncio.run(agent._process_implementation(input_data))
 
+    assert search_client.payload["filters"]["user_id"] == 99
+    assert search_client.payload["filters"]["other"] == "value"
     assert result["search_request"]["filters"]["user_id"] == 99
     assert result["search_request"]["filters"]["other"] == "value"
 

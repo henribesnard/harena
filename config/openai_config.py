@@ -1,10 +1,5 @@
-"""OpenAI configuration utilities.
+"""OpenAI configuration utilities."""
 
-This module exposes a small ``OpenAIConfig`` class that gathers all
-parameters required to interact with the OpenAI API.  Values are read
-from environment variables prefixed with ``OPENAI_`` allowing different
-settings per deployment environment.
-"""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,9 +15,10 @@ class OpenAIConfig(BaseSettings):
     top_p: float = 0.95
     timeout: int = 30
 
-    # Read variables from the environment using the OPENAI_ prefix
+    # Environment variables are prefixed with ``OPENAI_``
     model_config = SettingsConfigDict(env_prefix="OPENAI_", env_file=".env")
 
 
-# Export a ready-to-use instance
-openai_config = OpenAIConfig()
+# ``get_openai_config`` in :mod:`config` should be used instead of creating
+# instances directly.  The class is re-exported for type checking and tests.
+

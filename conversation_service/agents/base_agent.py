@@ -222,17 +222,21 @@ class AgentPerformanceTracker:
         if processing_time_ms > self.thresholds["max_processing_time_ms"]:
             logger.warning(
                 "Agent performance alert: high processing time",
-                agent_name=self.agent_name,
-                processing_time_ms=processing_time_ms,
-                threshold=self.thresholds["max_processing_time_ms"]
+                extra={
+                    "agent_name": self.agent_name,
+                    "processing_time_ms": processing_time_ms,
+                    "threshold": self.thresholds["max_processing_time_ms"],
+                },
             )
         
         if cost_usd > self.thresholds["max_cost_per_call"]:
             logger.warning(
                 "Agent cost alert: high cost per call",
-                agent_name=self.agent_name,
-                cost_usd=cost_usd,
-                threshold=self.thresholds["max_cost_per_call"]
+                extra={
+                    "agent_name": self.agent_name,
+                    "cost_usd": cost_usd,
+                    "threshold": self.thresholds["max_cost_per_call"],
+                },
             )
 
 # ================================
@@ -363,10 +367,12 @@ class BaseFinancialAgent(ABC):
         
         logger.info(
             "Base Financial Agent initialized",
-            agent_name=config.name,
-            model=config.model_name,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens
+            extra={
+                "agent_name": config.name,
+                "model": config.model_name,
+                "temperature": config.temperature,
+                "max_tokens": config.max_tokens,
+            },
         )
     
     async def process(self, input_data: Dict[str, Any]) -> AgentResponse:
@@ -409,9 +415,11 @@ class BaseFinancialAgent(ABC):
                     
                     logger.debug(
                         "Cache hit for agent",
-                        agent_name=self.config.name,
-                        cache_key=cache_key[:16] + "...",
-                        processing_time_ms=processing_time_ms
+                        extra={
+                            "agent_name": self.config.name,
+                            "cache_key": cache_key[:16] + "...",
+                            "processing_time_ms": processing_time_ms,
+                        },
                     )
 
                     if self.metrics_collector:
@@ -469,10 +477,12 @@ class BaseFinancialAgent(ABC):
             
             logger.debug(
                 "Agent processing successful",
-                agent_name=self.config.name,
-                processing_time_ms=processing_time_ms,
-                tokens_used=tokens_used,
-                confidence=confidence
+                extra={
+                    "agent_name": self.config.name,
+                    "processing_time_ms": processing_time_ms,
+                    "tokens_used": tokens_used,
+                    "confidence": confidence,
+                },
             )
             
             return AgentResponse(
@@ -512,11 +522,13 @@ class BaseFinancialAgent(ABC):
             
             logger.error(
                 "Agent processing failed",
-                agent_name=self.config.name,
-                error=error_message,
-                processing_time_ms=processing_time_ms,
-                circuit_breaker_failures=self.circuit_breaker_failures,
-                exc_info=True
+                extra={
+                    "agent_name": self.config.name,
+                    "error": error_message,
+                    "processing_time_ms": processing_time_ms,
+                    "circuit_breaker_failures": self.circuit_breaker_failures,
+                },
+                exc_info=True,
             )
             
             return AgentResponse(
@@ -599,10 +611,12 @@ class BaseFinancialAgent(ABC):
         except Exception as e:
             logger.error(
                 "OpenAI API call failed",
-                agent_name=self.config.name,
-                model=self.config.model_name,
-                error=str(e),
-                exc_info=True
+                extra={
+                    "agent_name": self.config.name,
+                    "model": self.config.model_name,
+                    "error": str(e),
+                },
+                exc_info=True,
             )
             raise
     

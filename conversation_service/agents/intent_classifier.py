@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
-from prompts.intent_prompts import load_prompt, get_examples
+from ..prompts.intent_prompts import load_prompt, get_examples
 
 
 class IntentClassifierAgent(BaseFinancialAgent):

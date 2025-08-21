@@ -1,11 +1,15 @@
-"""Lightweight response generator agent with in-memory caching.
+"""Generate personalised responses from search results using OpenAI.
 
-This module provides a minimal :class:`ResponseGeneratorAgent` used in tests.
-It analyses provided search results and context, generates a text response via a
-configured LLM client (``self.agent``) and caches results for 60 seconds to
-avoid repeated work.  The agent now incorporates additional context such as the
-detected intent, extracted entities and user preferences.  Basic error handling
-returns a suggestion when the LLM call fails.
+This module implements a lightweight :class:`ResponseGeneratorAgent` which
+builds a short prompt from search results and conversational context before
+delegating the response creation to an OpenAI client. The produced answer is
+cached in-memory for a short period to avoid repeated API calls when the same
+inputs are supplied again.
+
+The agent is purposely minimal – it only expects the OpenAI client to expose a
+``chat_completion`` coroutine compatible with the :class:`OpenAIClient` wrapper
+used throughout the project. During tests a dummy object providing the same
+method can be supplied.
 """
 
 from __future__ import annotations
@@ -21,17 +25,24 @@ class ResponseGeneratorAgent:
 
     Parameters
     ----------
-    agent:
-        LLM client exposing an ``async generate(prompt: str) -> str`` method.
+    openai_client:
+        Client exposing an ``async chat_completion`` method. In production this
+        is :class:`openai_client.OpenAIClient` but tests may provide a stub.
+    model:
+        Model name used for the OpenAI call. Defaults to ``"gpt-4o-mini"``.
     ttl:
         Cache time-to-live in seconds. Defaults to ``60``.
     """
 
-    def __init__(self, agent: Any, ttl: int = 60) -> None:
-        self.agent = agent
+    def __init__(self, openai_client: Any, *, model: str = "gpt-4o-mini", ttl: int = 60) -> None:
+        self._client = openai_client
+        self._model = model
         self.ttl = ttl
         self._cache: Dict[str, Tuple[float, str]] = {}
 
+    # ------------------------------------------------------------------
+    # Caching helpers
+    # ------------------------------------------------------------------
     @staticmethod
     def _make_cache_key(
         user_id: str, search_results: List[Dict[str, Any]], context: Dict[str, Any]
@@ -45,23 +56,13 @@ class ResponseGeneratorAgent:
         )
         return hashlib.sha256(payload.encode()).hexdigest()
 
-    async def generate(
-        self, user_id: str, search_results: List[Dict[str, Any]], context: Dict[str, Any]
-    ) -> str:
-        """Return a response for ``search_results`` within ``context``.
+    # ------------------------------------------------------------------
+    # Prompt construction
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _build_prompt(search_results: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
+        """Compose the prompt from search results and conversation context."""
 
-        The method analyses the top search result alongside context information
-        (intent, entities and user preferences) and delegates response creation
-        to ``self.agent``. Results are cached for ``ttl`` seconds.
-        """
-
-        key = self._make_cache_key(user_id, search_results, context)
-        now = time.time()
-        cached = self._cache.get(key)
-        if cached and now - cached[0] < self.ttl:
-            return cached[1]
-
-        # --- Analyse search results and context to build a prompt ------------
         result_count = len(search_results)
         top_result = search_results[0] if search_results else {}
         snippet = (
@@ -70,6 +71,7 @@ class ResponseGeneratorAgent:
             or top_result.get("title")
             or json.dumps(top_result, ensure_ascii=False)
         )
+
         user_profile = context.get("user_profile", {})
         user_name = user_profile.get("name", "client")
         preferences = user_profile.get("preferences", {})
@@ -84,19 +86,49 @@ class ResponseGeneratorAgent:
         if intent:
             parts.append(f"Intention: {intent}.")
         if entities:
-            parts.append(
-                "Entités: " + json.dumps(entities, ensure_ascii=False) + "."
-            )
+            parts.append("Entités: " + json.dumps(entities, ensure_ascii=False) + ".")
         if preferences:
             parts.append(
                 "Préférences: " + json.dumps(preferences, ensure_ascii=False) + "."
             )
-        prompt = " ".join(parts) + " Fournis une réponse appropriée."
+
+        return " ".join(parts) + " Fournis une réponse appropriée."
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    async def generate(
+        self, user_id: str, search_results: List[Dict[str, Any]], context: Dict[str, Any]
+    ) -> str:
+        """Return a response for ``search_results`` within ``context``.
+
+        The method analyses the top search result alongside context information
+        (intent, entities and user preferences) and delegates response creation
+        to ``self._client``. Results are cached for ``ttl`` seconds.
+        """
+
+        key = self._make_cache_key(user_id, search_results, context)
+        now = time.time()
+        cached = self._cache.get(key)
+        if cached and now - cached[0] < self.ttl:
+            return cached[1]
+
+        prompt = self._build_prompt(search_results, context)
 
         # --- LLM generation -------------------------------------------------
         try:
-            response = await self.agent.generate(prompt)
+            response = await self._client.chat_completion(
+                model=self._model, messages=[{"role": "user", "content": prompt}]
+            )
+            # ``openai`` returns objects with attribute access while the tests
+            # use plain dictionaries. Support both forms for robustness.
+            try:
+                content = response["choices"][0]["message"]["content"]
+            except Exception:  # pragma: no cover - library object
+                content = response.choices[0].message["content"]
+            text = content.strip()
         except Exception:
+            top_result = search_results[0] if search_results else {}
             suggestion = (
                 top_result.get("url")
                 or top_result.get("title")
@@ -108,8 +140,8 @@ class ResponseGeneratorAgent:
             )
 
         # --- Cache storage --------------------------------------------------
-        self._cache[key] = (now, response)
-        return response
+        self._cache[key] = (now, text)
+        return text
 
 
 async def stream_response(message: str) -> AsyncGenerator[str, None]:

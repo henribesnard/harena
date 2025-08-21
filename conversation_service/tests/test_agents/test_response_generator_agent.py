@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 module_path = Path(__file__).resolve().parents[2] / "agents" / "response_generator_agent.py"
 spec = importlib.util.spec_from_file_location("response_generator_agent", module_path)
@@ -14,9 +15,9 @@ class DummyLLM:
     def __init__(self) -> None:
         self.calls = []
 
-    async def generate(self, prompt: str) -> str:  # pragma: no cover - trivial
-        self.calls.append(prompt)
-        return f"LLM:{len(self.calls)}"
+    async def chat_completion(self, *, model: str, messages: list, **_: Any) -> dict:
+        self.calls.append(messages)
+        return {"choices": [{"message": {"content": f"LLM:{len(self.calls)}"}}]}
 
 
 def test_generation_personalisation_and_cache():
@@ -39,7 +40,7 @@ def test_generation_personalisation_and_cache():
         first = await agent.generate("user1", search_results, context)
         assert first.startswith("LLM:")
         assert len(llm.calls) == 1
-        prompt = llm.calls[0]
+        prompt = llm.calls[0][0]["content"]
         assert "Balance is 100€" in prompt
         assert "Alice" in prompt
         assert "BALANCE_INQUIRY" in prompt
@@ -90,7 +91,7 @@ def test_cache_varies_with_context():
 
 
 class FailingLLM:
-    async def generate(self, prompt: str) -> str:  # pragma: no cover - trivial
+    async def chat_completion(self, *, model: str, messages: list, **_: Any) -> dict:  # pragma: no cover - trivial
         raise RuntimeError("boom")
 
 

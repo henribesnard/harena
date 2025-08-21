@@ -7,12 +7,10 @@ to an in-memory LRU cache if Redis is unavailable. Each ``set`` call can
 specify a TTL allowing different agents to cache values for distinct
 periods.
 
-An additional L0 in-memory layer contains precomputed responses. Keys are
-prefixed with ``l0:`` and checked before hitting Redis or the fallback LRU
-cache. Populate this level during application start-up via
-``conversation_service.core.l0_cache.warmup`` and invalidate entries with
-``conversation_service.core.l0_cache.invalidate`` when the underlying data
-changes.
+An additional L0 layer, ``precomputed_patterns``, may contain static
+responses that should bypass Redis (L1) and the fallback LRU cache (L2).
+Entries are looked up in this dictionary before consulting the other
+cache levels.
 """
 
 from __future__ import annotations
@@ -21,10 +19,9 @@ import os
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from ..clients.cache_client import CacheClient
-from . import l0_cache
 
 __all__ = ["CacheManager"]
 
@@ -45,12 +42,14 @@ class CacheManager:
         default_ttl: int = 300,
         max_size: int = 128,
         prefix: Optional[str] = None,
+        precomputed_patterns: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._client = cache_client
         self._default_ttl = default_ttl
         self._max_size = max_size
         self._fallback: "OrderedDict[str, _CacheEntry]" = OrderedDict()
         self._prefix = prefix or os.getenv("REDIS_CACHE_PREFIX", "conversation_service")
+        self._precomputed_patterns = precomputed_patterns or {}
 
     # ------------------------------------------------------------------
     def _compose_key(self, key: str, user_id: str) -> str:
@@ -62,8 +61,8 @@ class CacheManager:
 
         composed = self._compose_key(key, user_id)
 
-        # L0: in-memory table for precomputed responses
-        l0_value = l0_cache.get(composed)
+        # L0: check precomputed patterns before other caches
+        l0_value = self._precomputed_patterns.get(composed)
         if l0_value is not None:
             return l0_value
 

@@ -1,6 +1,6 @@
 import pytest
 
-from conversation_service.agents.agent_team import AgentTeam
+from teams.financial_team import FinancialTeam
 from conversation_service.agents.context_manager import ContextManager
 from conversation_service.models.core_models import AgentResponse
 
@@ -22,9 +22,9 @@ class DummyAgent:
 
 
 @pytest.mark.asyncio
-async def test_agent_team_context_flow() -> None:
+async def test_financial_team_context_flow() -> None:
     ctx = ContextManager()
-    team = AgentTeam(
+    team = FinancialTeam(
         DummyAgent("intent", {"intent": "BALANCE_INQUIRY"}),
         DummyAgent("entity", {"entities": []}),
         DummyAgent("query", {"q": 1}),
@@ -40,3 +40,4 @@ async def test_agent_team_context_flow() -> None:
     assert context["entities"] == {"entities": []}
     assert context["query"] == {"q": 1}
     assert context["response"] == {"text": "ok"}
+

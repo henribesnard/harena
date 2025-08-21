@@ -23,4 +23,5 @@ class QueryGeneratorAgent(BaseFinancialAgent):
         self, input_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Return a placeholder search query."""
-        return {"input": input_data, "query": ""}
+        context = input_data.get("context", {})
+        return {"input": input_data, "context": context, "query": ""}

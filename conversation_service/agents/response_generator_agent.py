@@ -3,7 +3,9 @@
 This module provides a minimal :class:`ResponseGeneratorAgent` used in tests.
 It analyses provided search results and context, generates a text response via a
 configured LLM client (``self.agent``) and caches results for 60 seconds to
-avoid repeated work.
+avoid repeated work.  The agent now incorporates additional context such as the
+detected intent, extracted entities and user preferences.  Basic error handling
+returns a suggestion when the LLM call fails.
 """
 
 from __future__ import annotations
@@ -48,9 +50,9 @@ class ResponseGeneratorAgent:
     ) -> str:
         """Return a response for ``search_results`` within ``context``.
 
-        The method analyses the top search result alongside basic context
-        information and delegates response creation to ``self.agent``. Results
-        are cached for ``ttl`` seconds.
+        The method analyses the top search result alongside context information
+        (intent, entities and user preferences) and delegates response creation
+        to ``self.agent``. Results are cached for ``ttl`` seconds.
         """
 
         key = self._make_cache_key(user_id, search_results, context)
@@ -68,14 +70,42 @@ class ResponseGeneratorAgent:
             or top_result.get("title")
             or json.dumps(top_result, ensure_ascii=False)
         )
-        user_name = context.get("user_profile", {}).get("name", "client")
-        prompt = (
-            f"Utilisateur: {user_name}. Résultats: {result_count}. "
-            f"Principal: {snippet}. Fournis une réponse appropriée."
-        )
+        user_profile = context.get("user_profile", {})
+        user_name = user_profile.get("name", "client")
+        preferences = user_profile.get("preferences", {})
+        intent = context.get("intent")
+        entities = context.get("entities", [])
+
+        parts = [
+            f"Utilisateur: {user_name}.",
+            f"Résultats: {result_count}.",
+            f"Principal: {snippet}.",
+        ]
+        if intent:
+            parts.append(f"Intention: {intent}.")
+        if entities:
+            parts.append(
+                "Entités: " + json.dumps(entities, ensure_ascii=False) + "."
+            )
+        if preferences:
+            parts.append(
+                "Préférences: " + json.dumps(preferences, ensure_ascii=False) + "."
+            )
+        prompt = " ".join(parts) + " Fournis une réponse appropriée."
 
         # --- LLM generation -------------------------------------------------
-        response = await self.agent.generate(prompt)
+        try:
+            response = await self.agent.generate(prompt)
+        except Exception:
+            suggestion = (
+                top_result.get("url")
+                or top_result.get("title")
+                or "réessaie avec une autre requête"
+            )
+            return (
+                "Je rencontre un problème pour générer la réponse. "
+                f"Suggestion: {suggestion}"
+            )
 
         # --- Cache storage --------------------------------------------------
         self._cache[key] = (now, response)

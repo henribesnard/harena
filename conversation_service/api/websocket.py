@@ -1,4 +1,4 @@
-"""Router exposing realtime conversation endpoints."""
+"""Websocket endpoints exposing realtime conversation features."""
 
 from typing import List
 

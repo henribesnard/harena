@@ -1,7 +1,8 @@
 """Utilities for intent classification agents used in tests."""
 from __future__ import annotations
 
-from typing import Dict, Optional
+import time
+from typing import Dict, Optional, Tuple
 
 try:  # pragma: no cover - optional dependency
     from .intent_classifier import IntentClassifierAgent  # type: ignore
@@ -15,17 +16,28 @@ class IntentClassificationCache:
     """Simple in-memory cache for intent classification results."""
 
     def __init__(self) -> None:
-        self._store: Dict[str, IntentResult] = {}
+        self._store: Dict[str, Tuple[float, IntentResult]] = {}
         self.hits: int = 0
 
-    def get(self, message: str) -> Optional[IntentResult]:
-        result = self._store.get(message)
-        if result is not None:
-            self.hits += 1
+    @staticmethod
+    def _make_key(user_id: str, message: str) -> str:
+        return f"{user_id}:{message}"
+
+    def get(self, user_id: str, message: str, ttl: int = 300) -> Optional[IntentResult]:
+        key = self._make_key(user_id, message)
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        inserted_at, result = entry
+        if time.time() - inserted_at > ttl:
+            self._store.pop(key, None)
+            return None
+        self.hits += 1
         return result
 
-    def set(self, message: str, result: IntentResult) -> None:
-        self._store[message] = result
+    def set(self, user_id: str, message: str, result: IntentResult, ttl: int = 300) -> None:
+        key = self._make_key(user_id, message)
+        self._store[key] = (time.time(), result)
 
     def clear(self) -> None:
         self._store.clear()

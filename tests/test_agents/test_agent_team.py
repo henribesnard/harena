@@ -2,7 +2,7 @@ import pytest
 
 from conversation_service.agents.agent_team import AgentTeam
 from conversation_service.agents.context_manager import ContextManager
-from conversation_service.models.core_models import AgentResponse
+from conversation_service.models.agent_models import AgentResponse
 
 
 class DummyAgent:

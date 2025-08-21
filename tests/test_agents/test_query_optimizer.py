@@ -17,7 +17,7 @@ class QueryType(str, Enum):
 core_models.QueryType = QueryType
 
 from conversation_service.agents.query_generator_agent import QueryOptimizer
-from conversation_service.models.core_models import IntentType
+from conversation_service.models.enums import IntentType
 
 
 def test_query_optimizer_applies_merchant_rule():

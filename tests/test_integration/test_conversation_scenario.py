@@ -18,12 +18,9 @@ core_models.QueryType = QueryType
 
 from conversation_service.agents.intent_classifier_agent import IntentClassificationCache
 from conversation_service.agents.query_generator_agent import QueryOptimizer
-from conversation_service.models.core_models import (
-    FinancialEntity,
-    EntityType,
-    IntentResult,
-    IntentType,
-)
+from conversation_service.models.financial_models import FinancialEntity
+from conversation_service.models.enums import EntityType, IntentType
+from conversation_service.models.conversation_models import IntentResult
 
 
 def test_conversation_pipeline():

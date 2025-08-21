@@ -1,6 +1,8 @@
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, model_validator, ConfigDict
+from typing import Dict, Any, Optional, List
 from datetime import datetime
+from dataclasses import dataclass
+from pydantic import BaseModel, Field, model_validator, ConfigDict
+
 
 class AgentResponse(BaseModel):
     """
@@ -95,11 +97,6 @@ class AgentResponse(BaseModel):
         }
 
 
-__all__ = ["AgentResponse"]
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-
-
 @dataclass
 class AgentConfig:
     """Configuration for financial agents."""
@@ -113,14 +110,4 @@ class AgentConfig:
     few_shot_examples: Optional[List[Dict[str, str]]] = None
 
 
-@dataclass
-class AgentResponse:
-    """Standard response object returned by agents."""
-
-    agent_name: str
-    success: bool
-    result: Optional[Dict[str, Any]]
-    processing_time_ms: int
-    tokens_used: int = 0
-    cached: bool = False
-    error_message: Optional[str] = None
+__all__ = ["AgentResponse", "AgentConfig"]

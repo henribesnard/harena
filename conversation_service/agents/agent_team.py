@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Protocol
 
 from .context_manager import ContextManager
-from ..models.core_models import AgentResponse
+from ..models.agent_models import AgentResponse
 
 
 class ConversationAgent(Protocol):

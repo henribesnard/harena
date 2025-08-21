@@ -21,7 +21,7 @@ from typing import Dict, List, Set, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 import re
-from ..models.core_models import IntentType
+from ..models.enums import IntentType
 
 __all__ = [
     "IntentTaxonomy", "IntentClassificationMatrix", "UnsupportedActionDetector",

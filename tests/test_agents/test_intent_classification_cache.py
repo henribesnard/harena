@@ -4,7 +4,8 @@ import types
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=object))
 
 from conversation_service.agents.intent_classifier_agent import IntentClassificationCache
-from conversation_service.models.core_models import IntentResult, IntentType
+from conversation_service.models.conversation_models import IntentResult
+from conversation_service.models.enums import IntentType
 
 
 def test_intent_cache_store_and_retrieve():

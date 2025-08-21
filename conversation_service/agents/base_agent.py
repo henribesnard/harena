@@ -34,7 +34,8 @@ from openai import AsyncOpenAI
 
 # Local imports
 from ..models.agent_models import AgentConfig, AgentResponse
-from ..models.core_models import HarenaValidators, FinancialEntity
+from ..models.validators import HarenaValidators
+from ..models.financial_models import FinancialEntity
 from ..core.cache_manager import CacheManager
 from ..core.metrics_collector import MetricsCollector
 from ..utils.logging import get_structured_logger

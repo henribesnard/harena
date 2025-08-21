@@ -1,4 +1,5 @@
-from conversation_service.models.core_models import FinancialEntity, EntityType
+from conversation_service.models.financial_models import FinancialEntity
+from conversation_service.models.enums import EntityType
 
 
 def test_is_action_related_true():

@@ -4,7 +4,8 @@ import types
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=object))
 
 from conversation_service.agents.entity_extractor_agent import EntityExtractionCache
-from conversation_service.models.core_models import FinancialEntity, EntityType
+from conversation_service.models.financial_models import FinancialEntity
+from conversation_service.models.enums import EntityType
 
 
 def test_entity_cache_store_and_retrieve():

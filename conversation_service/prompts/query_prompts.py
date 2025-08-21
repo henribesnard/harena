@@ -16,7 +16,8 @@ Created: 2025-01-31
 Version: 1.0.0 - Elasticsearch Query Generation
 """
 
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Dict, List, Any, Optional
 
 # ================================
 # SYSTEM PROMPT
@@ -271,6 +272,33 @@ Génère une requête Elasticsearch optimisée au format SearchServiceQuery.""",
 }"""
     }
 ]
+
+_PROMPT_CACHE: Dict[str, str] = {}
+
+
+def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] = None, cache_key: str = "system") -> str:
+    """Charger le prompt système depuis un fichier ou un cache."""
+    cache = _PROMPT_CACHE if cache is None else cache
+    if cache_key in cache:
+        return cache[cache_key]
+    if path:
+        prompt = Path(path).read_text(encoding="utf-8")
+        cache[cache_key] = prompt
+        return prompt
+    return QUERY_GENERATION_SYSTEM_PROMPT
+
+
+
+def get_examples() -> List[Dict[str, str]]:
+    """Récupérer les exemples few-shot pour la génération de requêtes."""
+    return list(QUERY_FEW_SHOT_EXAMPLES)
+
+
+
+def update_examples(examples: List[Dict[str, str]]) -> None:
+    """Mettre à jour les exemples few-shot utilisés pour la génération de requêtes."""
+    QUERY_FEW_SHOT_EXAMPLES.clear()
+    QUERY_FEW_SHOT_EXAMPLES.extend(examples)
 
 # ================================
 # INTENT-SPECIFIC TEMPLATES

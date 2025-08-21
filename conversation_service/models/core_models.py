@@ -6,8 +6,8 @@ from .conversation_models import (
     QueryResult,
     ResponseResult,
     ConversationState,
-    HarenaValidators,
 )
+from ..core.validators import HarenaValidators
 from .contracts import SearchServiceFilter, SearchServiceQuery, SearchServiceResponse
 from .agent_models import AgentResponse
 

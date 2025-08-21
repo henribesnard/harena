@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router as api_router
 from api.websocket import router as ws_router
+from api.middleware import setup_middleware
 from config.settings import settings
 
 
@@ -11,6 +12,8 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(ws_router)
+
+    setup_middleware(app)
 
     app.add_middleware(
         CORSMiddleware,

@@ -3,9 +3,16 @@
 This utility composes cache keys using a configurable prefix and the
 ``user_id`` to ensure isolation between users. It stores data in Redis
 through :class:`CacheClient` when available and transparently falls back
-to an in-memory LRU cache if Redis is unavailable.  Each ``set`` call can
+to an in-memory LRU cache if Redis is unavailable. Each ``set`` call can
 specify a TTL allowing different agents to cache values for distinct
 periods.
+
+An additional L0 in-memory layer contains precomputed responses. Keys are
+prefixed with ``l0:`` and checked before hitting Redis or the fallback LRU
+cache. Populate this level during application start-up via
+``conversation_service.core.l0_cache.warmup`` and invalidate entries with
+``conversation_service.core.l0_cache.invalidate`` when the underlying data
+changes.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from ..clients.cache_client import CacheClient
+from . import l0_cache
 
 __all__ = ["CacheManager"]
 
@@ -53,6 +61,12 @@ class CacheManager:
         """Retrieve ``key`` for ``user_id`` from cache."""
 
         composed = self._compose_key(key, user_id)
+
+        # L0: in-memory table for precomputed responses
+        l0_value = l0_cache.get(composed)
+        if l0_value is not None:
+            return l0_value
+
         if self._client is not None:
             try:
                 value = await self._client.get(composed)

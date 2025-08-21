@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     BRIDGE_CLIENT_ID: str = ""
     BRIDGE_CLIENT_SECRET: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore", env_file=".env")
 
 
 # The ``get_settings`` accessor in :mod:`config` should be preferred over

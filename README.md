@@ -14,6 +14,19 @@ Avant d'exécuter les tests, installez les dépendances Web de base :
 pip install aiohttp fastapi sqlalchemy pydantic-settings
 ```
 
+Assurez-vous également que la bibliothèque `autogen-agentchat` est disponible :
+
+```bash
+pip install autogen-agentchat
+```
+
+Si l'installation n'est pas possible, un stub minimal est fourni dans le dossier
+`autogen_agentchat/`. Ajoutez-le au `PYTHONPATH` pour qu'il soit pris en compte :
+
+```bash
+export PYTHONPATH="$PYTHONPATH:$(pwd)"
+```
+
 Les tests nécessitent l'extra `ag2[openai]`. Installez les dépendances puis
 cet extra :
 

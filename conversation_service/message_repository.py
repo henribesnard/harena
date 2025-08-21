@@ -7,6 +7,9 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from db_service.models.conversation import ConversationMessage
+from models.conversation_models import (
+    ConversationMessage as ConversationMessageModel,
+)
 
 
 class ConversationMessageRepository:
@@ -42,3 +45,17 @@ class ConversationMessageRepository:
             .all()
         )
 
+    def list_models(self, conversation_id: str) -> List[ConversationMessageModel]:
+        """Return conversation messages as API models.
+
+        This helper converts the SQLAlchemy models returned by
+        :meth:`list_by_conversation` into the pydantic models used by the
+        public API.  It ensures callers don't need to be aware of the
+        underlying ORM implementation and provides a serialisable structure
+        suitable for passing to other services or agents.
+        """
+
+        return [
+            ConversationMessageModel(role=m.role, content=m.content)
+            for m in self.list_by_conversation(conversation_id)
+        ]

@@ -21,6 +21,7 @@ from models.conversation_models import (
 )
 
 from agent_types import ChatMessage, TaskResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,12 +59,8 @@ class TeamOrchestrator:
         self, conversation_id: str, db: Session
     ) -> Optional[List[ConversationMessageModel]]:
         repo = ConversationMessageRepository(db)
-        msgs = repo.list_by_conversation(conversation_id)
-        if not msgs:
-            return None
-        return [
-            ConversationMessageModel(role=m.role, content=m.content) for m in msgs
-        ]
+        msgs = repo.list_models(conversation_id)
+        return msgs or None
 
     async def _call_agent(
         self,
@@ -75,8 +72,13 @@ class TeamOrchestrator:
     ) -> Dict[str, Any]:
         if not agent:
             return context
-        agent_name = getattr(getattr(agent, "config", None), "name", agent.__class__.__name__)
-        input_payload = {"user_message": context.get("user_message", ""), "context": context}
+        agent_name = getattr(
+            getattr(agent, "config", None), "name", agent.__class__.__name__
+        )
+        input_payload = {
+            "user_message": context.get("user_message", ""),
+            "context": context,
+        }
         repo.add(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -118,6 +120,12 @@ class TeamOrchestrator:
     ) -> str:
         start = time.time()
         repo = ConversationMessageRepository(db)
+        history_models = repo.list_models(conversation_id)
+        context: Dict[str, Any] = {
+            "user_message": message,
+            "user_id": user_id,
+            "history": [m.model_dump() for m in history_models],
+        }
         repo.add(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -126,7 +134,6 @@ class TeamOrchestrator:
         )
         self._total_calls += 1
         try:
-            context: Dict[str, Any] = {"user_message": message, "user_id": user_id}
             context = await self._call_agent(
                 self._classifier, context, repo, conversation_id, user_id
             )
@@ -143,7 +150,9 @@ class TeamOrchestrator:
         except Exception:
             self._error_calls += 1
             logger.exception("Agent processing failed")
-            reply = "Désolé, une erreur est survenue lors du traitement de votre demande."
+            reply = (
+                "Désolé, une erreur est survenue lors du traitement de votre demande."
+            )
         repo.add(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -160,8 +169,7 @@ class TeamOrchestrator:
         return {
             "total_calls": float(self._total_calls),
             "error_calls": float(self._error_calls),
-            "error_rate": self._error_calls / self._total_calls
-            if self._total_calls
-            else 0.0,
+            "error_rate": (
+                self._error_calls / self._total_calls if self._total_calls else 0.0
+            ),
         }
-

@@ -1,10 +1,10 @@
 """FastAPI dependencies for the Conversation Service MVP.
 
-"""Minimal dependency definitions for the conversation service.
+Minimal dependency definitions for the conversation service.
 
 This module provides dependency injection helpers for FastAPI endpoints,
-managing AutoGen team managers, conversation context, authentication and
-request validation.
+    managing AutoGen team managers, conversation context, authentication and
+    request validation.
 
 Dependencies:
     - get_team_manager: Provides singleton ``MVPTeamManager`` instance

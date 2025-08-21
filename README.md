@@ -8,6 +8,12 @@ Leur implémentation est désormais centralisée sous le package
 
 ## Tests unitaires
 
+Avant d'exécuter les tests, installez les dépendances Web de base :
+
+```bash
+pip install aiohttp fastapi sqlalchemy pydantic-settings
+```
+
 Les tests nécessitent l'extra `ag2[openai]`. Installez les dépendances puis
 cet extra :
 

@@ -40,3 +40,62 @@ class TeamOrchestrator:
             self.context[name] = msg.content
         return TaskResult(messages=messages)
 
+    async def query_agents(
+        self, conversation_id: str, message: str, user_id: int, db: Session
+    ) -> str:
+        start = time.time()
+        history_models = self.get_history(conversation_id, db) or []
+        context: Dict[str, Any] = {
+            "user_message": message,
+            "user_id": user_id,
+            "history": [m.model_dump() for m in history_models],
+        }
+        repo = ConversationMessageRepository(db)
+        repo.add(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role="user",
+            content=message,
+        )
+        self._total_calls += 1
+        try:
+            context = await self._call_agent(
+                self._classifier, context, repo, conversation_id, user_id
+            )
+            context = await self._call_agent(
+                self._extractor, context, repo, conversation_id, user_id
+            )
+            context = await self._call_agent(
+                self._query_agent, context, repo, conversation_id, user_id
+            )
+            context = await self._call_agent(
+                self._responder, context, repo, conversation_id, user_id
+            )
+            reply = context.get("response", "")
+        except Exception:
+            self._error_calls += 1
+            logger.exception("Agent processing failed")
+            reply = (
+                "Désolé, une erreur est survenue lors du traitement de votre demande."
+            )
+        repo.add(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role="assistant",
+            content=reply,
+        )
+        duration = (time.time() - start) * 1000
+        self._metrics.record_orchestrator_call(
+            operation="query_agents", success=True, processing_time_ms=duration
+        )
+        return reply
+
+    def get_error_metrics(self) -> Dict[str, float]:
+        return {
+            "total_calls": float(self._total_calls),
+            "error_calls": float(self._error_calls),
+            "error_rate": (
+                self._error_calls / self._total_calls if self._total_calls else 0.0
+            ),
+        }
+

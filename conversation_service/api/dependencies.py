@@ -34,7 +34,7 @@ from ..core.metrics_collector import MetricsCollector
 from ..core.cache_manager import CacheManager
 from ..repositories.conversation_repository import ConversationRepository
 from ..utils.logging import log_unauthorized_access
-from config.settings import settings
+from config_service.config import settings
 
 if TYPE_CHECKING:
     from ..core.mvp_team_manager import MVPTeamManager

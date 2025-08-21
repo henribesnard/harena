@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 import threading
 import asyncio
 
-from config.settings import settings
+from config_service.config import settings
 
 # Redis import avec fallback gracieux
 try:

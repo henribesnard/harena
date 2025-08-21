@@ -41,7 +41,7 @@ from ..prompts.intent_prompts import (
     INTENT_EXAMPLES_FEW_SHOT,
 )
 from ..constants import TRANSACTION_TYPES
-from config.openai_config import OpenAISettings
+from config_service.config import settings
 
 # Mapping to harmonise categories with internal enums
 CATEGORY_MAP: Dict[str, str] = {
@@ -88,7 +88,7 @@ class LLMIntentAgent(BaseFinancialAgent):
         config: Optional[AgentConfig] = None,
         openai_client: Optional[Any] = None,
     ) -> None:
-        api_key = OpenAISettings().OPENAI_API_KEY
+        api_key = settings.OPENAI_API_KEY
         if config is None:
             config = AgentConfig(
                 name="llm_intent_agent",

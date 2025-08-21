@@ -3,18 +3,15 @@
 This package exposes the main components required by the conversation
 service and provides helper functions for validating the runtime
 environment using a generic OpenAI configuration via
-:class:`~config.openai_config.OpenAISettings`.
-environment using :class:`~config.openai_config.OpenAISettings`.
+:class:`~config_service.config.GlobalSettings`.
 """
 
 from __future__ import annotations
 
 import logging
-from config.settings import settings
-from typing import TYPE_CHECKING
 from typing import TYPE_CHECKING, Any
 
-from config.openai_config import OpenAISettings
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +115,7 @@ def get_available_components() -> list[str]:
 
 def get_core_config() -> dict:
     """Return core configuration with essential OpenAI settings."""
-    openai = OpenAISettings()
+    openai = settings
     config = DEFAULT_CORE_CONFIG.copy()
     config.update(
         {
@@ -155,7 +152,7 @@ def validate_core_setup() -> dict:
         results["valid"] = False
 
     # Validate OpenAI settings
-    openai_settings = OpenAISettings()
+    openai_settings = settings
     if not openai_settings.OPENAI_API_KEY:
         results["errors"].append("OpenAI API key is not configured")
         results["valid"] = False

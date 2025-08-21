@@ -15,7 +15,7 @@ __all__ = ["__version__", "__author__", "agents"]
 # Automatic import of subpackages can lead to unexpected side effects
 # (e.g., loading configuration) when simply importing this package. To
 # avoid this, the behaviour is now opt-in via a configuration flag.
-from config.settings import settings
+from config_service.config import settings
 
 if getattr(settings, "CS_AUTO_IMPORT_SUBPACKAGES", 0) == 1:
     for _mod in ["api", "core", "models", "services", "utils"]:

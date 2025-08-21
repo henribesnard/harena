@@ -19,7 +19,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from config.openai_config import OpenAISettings
+from config_service.config import settings
 
 from .base_financial_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig, AgentResponse
@@ -151,7 +151,7 @@ class ResponseAgent(BaseFinancialAgent):
                 name="response_agent",
                 model_client_config={
                     "model": "gpt-4o-mini",
-                    "api_key": OpenAISettings().OPENAI_API_KEY,
+                    "api_key": settings.OPENAI_API_KEY,
                     "base_url": "https://api.openai.com/v1"
                 },
                 system_message=self._get_system_message(),

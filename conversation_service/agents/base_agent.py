@@ -48,8 +48,8 @@ logger = get_structured_logger(__name__)
 
 # Default cache TTL (seconds) per agent
 AGENT_CACHE_TTLS = {
-    "intent_classifier": 600,
-    "entity_extractor": 900,
+    "intent_classifier": 300,
+    "entity_extractor": 180,
     "query_generator": 120,
     "response_generator": 60,
 }
@@ -385,10 +385,8 @@ class BaseFinancialAgent(ABC):
             user_id = str(input_data.get("user_id", "anonymous"))
             if self.cache_manager:
                 cache_key = self._generate_cache_key(input_data)
-                cached_result_data = await self.cache_manager.get(cache_key)
-
                 cached_result_data = await self.cache_manager.get(cache_key, user_id)
-                
+
                 if cached_result_data:
                     processing_time_ms = int((time.time() - start_time) * 1000)
                     cached_result = True

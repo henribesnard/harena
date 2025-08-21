@@ -5,14 +5,12 @@ from fastapi import WebSocket, HTTPException, status
 from ..clients import OpenAIClient, SearchClient, CacheClient
 from openai_config import openai_config
 from config_service.config import settings
+from config.autogen_config import AutogenConfig, autogen_settings
 
 
 _openai_client: Optional[OpenAIClient] = None
 _search_client: Optional[SearchClient] = None
 _cache_client: Optional[CacheClient] = None
-from clients.cache_client import CacheClient
-from clients.openai_client import OpenAIClient
-from config.autogen_config import AutogenConfig, autogen_settings
 
 async def get_session_id(websocket: WebSocket) -> str:
     """Authenticate websocket connections using a session token.
@@ -55,25 +53,19 @@ async def get_search_client() -> SearchClient:
 
 
 async def get_cache_client() -> CacheClient:
-    """Return a shared :class:`CacheClient` instance."""
+    """Return a shared :class:`CacheClient` instance.
+
+    Requires ``REDIS_URL`` and ``REDIS_CACHE_PREFIX`` to be set in the
+    application settings.
+    """
 
     global _cache_client
     if _cache_client is None:
-        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379")
-        _cache_client = CacheClient(redis_url)
+        redis_url = settings.REDIS_URL
+        _cache_client = CacheClient(
+            redis_url, prefix=settings.REDIS_CACHE_PREFIX
+        )
     return _cache_client
-_cache_client = CacheClient()
-_openai_client = OpenAIClient(cache=_cache_client)
-
-
-def get_cache_client() -> CacheClient:
-    """Return the shared cache client instance."""
-    return _cache_client
-
-
-def get_openai_client() -> OpenAIClient:
-    """Return the shared OpenAI client configured with caching."""
-    return _openai_client
 
 
 def get_autogen_config() -> AutogenConfig:

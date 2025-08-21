@@ -90,6 +90,10 @@ import logging
 from typing import Dict, List, Optional
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
+from models.conversation_models import ConversationMessage
+from conversation_service.repository import ConversationRepository
 import httpx
 
 from models.conversation_models import ConversationMessage
@@ -107,6 +111,12 @@ logger = logging.getLogger(__name__)
         self._conversations: Dict[str, List[ConversationMessage]] = {}
         self._metrics = metrics or metrics_collector
 
+    def start_conversation(self, user_id: int, db: Session) -> str:
+        """Create a new conversation, persist it and return its identifier."""
+        conv_id = str(uuid4())
+        self._conversations[conv_id] = []
+        ConversationRepository(db).create(
+            user_id=user_id, conversation_id=conv_id
     def start_conversation(self, user_id: Optional[int] = None) -> str:
         """Create a new conversation and return its identifier."""
         start = time.time()
@@ -118,7 +128,9 @@ logger = logging.getLogger(__name__)
         )
         return conv_id
 
-    def get_history(self, conversation_id: str) -> Optional[List[ConversationMessage]]:
+    def get_history(
+        self, conversation_id: str
+    ) -> Optional[List[ConversationMessage]]:
         """Return history for a conversation or ``None`` if not found."""
         start = time.time()
         history = self._conversations.get(conversation_id)

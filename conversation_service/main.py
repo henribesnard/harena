@@ -5,6 +5,7 @@ includes the API routers.  It exposes an ``app`` object that can be used by
 ASGI servers such as Uvicorn.
 """
 
+import os
 import logging
 import time
 import asyncio

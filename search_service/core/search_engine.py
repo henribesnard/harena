@@ -163,12 +163,14 @@ class SearchEngine:
             es_response = await self._execute_search(es_query, request)
 
             # Traitement des résultats
-            results = self._process_results(es_response)
+            processed = self._process_results(es_response)
+            # Sécurité supplémentaire : filtrer par user_id côté application
+            results = [r for r in processed if r.user_id == request.user_id]
 
             # Calcul temps d'exécution
             execution_time = int((time.time() - start_time) * 1000)
 
-            total_results = self._get_total_hits(es_response)
+            total_results = len(results)
             returned_results = len(results)
 
             response = {

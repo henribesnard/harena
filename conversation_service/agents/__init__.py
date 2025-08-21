@@ -1,12 +1,10 @@
-"""Agent utilities for the conversation service."""
+"""Lightweight namespace package for conversation agents.
 
-from .base_agent import BaseFinancialAgent
-from .agent_team import AgentTeam
-from .context_manager import ContextManager
-from .entity_extractor import EntityExtractorAgent
-from .intent_classifier import IntentClassifierAgent
-from .query_generator import QueryGeneratorAgent
-from .response_generator import ResponseGeneratorAgent
+The original project exposes many agent implementations with heavy
+third‑party dependencies.  For the purposes of the kata the package keeps its
+initialisation minimal so that individual utility modules (like small caches or
+optimisers) can be imported in isolation during testing.
+"""
 
 __all__ = [
     "BaseFinancialAgent",

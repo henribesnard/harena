@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from agent_types import ChatMessage, Response
+
 from conversation_service.agents.entity_extractor_agent import (
     EntityExtractorAgent,
 )
@@ -57,6 +59,19 @@ class TeamOrchestrator:
         self._metrics = metrics_collector
         self._total_calls = 0
         self._error_calls = 0
+        self._conversation_id: Optional[str] = None
+        self._user_id: Optional[int] = None
+        self._db: Optional[Session] = None
+
+    async def run(self, task: str) -> Response:
+        """Execute the agent pipeline and wrap the final reply in a Response."""
+
+        if self._conversation_id is None or self._user_id is None or self._db is None:
+            raise RuntimeError("Conversation not initialised")
+        reply = await self.query_agents(
+            self._conversation_id, task, self._user_id, self._db
+        )
+        return Response(chat_message=ChatMessage(content=reply, source="assistant"))
 
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
@@ -184,6 +199,9 @@ class TeamOrchestrator:
             "user_id": user_id,
             "history": [asdict(m) for m in history],
         }
+        self._conversation_id = conv_id
+        self._user_id = user_id
+        self._db = db
         return conv_id
 
     def get_history(

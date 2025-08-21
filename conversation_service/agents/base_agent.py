@@ -377,7 +377,7 @@ class BaseFinancialAgent(ABC):
             if self.cache_manager:
                 cache_key = self._generate_cache_key(input_data)
                 cached_result_data = await self.cache_manager.get(cache_key)
-                
+
                 if cached_result_data:
                     processing_time_ms = int((time.time() - start_time) * 1000)
                     cached_result = True
@@ -395,7 +395,16 @@ class BaseFinancialAgent(ABC):
                         cache_key=cache_key[:16] + "...",
                         processing_time_ms=processing_time_ms
                     )
-                    
+
+                    if self.metrics_collector:
+                        await self.metrics_collector.record_agent_call(
+                            agent_name=self.config.name,
+                            success=True,
+                            processing_time_ms=processing_time_ms,
+                            tokens_used=0,
+                            cached=True,
+                        )
+
                     return AgentResponse(
                         agent_name=self.config.name,
                         success=True,
@@ -436,7 +445,8 @@ class BaseFinancialAgent(ABC):
                     agent_name=self.config.name,
                     success=True,
                     processing_time_ms=processing_time_ms,
-                    tokens_used=tokens_used
+                    tokens_used=tokens_used,
+                    cached=False,
                 )
             
             logger.debug(
@@ -478,7 +488,8 @@ class BaseFinancialAgent(ABC):
                     agent_name=self.config.name,
                     success=False,
                     processing_time_ms=processing_time_ms,
-                    error=error_message
+                    error=error_message,
+                    cached=False,
                 )
             
             logger.error(

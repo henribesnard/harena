@@ -36,11 +36,6 @@ logger = logging.getLogger(__name__)
 
 
 class TeamOrchestrator:
-    """Run a pipeline of assistant agents.
-
-    Each stage updates a shared ``ctx`` dictionary whose values are
-    consumed by the subsequent agents.
-    """
 
     def __init__(
         self,
@@ -49,8 +44,6 @@ class TeamOrchestrator:
         query_agent: Optional[QueryGeneratorAgent] = None,
         responder: Optional[ResponseGeneratorAgent] = None,
     ) -> None:
-
-        """Initialise the orchestrator with optional agent instances."""
         self._classifier = classifier
         self._extractor = extractor
         self._query_agent = query_agent
@@ -65,12 +58,6 @@ class TeamOrchestrator:
         self._db: Optional[Session] = None
 
     async def run(self, task: str, user_id: int, db: Session) -> Response:
-        """Execute the agent pipeline and wrap the final reply in a Response.
-
-        If the conversation has not yet been started, it is automatically
-        created along with its initial context.
-        """
-
         if self._conversation_id is None:
             # Lazily initialise conversation and context
             self.start_conversation(user_id, db)
@@ -87,7 +74,6 @@ class TeamOrchestrator:
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
-        """Run the agent pipeline for a user message and return the reply."""
         start = time.time()
         history_models = self.get_history(conversation_id, db) or []
         ctx: Dict[str, Any] = {
@@ -183,7 +169,6 @@ class TeamOrchestrator:
         conversation_id: str,
         user_id: int,
     ) -> Dict[str, Any]:
-        """Execute ``agent`` with ``payload`` and persist its output."""
         if agent is None:
             return context
 
@@ -214,7 +199,6 @@ class TeamOrchestrator:
         return context
 
     def start_conversation(self, user_id: int, db: Session) -> str:
-        """Create a new conversation and preload its history."""
         conv_id = uuid.uuid4().hex
         ConversationRepository(db).create(user_id, conv_id)
         history = ConversationMessageRepository(db).list_models(conv_id)
@@ -230,14 +214,12 @@ class TeamOrchestrator:
     def get_history(
         self, conversation_id: str, db: Session
     ) -> Optional[List[ConversationMessage]]:
-        """Return the persisted history for ``conversation_id`` if it exists."""
         repo = ConversationRepository(db)
         if repo.get_by_conversation_id(conversation_id) is None:
             return None
         return ConversationMessageRepository(db).list_models(conversation_id)
 
     def get_error_metrics(self) -> Dict[str, float]:
-        """Return counters summarising orchestrator errors."""
         return {
             "total_calls": float(self._total_calls),
             "error_calls": float(self._error_calls),

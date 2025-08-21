@@ -17,12 +17,16 @@ class EntityExtractionCache:
     """Simple in-memory cache for extracted entities."""
 
     def __init__(self) -> None:
-        self._store: Dict[str, Tuple[float, List[FinancialEntity]]] = {}
+        # Cache extracted entities along with the timestamp they were cached
+        # to allow TTL-based invalidation.
+        self._store: Dict[str, Tuple[List[FinancialEntity], float]] = {}
         self.hits: int = 0
 
     @staticmethod
     def _make_key(user_id: str, message: str, intent: str) -> str:
-        return f"{user_id}:{message}:{intent}"
+        # Include intent before the message to avoid collisions when the
+        # same message is used for different intents.
+        return f"{user_id}:{intent}:{message}"
 
     def get(
         self, user_id: str, message: str, intent: str, ttl: int = 180
@@ -31,8 +35,8 @@ class EntityExtractionCache:
         entry = self._store.get(key)
         if entry is None:
             return None
-        inserted_at, entities = entry
-        if time.time() - inserted_at > ttl:
+        entities, timestamp = entry
+        if time.time() - timestamp > ttl:
             self._store.pop(key, None)
             return None
         self.hits += 1
@@ -47,7 +51,7 @@ class EntityExtractionCache:
         ttl: int = 180,
     ) -> None:
         key = self._make_key(user_id, message, intent)
-        self._store[key] = (time.time(), entities)
+        self._store[key] = (entities, time.time())
 
     def clear(self) -> None:
         self._store.clear()

@@ -38,6 +38,20 @@ class ConversationMessageRepository:
         role: str,
         content: str,
     ) -> ConversationMessageDB:
+        """Persist a new message to the database.
+
+        Parameters mirror the columns of :class:`ConversationMessageDB` so
+        that callers can explicitly state the ``conversation_id`` and
+        ``user_id`` associated with the message along with its ``role`` and
+        textual ``content``.
+
+        Returns
+        -------
+        ConversationMessageDB
+            The newly created ORM instance with an assigned primary key and
+            timestamps.
+        """
+
         msg = ConversationMessageDB(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -53,7 +67,9 @@ class ConversationMessageRepository:
         return (
             self._db.query(ConversationMessageDB)
             .filter(ConversationMessageDB.conversation_id == conversation_id)
-            .order_by(ConversationMessageDB.id)
+            # ``created_at`` is more explicit for chronological ordering than the
+            # auto-incremented primary key.
+            .order_by(ConversationMessageDB.created_at)
             .all()
         )
 
@@ -77,3 +93,6 @@ class ConversationMessageRepository:
             for m in self.list_by_conversation(conversation_id)
             if m.role in {"user", "assistant"}
         ]
+
+
+__all__ = ["ConversationMessageRepository", "ConversationMessage"]

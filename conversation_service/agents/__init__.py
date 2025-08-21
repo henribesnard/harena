@@ -1,35 +1,19 @@
-"""Agent utilities for the conversation service.
+"""Lightweight package initializer for conversation agents.
 
-Only lightweight utilities are imported eagerly to keep the package usable in
-restricted test environments where optional dependencies (like ``aiohttp`` or
-``autogen``) may not be installed.  The production agents can still be
-imported directly from their respective modules when needed.
+Only small utility modules are imported eagerly so that tests can run in a
+minimal environment without optional third‑party dependencies.  Full agent
+implementations can be imported from their respective modules when required.
 """
 
-try:  # pragma: no cover - optional imports for test friendliness
+from __future__ import annotations
+
+try:  # pragma: no cover - optional import for test friendliness
     from .query_generator_agent import QueryOptimizer
 except Exception:  # pragma: no cover
     QueryOptimizer = object  # type: ignore
 
-__all__ = ["QueryOptimizer"]
-
-"""Lightweight namespace package for conversation agents.
-
-The original project exposes many agent implementations with heavy
-third‑party dependencies.  For the purposes of the kata the package keeps its
-initialisation minimal so that individual utility modules (like small caches or
-optimisers) can be imported in isolation during testing.
-"""Lightweight package initializer for conversation agents.
-
-The original project exposes many agent implementations which pull in optional
-runtime dependencies.  For the purposes of the tests in this kata we avoid
-importing those heavy modules at import time to keep the environment minimal.
-
-Only the lightweight wrapper modules are guaranteed to be available.  They can
-be imported directly, e.g. ``conversation_service.agents.intent_classifier_agent``.
-"""
-
 __all__ = [
+    "QueryOptimizer",
     "intent_classifier_agent",
     "entity_extractor_agent",
     "query_generator_agent",

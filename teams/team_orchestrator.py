@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 """Simple orchestrator chaining intent classification, entity extraction,
 query generation and response production."""
+from __future__ import annotations
 
 import json
 import logging

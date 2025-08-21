@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
+import json
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-import httpx
 from sqlalchemy.orm import Session
 
 from conversation_service.core.metrics_collector import (
@@ -21,14 +20,27 @@ from models.conversation_models import (
     ConversationMessage as ConversationMessageModel,
 )
 
+from agent_types import ChatMessage, TaskResult
 logger = logging.getLogger(__name__)
 
 
 class TeamOrchestrator:
     """Coordinate agent interactions and store message history."""
 
-    def __init__(self, metrics: Optional[MetricsCollector] = None) -> None:
+    def __init__(
+        self,
+        metrics: Optional[MetricsCollector] = None,
+        classifier=None,
+        extractor=None,
+        query_agent=None,
+        responder=None,
+    ) -> None:
         self._metrics = metrics or metrics_collector
+        self._classifier = classifier
+        self._extractor = extractor
+        self._query_agent = query_agent
+        self._responder = responder
+        self.context: Dict[str, Any] = {}
         self._total_calls = 0
         self._error_calls = 0
 
@@ -53,10 +65,53 @@ class TeamOrchestrator:
             ConversationMessageModel(role=m.role, content=m.content) for m in msgs
         ]
 
-    async def _call_agent(self, message: str) -> str:
-        async with httpx.AsyncClient() as _client:
-            await asyncio.sleep(0)
-        return f"Echo: {message}"
+    async def _call_agent(
+        self,
+        agent,
+        context: Dict[str, Any],
+        repo: ConversationMessageRepository,
+        conversation_id: str,
+        user_id: int,
+    ) -> Dict[str, Any]:
+        if not agent:
+            return context
+        agent_name = getattr(getattr(agent, "config", None), "name", agent.__class__.__name__)
+        input_payload = {"user_message": context.get("user_message", ""), "context": context}
+        repo.add(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role=f"{agent_name}_input",
+            content=json.dumps(input_payload),
+        )
+        result = await agent.process(input_payload)
+        output = result.result if result and getattr(result, "result", None) else {}
+        repo.add(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role=f"{agent_name}_output",
+            content=json.dumps(output),
+        )
+        if isinstance(output, dict):
+            context.update(output)
+        return context
+
+    async def run(self, task: str) -> TaskResult:
+        """Execute assistant agents sequentially and track context."""
+        messages = [ChatMessage(content=task, source="user")]
+        self.context = {}
+        for agent in [
+            self._classifier,
+            self._extractor,
+            self._query_agent,
+            self._responder,
+        ]:
+            if not agent:
+                continue
+            response = await agent.on_messages(messages, None)
+            msg = response.chat_message
+            messages.append(msg)
+            self.context[getattr(agent, "name", agent.__class__.__name__)] = msg.content
+        return TaskResult(messages=messages)
 
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
@@ -71,7 +126,20 @@ class TeamOrchestrator:
         )
         self._total_calls += 1
         try:
-            reply = await self._call_agent(message)
+            context: Dict[str, Any] = {"user_message": message, "user_id": user_id}
+            context = await self._call_agent(
+                self._classifier, context, repo, conversation_id, user_id
+            )
+            context = await self._call_agent(
+                self._extractor, context, repo, conversation_id, user_id
+            )
+            context = await self._call_agent(
+                self._query_agent, context, repo, conversation_id, user_id
+            )
+            context = await self._call_agent(
+                self._responder, context, repo, conversation_id, user_id
+            )
+            reply = context.get("response", "")
         except Exception:
             self._error_calls += 1
             logger.exception("Agent processing failed")

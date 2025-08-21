@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, List
 
+from sqlalchemy.orm import Session
+
 from agent_types import ChatMessage, TaskResult
 
 

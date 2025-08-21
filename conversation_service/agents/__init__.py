@@ -12,6 +12,10 @@ try:  # pragma: no cover - optional import
     from .query_generator_agent import QueryOptimizer
 except Exception:  # pragma: no cover - fallback when dependency missing
     QueryOptimizer = object  # type: ignore
+try:  # pragma: no cover - optional utility
+    from .query_generator_agent import QueryOptimizer
+except Exception:  # pragma: no cover - fallback when dependency missing
+    QueryOptimizer = object  # type: ignore[misc, assignment]
 
 __all__ = [
     "QueryOptimizer",
@@ -20,3 +24,4 @@ __all__ = [
     "query_generator_agent",
     "response_generator_agent",
 ]
+

@@ -85,6 +85,8 @@ class TeamOrchestrator:
         }
 
         repo = ConversationMessageRepository(db)
+        # Store the incoming user message so that subsequent calls have access to
+        # the full conversation history.
         repo.add(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -149,6 +151,7 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
+        # Persist the assistant's reply as the last turn in the conversation.
         repo.add(
             conversation_id=conversation_id,
             user_id=user_id,

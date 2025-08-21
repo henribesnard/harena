@@ -52,6 +52,8 @@ class ConversationMessageRepository:
             timestamps.
         """
 
+        # Create and immediately persist the ORM model so that callers can
+        # query it straight away (for example to build conversation history).
         msg = ConversationMessageDB(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -64,6 +66,8 @@ class ConversationMessageRepository:
         return msg
 
     def list_by_conversation(self, conversation_id: str) -> List[ConversationMessageDB]:
+        """Return ORM messages for ``conversation_id`` ordered chronologically."""
+
         return (
             self._db.query(ConversationMessageDB)
             .filter(ConversationMessageDB.conversation_id == conversation_id)

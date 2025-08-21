@@ -60,6 +60,7 @@ class TeamOrchestrator(Team):
         else:
             raise ValueError("Task must be a string or TextMessage")
 
+import time
         outputs: list[AgentEvent | ChatMessage] = [message]
 
         # Intent classification
@@ -92,12 +93,42 @@ from uuid import uuid4
 import httpx
 
 from models.conversation_models import ConversationMessage
+from conversation_service.core.metrics_collector import (
+    MetricsCollector,
+    metrics_collector,
+)
 
 logger = logging.getLogger(__name__)
 
 
         return TaskResult(messages=outputs)
 
+    def __init__(self, metrics: Optional[MetricsCollector] = None) -> None:
+        self._conversations: Dict[str, List[ConversationMessage]] = {}
+        self._metrics = metrics or metrics_collector
+
+    def start_conversation(self, user_id: Optional[int] = None) -> str:
+        """Create a new conversation and return its identifier."""
+        start = time.time()
+        conv_id = str(uuid4())
+        self._conversations[conv_id] = []
+        duration = (time.time() - start) * 1000
+        self._metrics.record_orchestrator_call(
+            operation="start_conversation", success=True, processing_time_ms=duration
+        )
+        return conv_id
+
+    def get_history(self, conversation_id: str) -> Optional[List[ConversationMessage]]:
+        """Return history for a conversation or ``None`` if not found."""
+        start = time.time()
+        history = self._conversations.get(conversation_id)
+        duration = (time.time() - start) * 1000
+        self._metrics.record_orchestrator_call(
+            operation="get_history",
+            success=history is not None,
+            processing_time_ms=duration,
+        )
+        return history
     def run_stream(
         self,
         *,
@@ -173,6 +204,9 @@ logger = logging.getLogger(__name__)
         Errors are logged and surfaced with user-friendly messages. The current
         behaviour echoes the user's message as a placeholder.
         """
+        start = time.time()
+        history = self._conversations.setdefault(conversation_id, [])
+        history.append(ConversationMessage(role="user", content=message))
         self._total_calls += 1
         try:
             history = self._conversations.setdefault(conversation_id, [])
@@ -189,6 +223,11 @@ logger = logging.getLogger(__name__)
             logger.exception("Agent processing failed")
             reply = "Désolé, une erreur est survenue lors du traitement de votre demande."
         history.append(ConversationMessage(role="assistant", content=reply))
+
+        duration = (time.time() - start) * 1000
+        self._metrics.record_orchestrator_call(
+            operation="query_agents", success=True, processing_time_ms=duration
+        )
         return reply
 
     def get_error_metrics(self) -> Dict[str, float]:

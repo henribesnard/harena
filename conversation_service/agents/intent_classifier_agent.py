@@ -1,3 +1,4 @@
+"""Utilities for intent classification agents used in tests."""
 """Minimal utilities for intent classification agents used in tests."""
 """Intent classification utilities with Redis-backed cache."""
 
@@ -7,6 +8,7 @@ import asyncio
 import os
 from typing import Optional
 
+try:  # pragma: no cover - optional heavy dependency
 try:  # pragma: no cover - optional runtime dependency
 """Utility helpers for intent classification agents."""
 
@@ -45,11 +47,17 @@ class IntentClassificationCache:
         self._store: Dict[str, IntentResult] = {}
         self.hits: int = 0
 
+    def set(self, message: str, result: IntentResult) -> None:
+        """Store ``result`` for ``message`` in the cache."""
+        self._store[message] = result
+
+
     def get(self, message: str) -> Optional[IntentResult]:
         result = self._store.get(message)
         if result is not None:
             self.hits += 1
         return result
+
 
     def set(self, message: str, result: IntentResult) -> None:
 

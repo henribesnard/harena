@@ -1,9 +1,14 @@
 import os
 from pathlib import Path
 
-from settings import Settings, settings
-from openai_config import OpenAIConfig
-from autogen_config import AutoGenConfig
+from config import (
+    get_autogen_config,
+    get_openai_config,
+    get_settings,
+)
+from config.settings import Settings
+from config.openai_config import OpenAIConfig
+from config.autogen_config import AutoGenConfig
 
 
 def test_settings_reads_env(monkeypatch):
@@ -29,3 +34,9 @@ def test_autogen_config_builds_params(monkeypatch):
     assert params.name == "unit-agent"
     assert params.model_client_config["api_key"] == "sk-test2"
     assert params.system_message == "hello"
+
+
+def test_get_helpers_use_singletons():
+    assert get_settings() is get_settings()
+    assert get_openai_config() is get_openai_config()
+    assert get_autogen_config() is get_autogen_config()

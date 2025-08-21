@@ -202,8 +202,8 @@ class ConversationMessage(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     conversation_id = Column(
-        String(255),
-        ForeignKey("conversations.conversation_id", ondelete="CASCADE"),
+        Integer,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

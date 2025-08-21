@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 
-from conversation_service.api.dependencies import get_db
+from db_service.session import get_db
 from user_service.api.deps import get_current_active_user, get_current_active_superuser
 from db_service.models.user import User
 from db_service.models.sync import BridgeCategory

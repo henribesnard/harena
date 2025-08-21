@@ -17,12 +17,11 @@ def test_entity_cache_store_and_retrieve():
         normalized_value="Amazon",
         confidence=0.95
     )
-    cache.set("user1", "Spent at Amazon", "MERCHANT_ANALYSIS", [entity])
+    cache.set("user1", "MERCHANT_ANALYSIS", "Spent at Amazon", [entity])
 
-    cached = cache.get("user1", "Spent at Amazon", "MERCHANT_ANALYSIS")
+    cached = cache.get("user1", "MERCHANT_ANALYSIS", "Spent at Amazon")
     assert cached is not None
-    assert cached["cached"] is True
-    assert len(cached["entities"]) == 1
+    assert len(cached) == 1
     assert cache.hits == 1
 
 
@@ -34,8 +33,8 @@ def test_entity_cache_ttl_expiry():
         normalized_value="Amazon",
         confidence=0.95,
     )
-    cache.set("user1", "Will this expire?", "MERCHANT_ANALYSIS", [entity], ttl=1)
+    cache.set("user1", "MERCHANT_ANALYSIS", "Will this expire?", [entity], ttl=1)
 
     time.sleep(1.1)
-    cached = cache.get("user1", "Will this expire?", "MERCHANT_ANALYSIS", ttl=1)
+    cached = cache.get("user1", "MERCHANT_ANALYSIS", "Will this expire?", ttl=1)
     assert cached is None

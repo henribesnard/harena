@@ -32,15 +32,18 @@ class EntityExtractionCache:
         self.hits: int = 0
 
     @staticmethod
-    def _make_key(user_id: str, message: str, intent: str) -> str:
-        # Include intent before the message to avoid collisions when the
-        # same message is used for different intents.
+    def _make_key(user_id: str, intent: str, message: str) -> str:
+        """Create a cache key for ``user_id``/``intent``/``message``.
+
+        The intent is placed before the message to avoid collisions when the
+        same message is used for different intents.
+        """
         return f"{user_id}:{intent}:{message}"
 
     def get(
-        self, user_id: str, message: str, intent: str, ttl: int = DEFAULT_TTL
-    ) -> Optional[Dict[str, object]]:
-        key = self._make_key(user_id, message, intent)
+        self, user_id: str, intent: str, message: str, ttl: int = DEFAULT_TTL
+    ) -> Optional[List[FinancialEntity]]:
+        key = self._make_key(user_id, intent, message)
         entry = self._store.get(key)
         if entry is None:
             return None
@@ -49,17 +52,17 @@ class EntityExtractionCache:
             self._store.pop(key, None)
             return None
         self.hits += 1
-        return {"entities": entities, "cached": True}
+        return entities
 
     def set(
         self,
         user_id: str,
-        message: str,
         intent: str,
+        message: str,
         entities: List[FinancialEntity],
         ttl: int = DEFAULT_TTL,
     ) -> None:
-        key = self._make_key(user_id, message, intent)
+        key = self._make_key(user_id, intent, message)
         self._store[key] = (entities, time.time())
 
     def clear(self) -> None:

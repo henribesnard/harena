@@ -18,10 +18,10 @@ from ..models.core_models import IntentResult
 class IntentClassificationCache:
     """Simple in-memory cache for intent classification results.
 
-    Cached entries are identified by the combination of ``user_id`` and
-    the original ``message`` (``"{user_id}:{message}"``) and expire after
-    ``DEFAULT_TTL`` seconds unless a different ``ttl`` is explicitly
-    provided when calling :meth:`set` or :meth:`get`.
+    Each entry stores the :class:`~conversation_service.models.core_models.IntentResult`
+    together with the timestamp of when it was cached. Entries are keyed by
+    ``"{user_id}:{message}"`` and are invalidated when the current time exceeds
+    ``timestamp + ttl``.
     """
 
     def __init__(self) -> None:

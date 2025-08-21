@@ -49,17 +49,16 @@ class QueryGeneratorAgent(BaseFinancialAgent):
         context = input_data.get("context", {})
         user_id = context.get("user_id")
 
-        payload = {
-            "user_id": user_id,
-            "query": context.get("query", ""),
-            "filters": context.get("filters") or {},
-            "aggregations": context.get("aggregations"),
-        }
-
-        payload.setdefault("filters", {})["user_id"] = user_id
+        filters = (context.get("filters") or {}).copy()
+        filters["user_id"] = user_id
 
         try:
-            search_request = SearchRequest(**payload)
+            search_request = SearchRequest(
+                user_id=user_id,
+                query=context.get("query", ""),
+                filters=filters,
+                aggregations=context.get("aggregations"),
+            )
         except ValidationError:
             # If validation fails we do not query the search service
             return None

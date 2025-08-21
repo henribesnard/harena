@@ -1,3 +1,5 @@
+"""Application entrypoint for the Harena FastAPI service."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +9,8 @@ from config.settings import settings
 
 
 def create_app() -> FastAPI:
+    """Instantiate and configure the FastAPI application."""
+
     app = FastAPI(title=settings.APP_TITLE, version=settings.APP_VERSION)
 
     app.include_router(api_router)

@@ -7,6 +7,11 @@ implementations can be imported from their respective modules when required.
 
 from __future__ import annotations
 
+# Query optimizer is used across tests; import lazily to keep dependencies light.
+try:  # pragma: no cover - optional import
+    from .query_generator_agent import QueryOptimizer
+except Exception:  # pragma: no cover - fallback when dependency missing
+    QueryOptimizer = object  # type: ignore
 try:  # pragma: no cover - optional utility
     from .query_generator_agent import QueryOptimizer
 except Exception:  # pragma: no cover - fallback when dependency missing

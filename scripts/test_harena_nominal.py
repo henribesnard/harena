@@ -8,6 +8,9 @@ les vraies transactions de l'utilisateur 34:
 3. Synchronisation enrichment Elasticsearch
 4. Health check enrichment service
 5. Recherche de transactions
+6. Démarrage conversation
+7. Envoi message de chat
+8. Vérification historique de conversation
 
 Usage:
     python test_harena_real_data.py
@@ -38,6 +41,9 @@ class HarenaRealDataTestClient:
         self.base_url = base_url.rstrip('/')
         self.token: Optional[str] = None
         self.user_id: Optional[int] = None
+        self.conversation_id: Optional[str] = None
+        self.last_user_message: Optional[str] = None
+        self.last_agent_reply: Optional[str] = None
         self.session = requests.Session()
         self.session.timeout = REQUEST_TIMEOUT
         self.logger = logger or logging.getLogger(__name__)
@@ -192,6 +198,81 @@ class HarenaRealDataTestClient:
         else:
             self.logger.error("❌ Échec récupération profil")
             return False
+
+    def test_start_conversation(self) -> bool:
+        """Test 6: Démarrage d'une conversation."""
+        self._print_step(6, "DÉMARRAGE CONVERSATION")
+
+        if not self.token:
+            self.logger.error("❌ Pas de token disponible")
+            return False
+
+        response = self._make_request("POST", "/conversation/start")
+        success, json_data = self._print_response(response)
+
+        if success and json_data and "conversation_id" in json_data:
+            self.conversation_id = json_data["conversation_id"]
+            self.logger.info(f"✅ Conversation ID: {self.conversation_id}")
+            return True
+        else:
+            self.logger.error("❌ Échec démarrage conversation")
+            return False
+
+    def test_chat_message(self) -> bool:
+        """Test 7: Envoi d'un message simple dans la conversation."""
+        self._print_step(7, "MESSAGE DE CHAT")
+
+        if not self.conversation_id:
+            self.logger.error("❌ ID conversation non disponible")
+            return False
+
+        message = "Bonjour"
+        payload = {"message": message}
+        endpoint = f"/conversation/{self.conversation_id}/query"
+
+        response = self._make_request("POST", endpoint, json=payload)
+        success, json_data = self._print_response(response)
+
+        if success and json_data and "reply" in json_data:
+            self.last_user_message = message
+            self.last_agent_reply = json_data["reply"]
+            self.logger.info("✅ Message de chat envoyé et réponse reçue")
+            return True
+        else:
+            self.logger.error("❌ Échec envoi message de chat")
+            return False
+
+    def test_conversation_history(self) -> bool:
+        """Test 8: Vérification de l'historique de conversation."""
+        self._print_step(8, "HISTORIQUE CONVERSATION")
+
+        if not self.conversation_id:
+            self.logger.error("❌ ID conversation non disponible")
+            return False
+
+        endpoint = f"/conversation/{self.conversation_id}/history"
+        response = self._make_request("GET", endpoint)
+        success, json_data = self._print_response(response)
+
+        if success and json_data:
+            messages = json_data.get("messages", [])
+            user_ok = any(
+                m.get("role") == "user"
+                and m.get("content") == self.last_user_message
+                and m.get("user_id") == self.user_id
+                for m in messages
+            )
+            assistant_ok = any(
+                m.get("role") == "assistant"
+                and m.get("content") == self.last_agent_reply
+                for m in messages
+            )
+            if user_ok and assistant_ok:
+                self.logger.info("✅ Historique contient les messages attendus")
+                return True
+
+        self.logger.error("❌ Historique de conversation incomplet")
+        return False
     
     def test_enrichment_sync(self) -> bool:
         """Test 3: Synchronisation enrichment Elasticsearch."""
@@ -331,8 +412,8 @@ class HarenaRealDataTestClient:
             self.logger.error("❌ Échec recherche validation")
             return False
     
-    def run_full_test(self, username: str, password: str) -> bool:
-        """Lance le test complet avec données réelles."""
+    def run_all_tests(self, username: str, password: str) -> bool:
+        """Lance l'ensemble des tests avec données réelles."""
         self.logger.info("🚀 DÉBUT DU TEST AUTOMATIQUE HARENA - DONNÉES RÉELLES")
         self.logger.info(f"Base URL: {self.base_url}")
         self.logger.info(f"Username: {username}")
@@ -341,7 +422,7 @@ class HarenaRealDataTestClient:
         
         # Compteur de succès
         tests_passed = 0
-        total_tests = 5
+        total_tests = 8
         
         # Test 1: Login
         if self.test_login(username, password):
@@ -367,6 +448,18 @@ class HarenaRealDataTestClient:
         
         # Test 5: Validation recherche
         if self.test_search_validation():
+            tests_passed += 1
+
+        # Test 6: Démarrage conversation
+        if self.test_start_conversation():
+            tests_passed += 1
+
+        # Test 7: Message de chat
+        if self.test_chat_message():
+            tests_passed += 1
+
+        # Test 8: Historique conversation
+        if self.test_conversation_history():
             tests_passed += 1
 
         # Résumé final
@@ -421,7 +514,7 @@ def main():
     
     # Lancer le test complet
     try:
-        success = client.run_full_test(args.username, args.password)
+        success = client.run_all_tests(args.username, args.password)
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         logger.warning("\n\n⚠️ Test interrompu par l'utilisateur")

@@ -1,5 +1,6 @@
 """Simple orchestrator chaining intent classification, entity extraction,
 query generation and response production."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,24 +14,24 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from agent_types import ChatMessage, Response
-
 from conversation_service.agents.entity_extractor_agent import (
     EntityExtractorAgent,
 )
 from conversation_service.agents.intent_classifier_agent import (
     IntentClassifierAgent,
 )
-from conversation_service.agents.query_generator_agent import QueryGeneratorAgent
+from conversation_service.agents.query_generator_agent import (
+    QueryGeneratorAgent,
+)
 from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
 from conversation_service.message_repository import (
-    ConversationMessageRepository,
     ConversationMessage,
+    ConversationMessageRepository,
 )
 from conversation_service.repository import ConversationRepository
-
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,6 @@ class TeamOrchestrator:
         query_agent: Optional[QueryGeneratorAgent] = None,
         responder: Optional[ResponseGeneratorAgent] = None,
     ) -> None:
-
         """Initialise the orchestrator with optional agent instances."""
         self._classifier = classifier
         self._extractor = extractor
@@ -248,4 +248,3 @@ class TeamOrchestrator:
 
 
 __all__ = ["TeamOrchestrator"]
-

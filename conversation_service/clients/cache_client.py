@@ -17,7 +17,17 @@ from redis.exceptions import RedisError
 
 
 class CacheClient:
-    """Asynchronous Redis cache helper with retry logic."""
+    """Asynchronous Redis cache helper with retry logic.
+
+    Parameters
+    ----------
+    url:
+        Redis connection URL.
+    prefix:
+        Prefix applied to all cache keys.
+    max_retries:
+        Number of retry attempts on failures.
+    """
 
     def __init__(
         self,

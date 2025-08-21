@@ -6,9 +6,15 @@ implementations can be imported directly from their modules when required.
 """
 
 try:  # pragma: no cover - optional import
+"""Lightweight namespace for conversation agents."""
+
+try:  # pragma: no cover - optional utility
     from .query_generator_agent import QueryOptimizer
 except Exception:  # pragma: no cover - fallback when dependency missing
     QueryOptimizer = object  # type: ignore
+
+__all__ = ["QueryOptimizer"]
+"""Lightweight namespace package for conversation agents."""
 
 __all__ = [
     "QueryOptimizer",

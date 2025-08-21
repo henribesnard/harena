@@ -11,6 +11,7 @@ import uuid
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
+import sqlalchemy
 from sqlalchemy.orm import Session
 
 from agent_types import ChatMessage, Response
@@ -205,9 +206,25 @@ class TeamOrchestrator:
         return context
 
     def start_conversation(self, user_id: int, db: Session) -> str:
+        """Start a new conversation and load any existing history.
+
+        If the conversation messages table has not been created yet, an empty
+        history is returned instead of raising an error.
+
+        Args:
+            user_id: Identifier for the user starting the conversation.
+            db: SQLAlchemy session used for persistence.
+
+        Returns:
+            The identifier of the newly created conversation.
+        """
+
         conv_id = uuid.uuid4().hex
         ConversationRepository(db).create(user_id, conv_id)
-        history = ConversationMessageRepository(db).list_models(conv_id)
+        try:
+            history = ConversationMessageRepository(db).list_models(conv_id)
+        except sqlalchemy.exc.ProgrammingError:
+            history = []
         self.context = {
             "user_id": user_id,
             "history": [asdict(m) for m in history],

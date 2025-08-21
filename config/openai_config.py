@@ -16,7 +16,9 @@ class OpenAIConfig(BaseSettings):
     timeout: int = 30
 
     # Environment variables are prefixed with ``OPENAI_``
-    model_config = SettingsConfigDict(env_prefix="OPENAI_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore", env_prefix="OPENAI_", env_file=".env"
+    )
 
 
 # ``get_openai_config`` in :mod:`config` should be used instead of creating

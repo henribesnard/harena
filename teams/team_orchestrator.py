@@ -1,105 +1,29 @@
-"""Simple orchestrator that persists conversation messages to the database."""
+"""Simple orchestrator that chains classification, extraction, querying and response."""
 
-from __future__ import annotations
-
-import json
-import logging
-import time
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
-
-from sqlalchemy.orm import Session
-
-from conversation_service.core.metrics_collector import (
-    MetricsCollector,
-    metrics_collector,
-)
-from conversation_service.message_repository import ConversationMessageRepository
-from conversation_service.repository import ConversationRepository
-from models.conversation_models import (
-    ConversationMessage as ConversationMessageModel,
-)
+from typing import Any, Dict, List
 
 from agent_types import ChatMessage, TaskResult
 
-logger = logging.getLogger(__name__)
-
 
 class TeamOrchestrator:
-    """Coordinate agent interactions and store message history."""
+    """Run a pipeline of assistant agents sequentially."""
 
     def __init__(
         self,
-        metrics: Optional[MetricsCollector] = None,
-        classifier=None,
-        extractor=None,
-        query_agent=None,
-        responder=None,
+        classifier,
+        extractor,
+        query_agent,
+        responder,
     ) -> None:
-        self._metrics = metrics or metrics_collector
         self._classifier = classifier
         self._extractor = extractor
         self._query_agent = query_agent
         self._responder = responder
         self.context: Dict[str, Any] = {}
-        self._total_calls = 0
-        self._error_calls = 0
-
-    def start_conversation(self, user_id: int, db: Session) -> str:
-        start = time.time()
-        conv_id = str(uuid4())
-        ConversationRepository(db).create(user_id=user_id, conversation_id=conv_id)
-        duration = (time.time() - start) * 1000
-        self._metrics.record_orchestrator_call(
-            operation="start_conversation", success=True, processing_time_ms=duration
-        )
-        return conv_id
-
-    def get_history(
-        self, conversation_id: str, db: Session
-    ) -> Optional[List[ConversationMessageModel]]:
-        repo = ConversationMessageRepository(db)
-        msgs = repo.list_models(conversation_id)
-        return msgs or None
-
-    async def _call_agent(
-        self,
-        agent,
-        context: Dict[str, Any],
-        repo: ConversationMessageRepository,
-        conversation_id: str,
-        user_id: int,
-    ) -> Dict[str, Any]:
-        if not agent:
-            return context
-        agent_name = getattr(
-            getattr(agent, "config", None), "name", agent.__class__.__name__
-        )
-        input_payload = {
-            "user_message": context.get("user_message", ""),
-            "context": context,
-        }
-        repo.add(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            role=f"{agent_name}_input",
-            content=json.dumps(input_payload),
-        )
-        result = await agent.process(input_payload)
-        output = result.result if result and getattr(result, "result", None) else {}
-        repo.add(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            role=f"{agent_name}_output",
-            content=json.dumps(output),
-        )
-        if isinstance(output, dict):
-            context.update(output)
-        return context
 
     async def run(self, task: str) -> TaskResult:
-        """Execute assistant agents sequentially and track context."""
-        messages = [ChatMessage(content=task, source="user")]
+        """Execute the pipeline and return the resulting messages."""
+        messages: List[ChatMessage] = [ChatMessage(content=task, source="user")]
         self.context = {}
         for agent in [
             self._classifier,
@@ -107,12 +31,13 @@ class TeamOrchestrator:
             self._query_agent,
             self._responder,
         ]:
-            if not agent:
+            if agent is None:
                 continue
             response = await agent.on_messages(messages, None)
             msg = response.chat_message
             messages.append(msg)
-            self.context[getattr(agent, "name", agent.__class__.__name__)] = msg.content
+            name = getattr(agent, "name", agent.__class__.__name__)
+            self.context[name] = msg.content
         return TaskResult(messages=messages)
 
     async def query_agents(
@@ -173,3 +98,4 @@ class TeamOrchestrator:
                 self._error_calls / self._total_calls if self._total_calls else 0.0
             ),
         }
+

@@ -7,7 +7,20 @@ sys.modules.setdefault("conversation_service.models.agent_models", types.SimpleN
 sys.modules.setdefault("conversation_service.base_agent", types.SimpleNamespace(BaseFinancialAgent=object))
 sys.modules.setdefault("conversation_service.core.cache_manager", types.SimpleNamespace(CacheManager=object))
 sys.modules.setdefault("conversation_service.core.metrics_collector", types.SimpleNamespace(MetricsCollector=object))
-sys.modules.setdefault("conversation_service.utils.logging", types.SimpleNamespace(get_structured_logger=lambda name: None))
+
+
+class DummyLogger:
+    def info(self, *args, **kwargs):
+        pass
+
+    def exception(self, *args, **kwargs):
+        pass
+
+
+sys.modules.setdefault(
+    "conversation_service.utils.logging",
+    types.SimpleNamespace(get_structured_logger=lambda name: DummyLogger()),
+)
 
 import conversation_service.models.core_models as core_models
 

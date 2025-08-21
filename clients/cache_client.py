@@ -32,7 +32,10 @@ class CacheClient:
         if expires_at is not None and expires_at < time.time():
             # Expired entry
             self._store.pop(namespaced_key, None)
-            logger.debug("Cache miss due to expiration", key=namespaced_key)
+            logger.debug(
+                "Cache miss due to expiration",
+                extra={"key": namespaced_key},
+            )
             return None
         return value
 
@@ -41,7 +44,10 @@ class CacheClient:
         namespaced_key = self._format_key(user_id, key)
         expires_at = time.time() + ttl if ttl is not None else None
         self._store[namespaced_key] = (expires_at, value)
-        logger.debug("Cache set", key=namespaced_key, ttl=ttl)
+        logger.debug(
+            "Cache set",
+            extra={"key": namespaced_key, "ttl": ttl},
+        )
 
     async def clear(self) -> None:
         """Remove all items from the cache."""

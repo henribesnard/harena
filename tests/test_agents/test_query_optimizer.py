@@ -10,17 +10,11 @@ class _DummyAssistantAgent:
         pass
 
 
-class _DummyLogger:
+class DummyLogger:
     def info(self, *args, **kwargs):
         pass
 
-    def debug(self, *args, **kwargs):
-        pass
-
-    def warning(self, *args, **kwargs):
-        pass
-
-    def error(self, *args, **kwargs):
+    def exception(self, *args, **kwargs):
         pass
 
 
@@ -31,7 +25,7 @@ sys.modules.setdefault("conversation_service.core.cache_manager", types.SimpleNa
 sys.modules.setdefault("conversation_service.core.metrics_collector", types.SimpleNamespace(MetricsCollector=object))
 sys.modules.setdefault(
     "conversation_service.utils.logging",
-    types.SimpleNamespace(get_structured_logger=lambda name: _DummyLogger()),
+    types.SimpleNamespace(get_structured_logger=lambda name: DummyLogger()),
 )
 
 _clients_pkg = types.ModuleType("conversation_service.clients")
@@ -109,10 +103,14 @@ def test_query_generator_injects_user_id_into_filters():
     input_data = {
         "intent": "any_intent",
         "entities": {"foo": "bar"},
-        "context": {"user_id": 99, "filters": {}},
+        "context": {
+            "user_id": 99,
+            "filters": {"user_id": 1, "other": "value"},
+        },
     }
 
     result = asyncio.run(agent._process_implementation(input_data))
 
     assert result["search_request"]["filters"]["user_id"] == 99
+    assert result["search_request"]["filters"]["other"] == "value"
 

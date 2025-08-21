@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import router as api_router
+from api.routes import router as api_router  # provides REST endpoints including conversation
 from api.websocket import router as ws_router
 from api.middleware import setup_middleware
 from config.settings import settings

@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from agent_types import ChatMessage, TaskResult
 from conversation_service.agents.entity_extractor_agent import (
     EntityExtractorAgent,
 )
@@ -59,30 +58,6 @@ class TeamOrchestrator:
         self._total_calls = 0
         self._error_calls = 0
 
-    async def run(self, task: str) -> TaskResult:
-        """Execute the pipeline and return resulting messages.
-
-        This helper is used only in tests and mirrors the behaviour of the
-        main ``query_agents`` method but without persistence.
-        """
-
-        messages: List[ChatMessage] = [ChatMessage(content=task, source="user")]
-        self.context = {}
-        for agent in [
-            self._classifier,
-            self._extractor,
-            self._query_agent,
-            self._responder,
-        ]:
-            if agent is None:
-                continue
-            response = await agent.on_messages(messages, None)
-            msg = response.chat_message
-            messages.append(msg)
-            name = getattr(agent, "name", agent.__class__.__name__)
-            self.context[name] = msg.content
-        return TaskResult(messages=messages)
-
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
@@ -105,38 +80,39 @@ class TeamOrchestrator:
         self._total_calls += 1
         success = True
         try:
-            ctx = await self._call_agent(
-                self._classifier,
-                {"user_message": message},
-                ctx,
-                repo,
-                conversation_id,
-                user_id,
-            )
-            ctx = await self._call_agent(
-                self._extractor,
-                {"user_message": message, "intent": ctx.get("intent")},
-                ctx,
-                repo,
-                conversation_id,
-                user_id,
-            )
-            ctx = await self._call_agent(
-                self._query_agent,
-                {"intent": ctx.get("intent"), "entities": ctx.get("entities")},
-                ctx,
-                repo,
-                conversation_id,
-                user_id,
-            )
-            ctx = await self._call_agent(
-                self._responder,
-                {"search_response": ctx.get("search_response")},
-                ctx,
-                repo,
-                conversation_id,
-                user_id,
-            )
+            pipeline = [
+                (
+                    self._classifier,
+                    lambda c: {"user_message": message},
+                ),
+                (
+                    self._extractor,
+                    lambda c: {
+                        "user_message": message,
+                        "intent": c.get("intent"),
+                    },
+                ),
+                (
+                    self._query_agent,
+                    lambda c: {
+                        "intent": c.get("intent"),
+                        "entities": c.get("entities"),
+                    },
+                ),
+                (
+                    self._responder,
+                    lambda c: {"search_response": c.get("search_response")},
+                ),
+            ]
+            for agent, builder in pipeline:
+                ctx = await self._call_agent(
+                    agent,
+                    builder(ctx),
+                    ctx,
+                    repo,
+                    conversation_id,
+                    user_id,
+                )
             reply = ctx.get("response", "")
         except Exception:  # pragma: no cover - defensive
             success = False
@@ -157,6 +133,7 @@ class TeamOrchestrator:
         self._metrics.record_orchestrator_call(
             operation="query_agents", success=success, processing_time_ms=duration
         )
+        self.context = dict(ctx)
         return reply
 
     async def _call_agent(

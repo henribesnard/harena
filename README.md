@@ -88,6 +88,7 @@ following environment variables are recognised:
 - `OPENAI_API_KEY`, `OPENAI_BASE_URL`: configuration for OpenAI access
 - `BONSAI_URL`: Elasticsearch endpoint used by search and enrichment services
 - `DATABASE_URL`: connexion PostgreSQL
+- `POSTGRES_SERVER`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`: variables alternatives pour définir la base si `DATABASE_URL` n'est pas fourni
 - `REDIS_URL`: Redis cache connexion (optionally `REDISCLOUD_URL`)
 - `BRIDGE_CLIENT_ID`, `BRIDGE_CLIENT_SECRET`: Bridge API credentials
 - `DEEPSEEK_API_KEY`: key for the DeepSeek client

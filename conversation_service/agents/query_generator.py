@@ -28,11 +28,18 @@ class QueryGeneratorAgent(BaseFinancialAgent):
     ) -> Optional[Dict[str, Any]]:
         """Build and execute a search request based on ``input_data``."""
 
+        if input_data.get("intent") is None or input_data.get("entities") is None:
+            return {"error": "intent and entities are required"}
+
         context = input_data.get("context", {})
+        user_id = context.get("user_id")
+        filters = dict(context.get("filters", {}))
+        if user_id is not None:
+            filters.setdefault("user_id", user_id)
         payload = {
-            "user_id": context.get("user_id"),
+            "user_id": user_id,
             "query": context.get("query", ""),
-            "filters": context.get("filters", {}),
+            "filters": filters,
             "aggregations": context.get("aggregations"),
         }
 

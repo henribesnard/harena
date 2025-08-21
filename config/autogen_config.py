@@ -18,6 +18,8 @@ class AgentParameters:
     max_consecutive_auto_reply: int = 1
     description: str | None = None
 
+    model_config = SettingsConfigDict(extra="ignore")
+
 
 class AutoGenConfig(BaseSettings):
     """Configuration for AutoGen agents.
@@ -31,7 +33,9 @@ class AutoGenConfig(BaseSettings):
     max_consecutive_auto_reply: int = 1
     description: str = "Harena financial assistant"
 
-    model_config = SettingsConfigDict(env_prefix="AUTOGEN_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore", env_prefix="AUTOGEN_", env_file=".env"
+    )
 
     def build_agent_params(
         self,

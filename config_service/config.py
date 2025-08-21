@@ -154,13 +154,21 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     # CONFIGURATION REDIS
     # ==========================================
-    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    REDIS_URL: str = os.environ.get("REDIS_URL", "")  # Required
     REDISCLOUD_URL: str = os.environ.get("REDISCLOUD_URL", "")  # Heroku Redis
     REDIS_PASSWORD: Optional[str] = os.environ.get("REDIS_PASSWORD", None)
     REDIS_DB: int = int(os.environ.get("REDIS_DB", "0"))
+    REDIS_CACHE_PREFIX: str = "harena_conv"
     REDIS_MAX_CONNECTIONS: int = int(os.environ.get("REDIS_MAX_CONNECTIONS", "20"))
     REDIS_RETRY_ON_TIMEOUT: bool = os.environ.get("REDIS_RETRY_ON_TIMEOUT", "true").lower() == "true"
     REDIS_HEALTH_CHECK_INTERVAL: int = int(os.environ.get("REDIS_HEALTH_CHECK_INTERVAL", "30"))
+
+    @field_validator("REDIS_URL")
+    @classmethod
+    def validate_redis_url(cls, v: str) -> str:
+        if not v:
+            raise ValueError("REDIS_URL environment variable is required")
+        return v
     
     # ==========================================
     # CONFIGURATION DE PERFORMANCE ET CACHE

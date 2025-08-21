@@ -179,6 +179,12 @@ class GlobalSettings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = int(os.environ.get("RATE_LIMIT_REQUESTS", "60"))
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(os.environ.get("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
     RATE_LIMIT_BURST_SIZE: int = int(os.environ.get("RATE_LIMIT_BURST_SIZE", "10"))
+    SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(
+        os.environ.get("SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
+    )
+    SEARCH_RATE_LIMIT_WINDOW_SECONDS: int = int(
+        os.environ.get("SEARCH_RATE_LIMIT_WINDOW_SECONDS", "60")
+    )
     
     # ==========================================
     # PARAMÈTRES DE RECHERCHE PAR DÉFAUT

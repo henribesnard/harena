@@ -54,10 +54,10 @@ logger = get_structured_logger(__name__)
 
 # Default cache TTL (seconds) per agent
 AGENT_CACHE_TTLS = {
-    "intent": 300,
-    "entity": 180,
-    "query": 120,
-    "response": 60,
+    "intent_classifier": 300,
+    "entity_extractor": 180,
+    "query_generator": 120,
+    "response_generator": 60,
 }
 
 # ================================

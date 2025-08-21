@@ -39,11 +39,13 @@ class SearchClient:
             self._session = aiohttp.ClientSession(headers=headers, timeout=self._timeout)
         return self._session
 
-    async def search(self, payload: Dict[str, Any], endpoint: str = "/search") -> Dict[str, Any]:
-        """Execute a search query and return the JSON response."""
+    async def search(self, user_id: int, payload: Dict[str, Any], endpoint: str = "/search") -> Dict[str, Any]:
+        """Execute a search query for ``user_id`` and return the JSON response."""
 
         session = await self._get_session()
         url = f"{self.base_url}{endpoint}"
+        payload = dict(payload)
+        payload["user_id"] = user_id
         async with session.post(url, json=payload) as resp:
             resp.raise_for_status()
             return await resp.json()

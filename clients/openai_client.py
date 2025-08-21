@@ -1,5 +1,6 @@
 import logging
 from typing import List, Dict, Optional, Any
+import logging
 
 from openai import AsyncOpenAI
 
@@ -31,6 +32,7 @@ class OpenAIClient:
 
     async def chat(
         self,
+        user_id: int,
         messages: List[Dict[str, str]],
         model: Optional[str] = None,
         cache_key: Optional[str] = None,
@@ -46,7 +48,7 @@ class OpenAIClient:
         chosen_model = model or self._default_model
 
         if cache_key and self._cache:
-            cached = await self._cache.get(cache_key)
+            cached = await self._cache.get(user_id, cache_key)
             if cached is not None:
                 return cached
 
@@ -60,7 +62,7 @@ class OpenAIClient:
         content = response.choices[0].message["content"]
 
         if cache_key and self._cache:
-            await self._cache.set(cache_key, content, ttl=settings.LLM_CACHE_TTL)
+            await self._cache.set(user_id, cache_key, content, ttl=settings.LLM_CACHE_TTL)
 
         return content
 

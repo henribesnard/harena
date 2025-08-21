@@ -10,17 +10,11 @@ class _DummyAssistantAgent:
         pass
 
 
-class _DummyLogger:
+class DummyLogger:
     def info(self, *args, **kwargs):
         pass
 
-    def debug(self, *args, **kwargs):
-        pass
-
-    def warning(self, *args, **kwargs):
-        pass
-
-    def error(self, *args, **kwargs):
+    def exception(self, *args, **kwargs):
         pass
 
 
@@ -31,7 +25,7 @@ sys.modules.setdefault("conversation_service.core.cache_manager", types.SimpleNa
 sys.modules.setdefault("conversation_service.core.metrics_collector", types.SimpleNamespace(MetricsCollector=object))
 sys.modules.setdefault(
     "conversation_service.utils.logging",
-    types.SimpleNamespace(get_structured_logger=lambda name: _DummyLogger()),
+    types.SimpleNamespace(get_structured_logger=lambda name: DummyLogger()),
 )
 
 _clients_pkg = types.ModuleType("conversation_service.clients")

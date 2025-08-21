@@ -1,12 +1,16 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.ext.declarative import declarative_base
 from contextlib import contextmanager
 
 from config.settings import settings
 
+# Récupérer l'URL de connexion, fallback sur SQLite pour les tests
+database_url = settings.DATABASE_URL or "sqlite://"
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
 # Création de l'engine central
-engine = create_engine(settings.SQLALCHEMY_DATABASE_URI, pool_pre_ping=True)
+engine = create_engine(database_url, pool_pre_ping=True)
 
 # Création d'une factory de session partagée
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

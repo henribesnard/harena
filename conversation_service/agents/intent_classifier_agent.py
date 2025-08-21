@@ -16,14 +16,6 @@ from ..models.core_models import IntentResult
 
 
 class IntentClassificationCache:
-    """Simple in-memory cache for intent classification results.
-
-    Each entry stores the :class:`~conversation_service.models.core_models.IntentResult`
-    together with the timestamp of when it was cached. Entries are keyed by
-    ``"{user_id}:{message}"`` and are invalidated when the current time exceeds
-    ``timestamp + ttl``.
-    """
-
     def __init__(self) -> None:
         # Store the cached result alongside the time it was inserted so
         # we can easily expire entries based on a TTL.

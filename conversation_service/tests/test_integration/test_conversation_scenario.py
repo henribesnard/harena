@@ -42,8 +42,8 @@ def test_conversation_pipeline():
         confidence=0.92,
         reasoning="User asks about spending at a merchant"
     )
-    cache.set("How much did I spend at Amazon?", intent_result)
-    cached_intent = cache.get("How much did I spend at Amazon?")
+    cache.set("user1", "How much did I spend at Amazon?", intent_result)
+    cached_intent = cache.get("user1", "How much did I spend at Amazon?")
 
     entity = FinancialEntity(
         entity_type=EntityType.MERCHANT,

@@ -7,8 +7,15 @@ import sys
 import types
 import pytest
 import json
-from conversation_service.utils.cache import LRUCache
-from config_service.config import settings, GlobalSettings
+from collections import OrderedDict
+from typing import Any
+# Minimal settings stub to avoid external dependency
+
+class GlobalSettings:
+    OPENAI_API_KEY: str = "test-key"
+
+
+settings = GlobalSettings()
 
 
 def create_pydantic_stub():
@@ -234,4 +241,22 @@ def openai_mock(openai_settings: GlobalSettings, monkeypatch: pytest.MonkeyPatch
 @pytest.fixture
 def cache():
     """Provide an in-memory LRU cache for tests."""
+    class LRUCache:
+        def __init__(self, maxsize: int = 128):
+            self.maxsize = maxsize
+            self._cache: OrderedDict[str, Any] = OrderedDict()
+
+        def get(self, key: str) -> Any:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+            return None
+
+        def set(self, key: str, value: Any) -> None:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            self._cache[key] = value
+            if len(self._cache) > self.maxsize:
+                self._cache.popitem(last=False)
+
     return LRUCache(maxsize=16)

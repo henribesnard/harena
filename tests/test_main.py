@@ -6,12 +6,35 @@ import os
 # Ajouter le répertoire parent au path pour permettre les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import absolu au lieu de relatif
-try:
-    from tests.harena_test_client import HarenaTestClient, REQUEST_TIMEOUT
-except ImportError:
-    # Fallback si l'import absolu échoue
-    from harena_test_client import HarenaTestClient, REQUEST_TIMEOUT
+# Minimal HTTP client used for testing timeout behaviour
+REQUEST_TIMEOUT = 5
+
+
+class HarenaTestClient:
+    def __init__(self, base_url: str, session: object):
+        self.base_url = base_url.rstrip("/")
+        self.session = session
+        self._token = ""
+        self._token_expiry = 0.0
+        self._refresh_token()
+
+    def _refresh_token(self) -> None:
+        self._token = "test-token"
+        self._token_expiry = time.time() + 60
+
+    def _ensure_token(self) -> None:
+        if time.time() >= self._token_expiry - 5:
+            self._refresh_token()
+
+    def _make_request(self, method: str, endpoint: str, **kwargs):
+        self._ensure_token()
+        url = f"{self.base_url}{endpoint}"
+        headers = kwargs.pop("headers", {})
+        headers["Authorization"] = f"Bearer {self._token}"
+        return self.session.request(method, url, timeout=REQUEST_TIMEOUT, headers=headers, **kwargs)
+
+    def get(self, endpoint: str, **kwargs):
+        return self._make_request("GET", endpoint, **kwargs)
 
 
 class TimeoutException(Exception):

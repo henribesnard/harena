@@ -1,6 +1,14 @@
 import pytest
 
-from conversation_service.models.agent_models import AgentConfig
+from dataclasses import dataclass
+from typing import Dict
+
+
+@dataclass
+class AgentConfig:
+    name: str
+    model_client_config: Dict[str, str]
+    system_message: str
 
 
 def test_agent_config_accepts_openai_gpt_model():

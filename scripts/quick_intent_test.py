@@ -17,14 +17,6 @@ from openai import OpenAI, AsyncOpenAI
 from dotenv import load_dotenv
 import logging
 
-from conversation_service.models.financial_models import (
-    IntentCategory,
-    EntityType,
-    FinancialEntity,
-    IntentResult,
-    DetectionMethod,
-)
-from conversation_service.utils.validators import validate_intent_result_contract
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -32,6 +24,18 @@ load_dotenv()
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Simple contract validator replacing conversation_service dependency
+def validate_intent_result_contract(result: Dict[str, Any]) -> List[str]:
+    """Validate minimal structure of an intent result."""
+    required = [
+        "intent_type",
+        "intent_category",
+        "confidence",
+        "entities",
+        "processing_time_ms",
+    ]
+    return [f"Missing field: {field}" for field in required if field not in result]
 
 # Mapping to harmonize categories between INTENTS.md and the agent
 CATEGORY_MAP = {
@@ -180,8 +184,6 @@ class IntentResult(BaseModel):
     def validate_entities_consistency(self):
         """Valide la cohérence des entités avec l'intention."""
         return self
-
-# Importés depuis conversation_service.models.financial_models
 
 # ==================== AGENT OPENAI OPTIMISÉ ====================
 

@@ -1,6 +1,0 @@
-- description: "Détection d'intention"
-  input: "step=INTENT_DETECTION, message=Transactions de 50 euros"
-  output: "Appeler LLMIntentAgent"
-- description: "Réponse finale"
-  input: "step=SEARCH_QUERY, results=3"
-  output: "Appeler ResponseAgent"

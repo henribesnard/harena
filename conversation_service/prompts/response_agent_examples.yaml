@@ -1,6 +1,0 @@
-- description: "Transactions simples"
-  input: "Mes achats chez Carrefour le mois dernier"
-  output: "Voici vos transactions chez Carrefour en décembre."
-- description: "Analyse des dépenses"
-  input: "Combien ai-je dépensé en restaurant ces trois derniers mois ?"
-  output: "Vous avez dépensé 120.50€ en restaurant entre octobre et décembre."

@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
-from prompts.query_prompts import load_prompt, get_examples
+from ..prompts import query_prompts
 
 
 class QueryGeneratorAgent(BaseFinancialAgent):
@@ -13,11 +13,11 @@ class QueryGeneratorAgent(BaseFinancialAgent):
     def __init__(self, openai_client):
         config = AgentConfig(
             name="query_generator",
-            system_message=load_prompt(),
+            system_message=query_prompts.get_prompt(),
             model_name="gpt-4o-mini",
         )
         super().__init__(config=config, openai_client=openai_client)
-        self.examples = get_examples()
+        self.examples = query_prompts.get_examples()
 
     async def _process_implementation(
         self, input_data: Dict[str, Any]

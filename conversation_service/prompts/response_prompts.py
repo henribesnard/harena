@@ -16,7 +16,11 @@ RESPONSE_FEW_SHOT_EXAMPLES: List[Dict[str, str]] = [
     {
         "input": "transactions Amazon du mois dernier",
         "output": "Vous avez 3 transactions chez Amazon en avril."
-    }
+    },
+    {
+        "input": "solde du compte courant",
+        "output": "Le solde de votre compte courant est de 1 200€.",
+    },
 ]
 
 INTENT_RESPONSE_TEMPLATES: Dict[str, str] = {
@@ -40,6 +44,16 @@ def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] =
         cache[cache_key] = prompt
         return prompt
     return RESPONSE_GENERATION_SYSTEM_PROMPT
+
+
+def get_prompt(
+    path: Optional[str] = None,
+    *,
+    cache: Optional[Dict[str, str]] = None,
+    cache_key: str = "system",
+) -> str:
+    """Retourner le prompt système à utiliser par l'agent."""
+    return load_prompt(path=path, cache=cache, cache_key=cache_key)
 
 
 def get_examples() -> List[Dict[str, str]]:

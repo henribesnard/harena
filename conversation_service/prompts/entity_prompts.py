@@ -12,6 +12,10 @@ DEFAULT_PROMPT = "Identifie les entités présentes dans le message utilisateur.
 
 _EXAMPLES: List[Dict[str, str]] = [
     {"input": "J'ai dépensé 50€ chez Amazon", "output": "AMOUNT:50, MERCHANT:Amazon"},
+    {
+        "input": "Paiement de 200€ chez Carrefour hier",
+        "output": "AMOUNT:200, MERCHANT:Carrefour, DATE:hier",
+    },
 ]
 
 _PROMPT_CACHE: Dict[str, str] = {}
@@ -26,6 +30,16 @@ def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] =
         cache[cache_key] = prompt
         return prompt
     return DEFAULT_PROMPT
+
+
+def get_prompt(
+    path: Optional[str] = None,
+    *,
+    cache: Optional[Dict[str, str]] = None,
+    cache_key: str = "default",
+) -> str:
+    """Retourner le prompt à utiliser par l'agent."""
+    return load_prompt(path=path, cache=cache, cache_key=cache_key)
 
 
 def get_examples() -> List[Dict[str, str]]:

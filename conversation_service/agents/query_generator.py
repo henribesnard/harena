@@ -37,8 +37,7 @@ class QueryGeneratorAgent(BaseFinancialAgent):
 
         context = input_data.get("context", {})
         user_id = context.get("user_id")
-        filters = dict(context.get("filters", {}))
-        filters["user_id"] = user_id
+        filters = {**dict(context.get("filters", {})), "user_id": user_id}
 
         payload = {
             "user_id": user_id,

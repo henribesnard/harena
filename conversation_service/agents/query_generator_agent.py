@@ -6,6 +6,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict
 
+try:  # pragma: no cover - optional heavy dependency
+from typing import Any, Dict
+
 
 try:  # pragma: no cover - optional dependency
 from typing import Any, Dict
@@ -19,6 +22,18 @@ from ..models.core_models import IntentType
 
 
 class QueryOptimizer:
+    """Apply intent-specific tweaks to a search query."""
+
+    _MERCHANT_LIMIT = 15
+
+    @staticmethod
+    def optimize_query(base_query: Dict[str, Any], intent: IntentType) -> Dict[str, Any]:
+        """Return an optimized copy of ``base_query``."""
+        query = deepcopy(base_query)
+        params = query.setdefault("search_parameters", {})
+        if intent == IntentType.MERCHANT_ANALYSIS:
+            params.setdefault("limit", QueryOptimizer._MERCHANT_LIMIT)
+            params.setdefault("sort", [{"total_spent": {"order": "desc"}}])
 
     """Apply small optimisations to search queries based on detected intent."""
     """Apply intent-specific tweaks to a search query."""

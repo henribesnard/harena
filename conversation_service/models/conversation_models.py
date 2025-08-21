@@ -22,6 +22,40 @@ class AgentQueryRequest(BaseModel):
         return v
 
 
+class AgentQueryResponse(BaseModel):
+    """Response returned by the agent team."""
+
+    conversation_id: str = Field(
+        ..., description="Unique identifier of the conversation"
+    )
+    reply: str = Field(..., description="Agent team's reply")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConversationMessage(BaseModel):
+    """Single message persisted in the conversation history."""
+
+    user_id: int = Field(..., description="Identifier of the user")
+    conversation_id: str = Field(..., description="Conversation identifier")
+    role: str = Field(..., description="Role of the message author")
+    content: str = Field(..., description="Message content")
+    timestamp: datetime = Field(..., description="Message timestamp")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConversationHistoryResponse(BaseModel):
+    """History of a conversation."""
+
+    conversation_id: str = Field(..., description="Conversation identifier")
+    messages: List[ConversationMessage] = Field(
+        ..., description="Chronological list of conversation messages"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class IntentResult(BaseModel):
     """
     Result of intent classification with Harena scope validation.
@@ -648,6 +682,9 @@ class ConversationState(BaseModel):
 
 __all__ = [
     "AgentQueryRequest",
+    "AgentQueryResponse",
+    "ConversationMessage",
+    "ConversationHistoryResponse",
     "IntentResult",
     "QueryResult",
     "ResponseResult",

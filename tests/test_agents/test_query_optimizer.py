@@ -103,10 +103,14 @@ def test_query_generator_injects_user_id_into_filters():
     input_data = {
         "intent": "any_intent",
         "entities": {"foo": "bar"},
-        "context": {"user_id": 99, "filters": {}},
+        "context": {
+            "user_id": 99,
+            "filters": {"user_id": 1, "other": "value"},
+        },
     }
 
     result = asyncio.run(agent._process_implementation(input_data))
 
     assert result["search_request"]["filters"]["user_id"] == 99
+    assert result["search_request"]["filters"]["other"] == "value"
 

@@ -9,6 +9,14 @@ import pytest
 import json
 from collections import OrderedDict
 from typing import Any
+from pathlib import Path
+
+# Ensure local autogen_agentchat stub is importable when the real package is missing
+try:  # pragma: no cover - runtime dependency check
+    import autogen_agentchat  # type: ignore  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover - executed only when package absent
+    stub_dir = Path(__file__).resolve().parents[1] / "autogen_agentchat"
+    sys.path.insert(0, str(stub_dir))
 # Minimal settings stub to avoid external dependency
 
 class GlobalSettings:

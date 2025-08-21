@@ -270,6 +270,44 @@ Génère une requête Elasticsearch optimisée au format SearchServiceQuery.""",
     "operator": "match"
   }
 }"""
+    },
+    {
+        "input": """Message utilisateur : Bilan de mes revenus ce trimestre
+Intention détectée : BUDGET_ANALYSIS
+User ID : 55
+Entités extraites :
+- CATEGORY: income
+- DATE_RANGE: this_quarter
+
+Génère une requête Elasticsearch optimisée au format SearchServiceQuery.""",
+
+        "output": """{
+  "query_metadata": {
+    "intent_type": "BUDGET_ANALYSIS",
+    "agent_name": "query_generator",
+    "timestamp": "2024-01-31T10:30:00Z"
+  },
+  "search_parameters": {
+    "query_type": "aggregated_search",
+    "fields": ["user_id", "amount", "category_name", "date"],
+    "limit": 100,
+    "timeout_ms": 5000
+  },
+  "filters": {
+    "required": [
+      {"field": "user_id", "operator": "eq", "value": 55},
+      {"field": "category_name.keyword", "operator": "eq", "value": "income"}
+    ],
+    "ranges": [
+      {"field": "date", "operator": "between", "value": ["2024-04-01", "2024-06-30"]}
+    ]
+  },
+  "aggregations": {
+    "enabled": true,
+    "types": ["sum"],
+    "metrics": ["amount"]
+  }
+}"""
     }
 ]
 
@@ -286,6 +324,16 @@ def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] =
         cache[cache_key] = prompt
         return prompt
     return QUERY_GENERATION_SYSTEM_PROMPT
+
+
+def get_prompt(
+    path: Optional[str] = None,
+    *,
+    cache: Optional[Dict[str, str]] = None,
+    cache_key: str = "system",
+) -> str:
+    """Retourner le prompt système à utiliser par l'agent."""
+    return load_prompt(path=path, cache=cache, cache_key=cache_key)
 
 
 

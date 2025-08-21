@@ -1,18 +1,18 @@
-"""Orchestration utilities for coordinating multiple agents.
+"""Financial conversation agent team coordinator.
 
-The :class:`AgentTeam` sequentially invokes a set of conversational agents
-(intent classification, entity extraction, query generation and response
-production).  Results from each step are stored in a shared
-:class:`~conversation_service.agents.context_manager.ContextManager` so that
-subsequent agents can leverage previous outputs.
+This module implements the orchestration logic previously found in
+``conversation_service.agents.agent_team``.  The :class:`FinancialTeam`
+sequentially invokes the individual agents (intent classification, entity
+extraction, query generation, and response generation) while sharing state via
+the :class:`~conversation_service.agents.context_manager.ContextManager`.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Protocol
 
-from .context_manager import ContextManager
-from ..models.core_models import AgentResponse
+from conversation_service.agents.context_manager import ContextManager
+from conversation_service.models.core_models import AgentResponse
 
 
 class ConversationAgent(Protocol):
@@ -22,8 +22,8 @@ class ConversationAgent(Protocol):
         ...
 
 
-class AgentTeam:
-    """Pipeline executor for the Harena conversation agents."""
+class FinancialTeam:
+    """Pipeline executor for Harena financial conversation agents."""
 
     def __init__(
         self,
@@ -82,3 +82,4 @@ class AgentTeam:
             self.context.update(response=response_resp.result)
 
         return response_resp
+

@@ -29,9 +29,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 # AutoGen imports
-from autogen import AssistantAgent
+try:  # pragma: no cover - optional dependency
+    from autogen import AssistantAgent
+except Exception:  # pragma: no cover - dependency not available
+    AssistantAgent = None  # type: ignore
 
-from ..clients.openai_client import OpenAIClient
+try:  # pragma: no cover - optional dependency
+    from ..clients.openai_client import OpenAIClient
+except Exception:  # pragma: no cover - dependency not available
+    OpenAIClient = Any  # type: ignore
 
 # Local imports
 from ..models.agent_models import AgentConfig, AgentResponse
@@ -319,32 +325,35 @@ class BaseFinancialAgent(ABC):
     def __init__(
         self,
         config: AgentConfig,
-        openai_client: OpenAIClient,
+        openai_client: Optional[OpenAIClient] = None,
         cache_manager: Optional[CacheManager] = None,
-        metrics_collector: Optional[MetricsCollector] = None
+        metrics_collector: Optional[MetricsCollector] = None,
     ):
         """Initialize base financial agent."""
-        
+
         self.config = config
         self.openai_client = openai_client
         self.cache_manager = cache_manager
         self.metrics_collector = metrics_collector
-        
+
         # Performance tracking
         self.performance_tracker = AgentPerformanceTracker(config.name)
         self.prompt_optimizer = PromptOptimizer()
-        
-        # Create AutoGen AssistantAgent
-        self.agent = AssistantAgent(
-            name=config.name,
-            system_message=config.system_message,
-            llm_config={
-                "model": config.model_name,
-                "temperature": config.temperature,
-                "max_tokens": config.max_tokens,
-                "timeout": config.timeout_seconds
-            }
-        )
+
+        # Create AutoGen AssistantAgent only when an OpenAI client is provided
+        if self.openai_client is not None and AssistantAgent is not None:
+            self.agent = AssistantAgent(
+                name=config.name,
+                system_message=config.system_message,
+                llm_config={
+                    "model": config.model_name,
+                    "temperature": config.temperature,
+                    "max_tokens": config.max_tokens,
+                    "timeout": config.timeout_seconds,
+                },
+            )
+        else:
+            self.agent = None
         
         # Agent state
         self.is_initialized = True
@@ -567,6 +576,9 @@ class BaseFinancialAgent(ABC):
         messages.append({"role": "user", "content": prompt})
         
         # Call OpenAI
+        if self.openai_client is None:
+            raise RuntimeError("OpenAI client is not configured")
+
         try:
             response = await self.openai_client.chat_completion(
                 model=self.config.model_name,

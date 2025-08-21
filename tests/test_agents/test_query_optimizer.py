@@ -1,6 +1,7 @@
 import sys
 import types
 from enum import Enum
+import asyncio
 import pytest
 
 
@@ -102,18 +103,16 @@ class _DummySearchClient:
         self.payload = payload
         return {}
 
-
-@pytest.mark.asyncio
-async def test_query_generator_injects_user_id_into_filters():
+def test_query_generator_injects_user_id_into_filters():
     search_client = _DummySearchClient()
-    agent = QueryGeneratorAgent(openai_client=object(), search_client=search_client)
+    agent = QueryGeneratorAgent(search_client=search_client)
     input_data = {
         "intent": "any_intent",
         "entities": {"foo": "bar"},
         "context": {"user_id": 99, "filters": {}},
     }
 
-    result = await agent._process_implementation(input_data)
+    result = asyncio.run(agent._process_implementation(input_data))
 
     assert result["search_request"]["filters"]["user_id"] == 99
 

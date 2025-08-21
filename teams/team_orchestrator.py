@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -23,7 +24,10 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
-from conversation_service.message_repository import ConversationMessageRepository
+from conversation_service.message_repository import (
+    ConversationMessageRepository,
+    ConversationMessage,
+)
 from conversation_service.repository import ConversationRepository
 
 
@@ -88,7 +92,7 @@ class TeamOrchestrator:
         history_models = self.get_history(conversation_id, db) or []
         ctx: Dict[str, Any] = {
             "user_id": user_id,
-            "history": [m.model_dump() for m in history_models],
+            "history": [asdict(m) for m in history_models],
         }
 
         repo = ConversationMessageRepository(db)
@@ -195,14 +199,19 @@ class TeamOrchestrator:
         return context
 
     def start_conversation(self, user_id: int, db: Session) -> str:
-        """Create and persist a new conversation session."""
+        """Create a new conversation and preload its history."""
         conv_id = uuid.uuid4().hex
         ConversationRepository(db).create(user_id, conv_id)
+        history = ConversationMessageRepository(db).list_models(conv_id)
+        self.context = {
+            "user_id": user_id,
+            "history": [asdict(m) for m in history],
+        }
         return conv_id
 
     def get_history(
         self, conversation_id: str, db: Session
-    ) -> Optional[List["ConversationMessage"]]:
+    ) -> Optional[List[ConversationMessage]]:
         """Return the persisted history for ``conversation_id`` if it exists."""
         repo = ConversationRepository(db)
         if repo.get_by_conversation_id(conversation_id) is None:

@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from typing import List
 
 from sqlalchemy.orm import Session
 
-from db_service.models.conversation import ConversationMessage
-from models.conversation_models import (
-    ConversationMessage as ConversationMessageModel,
+from db_service.models.conversation import (
+    ConversationMessage as ConversationMessageDB,
 )
+
+
+@dataclass
+class ConversationMessage:
+    """Pydantic-like model representing a stored message."""
+
+    user_id: int
+    conversation_id: str
+    role: str
+    content: str
+    timestamp: datetime
 
 
 class ConversationMessageRepository:
@@ -25,8 +37,8 @@ class ConversationMessageRepository:
         user_id: int,
         role: str,
         content: str,
-    ) -> ConversationMessage:
-        msg = ConversationMessage(
+    ) -> ConversationMessageDB:
+        msg = ConversationMessageDB(
             conversation_id=conversation_id,
             user_id=user_id,
             role=role,
@@ -37,15 +49,15 @@ class ConversationMessageRepository:
         self._db.refresh(msg)
         return msg
 
-    def list_by_conversation(self, conversation_id: str) -> List[ConversationMessage]:
+    def list_by_conversation(self, conversation_id: str) -> List[ConversationMessageDB]:
         return (
-            self._db.query(ConversationMessage)
-            .filter(ConversationMessage.conversation_id == conversation_id)
-            .order_by(ConversationMessage.id)
+            self._db.query(ConversationMessageDB)
+            .filter(ConversationMessageDB.conversation_id == conversation_id)
+            .order_by(ConversationMessageDB.id)
             .all()
         )
 
-    def list_models(self, conversation_id: str) -> List[ConversationMessageModel]:
+    def list_models(self, conversation_id: str) -> List[ConversationMessage]:
         """Return user/assistant messages as pydantic models.
 
         The underlying ORM model includes all internal agent messages.  For
@@ -55,7 +67,7 @@ class ConversationMessageRepository:
         """
 
         return [
-            ConversationMessageModel(
+            ConversationMessage(
                 user_id=m.user_id,
                 conversation_id=m.conversation_id,
                 role=m.role,

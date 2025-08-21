@@ -1,8 +1,22 @@
 """Simple orchestrator that chains classification, extraction, querying and response."""
 
-from typing import Any, Dict, List
+from __future__ import annotations
+
+import json
+import logging
+import time
+import uuid
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
 
 from agent_types import ChatMessage, TaskResult
+from conversation_service.core.metrics_collector import metrics_collector
+from conversation_service.message_repository import ConversationMessageRepository
+from conversation_service.repository import ConversationRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 class TeamOrchestrator:
@@ -10,16 +24,19 @@ class TeamOrchestrator:
 
     def __init__(
         self,
-        classifier,
-        extractor,
-        query_agent,
-        responder,
+        classifier: Optional[Any] = None,
+        extractor: Optional[Any] = None,
+        query_agent: Optional[Any] = None,
+        responder: Optional[Any] = None,
     ) -> None:
         self._classifier = classifier
         self._extractor = extractor
         self._query_agent = query_agent
         self._responder = responder
         self.context: Dict[str, Any] = {}
+        self._metrics = metrics_collector
+        self._total_calls = 0
+        self._error_calls = 0
 
     async def run(self, task: str) -> TaskResult:
         """Execute the pipeline and return the resulting messages."""
@@ -43,10 +60,11 @@ class TeamOrchestrator:
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
+        """Run classification → extraction → query → response for a message."""
+
         start = time.time()
         history_models = self.get_history(conversation_id, db) or []
-        context: Dict[str, Any] = {
-            "user_message": message,
+        ctx: Dict[str, Any] = {
             "user_id": user_id,
             "history": [m.model_dump() for m in history_models],
         }
@@ -59,20 +77,51 @@ class TeamOrchestrator:
         )
         self._total_calls += 1
         try:
-            context = await self._call_agent(
-                self._classifier, context, repo, conversation_id, user_id
+            # 1. Intent classification
+            ctx = await self._call_agent(
+                self._classifier,
+                {"user_message": message},
+                ctx,
+                repo,
+                conversation_id,
+                user_id,
             )
-            context = await self._call_agent(
-                self._extractor, context, repo, conversation_id, user_id
+
+            # 2. Entity extraction
+            ctx = await self._call_agent(
+                self._extractor,
+                {"user_message": message, "intent": ctx.get("intent")},
+                ctx,
+                repo,
+                conversation_id,
+                user_id,
             )
-            context = await self._call_agent(
-                self._query_agent, context, repo, conversation_id, user_id
+
+            # 3. Query generation
+            ctx = await self._call_agent(
+                self._query_agent,
+                {
+                    "intent": ctx.get("intent"),
+                    "entities": ctx.get("entities"),
+                },
+                ctx,
+                repo,
+                conversation_id,
+                user_id,
             )
-            context = await self._call_agent(
-                self._responder, context, repo, conversation_id, user_id
+
+            # 4. Response generation
+            ctx = await self._call_agent(
+                self._responder,
+                {"search_response": ctx.get("search_response")},
+                ctx,
+                repo,
+                conversation_id,
+                user_id,
             )
-            reply = context.get("response", "")
-        except Exception:
+
+            reply = ctx.get("response", "")
+        except Exception:  # pragma: no cover - defensive
             self._error_calls += 1
             logger.exception("Agent processing failed")
             reply = (
@@ -89,6 +138,62 @@ class TeamOrchestrator:
             operation="query_agents", success=True, processing_time_ms=duration
         )
         return reply
+
+    async def _call_agent(
+        self,
+        agent: Optional[Any],
+        payload: Dict[str, Any],
+        context: Dict[str, Any],
+        repo: ConversationMessageRepository,
+        conversation_id: str,
+        user_id: int,
+    ) -> Dict[str, Any]:
+        """Invoke ``agent`` with ``payload`` while updating/persisting context."""
+
+        if agent is None:
+            return context
+
+        # Propagate current context to the agent
+        payload["context"] = context
+        start = time.time()
+        response = await agent.process(payload)  # type: ignore[call-arg]
+        duration_ms = int((time.time() - start) * 1000)
+
+        result: Dict[str, Any]
+        if hasattr(response, "result"):
+            result = response.result  # type: ignore[attr-defined]
+        else:
+            result = response or {}
+
+        # Update shared context and persist agent output
+        context.update(result)
+        name = getattr(agent, "name", agent.__class__.__name__)
+        repo.add(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            role=name,
+            content=json.dumps(result, ensure_ascii=False),
+        )
+
+        await self._metrics.record_agent_call(
+            agent_name=name, success=True, processing_time_ms=duration_ms
+        )
+
+        return context
+
+    def start_conversation(self, user_id: int, db: Session) -> str:
+        """Create and persist a new conversation session."""
+
+        conv_id = uuid.uuid4().hex
+        repo = ConversationRepository(db)
+        repo.create(user_id=user_id, conversation_id=conv_id)
+        return conv_id
+
+    def get_history(self, conversation_id: str, db: Session):
+        """Return persisted user/assistant message history."""
+
+        repo = ConversationMessageRepository(db)
+        return repo.list_models(conversation_id)
 
     def get_error_metrics(self) -> Dict[str, float]:
         return {

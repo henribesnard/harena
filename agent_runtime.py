@@ -15,9 +15,8 @@ class AgentRuntime:
     async def run(self, message: str) -> str:
         """Execute the agent pipeline for a user message."""
 
-        result = await self.team.run(task=message)
-        final_message = result.messages[-1]
-        return getattr(final_message, "content", "")
+        response = await self.team.run(task=message)
+        return getattr(response.chat_message, "content", "")
 
     def get_context(self) -> dict[str, str]:
         """Return the shared context accumulated by the team."""

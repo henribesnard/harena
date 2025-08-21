@@ -1,15 +1,8 @@
-"""Simple orchestrator chaining intent classification, entity extraction,
-query generation and response production.
-
-The first two stages (intent classification and entity extraction) are
-independent and therefore executed concurrently using ``asyncio.gather``.
-The results are then fed sequentially into the query and response
-generators.
-"""
-
 from __future__ import annotations
 
-import asyncio
+"""Simple orchestrator chaining intent classification, entity extraction,
+query generation and response production."""
+
 import json
 import logging
 import time
@@ -24,9 +17,6 @@ from conversation_service.agents.entity_extractor_agent import (
 )
 from conversation_service.agents.intent_classifier_agent import (
     IntentClassifierAgent,
-)
-from conversation_service.agents.query_generator_agent import (
-    QueryGeneratorAgent,
 )
 from conversation_service.agents.query_generator_agent import QueryGeneratorAgent
 from conversation_service.agents.response_generator_agent import (
@@ -43,9 +33,8 @@ logger = logging.getLogger(__name__)
 class TeamOrchestrator:
     """Run a pipeline of assistant agents.
 
-    Intent classification and entity extraction are launched concurrently
-    to reduce overall latency.  The shared ``ctx`` dictionary is updated by
-    each agent with its result.
+    Each stage updates a shared ``ctx`` dictionary whose values are
+    consumed by the subsequent agents.
     """
 
     def __init__(
@@ -91,23 +80,6 @@ class TeamOrchestrator:
             self.context[name] = msg.content
         return TaskResult(messages=messages)
 
-    def start_conversation(self, user_id: int, db: Session) -> str:
-        """Create a new conversation for ``user_id`` and return its ID."""
-
-        conversation_id = str(uuid.uuid4())
-        ConversationRepository(db).create(user_id, conversation_id)
-        return conversation_id
-
-    def get_history(
-        self, conversation_id: str, db: Session
-    ) -> Optional[List["ConversationMessage"]]:
-        """Return the persisted history for ``conversation_id`` if it exists."""
-
-        repo = ConversationRepository(db)
-        if repo.get_by_conversation_id(conversation_id) is None:
-            return None
-        return ConversationMessageRepository(db).list_models(conversation_id)
-
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
@@ -130,34 +102,6 @@ class TeamOrchestrator:
         self._total_calls += 1
         success = True
         try:
-            # 1 & 2. Classification and extraction in parallel
-            tasks = []
-            if self._classifier is not None:
-                tasks.append(
-                    self._call_agent(
-                        self._classifier,
-                        {"user_message": message},
-                        ctx,
-                        repo,
-                        conversation_id,
-                        user_id,
-                    )
-                )
-            if self._extractor is not None:
-                tasks.append(
-                    self._call_agent(
-                        self._extractor,
-                        {"user_message": message},
-                        ctx,
-                        repo,
-                        conversation_id,
-                        user_id,
-                    )
-                )
-            if tasks:
-                await asyncio.gather(*tasks)
-
-            # 3. Query generation
             ctx = await self._call_agent(
                 self._classifier,
                 {"user_message": message},
@@ -221,8 +165,6 @@ class TeamOrchestrator:
         conversation_id: str,
         user_id: int,
     ) -> Dict[str, Any]:
-        """Invoke ``agent`` with ``payload`` while updating/persisting context."""
-
         """Execute ``agent`` with ``payload`` and persist its output."""
         if agent is None:
             return context

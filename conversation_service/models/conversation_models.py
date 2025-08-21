@@ -7,6 +7,19 @@ import re
 from .enums import IntentType, EntityType
 
 
+class ConversationStartResponse(BaseModel):
+    """Response returned when a conversation is created."""
+
+    conversation_id: str = Field(
+        ..., description="Unique identifier of the conversation"
+    )
+    created_at: datetime = Field(
+        ..., description="Creation timestamp of the conversation"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class AgentQueryRequest(BaseModel):
     """Request payload for querying the agent team."""
 
@@ -681,6 +694,7 @@ class ConversationState(BaseModel):
 # ================================
 
 __all__ = [
+    "ConversationStartResponse",
     "AgentQueryRequest",
     "AgentQueryResponse",
     "ConversationMessage",

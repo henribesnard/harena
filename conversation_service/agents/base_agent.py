@@ -412,7 +412,51 @@ class BaseFinancialAgent(ABC):
             user_id = str(input_data.get("user_id", "anonymous"))
             if self.cache_manager:
                 cache_key = self._generate_cache_key(input_data)
-            
+                cached = await self.cache_manager.get(cache_key, user_id)
+                if cached is not None:
+                    processing_time_ms = int((time.time() - start_time) * 1000)
+                    confidence = cached.get("confidence") if isinstance(cached, dict) else None
+                    tokens_used = cached.get("tokens_used", 0) if isinstance(cached, dict) else 0
+
+                    self.performance_tracker.record_call(
+                        success=True,
+                        processing_time_ms=processing_time_ms,
+                        tokens_used=tokens_used,
+                        confidence=confidence,
+                        cached=True,
+                    )
+
+                    # Reset circuit breaker on cache hit
+                    self.circuit_breaker_failures = 0
+                    self.circuit_breaker_reset_time = None
+
+                    if self.metrics_collector:
+                        await self.metrics_collector.record_agent_call(
+                            agent_name=self.config.name,
+                            success=True,
+                            processing_time_ms=processing_time_ms,
+                            tokens_used=tokens_used,
+                            cached=True,
+                        )
+
+                    logger.debug(
+                        "Agent cache hit",
+                        extra={
+                            "agent_name": self.config.name,
+                            "cache_key": cache_key,
+                            "processing_time_ms": processing_time_ms,
+                        },
+                    )
+
+                    return AgentResponse(
+                        agent_name=self.config.name,
+                        success=True,
+                        result=cached,
+                        processing_time_ms=processing_time_ms,
+                        tokens_used=tokens_used,
+                        cached=True,
+                    )
+
             # Process with implementation
             result = await self._process_implementation(input_data)
             processing_time_ms = int((time.time() - start_time) * 1000)

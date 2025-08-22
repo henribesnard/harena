@@ -1,3 +1,10 @@
+from .conversation_models import (
+    ConversationRequest,
+    ConversationResponse,
+    ConversationMetadata,
+    ConversationContext,
+)
+from .conversation_db_models import (
 """Expose Pydantic models for external use."""
 
 from .agent_models import (
@@ -13,6 +20,13 @@ from .conversation_models import (
 )
 
 __all__ = [
+    "ConversationRequest",
+    "ConversationResponse",
+    "ConversationMetadata",
+    "ConversationContext",
+    "Conversation",
+    "ConversationSummary",
+    "ConversationTurn",
     "AgentConfig",
     "IntentResult",
     "DynamicFinancialEntity",

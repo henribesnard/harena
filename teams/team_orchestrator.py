@@ -207,13 +207,18 @@ class TeamOrchestrator:
         Returns:
             The identifier of the newly created conversation.
         """
-
         conv_id = uuid.uuid4().hex
         try:
-            conv = ConversationRepository(db).create(user_id, conv_id)
-            db.commit()
+            begin_ctx = db.begin() if not db.in_transaction() else db.begin_nested()
+            with begin_ctx:
+                conv = ConversationRepository(db).create(user_id, conv_id)
+                conv_db_id = conv.id
         except Exception:
-            db.rollback()
+            self.context = {}
+            self._conversation_id = None
+            self._conversation_db_id = None
+            self._user_id = None
+            self._db = None
             raise
 
         service = self._conversation_service_cls(db)
@@ -227,7 +232,7 @@ class TeamOrchestrator:
             "history": [m.model_dump() for m in history],
         }
         self._conversation_id = conv_id
-        self._conversation_db_id = conv.id
+        self._conversation_db_id = conv_db_id
         self._user_id = user_id
         self._db = db
         return conv_id

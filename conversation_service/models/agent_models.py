@@ -1,5 +1,9 @@
 """Pydantic models describing agent traces, configuration, and responses."""
 
+"""Pydantic models related to agent configuration and execution."""
+
+from __future__ import annotations
+
 from __future__ import annotations
 
 from typing import Any, List
@@ -11,6 +15,8 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Agent trace models
@@ -61,6 +67,21 @@ class AgentTrace(BaseModel):
 
 
 # Advanced agent models
+
+    @field_validator("total_time_ms")
+    @classmethod
+    def non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("total_time_ms must be non-negative")
+        return v
+
+    @model_validator(mode="after")
+    def validate_steps(self) -> "AgentTrace":
+        if not self.steps:
+            raise ValueError("steps cannot be empty")
+        return self
+
+
 class AgentConfig(BaseModel):
     """Configuration d'un agent conversationnel."""
 

@@ -86,7 +86,7 @@ class ConversationService:
         )
         messages.append(MessageCreate(role="assistant", content=assistant_reply))
 
-        try:
+        with self._db.begin():
             self._msg_repo.add_batch(
                 conversation_db_id=conversation.id,
                 user_id=conversation.user_id,
@@ -94,17 +94,14 @@ class ConversationService:
             )
             self._db.execute(
                 update(Conversation)
-                    .where(Conversation.id == conversation.id)
-                    .values(
-                        total_turns=Conversation.total_turns + 1,
-                        last_activity_at=datetime.now(timezone.utc),
-                    )
+                .where(Conversation.id == conversation.id)
+                .values(
+                    total_turns=Conversation.total_turns + 1,
+                    last_activity_at=datetime.now(timezone.utc),
+                )
             )
-            self._db.commit()
-            self._db.refresh(conversation)
-        except Exception:  # pragma: no cover - defensive rollback
-            self._db.rollback()
-            raise
+
+        self._db.refresh(conversation)
 
     def save_conversation_turn(
         self,

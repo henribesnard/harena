@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from typing import Iterable, List, Sequence
 from typing import List, Sequence
 
 from sqlalchemy.orm import Session
@@ -38,16 +37,6 @@ class ConversationMessageRepository:
             self._db.rollback()
             raise
 
-    def _validate(
-        self, *, conversation_db_id: int, user_id: int, content: str
-    ) -> None:
-        if not content.strip():
-            raise ValueError("content must not be empty")
-
-            logger.exception("Transaction failed")
-            self._db.rollback()
-            raise
-
     def add_batch(
         self,
         *,
@@ -64,8 +53,6 @@ class ConversationMessageRepository:
         instances: List[ConversationMessageDB] = []
         with self.transaction():
             for m in messages:
-                # Validate message fields and shared identifiers
-                MessageCreate(role=m.role, content=m.content)
                 self._validate(
                     conversation_db_id=conversation_db_id,
                     user_id=user_id,

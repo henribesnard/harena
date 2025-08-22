@@ -1,6 +1,6 @@
 import pytest
 
-from teams.financial_team import FinancialTeam
+from conversation_service.teams.financial_team import FinancialTeam
 from conversation_service.agents.context_manager import ContextManager
 from conversation_service.models.core_models import AgentResponse
 

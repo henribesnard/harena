@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from agent_types import AssistantAgent
 from sqlalchemy.orm import Session
-from teams.team_orchestrator import TeamOrchestrator
+from conversation_service.teams.team_orchestrator import TeamOrchestrator
 
 
 class AgentRuntime:

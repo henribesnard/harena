@@ -8,7 +8,6 @@ import json
 import logging
 import time
 import uuid
-from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 import sqlalchemy
@@ -28,10 +27,8 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
-from conversation_service.message_repository import (
-    ConversationMessage,
-    ConversationMessageRepository,
-)
+from conversation_service.message_repository import ConversationMessageRepository
+from conversation_service.models.conversation_models import ConversationMessage
 from conversation_service.repository import ConversationRepository
 
 logger = logging.getLogger(__name__)
@@ -88,7 +85,7 @@ class TeamOrchestrator:
         history_models = self.get_history(conversation_id, db) or []
         ctx: Dict[str, Any] = {
             "user_id": user_id,
-            "history": [asdict(m) for m in history_models],
+            "history": [m.model_dump() for m in history_models],
         }
 
         repo = ConversationMessageRepository(db)
@@ -243,7 +240,7 @@ class TeamOrchestrator:
 
         self.context = {
             "user_id": user_id,
-            "history": [asdict(m) for m in history],
+            "history": [m.model_dump() for m in history],
         }
         self._conversation_id = conv_id
         self._conversation_db_id = conv.id

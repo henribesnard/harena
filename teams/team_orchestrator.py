@@ -8,7 +8,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import sqlalchemy
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
+from conversation_service.core.conversation_service import save_conversation_turn
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.models.conversation_models import (
     ConversationMessage,
@@ -85,6 +86,9 @@ class TeamOrchestrator:
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
+        if not message.strip():
+            raise ValueError("message must not be empty")
+
         start = time.time()
         history_models = self.get_history(conversation_id, db) or []
         ctx: Dict[str, Any] = {
@@ -99,6 +103,7 @@ class TeamOrchestrator:
         service = ConversationService(repo)
         if self._conversation_db_id is None:
             raise RuntimeError("Conversation database id not initialised")
+        agent_messages: List[Tuple[str, str]] = []
 
         self._total_calls += 1
         success = True
@@ -106,47 +111,39 @@ class TeamOrchestrator:
             tasks = []
             if self._classifier is not None:
                 tasks.append(
-                    self._call_agent(
+                    self._call_agent_safe(
                         self._classifier,
                         {"user_message": message},
                         ctx,
-                        repo,
-                        conversation_id,
-                        user_id,
+                        agent_messages,
                     )
                 )
             if self._extractor is not None:
                 tasks.append(
-                    self._call_agent(
+                    self._call_agent_safe(
                         self._extractor,
                         {"user_message": message},
                         ctx,
-                        repo,
-                        conversation_id,
-                        user_id,
+                        agent_messages,
                     )
                 )
             if tasks:
                 await asyncio.gather(*tasks)
 
-            ctx = await self._call_agent(
+            ctx = await self._call_agent_safe(
                 self._query_agent,
                 {
                     "intent": ctx.get("intent"),
                     "entities": ctx.get("entities"),
                 },
                 ctx,
-                repo,
-                conversation_id,
-                user_id,
+                agent_messages,
             )
-            ctx = await self._call_agent(
+            ctx = await self._call_agent_safe(
                 self._responder,
                 {"search_response": ctx.get("search_response")},
                 ctx,
-                repo,
-                conversation_id,
-                user_id,
+                agent_messages,
             )
             reply = ctx.get("response", "")
         except Exception:  # pragma: no cover - defensive
@@ -164,6 +161,16 @@ class TeamOrchestrator:
                 MessageCreate(role="user", content=message),
                 MessageCreate(role="assistant", content=reply),
             ],
+        if self._conversation_db_id is None:
+            raise RuntimeError("Conversation database id not initialised")
+
+        save_conversation_turn(
+            db,
+            conversation_db_id=self._conversation_db_id,
+            user_id=user_id,
+            user_message=message,
+            agent_messages=agent_messages,
+            assistant_reply=reply,
         )
 
         duration = (time.time() - start) * 1000
@@ -173,43 +180,40 @@ class TeamOrchestrator:
         self.context = dict(ctx)
         return reply
 
-    async def _call_agent(
+    async def _call_agent_safe(
         self,
         agent: Optional[Any],
         payload: Dict[str, Any],
         context: Dict[str, Any],
-        repo: ConversationMessageRepository,
-        conversation_id: str,
-        user_id: int,
+        messages: List[Tuple[str, str]],
     ) -> Dict[str, Any]:
         if agent is None:
             return context
 
         payload["context"] = context
         start = time.time()
-        response = await agent.process(payload)  # type: ignore[call-arg]
-        duration_ms = int((time.time() - start) * 1000)
-
-        result: Dict[str, Any]
-        if hasattr(response, "result"):
-            result = response.result  # type: ignore[attr-defined]
-        else:
-            result = response or {}
-
-        context.update(result)
         name = getattr(agent, "name", agent.__class__.__name__)
-        if result:
-            if self._conversation_db_id is None:
-                raise RuntimeError("Conversation database id not initialised")
-            repo.add(
-                conversation_db_id=self._conversation_db_id,
-                user_id=user_id,
-                role=name,
-                content=json.dumps(result, ensure_ascii=False),
-            )
+        try:
+            response = await agent.process(payload)  # type: ignore[call-arg]
+            result: Dict[str, Any]
+            if hasattr(response, "result"):
+                result = response.result  # type: ignore[attr-defined]
+            else:
+                result = response or {}
+            context.update(result)
+            if result:
+                messages.append(
+                    (name, json.dumps(result, ensure_ascii=False))
+                )
+            success = True
+        except Exception:
+            result = {}
+            success = False
+            logger.exception("Agent %s failed", name)
 
+        duration_ms = int((time.time() - start) * 1000)
         await self._metrics.record_agent_call(
-            agent_name=name, success=True, processing_time_ms=duration_ms
+            agent_name=name, success=success, processing_time_ms=duration_ms
         )
         return context
 

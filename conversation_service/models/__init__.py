@@ -1,12 +1,13 @@
-from .agent_models import AgentStep, AgentTrace
-from .conversation_models import Conversation, ConversationSummary, ConversationTurn
+"""Public exports for conversation service models."""
 
-__all__ = [
-    "AgentStep",
-    "AgentTrace",
-    "Conversation",
-    "ConversationSummary",
-    "ConversationTurn",
+from .agent_models import (
+    AgentStep,
+    AgentTrace,
+    AgentConfig,
+    IntentResult,
+    DynamicFinancialEntity,
+    AgentResponse,
+)
 from .conversation_models import (
     ConversationRequest,
     ConversationResponse,
@@ -14,21 +15,24 @@ from .conversation_models import (
     ConversationContext,
 )
 from .conversation_db_models import (
-"""Expose Pydantic models for external use."""
-
-from .agent_models import (
-    AgentConfig,
-    IntentResult,
-    DynamicFinancialEntity,
-    AgentResponse,
-)
-from .conversation_models import (
     Conversation,
     ConversationSummary,
     ConversationTurn,
 )
+from .enums import (
+    IntentType,
+    EntityType,
+    QueryType,
+    ConfidenceThreshold,
+)
 
 __all__ = [
+    "AgentStep",
+    "AgentTrace",
+    "AgentConfig",
+    "IntentResult",
+    "DynamicFinancialEntity",
+    "AgentResponse",
     "ConversationRequest",
     "ConversationResponse",
     "ConversationMetadata",
@@ -36,19 +40,6 @@ __all__ = [
     "Conversation",
     "ConversationSummary",
     "ConversationTurn",
-    "AgentConfig",
-    "IntentResult",
-    "DynamicFinancialEntity",
-    "AgentResponse",
-    "Conversation",
-    "ConversationSummary",
-    "ConversationTurn",
-
-"""Exports publics du package `conversation_service.models`."""
-
-from .enums import ConfidenceThreshold, EntityType, IntentType, QueryType
-
-__all__ = [
     "IntentType",
     "EntityType",
     "QueryType",

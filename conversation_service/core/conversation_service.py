@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -55,23 +55,20 @@ class ConversationService:
             Final response returned to the user.
         """
 
-        class _Msg:
-            def __init__(self, role: str, content: str) -> None:
-                self.role = role
-                self.content = content
-
-        messages: List[object] = [MessageCreate(role="user", content=user_message)]
-        for role, content in agent_messages:
-            if not content.strip():
-                raise ValueError("content must not be empty")
-            messages.append(_Msg(role, content))
+        messages: List[MessageCreate] = [
+            MessageCreate(role="user", content=user_message)
+        ]
+        messages.extend(
+            MessageCreate(role=role, content=content)
+            for role, content in agent_messages
+        )
         messages.append(MessageCreate(role="assistant", content=assistant_reply))
 
         try:
             self._msg_repo.add_batch(
                 conversation_db_id=conversation.id,
                 user_id=conversation.user_id,
-                messages=messages,  # type: ignore[arg-type]
+                messages=messages,
             )
             self._db.execute(
                 update(Conversation)
@@ -86,6 +83,23 @@ class ConversationService:
         except Exception:  # pragma: no cover - defensive rollback
             self._db.rollback()
             raise
+
+    def save_conversation_turn(
+        self,
+        *,
+        conversation: Conversation,
+        user_message: str,
+        agent_messages: Iterable[Tuple[str, str]] = (),
+        assistant_reply: str,
+    ) -> None:
+        """Backward compatible wrapper for :meth:`save_conversation_turn_atomic`."""
+
+        self.save_conversation_turn_atomic(
+            conversation=conversation,
+            user_message=user_message,
+            agent_messages=agent_messages,
+            assistant_reply=assistant_reply,
+        )
 
 
 __all__ = ["ConversationService"]

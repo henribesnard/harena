@@ -18,6 +18,9 @@ from ..models.conversation_models import (
     ConversationHistoryResponse,
     ConversationStartResponse,
 )
+
+from conversation_service.repository import ConversationRepository
+
 from conversation_service.core.conversation_service import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
@@ -49,14 +52,50 @@ async def get_history(
     """Return the message history for a conversation."""
     service = ConversationService(db)
     if service.get_for_user(conversation_id, current_user.id) is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    history = orchestrator.get_history(conversation_id, db)
-    if history is None:
+    """Return the message history for a conversation.
+
+    Args:
+        conversation_id: Identifier of the conversation to retrieve history for.
+        current_user: Authenticated user associated with the request.
+        db: Database session dependency.
+
+    Returns:
+        ConversationHistoryResponse containing the conversation history.
+
+    Raises:
+        HTTPException: If the conversation does not exist for the user.
+    """
+    repo = ConversationRepository(db)
+    conv = repo.get_by_conversation_id(conversation_id)
+    if conv is None or conv.user_id != current_user.id:
         logger.error(
-            "Conversation history not found",
+            "Conversation not found",
             extra={"conversation_id": conversation_id, "user_id": current_user.id},
         )
         raise HTTPException(status_code=404, detail="Conversation not found")
+
+    try:
+        history = orchestrator.get_history(conversation_id, db)
+        if history is None:
+            raise ValueError("Conversation history not found")
+    except ValueError as exc:
+        logger.error(
+            "Conversation history not found",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+            exc_info=True,
+        )
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+    except Exception as exc:  # pragma: no cover - unexpected errors
+        logger.error(
+            "Failed to retrieve conversation history",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        ) from exc
+
     return ConversationHistoryResponse(
         conversation_id=conversation_id, messages=history
     )
@@ -73,6 +112,13 @@ async def query_agents(
     service = ConversationService(db)
     conv = service.get_for_user(conversation_id, current_user.id)
     if conv is None:
+    repo = ConversationRepository(db)
+    conv = repo.get_by_conversation_id(conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        logger.error(
+            "Conversation not found",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+        )
         raise HTTPException(status_code=404, detail="Conversation not found")
     try:
         reply = await orchestrator.query_agents(

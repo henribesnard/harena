@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -44,18 +46,20 @@ def test_add_batch_inserts_messages_atomically():
         assert [m.role for m in msgs] == ["user", "assistant"]
 
 
-def test_add_batch_rolls_back_on_failure():
+def test_add_batch_rolls_back_on_failure(caplog):
     Session = create_session()
     with Session() as s:
         user_id, conv_db_id, conv_id = prepare(s)
         repo = ConversationMessageRepository(s)
         with pytest.raises(ValueError):
-            repo.add_batch(
-                conversation_db_id=conv_db_id,
-                user_id=user_id,
-                messages=[
-                    MessageCreate(role="user", content="hi"),
-                    MessageCreate(role="assistant", content=""),
-                ],
-            )
+            with caplog.at_level(logging.ERROR):
+                repo.add_batch(
+                    conversation_db_id=conv_db_id,
+                    user_id=user_id,
+                    messages=[
+                        MessageCreate(role="user", content="hi"),
+                        MessageCreate(role="assistant", content=""),
+                    ],
+                )
+        assert "Transaction failed" in caplog.text
         assert repo.list_models(conv_id) == []

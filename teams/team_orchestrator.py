@@ -8,7 +8,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import sqlalchemy
 from sqlalchemy.orm import Session
@@ -45,13 +45,24 @@ class TeamOrchestrator:
         extractor: Optional[EntityExtractorAgent] = None,
         query_agent: Optional[QueryGeneratorAgent] = None,
         responder: Optional[ResponseGeneratorAgent] = None,
+        conversation_service_cls: Type[ConversationService] = ConversationService,
     ) -> None:
-        """Initialise the orchestrator with optional agent instances."""
+        """Initialise the orchestrator with optional agent instances.
+
+        Parameters
+        ----------
+        classifier, extractor, query_agent, responder:
+            Optional agent implementations.
+        conversation_service_cls:
+            Class used to instantiate :class:`ConversationService`. This allows
+            dependency injection for testing.
+        """
 
         self._classifier = classifier
         self._extractor = extractor
         self._query_agent = query_agent
         self._responder = responder
+        self._conversation_service_cls = conversation_service_cls
 
         self.context: Dict[str, Any] = {}
         self._total_calls = 0
@@ -95,7 +106,7 @@ class TeamOrchestrator:
         # Validate user message before any processing to avoid partial writes
         MessageCreate(role="user", content=message)
 
-        service = ConversationService(db)
+        service = self._conversation_service_cls(db)
         conv = ConversationRepository(db).get_by_conversation_id(conversation_id)
         if conv is None:
             raise RuntimeError("Conversation database id not initialised")
@@ -148,12 +159,15 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
-        service.save_conversation_turn_atomic(
-            conversation=conv,
-            user_message=message,
-            agent_messages=agent_messages,
-            assistant_reply=reply,
-        )
+        try:
+            service.save_conversation_turn_atomic(
+                conversation=conv,
+                user_message=message,
+                agent_messages=agent_messages,
+                assistant_reply=reply,
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Failed to persist conversation turn")
 
         self.context = dict(ctx)
         return reply

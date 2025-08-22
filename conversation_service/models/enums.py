@@ -5,60 +5,292 @@ class IntentType(str, Enum):
     """Types d'intention pris en charge par la plateforme."""
 
     TRANSACTION_SEARCH = "TRANSACTION_SEARCH"
-    """Rechercher toutes transactions sans filtre."""
+    """Rechercher toutes transactions sans filtre.
+
+    Exemple: "Montre-moi toutes mes transactions."""
 
     SEARCH_BY_DATE = "SEARCH_BY_DATE"
-    """Transactions pour une date ou une période."""
+    """Transactions pour une date ou une période.
+
+    Exemple: "Transactions du 5 mai"."""
 
     SEARCH_BY_AMOUNT = "SEARCH_BY_AMOUNT"
-    """Transactions par montant."""
+    """Transactions par montant.
+
+    Exemple: "Transactions supérieures à 50 euros"."""
+
+    SEARCH_BY_MERCHANT = "SEARCH_BY_MERCHANT"
+    """Transactions liées à un marchand précis.
+
+    Exemple: "Achats chez Carrefour"."""
+
+    SEARCH_BY_CATEGORY = "SEARCH_BY_CATEGORY"
+    """Transactions par catégorie.
+
+    Exemple: "Dépenses en restauration"."""
+
+    SEARCH_BY_AMOUNT_AND_DATE = "SEARCH_BY_AMOUNT_AND_DATE"
+    """Combinaison montant et date.
+
+    Exemple: "Dépenses de plus de 100€ en mars"."""
+
+    SEARCH_BY_OPERATION_TYPE = "SEARCH_BY_OPERATION_TYPE"
+    """Transactions filtrées par type d'opération.
+
+    Exemple: "Seulement les débits"."""
+
+    SEARCH_BY_TEXT = "SEARCH_BY_TEXT"
+    """Recherche textuelle libre.
+
+    Exemple: "Transactions contenant 'abonnement'"."""
+
+    COUNT_TRANSACTIONS = "COUNT_TRANSACTIONS"
+    """Compter les transactions correspondant à une requête.
+
+    Exemple: "Combien de transactions ce mois-ci ?"""
+
+    MERCHANT_INQUIRY = "MERCHANT_INQUIRY"
+    """Analyse détaillée par marchand.
+
+    Exemple: "Analyse des dépenses chez Amazon"."""
+
+    FILTER_REQUEST = "FILTER_REQUEST"
+    """Raffiner une requête transactionnelle.
+
+    Exemple: "Ajoute un filtre pour les débits"."""
+
+    SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
+    """Analyse globale des dépenses.
+
+    Exemple: "Analyse mes dépenses du mois"."""
+
+    SPENDING_ANALYSIS_BY_CATEGORY = "SPENDING_ANALYSIS_BY_CATEGORY"
+    """Analyse des dépenses par catégorie.
+
+    Exemple: "Analyse de mes dépenses en loisirs"."""
+
+    SPENDING_ANALYSIS_BY_PERIOD = "SPENDING_ANALYSIS_BY_PERIOD"
+    """Analyse des dépenses par période.
+
+    Exemple: "Dépenses sur les trois derniers mois"."""
+
+    SPENDING_COMPARISON = "SPENDING_COMPARISON"
+    """Comparaison de dépenses entre périodes ou catégories.
+
+    Exemple: "Comparer janvier et février"."""
+
+    TREND_ANALYSIS = "TREND_ANALYSIS"
+    """Tendance ou évolution des dépenses.
+
+    Exemple: "Évolution de mes dépenses"."""
+
+    CATEGORY_ANALYSIS = "CATEGORY_ANALYSIS"
+    """Répartition des dépenses par catégorie.
+
+    Exemple: "Distribution de mes dépenses"."""
+
+    COMPARISON_QUERY = "COMPARISON_QUERY"
+    """Comparaison ciblée entre catégories.
+
+    Exemple: "Restaurants vs courses"."""
 
     BALANCE_INQUIRY = "BALANCE_INQUIRY"
-    """Solde général actuel."""
+    """Solde général actuel.
+
+    Exemple: "Quel est mon solde ?"""
+
+    ACCOUNT_BALANCE_SPECIFIC = "ACCOUNT_BALANCE_SPECIFIC"
+    """Solde d'un compte précis.
+
+    Exemple: "Solde du compte épargne"."""
+
+    BALANCE_EVOLUTION = "BALANCE_EVOLUTION"
+    """Historique ou évolution du solde.
+
+    Exemple: "Comment a évolué mon solde ?"""
 
     GREETING = "GREETING"
-    """Message de salutation utilisateur."""
+    """Message de salutation utilisateur.
+
+    Exemple: "Bonjour !"""
+
+    CONFIRMATION = "CONFIRMATION"
+    """Message de confirmation ou d'accord.
+
+    Exemple: "Merci, parfait"."""
+
+    CLARIFICATION = "CLARIFICATION"
+    """Demande de clarification.
+
+    Exemple: "Peux-tu préciser ?"""
+
+    GENERAL_QUESTION = "GENERAL_QUESTION"
+    """Question générale hors autre intention.
+
+    Exemple: "Que peux-tu faire ?"""
+
+    TRANSFER_REQUEST = "TRANSFER_REQUEST"
+    """Demande de virement (non supportée).
+
+    Exemple: "Fais un virement de 100€"."""
+
+    PAYMENT_REQUEST = "PAYMENT_REQUEST"
+    """Demande de paiement d'une facture (non supportée).
+
+    Exemple: "Payer ma facture EDF"."""
+
+    CARD_BLOCK = "CARD_BLOCK"
+    """Demande de blocage de carte (non supportée).
+
+    Exemple: "Bloque ma carte"."""
+
+    BUDGET_INQUIRY = "BUDGET_INQUIRY"
+    """Question sur le suivi budgétaire (non supportée).
+
+    Exemple: "Où en est mon budget ?"""
+
+    GOAL_TRACKING = "GOAL_TRACKING"
+    """Suivi d'objectifs d'épargne (non supporté).
+
+    Exemple: "Progrès vers mon objectif"."""
+
+    EXPORT_REQUEST = "EXPORT_REQUEST"
+    """Demande d'export de données (non supportée).
+
+    Exemple: "Export mes transactions"."""
+
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"
+    """Requête hors domaine.
+
+    Exemple: "Donne-moi une recette"."""
+
+    UNCLEAR_INTENT = "UNCLEAR_INTENT"
+    """Intention ambiguë ou non reconnue.
+
+    Exemple: "Je veux truc"."""
 
     UNKNOWN = "UNKNOWN"
-    """Intention non reconnue."""
+    """Phrase inintelligible.
+
+    Exemple: "ghjk lkj"."""
+
+    TEST_INTENT = "TEST_INTENT"
+    """Message de test.
+
+    Exemple: "[TEST] ping"."""
+
+    ERROR = "ERROR"
+    """Entrée corrompue ou erronée.
+
+    Exemple: données illisibles."""
 
 
 class EntityType(str, Enum):
     """Catégories d'entités extraites d'un message."""
 
     ACCOUNT = "ACCOUNT"
-    """Identifiant de compte bancaire."""
+    """Identifiant de compte bancaire.
+
+    Exemple: "compte courant"."""
 
     TRANSACTION = "TRANSACTION"
-    """Identifiant de transaction."""
+    """Identifiant de transaction.
+
+    Exemple: "txn_123"."""
 
     MERCHANT = "MERCHANT"
-    """Nom d'un marchand."""
+    """Nom d'un marchand.
+
+    Exemple: "Carrefour"."""
 
     CATEGORY = "CATEGORY"
-    """Catégorie de dépense."""
+    """Catégorie de dépense.
+
+    Exemple: "restaurants"."""
 
     DATE = "DATE"
-    """Date explicite."""
+    """Date explicite.
+
+    Exemple: "2024-05-01"."""
+
+    PERIOD = "PERIOD"
+    """Période ou intervalle de dates.
+
+    Exemple: "janvier 2024"."""
 
     AMOUNT = "AMOUNT"
-    """Valeur monétaire."""
+    """Valeur monétaire.
+
+    Exemple: "50 euros"."""
+
+    OPERATION_TYPE = "OPERATION_TYPE"
+    """Type d'opération financière.
+
+    Exemple: "débit"."""
+
+    TEXT = "TEXT"
+    """Texte libre de recherche.
+
+    Exemple: "abonnement"."""
 
 
 class QueryType(str, Enum):
     """Types de requêtes supportées par le service."""
 
-    TRANSACTION = "TRANSACTION"
-    """Requête portant sur des transactions."""
+    FINANCIAL_QUERY = "FINANCIAL_QUERY"
+    """Requête liée aux transactions financières.
 
-    SPENDING = "SPENDING"
-    """Analyse des dépenses."""
+    Exemple: "Liste mes achats de juin"."""
 
-    BALANCE = "BALANCE"
-    """Interrogation sur le solde."""
+    FILTER_REQUEST = "FILTER_REQUEST"
+    """Demande de filtrage supplémentaire.
 
-    GENERAL = "GENERAL"
-    """Question générale sans catégorie précise."""
+    Exemple: "Seulement les débits"."""
+
+    SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
+    """Analyse globale des dépenses.
+
+    Exemple: "Analyse mes dépenses"."""
+
+    TREND_ANALYSIS = "TREND_ANALYSIS"
+    """Analyse de tendance des dépenses.
+
+    Exemple: "Évolution de mes dépenses"."""
+
+    ACCOUNT_BALANCE = "ACCOUNT_BALANCE"
+    """Questions sur le solde d'un compte.
+
+    Exemple: "Quel est mon solde ?"""
+
+    GREETING = "GREETING"
+    """Formule de salutation.
+
+    Exemple: "Salut"."""
+
+    CONFIRMATION = "CONFIRMATION"
+    """Réponse de confirmation.
+
+    Exemple: "Merci"."""
+
+    CLARIFICATION = "CLARIFICATION"
+    """Demande de clarification.
+
+    Exemple: "Peux-tu préciser ?"""
+
+    GENERAL_QUESTION = "GENERAL_QUESTION"
+    """Question générale ne correspondant à aucune autre catégorie.
+
+    Exemple: "Que peux-tu faire ?"""
+
+    UNSUPPORTED = "UNSUPPORTED"
+    """Intention non supportée par la plateforme.
+
+    Exemple: "Effectue un virement"."""
+
+    UNCLEAR_INTENT = "UNCLEAR_INTENT"
+    """Intention ambiguë ou inconnue.
+
+    Exemple: "ghjk"."""
 
 
 class ConfidenceThreshold(float, Enum):

@@ -38,14 +38,14 @@ class QueryType(str, Enum):
 
 core_models.QueryType = QueryType
 
-agent_module = pytest.importorskip("conversation_service.agents.query_generator_agent")
+agent_module = pytest.importorskip("conversation_service.agents.query_generator")
 QueryOptimizer = getattr(agent_module, "QueryOptimizer", None)
 if QueryOptimizer is None:  # pragma: no cover - missing implementation
     pytest.skip("QueryOptimizer not available", allow_module_level=True)
 
 from conversation_service.models.core_models import IntentType
 
-from conversation_service.agents.query_generator_agent import QueryGeneratorAgent
+from conversation_service.agents.query_generator import QueryGeneratorAgent
 
 
 def test_query_optimizer_applies_merchant_rule():

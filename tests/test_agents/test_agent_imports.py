@@ -4,11 +4,11 @@ import types
 import pytest
 
 MODULES = [
-    ("conversation_service.agents.entity_extractor_agent", ["EntityExtractionCache"]),
-    ("conversation_service.agents.intent_classifier_agent", ["IntentClassificationCache"]),
-    ("conversation_service.agents.query_generator_agent", ["QueryOptimizer"]),
+    ("conversation_service.agents.entity_extractor", ["EntityExtractionCache"]),
+    ("conversation_service.agents.intent_classifier", ["IntentClassificationCache"]),
+    ("conversation_service.agents.query_generator", ["QueryOptimizer"]),
     (
-        "conversation_service.agents.response_generator_agent",
+        "conversation_service.agents.response_generator",
         ["ResponseGeneratorAgent", "stream_response"],
     ),
 ]
@@ -16,7 +16,7 @@ MODULES = [
 
 @pytest.mark.parametrize("module_name, symbols", MODULES)
 def test_agent_modules_expose_symbols(module_name, symbols):
-    if module_name == "conversation_service.agents.query_generator_agent":
+    if module_name == "conversation_service.agents.query_generator":
         # Provide minimal stubs so that the module can be imported without the
         # real HTTP and OpenAI dependencies present in production.
         clients_pkg = types.ModuleType("conversation_service.clients")

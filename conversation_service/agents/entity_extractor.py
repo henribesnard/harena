@@ -1,13 +1,18 @@
 """Entity extraction agent."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import asyncio
 import json
+import time
 
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..prompts import entity_prompts
+from ..models.core_models import FinancialEntity
+
+
+DEFAULT_TTL = 180
 
 
 class EntityExtractorAgent(BaseFinancialAgent):
@@ -65,3 +70,47 @@ class EntityExtractorAgent(BaseFinancialAgent):
         if last_error:
             raise last_error
         return None
+
+
+class EntityExtractionCache:
+    """In-memory cache for extracted entities."""
+
+    def __init__(self) -> None:
+        self._store: Dict[str, Tuple[List[FinancialEntity], float]] = {}
+        self.hits: int = 0
+
+    @staticmethod
+    def _make_key(user_id: str, intent: str, message: str) -> str:
+        return f"{user_id}:{intent}:{message}"
+
+    def get(
+        self, user_id: str, intent: str, message: str, ttl: int = DEFAULT_TTL
+    ) -> Optional[List[FinancialEntity]]:
+        key = self._make_key(user_id, intent, message)
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        entities, timestamp = entry
+        if time.time() - timestamp > ttl:
+            self._store.pop(key, None)
+            return None
+        self.hits += 1
+        return entities
+
+    def set(
+        self,
+        user_id: str,
+        intent: str,
+        message: str,
+        entities: List[FinancialEntity],
+        ttl: int = DEFAULT_TTL,
+    ) -> None:
+        key = self._make_key(user_id, intent, message)
+        self._store[key] = (entities, time.time())
+
+    def clear(self) -> None:
+        self._store.clear()
+        self.hits = 0
+
+
+__all__ = ["EntityExtractorAgent", "EntityExtractionCache"]

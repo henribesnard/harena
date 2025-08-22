@@ -28,8 +28,8 @@ class QueryType(str, Enum):
 
 core_models.QueryType = QueryType
 
-from conversation_service.agents.intent_classifier_agent import IntentClassificationCache
-from conversation_service.agents.query_generator_agent import QueryOptimizer
+from conversation_service.agents.intent_classifier import IntentClassificationCache
+from conversation_service.agents.query_generator import QueryOptimizer
 from conversation_service.models.core_models import (
     FinancialEntity,
     EntityType,

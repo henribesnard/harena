@@ -77,7 +77,7 @@ core_models.QueryType = QueryType
 
 
 import importlib
-import conversation_service.agents.query_generator_agent as qga
+import conversation_service.agents.query_generator as qga
 importlib.reload(qga)
 from conversation_service.models.core_models import IntentType
 QueryOptimizer = qga.QueryOptimizer

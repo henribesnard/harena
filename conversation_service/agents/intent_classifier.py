@@ -1,12 +1,17 @@
 """Intent classification agent."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import asyncio
+import time
 
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..prompts import intent_prompts
+from ..models.core_models import IntentResult
+
+
+DEFAULT_TTL = 300
 
 
 class IntentClassifierAgent(BaseFinancialAgent):
@@ -59,3 +64,44 @@ class IntentClassifierAgent(BaseFinancialAgent):
         if last_error:
             raise last_error
         return None
+
+
+class IntentClassificationCache:
+    """Simple in-memory cache for intent classification results."""
+
+    def __init__(self) -> None:
+        self._store: Dict[str, Tuple[IntentResult, float]] = {}
+        self.hits: int = 0
+
+    @staticmethod
+    def _make_key(user_id: str, message: str) -> str:
+        return f"{user_id}:{message}"
+
+    def get(self, user_id: str, message: str, ttl: int = DEFAULT_TTL) -> Optional[IntentResult]:
+        key = self._make_key(user_id, message)
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        result, timestamp = entry
+        if time.time() - timestamp > ttl:
+            self._store.pop(key, None)
+            return None
+        self.hits += 1
+        return result
+
+    def set(
+        self,
+        user_id: str,
+        message: str,
+        result: IntentResult,
+        ttl: int = DEFAULT_TTL,
+    ) -> None:
+        key = self._make_key(user_id, message)
+        self._store[key] = (result, time.time())
+
+    def clear(self) -> None:
+        self._store.clear()
+        self.hits = 0
+
+
+__all__ = ["IntentClassifierAgent", "IntentClassificationCache"]

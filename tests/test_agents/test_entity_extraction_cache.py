@@ -5,7 +5,7 @@ import time
 
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=object))
 
-from conversation_service.agents.entity_extractor_agent import EntityExtractionCache
+from conversation_service.agents.entity_extractor import EntityExtractionCache
 from conversation_service.models.core_models import FinancialEntity, EntityType
 
 

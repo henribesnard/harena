@@ -1,15 +1,8 @@
 import asyncio
 
-import importlib.util
-from pathlib import Path
 from typing import Any
 
-module_path = Path(__file__).resolve().parents[2] / "conversation_service" / "agents" / "response_generator_agent.py"
-spec = importlib.util.spec_from_file_location("response_generator_agent", module_path)
-agent_module = importlib.util.module_from_spec(spec)
-assert spec.loader is not None
-spec.loader.exec_module(agent_module)  # type: ignore[arg-type]
-ResponseGeneratorAgent = agent_module.ResponseGeneratorAgent
+from conversation_service.agents.response_generator import ResponseGeneratorAgent
 
 
 class DummyLLM:

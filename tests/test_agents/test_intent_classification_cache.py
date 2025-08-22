@@ -5,7 +5,7 @@ import time
 
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=object))
 
-from conversation_service.agents.intent_classifier_agent import IntentClassificationCache
+from conversation_service.agents.intent_classifier import IntentClassificationCache
 from conversation_service.models.core_models import IntentResult, IntentType
 
 

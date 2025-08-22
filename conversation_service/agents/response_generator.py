@@ -1,96 +1,142 @@
-"""Response generation agent."""
+"""Generate personalised responses from search results using OpenAI."""
 
-from typing import Any, Dict, Optional
-import asyncio
+from __future__ import annotations
+
+import hashlib
 import json
-
-from .base_agent import BaseFinancialAgent
-from ..models.agent_models import AgentConfig
-from ..prompts import response_prompts
+import time
+from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 
-class ResponseGeneratorAgent(BaseFinancialAgent):
-    """Craft natural language responses from search results."""
+class ResponseGeneratorAgent:
+    """Generate natural language responses from search results.
 
-    def __init__(self, openai_client):
-        config = AgentConfig(
-            name="response_generator",
-            system_message=response_prompts.get_prompt(),
-            model_name="gpt-4o-mini",
+    Parameters
+    ----------
+    openai_client:
+        Client exposing an ``async chat_completion`` method. In production this
+        is :class:`openai_client.OpenAIClient` but tests may provide a stub.
+    model:
+        Model name used for the OpenAI call. Defaults to ``"gpt-4o-mini"``.
+    ttl:
+        Cache time-to-live in seconds. Defaults to ``60``.
+    """
+
+    def __init__(self, openai_client: Any, *, model: str = "gpt-4o-mini", ttl: int = 60) -> None:
+        self._client = openai_client
+        self._model = model
+        self.ttl = ttl
+        self._cache: Dict[str, Tuple[float, str]] = {}
+
+    # ------------------------------------------------------------------
+    # Caching helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _make_cache_key(
+        user_id: str, search_results: List[Dict[str, Any]], context: Dict[str, Any]
+    ) -> str:
+        """Create a stable cache key for the inputs."""
+
+        payload = json.dumps(
+            {"user": user_id, "results": search_results, "context": context},
+            sort_keys=True,
+            ensure_ascii=False,
         )
-        super().__init__(config=config, openai_client=openai_client)
-        self.examples = response_prompts.get_examples()
+        return hashlib.sha256(payload.encode()).hexdigest()
 
-    async def _process_implementation(
-        self, input_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """Generate a personalised response from search results.
+    # ------------------------------------------------------------------
+    # Prompt construction
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _build_prompt(search_results: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
+        """Compose the prompt from search results and conversation context."""
 
-        The method leverages the OpenAI client to craft a natural language
-        summary of ``search_response`` while incorporating user profile
-        information for formatting and tailored insights.
-        """
+        result_count = len(search_results)
+        top_result = search_results[0] if search_results else {}
+        snippet = (
+            top_result.get("summary")
+            or top_result.get("snippet")
+            or top_result.get("title")
+            or json.dumps(top_result, ensure_ascii=False)
+        )
 
-        context = input_data.get("context", {})
-        search_response = input_data.get("search_response", {})
         user_profile = context.get("user_profile", {})
-
-        # Prepare a short JSON serialisation of the search results for the
-        # language model.  Only include the top few entries to keep the prompt
-        # compact.
-        results = search_response.get("results", [])
-        top_results = results[:3]
-        results_json = json.dumps(top_results, ensure_ascii=False)
-
-        prompt = (
-            "Tu es un assistant financier. Résume les résultats suivants en "
-            "fournissant des conseils adaptés au profil utilisateur.\n\n"
-            f"Profil utilisateur: {json.dumps(user_profile, ensure_ascii=False)}\n"
-            f"Résultats de recherche: {results_json}"
-        )
-
-        last_error: Optional[Exception] = None
-        for attempt in range(3):
-            try:
-                response = await asyncio.wait_for(
-                    self._call_openai(prompt, few_shot_examples=self.examples),
-                    timeout=self.config.timeout_seconds,
-                )
-                message = response["content"].strip()
-                break
-            except Exception as exc:  # pragma: no cover - network/timeout
-                last_error = exc
-                if attempt >= 2:
-                    raise
-                await asyncio.sleep(2 ** attempt)
-
-        if last_error:
-            raise last_error
-
         user_name = user_profile.get("name", "client")
-        formatted = f"### Résumé personnalisé pour {user_name}\n\n{message}"
-        insights = {"result_count": len(results)}
+        preferences = user_profile.get("preferences", {})
+        intent = context.get("intent")
+        entities = context.get("entities", [])
 
-        return {
-            "input": input_data,
-            "context": context,
-            "response": formatted,
-            "insights": insights,
-        }
-"""Lightweight response generation utilities.
+        parts = [
+            f"Utilisateur: {user_name}.",
+            f"Résultats: {result_count}.",
+            f"Principal: {snippet}.",
+        ]
+        if intent:
+            parts.append(f"Intention: {intent}.")
+        if entities:
+            parts.append("Entités: " + json.dumps(entities, ensure_ascii=False) + ".")
+        if preferences:
+            parts.append(
+                "Préférences: " + json.dumps(preferences, ensure_ascii=False) + "."
+            )
 
-This module provides a minimal asynchronous generator used by the websocket
-endpoint to stream back responses. In the real application this would bridge
-with the more advanced ``ResponseGeneratorAgent``.
-"""
+        return " ".join(parts) + " Fournis une réponse appropriée."
 
-from typing import AsyncGenerator
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    async def generate(
+        self, user_id: str, search_results: List[Dict[str, Any]], context: Dict[str, Any]
+    ) -> str:
+        """Return a response for ``search_results`` within ``context``."""
+
+        key = self._make_cache_key(user_id, search_results, context)
+        now = time.time()
+        cached = self._cache.get(key)
+        if cached and now - cached[0] < self.ttl:
+            return cached[1]
+
+        prompt = self._build_prompt(search_results, context)
+
+        try:
+            response = await self._client.chat_completion(
+                model=self._model, messages=[{"role": "user", "content": prompt}]
+            )
+            try:
+                content = response["choices"][0]["message"]["content"]
+            except Exception:  # pragma: no cover - library object
+                content = response.choices[0].message["content"]
+            text = content.strip()
+        except Exception:
+            top_result = search_results[0] if search_results else {}
+            suggestion = (
+                top_result.get("url")
+                or top_result.get("title")
+                or "réessaie avec une autre requête"
+            )
+            return (
+                "Je rencontre un problème pour générer la réponse. "
+                f"Suggestion: {suggestion}"
+            )
+
+        self._cache[key] = (now, text)
+        return text
+
+    async def process(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Compatibility wrapper for :class:`TeamOrchestrator`."""
+
+        context = payload.get("context", {})
+        search_response = payload.get("search_response", {})
+        search_results = search_response.get("results", [])
+        user_id = context.get("user_id", "")
+        text = await self.generate(str(user_id), search_results, context)
+        return {"response": text, "context": context, "input": payload}
 
 
 async def stream_response(message: str) -> AsyncGenerator[str, None]:
-    """Yield a simple response for the provided message.
+    """Fallback async generator returning the message directly."""
 
-    The implementation is intentionally lightweight to avoid heavy dependencies
-    during tests while illustrating how streaming would behave.
-    """
     yield f"Response: {message}"
+
+
+__all__ = ["ResponseGeneratorAgent", "stream_response"]

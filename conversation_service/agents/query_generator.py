@@ -2,12 +2,14 @@
 
 from typing import Any, Dict, Optional
 
+from copy import deepcopy
 from pydantic import ValidationError
 
 from .base_agent import BaseFinancialAgent
 from ..models.agent_models import AgentConfig
 from ..prompts import query_prompts
 from ..clients import SearchClient, OpenAIClient
+from ..models.core_models import IntentType
 from search_service.models import SearchRequest
 
 
@@ -73,3 +75,21 @@ class QueryGeneratorAgent(BaseFinancialAgent):
             "search_request": search_request.model_dump(),
             "search_response": response,
         }
+
+
+class QueryOptimizer:
+    """Apply minor optimisations to generated search queries."""
+
+    _MERCHANT_LIMIT = 15
+
+    @staticmethod
+    def optimize_query(base_query: Dict[str, Any], intent: IntentType) -> Dict[str, Any]:
+        query = deepcopy(base_query)
+        params = query.setdefault("search_parameters", {})
+        if intent == IntentType.MERCHANT_ANALYSIS:
+            params.setdefault("limit", QueryOptimizer._MERCHANT_LIMIT)
+            params.setdefault("sort", [{"total_spent": {"order": "desc"}}])
+        return query
+
+
+__all__ = ["QueryGeneratorAgent", "QueryOptimizer"]

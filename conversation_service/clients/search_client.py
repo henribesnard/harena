@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import httpx
 
-from conversation_service.settings import settings
+from conversation_service.config.settings import settings
 
 
 class SearchClient:

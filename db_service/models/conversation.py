@@ -6,7 +6,18 @@ Ce module définit les tables PostgreSQL pour stocker les conversations
 entre utilisateurs et le service d'IA, avec cloisonnement par utilisateur.
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON, Float
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    JSON,
+    Float,
+    DECIMAL,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime, timezone
@@ -18,9 +29,10 @@ from db_service.base import Base, TimestampMixin
 class Conversation(Base, TimestampMixin):
     """
     Table principale pour stocker les conversations complètes.
-    
+
     Chaque conversation appartient à un utilisateur spécifique et contient
-    des métadonnées globales sur la session conversationnelle.
+    des métadonnées globales sur la session conversationnelle ainsi que
+    les messages et tours associés.
     """
     
     __tablename__ = "conversations"
@@ -74,19 +86,29 @@ class Conversation(Base, TimestampMixin):
     conversation_metadata = Column(JSON, default=dict, nullable=False)
     user_preferences = Column(JSON, default=dict, nullable=False)
     session_metadata = Column(JSON, default=dict, nullable=False)
+    intents = Column(JSON, nullable=True)
+    entities = Column(JSON, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
     
     # Relations
     user = relationship("User", back_populates="conversations")
     turns = relationship(
-        "ConversationTurn", 
-        back_populates="conversation", 
+        "ConversationTurn",
+        back_populates="conversation",
         cascade="all, delete-orphan",
-        order_by="ConversationTurn.turn_number"
+        order_by="ConversationTurn.turn_number",
     )
     summaries = relationship(
-        "ConversationSummary", 
-        back_populates="conversation", 
-        cascade="all, delete-orphan"
+        "ConversationSummary",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+    messages = relationship(
+        "ConversationMessage",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
     )
     
     def __repr__(self):
@@ -96,9 +118,11 @@ class Conversation(Base, TimestampMixin):
 class ConversationTurn(Base, TimestampMixin):
     """
     Table pour stocker chaque tour de conversation (user message + AI response).
-    
+
     Chaque tour contient le message utilisateur, la réponse de l'IA,
-    et toutes les métadonnées de traitement associées.
+    les résultats d'analyse d'intention, les entités extraites et
+    toutes les métadonnées de traitement associées, incluant l'utilisation
+    des tokens.
     """
     
     __tablename__ = "conversation_turns"
@@ -139,6 +163,15 @@ class ConversationTurn(Base, TimestampMixin):
     # Intelligence artificielle - métadonnées
     intent_result = Column(JSON, nullable=True)
     agent_chain = Column(JSON, default=list, nullable=False)  # Séquence d'agents utilisés
+    intent_classification = Column(JSON, default=dict, nullable=True)
+    entities_extracted = Column(JSON, default=list, nullable=True)
+    intent_confidence = Column(DECIMAL(5, 4), default=0, nullable=False)
+    total_tokens_used = Column(Integer, default=0, nullable=False)
+    intent = Column(JSON, nullable=True)
+    entities = Column(JSON, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
     
     # Recherche et résultats
     search_query_used = Column(Text, nullable=True)
@@ -196,7 +229,12 @@ class ConversationSummary(Base, TimestampMixin):
 
 
 class ConversationMessage(Base, TimestampMixin):
-    """Store individual messages exchanged in a conversation."""
+    """
+    Stocke les messages individuels échangés dans une conversation.
+
+    Chaque message est lié à un utilisateur et à une conversation,
+    facilitant la reconstruction détaillée de l'échange.
+    """
 
     __tablename__ = "conversation_messages"
 
@@ -215,6 +253,10 @@ class ConversationMessage(Base, TimestampMixin):
     )
     role = Column(String(20), nullable=False)  # 'user' or 'assistant'
     content = Column(Text, nullable=False)
+
+    # Relations
+    conversation = relationship("Conversation", back_populates="messages")
+    user = relationship("User", backref="messages")
 
     def __repr__(self) -> str:  # pragma: no cover - simple repr
         return f"<ConversationMessage(conv_id={self.conversation_id}, role={self.role})>"

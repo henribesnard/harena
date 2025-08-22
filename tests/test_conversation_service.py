@@ -9,7 +9,7 @@ from db_service.models.conversation import (
 )
 from db_service.models.user import User
 
-from conversation_service.core.conversation_service import ConversationService
+from conversation_service.core import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
 
 

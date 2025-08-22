@@ -22,7 +22,7 @@ from conversation_service.agents.query_generator_agent import (
 from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
-from conversation_service.core.conversation_service import ConversationService
+from conversation_service.core import ConversationService
 
 logger = logging.getLogger(__name__)
 

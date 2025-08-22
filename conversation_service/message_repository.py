@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
 from typing import List, Sequence
 
 from sqlalchemy.orm import Session
@@ -26,17 +25,6 @@ class ConversationMessageRepository:
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    @contextmanager
-    def transaction(self):
-
-        """Context manager to commit or roll back the current session."""
-        try:
-            yield
-            self._db.commit()
-        except Exception:
-            self._db.rollback()
-            raise
-
     def add_batch(
         self,
         *,
@@ -44,30 +32,30 @@ class ConversationMessageRepository:
         user_id: int,
         messages: Sequence[MessageCreate],
     ) -> List[ConversationMessageDB]:
-        """Persist multiple messages atomically.
+        """Persist multiple messages.
 
-        All messages are inserted in a single transaction. If any insertion
-        fails, the transaction is rolled back and the exception propagated.
+        Messages are added to the current session and flushed so that their
+        identifiers are populated. Transaction management is handled by the
+        caller; this method only validates and inserts records.
         """
 
         instances: List[ConversationMessageDB] = []
-        with self.transaction():
-            for m in messages:
-                self._validate(
-                    conversation_db_id=conversation_db_id,
-                    user_id=user_id,
-                    content=m.content,
-                )
-                msg = ConversationMessageDB(
-                    conversation_id=conversation_db_id,
-                    user_id=user_id,
-                    role=m.role,
-                    content=m.content,
-                )
-                self._db.add(msg)
-                self._db.flush()
-                self._db.refresh(msg)
-                instances.append(msg)
+        for m in messages:
+            self._validate(
+                conversation_db_id=conversation_db_id,
+                user_id=user_id,
+                content=m.content,
+            )
+            msg = ConversationMessageDB(
+                conversation_id=conversation_db_id,
+                user_id=user_id,
+                role=m.role,
+                content=m.content,
+            )
+            self._db.add(msg)
+            self._db.flush()
+            self._db.refresh(msg)
+            instances.append(msg)
 
         return instances
 

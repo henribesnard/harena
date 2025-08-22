@@ -1,142 +1,23 @@
-"""REST endpoints for conversation service."""
+from fastapi import APIRouter
+from fastapi.responses import PlainTextResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from __future__ import annotations
-
-import logging
-from datetime import datetime
-
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.exc import InternalError, SQLAlchemyError
-from sqlalchemy.orm import Session
-
-from db_service.models.user import User
-from db_service.session import get_db
-from user_service.api.deps import get_current_active_user
-
-from ..models.conversation_models import (
-    AgentQueryRequest,
-    AgentQueryResponse,
-    ConversationHistoryResponse,
-    ConversationStartResponse,
-)
-
-from conversation_service.core import ConversationService
-from teams.team_orchestrator import TeamOrchestrator
-
-logger = logging.getLogger(__name__)
-
-router = APIRouter(tags=["conversation"])
-
-orchestrator = TeamOrchestrator()
+from conversation_service.api.routes import router as conversation_router
+from core.metrics_collector import metrics_collector
 
 
-@router.post("/start", response_model=ConversationStartResponse)
-async def start_conversation(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-) -> ConversationStartResponse:
-    """Create a new conversation session for the authenticated user."""
-    try:
-        conv_id = orchestrator.start_conversation(current_user.id, db)
-    except InternalError as exc:
-        logger.exception(
-            "Internal database error during conversation start",
-            extra={"user_id": current_user.id},
-        )
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="Internal database error while starting conversation",
-        ) from exc
-    except SQLAlchemyError as exc:
-        logger.exception(
-            "Database error during conversation start",
-            extra={"user_id": current_user.id},
-        )
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="Database error while starting conversation",
-        ) from exc
-    return ConversationStartResponse(
-        conversation_id=conv_id, created_at=datetime.utcnow()
-    )
+router = APIRouter()
+router.include_router(conversation_router, prefix="/conversation")
 
 
-@router.get("/{conversation_id}/history", response_model=ConversationHistoryResponse)
-async def get_history(
-    conversation_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-) -> ConversationHistoryResponse:
-    """Return the message history for a conversation."""
-    service = ConversationService(db)
-    if service.get_for_user(conversation_id, current_user.id) is None:
-        logger.error(
-            "Conversation not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    try:
-        history = orchestrator.get_history(conversation_id, db)
-        if history is None:
-            raise ValueError("Conversation history not found")
-    except ValueError as exc:
-        logger.error(
-            "Conversation history not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-            exc_info=True,
-        )
-        raise HTTPException(status_code=404, detail="Conversation not found") from exc
-    except Exception as exc:  # pragma: no cover - unexpected errors
-        logger.error(
-            "Failed to retrieve conversation history",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error",
-        ) from exc
-
-    return ConversationHistoryResponse(
-        conversation_id=conversation_id, messages=history
-    )
+@router.get("/metrics", include_in_schema=False)
+async def metrics() -> PlainTextResponse:
+    """Expose Prometheus metrics for scraping."""
+    data = generate_latest()
+    return PlainTextResponse(data, media_type=CONTENT_TYPE_LATEST)
 
 
-@router.post("/{conversation_id}/query", response_model=AgentQueryResponse)
-async def query_agents(
-    conversation_id: str,
-    payload: AgentQueryRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-) -> AgentQueryResponse:
-    """Send a message to the agent team and return their response."""
-    service = ConversationService(db)
-    if service.get_for_user(conversation_id, current_user.id) is None:
-        logger.error(
-            "Conversation not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    try:
-        reply = await orchestrator.query_agents(
-            conversation_id, payload.message, current_user.id, db
-        )
-    except ValueError as exc:
-        logger.error(
-            "Invalid agent query",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover - unexpected errors
-        logger.exception(
-            "Failed to process conversation turn",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error",
-        ) from exc
-    return AgentQueryResponse(conversation_id=conversation_id, reply=reply)
+@router.get("/health", tags=["health"])
+async def health() -> dict:
+    """Return basic service health information."""
+    return {"status": "ok", "metrics": metrics_collector.get_metrics()}

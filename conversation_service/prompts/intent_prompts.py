@@ -1,4 +1,4 @@
-"""Prompts pour la détection d'intention dans le service de conversation.
+"""Prompts pour la détection d'intention.
 
 Ce module gère un prompt par défaut et des exemples few‑shot pour la
 classification d'intentions. Il offre des utilitaires pour charger un prompt

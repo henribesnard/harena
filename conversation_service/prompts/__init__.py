@@ -1,8 +1,9 @@
-"""Prompts spécifiques au service de conversation.
+"""Package de prompts génériques.
 
-Ce package regroupe les utilitaires de gestion de prompts pour la
-classification d'intentions, l'extraction d'entités, la génération de
-requêtes et la formulation de réponses dans le service de conversation.
+Ce package fournit des modules simples pour gérer différents types de prompts
+(intentions, entités, requêtes et réponses). Chaque module expose des
+fonctionnalités pour charger dynamiquement un prompt et manipuler des exemples
+few‑shot.
 """
 from . import intent_prompts, entity_prompts, query_prompts, response_prompts
 

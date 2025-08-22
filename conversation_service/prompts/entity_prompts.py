@@ -1,4 +1,4 @@
-"""Prompts pour l'extraction d'entités dans le service de conversation.
+"""Prompts pour l'extraction d'entités.
 
 Ce module propose un prompt par défaut et une gestion simplifiée des exemples
 few‑shot pour extraire des entités d'un texte utilisateur. Les prompts peuvent

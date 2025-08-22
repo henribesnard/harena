@@ -1,41 +1,29 @@
-"""Prompts pour la génération de réponses dans le service de conversation.
+"""Prompts pour la génération de réponses.
 
-Ce module fournit un prompt système, des exemples few‑shot et des
-modèles de réponse par intention. Il offre des utilitaires pour charger
-le prompt depuis un fichier ou un cache et pour gérer dynamiquement les
-exemples utilisés."""
+Ce module fournit un prompt de réponse par défaut ainsi que des fonctions pour
+charger un prompt personnalisé depuis un fichier ou un cache. Les exemples
+few‑shot peuvent être consultés ou modifiés afin d'ajuster le style de réponse.
+"""
 
 from pathlib import Path
 from typing import Dict, List, Optional
 
-RESPONSE_GENERATION_SYSTEM_PROMPT = (
-    "Tu synthétises les résultats de recherche en réponses claires et utiles."
-)
+DEFAULT_PROMPT = "Formule une réponse utilisateur à partir des données fournies."
 
-RESPONSE_FEW_SHOT_EXAMPLES: List[Dict[str, str]] = [
+_EXAMPLES: List[Dict[str, str]] = [
     {
         "input": "transactions Amazon du mois dernier",
-        "output": "Vous avez 3 transactions chez Amazon en avril."
-    },
+        "output": "Vous avez 3 transactions chez Amazon en avril."},
     {
         "input": "solde du compte courant",
         "output": "Le solde de votre compte courant est de 1 200€.",
     },
 ]
 
-INTENT_RESPONSE_TEMPLATES: Dict[str, str] = {
-    "BALANCE_INQUIRY": "Votre solde est de {balance}€.",
-}
-
-FINANCIAL_FORMATTING_RULES: Dict[str, str] = {
-    "currency": "EUR",
-    "decimal_separator": ",",
-}
-
 _PROMPT_CACHE: Dict[str, str] = {}
 
-def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] = None, cache_key: str = "system") -> str:
-    """Charger le prompt système depuis un fichier ou un cache."""
+def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] = None, cache_key: str = "default") -> str:
+    """Charger le prompt depuis un fichier ou un cache."""
     cache = _PROMPT_CACHE if cache is None else cache
     if cache_key in cache:
         return cache[cache_key]
@@ -43,26 +31,25 @@ def load_prompt(path: Optional[str] = None, *, cache: Optional[Dict[str, str]] =
         prompt = Path(path).read_text(encoding="utf-8")
         cache[cache_key] = prompt
         return prompt
-    return RESPONSE_GENERATION_SYSTEM_PROMPT
+    return DEFAULT_PROMPT
 
 
 def get_prompt(
     path: Optional[str] = None,
     *,
     cache: Optional[Dict[str, str]] = None,
-    cache_key: str = "system",
+    cache_key: str = "default",
 ) -> str:
-    """Retourner le prompt système à utiliser par l'agent."""
+    """Retourner le prompt à utiliser par l'agent."""
     return load_prompt(path=path, cache=cache, cache_key=cache_key)
 
 
 def get_examples() -> List[Dict[str, str]]:
-    """Retourner les exemples few-shot de génération de réponses."""
-    return list(RESPONSE_FEW_SHOT_EXAMPLES)
+    """Retourner les exemples actuels de génération de réponses."""
+    return list(_EXAMPLES)
 
 
 def update_examples(examples: List[Dict[str, str]]) -> None:
-    """Mettre à jour les exemples few-shot."""
-    RESPONSE_FEW_SHOT_EXAMPLES.clear()
-    RESPONSE_FEW_SHOT_EXAMPLES.extend(examples)
-
+    """Mettre à jour la liste des exemples few‑shot."""
+    _EXAMPLES.clear()
+    _EXAMPLES.extend(examples)

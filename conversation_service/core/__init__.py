@@ -1,15 +1,25 @@
-"""Core utilities for the conversation service.
+"""Core utilities shared across the project."""
 
-This package houses the core conversation persistence primitives and
-transaction helpers used by the conversation service.  It re-exports the
-primary entry points for convenience.
+from .logging import get_logger, setup_logging, JsonFormatter
+from .decorators import metrics, cache
+from .helpers import chunks, flatten_dict
+from .validators import non_empty_str, positive_number, percentage
 
-The top-level :mod:`core` package contains shared utilities that are used
-across multiple services.  Those modules remain untouched here to keep a
-clear separation between generic helpers and conversation-specific logic.
-"""
+__all__ = [
+    "get_logger",
+    "setup_logging",
+    "JsonFormatter",
+    "metrics",
+    "cache",
+    "chunks",
+    "flatten_dict",
+    "non_empty_str",
+    "positive_number",
+    "percentage",
+]
+"""Core utilities for shared validation logic and pipeline execution."""
 
-from .conversation_service import ConversationService
-from .transaction_manager import transaction_manager
+from .agent_pipeline import AgentPipeline, PipelineStep
+from .fallback_manager import FallbackManager
 
-__all__ = ["ConversationService", "transaction_manager"]
+__all__ = ["AgentPipeline", "PipelineStep", "FallbackManager"]

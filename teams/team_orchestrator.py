@@ -231,8 +231,6 @@ class TeamOrchestrator:
 
         conv_id = uuid.uuid4().hex
         conv = ConversationRepository(db).create(user_id, conv_id)
-        history = ConversationMessageRepository(db).list_models(conv_id)
-        ConversationRepository(db).create(user_id, conv_id)
         try:
             history = ConversationMessageRepository(db).list_models(conv_id)
         except sqlalchemy.exc.ProgrammingError:
@@ -254,7 +252,10 @@ class TeamOrchestrator:
         repo = ConversationRepository(db)
         if repo.get_by_conversation_id(conversation_id) is None:
             return None
-        return ConversationMessageRepository(db).list_models(conversation_id)
+        try:
+            return ConversationMessageRepository(db).list_models(conversation_id)
+        except sqlalchemy.exc.ProgrammingError:
+            return []
 
     def get_error_metrics(self) -> Dict[str, float]:
         return {

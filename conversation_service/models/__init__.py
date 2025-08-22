@@ -1,3 +1,6 @@
+"""Expose Pydantic models for external use."""
+
+from .agent_models import (
 """Expose agent models for external use."""
 """Public exports for conversation service models."""
 
@@ -22,6 +25,15 @@ from .conversation_db_models import (
     ConversationSummary,
     ConversationTurn,
 )
+from .conversation_models import (
+    ConversationContext,
+    ConversationMetadata,
+    ConversationRequest,
+    ConversationResponse,
+)
+from .enums import ConfidenceThreshold, EntityType, IntentType, QueryType
+
+__all__ = [
 from .enums import (
     IntentType,
     EntityType,
@@ -39,6 +51,14 @@ __all__ = [
     "AgentTrace",
     "DynamicFinancialEntity",
     "IntentResult",
+    "Conversation",
+    "ConversationSummary",
+    "ConversationTurn",
+    "ConversationContext",
+    "ConversationMetadata",
+    "ConversationRequest",
+    "ConversationResponse",
+    "ConfidenceThreshold",
 
     "ConversationRequest",
     "ConversationResponse",
@@ -49,7 +69,7 @@ __all__ = [
     "ConversationTurn",
     "IntentType",
     "EntityType",
+    "IntentType",
     "QueryType",
-    "ConfidenceThreshold",
 ]
 

@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import uuid
 from typing import Iterable, List, Optional, Tuple
 
+import sqlalchemy
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.repository import ConversationRepository
-from conversation_service.models.conversation_models import MessageCreate
+from conversation_service.models.conversation_models import (
+    ConversationMessage,
+    MessageCreate,
+)
 from db_service.models.conversation import Conversation
 
 
@@ -22,6 +27,28 @@ class ConversationService:
         self._conv_repo = ConversationRepository(db)
         self._msg_repo = ConversationMessageRepository(db)
 
+    # --- Conversation management ----------------------------------------------
+    def create_conversation(self, user_id: int) -> Conversation:
+        """Create and persist a new conversation for ``user_id``."""
+
+        conv_id = uuid.uuid4().hex
+        try:
+            conv = self._conv_repo.create(user_id, conv_id)
+            self._db.commit()
+            self._db.refresh(conv)
+        except Exception:  # pragma: no cover - defensive rollback
+            self._db.rollback()
+            raise
+        return conv
+
+    def list_history(self, conversation_id: str) -> List[ConversationMessage]:
+        """Return chronological message history for ``conversation_id``."""
+
+        try:
+            return self._msg_repo.list_models(conversation_id)
+        except sqlalchemy.exc.ProgrammingError:
+            return []
+
     # --- Conversation queries -------------------------------------------------
     def get_for_user(self, conversation_id: str, user_id: int) -> Optional[Conversation]:
         """Return the conversation if owned by ``user_id``."""
@@ -32,28 +59,6 @@ class ConversationService:
         return conv
 
     # --- Persistence ----------------------------------------------------------
-    def save_conversation_turn(
-        self,
-        *,
-        conversation: Conversation,
-        user_message: str,
-        agent_messages: Iterable[Tuple[str, str]] = (),
-        assistant_reply: str,
-    ) -> None:
-        """Persist a complete conversation turn.
-
-        This method delegates to :meth:`save_conversation_turn_atomic` to
-        perform the actual database operations. It exists as a public API
-        that hides the implementation detail of atomic transactions.
-        """
-
-        self.save_conversation_turn_atomic(
-            conversation=conversation,
-            user_message=user_message,
-            agent_messages=agent_messages,
-            assistant_reply=assistant_reply,
-        )
-
     def save_conversation_turn_atomic(
         self,
         *,
@@ -114,7 +119,7 @@ class ConversationService:
         agent_messages: Iterable[Tuple[str, str]] = (),
         assistant_reply: str,
     ) -> None:
-        """Backward compatible wrapper for :meth:`save_conversation_turn_atomic`."""
+        """Public wrapper delegating to :meth:`save_conversation_turn_atomic`."""
 
         self.save_conversation_turn_atomic(
             conversation=conversation,

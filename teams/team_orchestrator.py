@@ -6,11 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
-import uuid
 from typing import Any, Dict, List, Optional, Tuple, Type
-
-import sqlalchemy
 from sqlalchemy.orm import Session
 
 from agent_types import ChatMessage, Response
@@ -27,7 +23,6 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.conversation_service import ConversationService
-from conversation_service.repository import ConversationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +58,6 @@ class TeamOrchestrator:
         self._total_calls = 0
         self._error_calls = 0
         self._conversation_id: Optional[str] = None
-        self._conversation_db_id: Optional[int] = None
         self._user_id: Optional[int] = None
         self._db: Optional[Session] = None
 
@@ -75,11 +69,6 @@ class TeamOrchestrator:
             # Ensure persistence attributes are set for subsequent calls
             self._user_id = self._user_id or user_id
             self._db = self._db or db
-            if self._conversation_db_id is None:
-                conv = ConversationRepository(db).get_by_conversation_id(
-                    self._conversation_id
-                )
-                self._conversation_db_id = conv.id if conv is not None else None
 
         reply = await self.query_agents(
             self._conversation_id, task, self._user_id, self._db
@@ -89,19 +78,20 @@ class TeamOrchestrator:
     async def query_agents(
         self, conversation_id: str, message: str, user_id: int, db: Session
     ) -> str:
+        """Process ``message`` through agents and persist via ConversationService."""
+
         if not message.strip():
             raise ValueError("message must not be empty")
 
-        history_models = self.get_history(conversation_id, db) or []
+        service = self._conversation_service_cls(db)
+        conv = service.get_for_user(conversation_id, user_id)
+        if conv is None:
+            raise RuntimeError("Conversation database id not initialised")
+        history_models = service.list_history(conversation_id)
         ctx: Dict[str, Any] = {
             "user_id": user_id,
             "history": [m.model_dump() for m in history_models],
         }
-
-        service = self._conversation_service_cls(db)
-        conv = ConversationRepository(db).get_by_conversation_id(conversation_id)
-        if conv is None:
-            raise RuntimeError("Conversation database id not initialised")
         agent_messages: List[Tuple[str, str]] = []
 
         self._total_calls += 1
@@ -197,8 +187,8 @@ class TeamOrchestrator:
     def start_conversation(self, user_id: int, db: Session) -> str:
         """Start a new conversation and load any existing history.
 
-        If the conversation messages table has not been created yet, an empty
-        history is returned instead of raising an error.
+        The conversation and associated messages are persisted via
+        :class:`ConversationService`.
 
         Args:
             user_id: Identifier for the user starting the conversation.
@@ -208,41 +198,26 @@ class TeamOrchestrator:
             The identifier of the newly created conversation.
         """
 
-        conv_id = uuid.uuid4().hex
-        try:
-            conv = ConversationRepository(db).create(user_id, conv_id)
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-
         service = self._conversation_service_cls(db)
-        try:
-            history = service._msg_repo.list_models(conv_id)
-        except sqlalchemy.exc.ProgrammingError:
-            history = []
+        conv = service.create_conversation(user_id)
+        history = service.list_history(conv.conversation_id)
 
         self.context = {
             "user_id": user_id,
             "history": [m.model_dump() for m in history],
         }
-        self._conversation_id = conv_id
-        self._conversation_db_id = conv.id
+        self._conversation_id = conv.conversation_id
         self._user_id = user_id
         self._db = db
-        return conv_id
+        return conv.conversation_id
 
     def get_history(
         self, conversation_id: str, db: Session
-    ) -> Optional[List[Any]]:
-        repo = ConversationRepository(db)
-        if repo.get_by_conversation_id(conversation_id) is None:
-            return None
+    ) -> List[Any]:
+        """Return the message history for ``conversation_id``."""
+
         service = self._conversation_service_cls(db)
-        try:
-            return service._msg_repo.list_models(conversation_id)
-        except sqlalchemy.exc.ProgrammingError:
-            return []
+        return service.list_history(conversation_id)
 
     def get_error_metrics(self) -> Dict[str, float]:
         return {

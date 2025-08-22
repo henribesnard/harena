@@ -49,9 +49,7 @@ class AgentQueryResponse(BaseModel):
 class MessageCreate(BaseModel):
     """Input model for creating a conversation message."""
 
-    role: Literal["user", "assistant"] = Field(
-        ..., description="Role of the message author"
-    )
+    role: str = Field(..., description="Role of the message author")
     content: str = Field(..., description="Message content")
 
     model_config = ConfigDict(extra="forbid")

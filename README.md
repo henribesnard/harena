@@ -152,6 +152,15 @@ This script runs `search_service/scripts/seed_transactions.py` and requires an
 Elasticsearch instance accessible via the `BONSAI_URL` environment variable
 or a local node at `http://localhost:9200`.
 
+## Search Service models
+
+Les modèles Pydantic exposés par le Search Service se trouvent dans le dossier
+[`search_service/models`](search_service/models). Le fichier
+[`request.py`](search_service/models/request.py) décrit la forme attendue des
+requêtes tandis que [`response.py`](search_service/models/response.py) détaille
+la réponse standardisée. Chaque modèle inclut un exemple complet de payload via
+`json_schema_extra`.
+
 ## Authentication
 
 Most endpoints, including `/conversation/chat`, require an OAuth2 Bearer token.

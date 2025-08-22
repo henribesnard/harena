@@ -13,7 +13,7 @@ try:  # pragma: no cover - optional runtime dependency
 except Exception:  # pragma: no cover - dependency not available
     EntityExtractorAgent = None  # type: ignore
 
-from ..models.core_models import FinancialEntity
+from models.core_models import FinancialEntity
 
 
 class EntityExtractionCache:

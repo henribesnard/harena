@@ -25,7 +25,6 @@ def test_add_and_list_messages_with_int_conversation_id():
 
         repo = ConversationMessageRepository(session)
         repo.add(
-            conversation_id=conv.conversation_id,
             conversation_db_id=conv.id,
             user_id=user.id,
             role="user",

@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent_types import AssistantAgent
 from sqlalchemy.orm import Session
 from conversation_service.teams.team_orchestrator import TeamOrchestrator
+from monitoring.performance import track_operation, record_openai_cost
 
 
 class AgentRuntime:
@@ -30,7 +31,13 @@ class AgentRuntime:
             # Initialise conversation lazily if not already started.
             self.team.start_conversation(user_id, db)
 
-        response = await self.team.run(task=message, user_id=user_id, db=db)
+        with track_operation("agent_pipeline"):
+            response = await self.team.run(task=message, user_id=user_id, db=db)
+
+        cost = getattr(getattr(response, "usage", None), "total_cost", None)
+        if cost is not None:
+            record_openai_cost(cost)
+
         return getattr(response.chat_message, "content", "")
 
     def get_context(self) -> dict[str, str]:

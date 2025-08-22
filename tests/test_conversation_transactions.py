@@ -6,7 +6,7 @@ from psycopg2.errors import InFailedSqlTransaction
 from db_service.base import Base
 from db_service.models.conversation import Conversation, ConversationMessage
 from db_service.models.user import User
-from conversation_service.core.conversation_service import ConversationService
+from conversation_service.core import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.repository import ConversationRepository
 from teams.team_orchestrator import TeamOrchestrator

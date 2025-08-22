@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from conversation_service.core.conversation_service import ConversationService
+from conversation_service.core import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
 from db_service.base import Base
 from db_service.models.conversation import Conversation, ConversationMessage

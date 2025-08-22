@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import List
+from contextlib import contextmanager
+from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
+import logging
 
 from db_service.models.conversation import (
     Conversation,
@@ -14,11 +16,37 @@ from db_service.models.conversation import (
 from conversation_service.models.conversation_models import ConversationMessage
 
 
+logger = logging.getLogger(__name__)
+
+
 class ConversationMessageRepository:
     """Handle CRUD operations for :class:`ConversationMessage`."""
 
     def __init__(self, db: Session) -> None:
         self._db = db
+
+    @contextmanager
+    def transaction(self):
+        """Context manager for DB transactions.
+
+        Commits if the enclosed block succeeds, otherwise rolls back.
+        In all cases the underlying session is closed afterwards.
+        """
+        try:
+            yield
+            self._db.commit()
+        except Exception:  # pragma: no cover - logging plus re-raise
+            self._db.rollback()
+            logger.exception("Database transaction failed; rolled back")
+            raise
+        finally:
+            self._db.close()
+
+    def _validate(self, *, conversation_db_id: int, user_id: int, content: str) -> None:
+        if conversation_db_id <= 0 or user_id <= 0:
+            raise ValueError("conversation_db_id and user_id must be positive")
+        if not content or not content.strip():
+            raise ValueError("content must be non-empty")
 
     def add(
         self,
@@ -42,18 +70,50 @@ class ConversationMessageRepository:
             timestamps.
         """
 
-        # Create and immediately persist the ORM model so that callers can
-        # query it straight away (for example to build conversation history).
+        self._validate(
+            conversation_db_id=conversation_db_id,
+            user_id=user_id,
+            content=content,
+        )
+
         msg = ConversationMessageDB(
             conversation_id=conversation_db_id,
             user_id=user_id,
             role=role,
             content=content,
         )
-        self._db.add(msg)
-        self._db.commit()
-        self._db.refresh(msg)
+        with self.transaction():
+            self._db.add(msg)
+            self._db.flush()
+            self._db.refresh(msg)
         return msg
+
+    def add_batch(self, messages: List[Dict[str, Any]]) -> List[ConversationMessageDB]:
+        """Persist multiple messages within a single transaction."""
+
+        instances: List[ConversationMessageDB] = []
+        if not messages:
+            return instances
+
+        with self.transaction():
+            for data in messages:
+                self._validate(
+                    conversation_db_id=data["conversation_db_id"],
+                    user_id=data["user_id"],
+                    content=data["content"],
+                )
+                msg = ConversationMessageDB(
+                    conversation_id=data["conversation_db_id"],
+                    user_id=data["user_id"],
+                    role=data["role"],
+                    content=data["content"],
+                )
+                self._db.add(msg)
+                self._db.flush()
+                self._db.refresh(msg)
+                instances.append(msg)
+
+        return instances
 
     def list_by_conversation(self, conversation_id: str) -> List[ConversationMessageDB]:
         """Return ORM messages for ``conversation_id`` ordered chronologically."""

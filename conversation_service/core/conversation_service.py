@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Iterable, List, Optional, Sequence, Tuple
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from conversation_service.message_repository import ConversationMessageRepository
@@ -72,11 +73,17 @@ class ConversationService:
                 user_id=conversation.user_id,
                 messages=messages,  # type: ignore[arg-type]
             )
-            conversation.total_turns += 1
-            conversation.last_activity_at = datetime.now(timezone.utc)
-            self._db.add(conversation)
+            self._db.execute(
+                update(Conversation)
+                    .where(Conversation.id == conversation.id)
+                    .values(
+                        total_turns=Conversation.total_turns + 1,
+                        last_activity_at=datetime.now(timezone.utc),
+                    )
+            )
             self._db.commit()
-        except Exception:
+            self._db.refresh(conversation)
+        except Exception:  # pragma: no cover - defensive rollback
             self._db.rollback()
             raise
 

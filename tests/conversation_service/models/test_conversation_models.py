@@ -40,7 +40,7 @@ def test_conversation_validation_and_json(timestamps):
 
     data = {
         k: (v.isoformat() if isinstance(v, datetime) else v)
-        for k, v in conv.dict().items()
+        for k, v in conv.model_dump().items()
     }
     json_data = json.dumps(data)
     loaded = Conversation(**json.loads(json_data))
@@ -127,7 +127,7 @@ def test_summary_validation_and_json(timestamps):
 
     data = {
         k: (v.isoformat() if isinstance(v, datetime) else v)
-        for k, v in summary.dict().items()
+        for k, v in summary.model_dump().items()
     }
     json_data = json.dumps(data)
     loaded = ConversationSummary(**json.loads(json_data))
@@ -179,7 +179,7 @@ def test_turn_validation_and_json(timestamps):
 
     data = {
         k: (v.isoformat() if isinstance(v, datetime) else v)
-        for k, v in turn.dict().items()
+        for k, v in turn.model_dump().items()
     }
     json_data = json.dumps(data)
     loaded = ConversationTurn(**json.loads(json_data))

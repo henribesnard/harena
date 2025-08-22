@@ -1,4 +1,4 @@
-"""Utility helpers for conversation service."""
+"""Utility helpers for the conversation service."""
 
 from .logging import (
     clear_correlation_id,

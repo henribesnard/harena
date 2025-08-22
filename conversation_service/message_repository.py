@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from typing import Iterable, List, Sequence
 from typing import List, Sequence
 
 from sqlalchemy.orm import Session
@@ -28,11 +29,21 @@ class ConversationMessageRepository:
 
     @contextmanager
     def transaction(self):
+
         """Context manager to commit or roll back the current session."""
         try:
             yield
             self._db.commit()
         except Exception:
+            self._db.rollback()
+            raise
+
+    def _validate(
+        self, *, conversation_db_id: int, user_id: int, content: str
+    ) -> None:
+        if not content.strip():
+            raise ValueError("content must not be empty")
+
             logger.exception("Transaction failed")
             self._db.rollback()
             raise

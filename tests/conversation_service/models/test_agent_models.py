@@ -9,7 +9,7 @@ from conversation_service.models import AgentStep, AgentTrace
 def test_agent_models_validation_and_json():
     step = AgentStep(agent="retriever", status="ok")
     trace = AgentTrace(steps=[step], total_time_ms=12.5)
-    data = {"steps": [s.dict() for s in trace.steps], "total_time_ms": trace.total_time_ms}
+    data = {"steps": [s.model_dump() for s in trace.steps], "total_time_ms": trace.total_time_ms}
     json_data = json.dumps(data)
     loaded = AgentTrace(**json.loads(json_data))
     assert loaded.steps[0].model_dump() == step.model_dump()

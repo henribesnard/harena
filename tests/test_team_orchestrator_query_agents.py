@@ -32,8 +32,8 @@ async def test_query_agents_saves_full_turn():
         await team.query_agents(conv_id, "ping", user.id, session)
 
         repo = ConversationMessageRepository(session)
-        roles = [m.role for m in repo.list_models(conv_id)]
-        assert roles == ["user", "assistant"]
+        roles = [m.role for m in repo.list_by_conversation(conv_id)]
+        assert roles == ["user", "agent", "assistant"]
 
 
 @pytest.mark.asyncio
@@ -54,4 +54,4 @@ async def test_query_agents_rollback_on_save_failure():
             await team.query_agents(conv_id, "", user.id, session)
 
         repo = ConversationMessageRepository(session)
-        assert repo.list_models(conv_id) == []
+        assert repo.list_by_conversation(conv_id) == []

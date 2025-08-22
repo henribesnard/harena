@@ -1,7 +1,6 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import pytest
 
 from db_service.base import Base
 from db_service.models.conversation import Conversation
@@ -167,12 +166,13 @@ def test_add_batch_and_rollback_on_error():
             user_id=user.id,
             messages=[
                 MessageCreate(role="user", content="hi"),
+                MessageCreate(role="agent", content="processing"),
                 MessageCreate(role="assistant", content="hello"),
             ],
         )
 
-        messages = repo.list_models(conv.conversation_id)
-        assert [m.role for m in messages] == ["user", "assistant"]
+        messages = repo.list_by_conversation(conv.conversation_id)
+        assert [m.role for m in messages] == ["user", "agent", "assistant"]
 
 
 def test_add_batch_rolls_back_on_failure():
@@ -198,22 +198,29 @@ def test_add_batch_rolls_back_on_failure():
                 user_id=user.id,
                 messages=[
                     MessageCreate(role="user", content="hi"),
+                    MessageCreate(role="agent", content="processing"),
                     MessageCreate(role="assistant", content=""),
                 ],
             )
 
-        messages = repo.list_models(conv.conversation_id)
+        messages = repo.list_by_conversation(conv.conversation_id)
         assert messages == []
         user_id, conv_db_id, conv_id = setup_data(session)
 
     repo = ConversationMessageRepository(Session())
-    repo.add_batch(
+    repo.add_batch_dicts(
         [
             {
                 "conversation_db_id": conv_db_id,
                 "user_id": user_id,
                 "role": "user",
                 "content": "hello",
+            },
+            {
+                "conversation_db_id": conv_db_id,
+                "user_id": user_id,
+                "role": "agent",
+                "content": "processing",
             },
             {
                 "conversation_db_id": conv_db_id,
@@ -226,19 +233,25 @@ def test_add_batch_rolls_back_on_failure():
 
     with Session() as session:
         repo_verify = ConversationMessageRepository(session)
-        messages = repo_verify.list_models(conv_id)
-        assert [m.content for m in messages] == ["hello", "hi"]
+        messages = repo_verify.list_by_conversation(conv_id)
+        assert [m.role for m in messages] == ["user", "agent", "assistant"]
 
     with Session() as db:
         repo = ConversationMessageRepository(db)
         with pytest.raises(ValueError):
-            repo.add_batch(
+            repo.add_batch_dicts(
                 [
                     {
                         "conversation_db_id": conv_db_id,
                         "user_id": user_id,
                         "role": "user",
                         "content": "ok",
+                    },
+                    {
+                        "conversation_db_id": conv_db_id,
+                        "user_id": user_id,
+                        "role": "agent",
+                        "content": "processing",
                     },
                     {
                         "conversation_db_id": -1,
@@ -251,7 +264,7 @@ def test_add_batch_rolls_back_on_failure():
 
     with Session() as session:
         repo_verify = ConversationMessageRepository(session)
-        messages = repo_verify.list_models(conv_id)
+        messages = repo_verify.list_by_conversation(conv_id)
         # previous batch should not have added any new messages
-        assert [m.content for m in messages] == ["hello", "hi"]
+        assert [m.role for m in messages] == ["user", "agent", "assistant"]
 

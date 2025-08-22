@@ -8,7 +8,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import sqlalchemy
 from sqlalchemy.orm import Session
@@ -27,7 +27,6 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
-from conversation_service.core.conversation_service import save_conversation_turn
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.models.conversation_models import (
     ConversationMessage,
@@ -103,7 +102,7 @@ class TeamOrchestrator:
         service = ConversationService(repo)
         if self._conversation_db_id is None:
             raise RuntimeError("Conversation database id not initialised")
-        agent_messages: List[Tuple[str, str]] = []
+        agent_messages: List[MessageCreate] = []
 
         self._total_calls += 1
         success = True
@@ -159,18 +158,9 @@ class TeamOrchestrator:
             user_id=user_id,
             messages=[
                 MessageCreate(role="user", content=message),
+                *agent_messages,
                 MessageCreate(role="assistant", content=reply),
             ],
-        if self._conversation_db_id is None:
-            raise RuntimeError("Conversation database id not initialised")
-
-        save_conversation_turn(
-            db,
-            conversation_db_id=self._conversation_db_id,
-            user_id=user_id,
-            user_message=message,
-            agent_messages=agent_messages,
-            assistant_reply=reply,
         )
 
         duration = (time.time() - start) * 1000
@@ -185,7 +175,7 @@ class TeamOrchestrator:
         agent: Optional[Any],
         payload: Dict[str, Any],
         context: Dict[str, Any],
-        messages: List[Tuple[str, str]],
+        messages: List[MessageCreate],
     ) -> Dict[str, Any]:
         if agent is None:
             return context
@@ -203,7 +193,10 @@ class TeamOrchestrator:
             context.update(result)
             if result:
                 messages.append(
-                    (name, json.dumps(result, ensure_ascii=False))
+                    MessageCreate(
+                        role="agent",
+                        content=json.dumps({"agent": name, "content": result}, ensure_ascii=False),
+                    )
                 )
             success = True
         except Exception:

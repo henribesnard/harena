@@ -36,12 +36,13 @@ def test_save_conversation_turn_persists_all_messages():
             user_id=user.id,
             messages=[
                 MessageCreate(role="user", content="hi"),
+                MessageCreate(role="agent", content="processing"),
                 MessageCreate(role="assistant", content="hello"),
             ],
         )
 
-        messages = repo.list_models(conv.conversation_id)
-        assert [m.role for m in messages] == ["user", "assistant"]
+        messages = repo.list_by_conversation(conv.conversation_id)
+        assert [m.role for m in messages] == ["user", "agent", "assistant"]
 
 
 def test_save_conversation_turn_rolls_back_on_failure():
@@ -65,8 +66,9 @@ def test_save_conversation_turn_rolls_back_on_failure():
                 user_id=user.id,
                 messages=[
                     MessageCreate(role="user", content="hi"),
+                    MessageCreate(role="agent", content="processing"),
                     MessageCreate(role="assistant", content=""),
                 ],
             )
 
-        assert repo.list_models(conv.conversation_id) == []
+        assert repo.list_by_conversation(conv.conversation_id) == []

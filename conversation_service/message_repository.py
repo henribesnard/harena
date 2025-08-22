@@ -131,46 +131,14 @@ class ConversationMessageRepository:
             self._db.rollback()
             raise
 
-        messages: List[tuple[str, str]],
-    ) -> List[ConversationMessageDB]:
-        """Persist multiple messages in a single transaction.
+    def add_batch_dicts(self, messages: List[Dict[str, Any]]) -> List[ConversationMessageDB]:
+        """Persist multiple messages within a single transaction.
 
-        Parameters
-        ----------
-        conversation_db_id:
-            Database identifier of the conversation.
-        user_id:
-            Identifier of the user owning the conversation.
-        messages:
-            Sequence of ``(role, content)`` tuples representing the messages to
-            persist in order.
-
-        Returns
-        -------
-        List[ConversationMessageDB]
-            The ORM instances corresponding to the newly created messages.
+        This helper accepts a list of dictionaries each containing
+        ``conversation_db_id``, ``user_id``, ``role`` and ``content``. It is
+        primarily used in testing scenarios where pre-built dictionaries are
+        more convenient.
         """
-
-        objs = [
-            ConversationMessageDB(
-                conversation_id=conversation_db_id,
-                user_id=user_id,
-                role=role,
-                content=content,
-            )
-            for role, content in messages
-        ]
-        self._db.add_all(objs)
-        # Flush so that auto-generated fields (e.g., primary keys, timestamps)
-        # are populated before returning. The surrounding transaction is
-        # responsible for committing.
-        self._db.flush()
-        for obj in objs:
-            self._db.refresh(obj)
-        return objs
-
-    def add_batch(self, messages: List[Dict[str, Any]]) -> List[ConversationMessageDB]:
-        """Persist multiple messages within a single transaction."""
 
         instances: List[ConversationMessageDB] = []
         if not messages:

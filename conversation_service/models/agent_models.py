@@ -6,6 +6,8 @@ from typing import List
 
 from pydantic import BaseModel, Field, field_validator
 
+from .enums import EntityType, IntentType
+
 
 class AgentStep(BaseModel):
     """Single step executed by an agent."""
@@ -35,6 +37,10 @@ class AgentTrace(BaseModel):
 class AgentConfig(BaseModel):
     """Configuration for a conversational agent."""
 
+    name: str = Field(..., min_length=1, description="Name of the agent")
+    system_prompt: str = Field(
+        ..., min_length=1, description="System prompt guiding the agent"
+    )
     model: str = Field(..., description="Name of the model")
     temperature: float = Field(0.7, ge=0.0, le=1.0)
     max_tokens: int = Field(512, ge=1, lt=4000)
@@ -44,7 +50,7 @@ class AgentConfig(BaseModel):
 class IntentResult(BaseModel):
     """Result of the intent classification."""
 
-    intent_type: str = Field(..., description="Detected intent")
+    intent_type: IntentType = Field(..., description="Detected intent")
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score for the intent"
     )
@@ -53,7 +59,7 @@ class IntentResult(BaseModel):
 class DynamicFinancialEntity(BaseModel):
     """Financial entity extracted from a message."""
 
-    entity_type: str = Field(..., description="Type of the entity")
+    entity_type: EntityType = Field(..., description="Type of the entity")
     value: str = Field(..., description="Value associated with the entity")
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score for the entity"

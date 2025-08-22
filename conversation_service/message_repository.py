@@ -1,19 +1,16 @@
 """Repository for persisting and retrieving conversation messages."""
-
 from __future__ import annotations
 
-from typing import List, Sequence
+import logging
 from contextlib import contextmanager
-from typing import Any, Dict, List
+from typing import List, Sequence
 
 from sqlalchemy.orm import Session
-import logging
 
 from db_service.models.conversation import (
     Conversation,
     ConversationMessage as ConversationMessageDB,
 )
-
 from conversation_service.models.conversation_models import (
     ConversationMessage,
     MessageCreate,
@@ -109,85 +106,21 @@ class ConversationMessageRepository:
         fails, the transaction is rolled back and the exception propagated.
         """
 
-        objs: List[ConversationMessageDB] = []
-        try:
-            if conversation_db_id <= 0 or user_id <= 0:
-                raise ValueError("conversation_db_id and user_id must be positive")
+        instances: List[ConversationMessageDB] = []
+        with self.transaction():
             for m in messages:
-                MessageCreate(role=m.role, content=m.content)  # validation
-                obj = ConversationMessageDB(
+                # Validate message fields and shared identifiers
+                MessageCreate(role=m.role, content=m.content)
+                self._validate(
+                    conversation_db_id=conversation_db_id,
+                    user_id=user_id,
+                    content=m.content,
+                )
+                msg = ConversationMessageDB(
                     conversation_id=conversation_db_id,
                     user_id=user_id,
                     role=m.role,
                     content=m.content,
-                )
-                self._db.add(obj)
-                objs.append(obj)
-            self._db.commit()
-            for obj in objs:
-                self._db.refresh(obj)
-            return objs
-        except Exception:
-            self._db.rollback()
-            raise
-
-        messages: List[tuple[str, str]],
-    ) -> List[ConversationMessageDB]:
-        """Persist multiple messages in a single transaction.
-
-        Parameters
-        ----------
-        conversation_db_id:
-            Database identifier of the conversation.
-        user_id:
-            Identifier of the user owning the conversation.
-        messages:
-            Sequence of ``(role, content)`` tuples representing the messages to
-            persist in order.
-
-        Returns
-        -------
-        List[ConversationMessageDB]
-            The ORM instances corresponding to the newly created messages.
-        """
-
-        objs = [
-            ConversationMessageDB(
-                conversation_id=conversation_db_id,
-                user_id=user_id,
-                role=role,
-                content=content,
-            )
-            for role, content in messages
-        ]
-        self._db.add_all(objs)
-        # Flush so that auto-generated fields (e.g., primary keys, timestamps)
-        # are populated before returning. The surrounding transaction is
-        # responsible for committing.
-        self._db.flush()
-        for obj in objs:
-            self._db.refresh(obj)
-        return objs
-
-    def add_batch(self, messages: List[Dict[str, Any]]) -> List[ConversationMessageDB]:
-        """Persist multiple messages within a single transaction."""
-
-        instances: List[ConversationMessageDB] = []
-        if not messages:
-            return instances
-
-        with self.transaction():
-            for data in messages:
-                self._validate(
-                    conversation_db_id=data["conversation_db_id"],
-                    user_id=data["user_id"],
-                    content=data["content"],
-                )
-                msg = ConversationMessageDB(
-                    conversation_id=data["conversation_db_id"],
-                    user_id=data["user_id"],
-                    role=data["role"],
-                    content=data["content"],
                 )
                 self._db.add(msg)
                 self._db.flush()

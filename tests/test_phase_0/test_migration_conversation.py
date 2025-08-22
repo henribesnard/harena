@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-import datetime
+from datetime import datetime, UTC
 import pytest
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
@@ -43,7 +43,7 @@ def test_migration_conversation_preserves_data_and_defaults():
             spec.loader.exec_module(migration)
             with engine.begin() as connection:
                 connection.connection.create_function(
-                    "now", 0, lambda: datetime.datetime.utcnow().isoformat()
+                    "now", 0, lambda: datetime.now(UTC).isoformat()
                 )
                 ctx = MigrationContext.configure(connection)
                 migration.op = Operations(ctx)

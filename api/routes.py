@@ -3,7 +3,7 @@ from fastapi.responses import PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from conversation_service.api.routes import router as conversation_router
-from conversation_service.core.metrics_collector import metrics_collector
+from core.metrics_collector import metrics_collector
 
 
 router = APIRouter()
@@ -20,4 +20,4 @@ async def metrics() -> PlainTextResponse:
 @router.get("/health", tags=["health"])
 async def health() -> dict:
     """Return basic service health information."""
-    return {"status": "ok", "metrics": metrics_collector.summary()}
+    return {"status": "ok", "metrics": metrics_collector.get_metrics()}

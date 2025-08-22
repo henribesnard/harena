@@ -118,29 +118,12 @@ class ServiceLoader:
 
             logger.info(f"🔑 OPENAI_API_KEY configurée: {openai_key[:20]}...")
 
-            # Validation de la configuration
-            from conversation_service.core import run_core_validation
-            from conversation_service.core.mvp_team_manager import MVPTeamManager
+            # Initialisation simplifiée du service de conversation
+            from teams.team_orchestrator import TeamOrchestrator
 
-            logger.info("⚙️ Validation de la configuration...")
-            validation = run_core_validation()
-            if not validation["valid"]:
-                raise ValueError(f"Configuration invalide: {validation['errors']}")
+            logger.info("⚙️ Initialisation du service de conversation...")
 
-            if validation["warnings"]:
-                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
-
-            # Test de connexion OpenAI
-            logger.info("🔍 Test de connexion OpenAI...")
-
-            # Mettre les composants dans app.state
-            app.state.conversation_service_initialized = True
-            if validation["warnings"]:
-                logger.warning(f"⚠️ Avertissements: {validation['warnings']}")
-
-            # Initialiser le gestionnaire d'équipe
-            team_manager = MVPTeamManager()
-            await team_manager.initialize_agents(initial_health_check=False)
+            team_manager = TeamOrchestrator()
 
             # Mettre les composants dans app.state
             app.state.conversation_service_initialized = True

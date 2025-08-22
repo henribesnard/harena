@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import InternalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db_service.models.user import User
@@ -35,7 +36,28 @@ async def start_conversation(
     db: Session = Depends(get_db),
 ) -> ConversationStartResponse:
     """Create a new conversation session for the authenticated user."""
-    conv_id = orchestrator.start_conversation(current_user.id, db)
+    try:
+        conv_id = orchestrator.start_conversation(current_user.id, db)
+    except InternalError as exc:
+        logger.exception(
+            "Internal database error during conversation start",
+            extra={"user_id": current_user.id},
+        )
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Internal database error while starting conversation",
+        ) from exc
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "Database error during conversation start",
+            extra={"user_id": current_user.id},
+        )
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while starting conversation",
+        ) from exc
     return ConversationStartResponse(
         conversation_id=conv_id, created_at=datetime.utcnow()
     )

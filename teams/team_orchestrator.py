@@ -28,7 +28,11 @@ from conversation_service.agents.response_generator_agent import (
 )
 from conversation_service.core.metrics_collector import metrics_collector
 from conversation_service.message_repository import ConversationMessageRepository
-from conversation_service.models.conversation_models import ConversationMessage
+from conversation_service.models.conversation_models import (
+    ConversationMessage,
+    MessageCreate,
+)
+from conversation_service.service import ConversationService
 from conversation_service.repository import ConversationRepository
 
 logger = logging.getLogger(__name__)
@@ -88,17 +92,13 @@ class TeamOrchestrator:
             "history": [m.model_dump() for m in history_models],
         }
 
+        # Validate user message before any processing to avoid partial writes
+        MessageCreate(role="user", content=message)
+
         repo = ConversationMessageRepository(db)
-        # Store the incoming user message so that subsequent calls have access to
-        # the full conversation history.
+        service = ConversationService(repo)
         if self._conversation_db_id is None:
             raise RuntimeError("Conversation database id not initialised")
-        repo.add(
-            conversation_db_id=self._conversation_db_id,
-            user_id=user_id,
-            role="user",
-            content=message,
-        )
 
         self._total_calls += 1
         success = True
@@ -157,12 +157,13 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
-        # Persist the assistant's reply as the last turn in the conversation.
-        repo.add(
+        service.save_conversation_turn(
             conversation_db_id=self._conversation_db_id,
             user_id=user_id,
-            role="assistant",
-            content=reply,
+            messages=[
+                MessageCreate(role="user", content=message),
+                MessageCreate(role="assistant", content=reply),
+            ],
         )
 
         duration = (time.time() - start) * 1000

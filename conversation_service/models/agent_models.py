@@ -1,13 +1,4 @@
-"""Pydantic models describing agent configurations and traces."""
-
-from __future__ import annotations
-"""Pydantic models describing agent traces, configuration, and responses."""
-
-"""Pydantic models related to agent configuration and execution."""
-
-  from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-from __future__ import annotations
+"""Pydantic models describing agent configuration, steps, and responses."""
 
 from __future__ import annotations
 
@@ -17,61 +8,31 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError,
     field_validator,
+    model_validator,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
-# Agent trace models
 class AgentStep(BaseModel):
     """Single step executed by an agent."""
 
     agent: str
     status: str
 
-    def __init__(self, **data: Any) -> None:
-        errors = []
-        if not data.get("agent"):
-            errors.append({"loc": ("agent",), "msg": "must not be empty", "type": "value_error"})
-        if not data.get("status"):
-            errors.append({"loc": ("status",), "msg": "must not be empty", "type": "value_error"})
-        if errors:
-            raise ValidationError(errors, type(self))
-        super().__init__(**data)
+    @model_validator(mode="after")
+    def validate_fields(self) -> "AgentStep":
+        if not self.agent:
+            raise ValueError("agent must not be empty")
+        if not self.status:
+            raise ValueError("status must not be empty")
+        return self
 
 
 class AgentTrace(BaseModel):
-    """Trace of agent steps with execution time."""
+    """Trace of agent steps with total execution time."""
 
     steps: List[AgentStep] = Field(default_factory=list)
     total_time_ms: float
-
-    def __init__(self, **data: Any) -> None:
-        errors = []
-        steps_raw = data.get("steps") or []
-        converted_steps = []
-        for s in steps_raw:
-            try:
-                converted_steps.append(s if isinstance(s, AgentStep) else AgentStep(**s))
-            except ValidationError as e:
-                errors.extend(e.errors())
-        if not converted_steps:
-            errors.append({"loc": ("steps",), "msg": "steps cannot be empty", "type": "value_error"})
-        data["steps"] = converted_steps
-        if data.get("total_time_ms") is not None and data["total_time_ms"] < 0:
-            errors.append({
-                "loc": ("total_time_ms",),
-                "msg": "total_time_ms must be non-negative",
-                "type": "value_error",
-            })
-        if errors:
-            raise ValidationError(errors, type(self))
-        super().__init__(**data)
-
-
-# Advanced agent models
 
     @field_validator("total_time_ms")
     @classmethod
@@ -79,6 +40,12 @@ class AgentTrace(BaseModel):
         if v < 0:
             raise ValueError("total_time_ms must be non-negative")
         return v
+
+    @model_validator(mode="before")
+    def convert_steps(cls, values: Any) -> Any:
+        steps = values.get("steps", [])
+        values["steps"] = [s if isinstance(s, AgentStep) else AgentStep(**s) for s in steps]
+        return values
 
     @model_validator(mode="after")
     def validate_steps(self) -> "AgentTrace":
@@ -88,12 +55,12 @@ class AgentTrace(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Configuration d'un agent conversationnel."""
+    """Configuration for an agent model."""
 
-    model: str = Field(..., description="Nom du modèle OpenAI")
-    temperature: float = Field(0.7, description="Température du modèle")
-    max_tokens: int = Field(512, description="Nombre maximal de tokens générés")
-    timeout: int = Field(30, description="Délai maximum de génération en secondes")
+    model: str
+    temperature: float = 0.7
+    max_tokens: int = 512
+    timeout: int = 30
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -129,12 +96,10 @@ class AgentConfig(BaseModel):
 
 
 class IntentResult(BaseModel):
-    """Résultat de la classification d'intention."""
+    """Result of intent classification."""
 
-    intent_type: str = Field(..., description="Intention détectée")
-    confidence_score: float = Field(
-        ..., description="Score de confiance pour l'intention"
-    )
+    intent_type: str
+    confidence_score: float
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -154,13 +119,11 @@ class IntentResult(BaseModel):
 
 
 class DynamicFinancialEntity(BaseModel):
-    """Entité financière extraite dynamiquement d'un message."""
+    """Financial entity extracted dynamically from a message."""
 
-    entity_type: str = Field(..., description="Type de l'entité")
-    value: str = Field(..., description="Valeur associée à l'entité")
-    confidence_score: float = Field(
-        ..., description="Score de confiance de l'entité"
-    )
+    entity_type: str
+    value: str
+    confidence_score: float
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -181,16 +144,12 @@ class DynamicFinancialEntity(BaseModel):
 
 
 class AgentResponse(BaseModel):
-    """Réponse complète retournée par la chaîne d'agents."""
+    """Full response returned by the agent chain."""
 
-    response: str = Field(..., description="Texte de la réponse générée")
-    intent: IntentResult = Field(..., description="Intention détectée")
-    entities: List[DynamicFinancialEntity] = Field(
-        default_factory=list, description="Entités financières extraites"
-    )
-    confidence_score: float = Field(
-        ..., description="Score global de confiance pour la réponse"
-    )
+    response: str
+    intent: IntentResult
+    entities: List[DynamicFinancialEntity] = Field(default_factory=list)
+    confidence_score: float
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -218,4 +177,3 @@ class AgentResponse(BaseModel):
         if not 0.0 <= v <= 1.0:
             raise ValueError("confidence_score must be between 0.0 and 1.0")
         return v
-

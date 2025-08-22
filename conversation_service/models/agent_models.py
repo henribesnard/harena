@@ -1,22 +1,34 @@
-"""Models describing agent execution traces."""
+"""Pydantic models describing agent traces, configuration, and responses."""
 
-from typing import List
+from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, List
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 
+# Agent trace models
 class AgentStep(BaseModel):
     """Single step executed by an agent."""
 
     agent: str
     status: str
 
-    @field_validator("agent", "status")
-    @classmethod
-    def not_empty(cls, v: str) -> str:
-        if not v:
-            raise ValueError("must not be empty")
-        return v
+    def __init__(self, **data: Any) -> None:
+        errors = []
+        if not data.get("agent"):
+            errors.append({"loc": ("agent",), "msg": "must not be empty", "type": "value_error"})
+        if not data.get("status"):
+            errors.append({"loc": ("status",), "msg": "must not be empty", "type": "value_error"})
+        if errors:
+            raise ValidationError(errors, type(self))
+        super().__init__(**data)
 
 
 class AgentTrace(BaseModel):
@@ -25,28 +37,30 @@ class AgentTrace(BaseModel):
     steps: List[AgentStep] = Field(default_factory=list)
     total_time_ms: float
 
-    @field_validator("total_time_ms")
-    @classmethod
-    def non_negative(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("total_time_ms must be non-negative")
-        return v
+    def __init__(self, **data: Any) -> None:
+        errors = []
+        steps_raw = data.get("steps") or []
+        converted_steps = []
+        for s in steps_raw:
+            try:
+                converted_steps.append(s if isinstance(s, AgentStep) else AgentStep(**s))
+            except ValidationError as e:
+                errors.extend(e.errors())
+        if not converted_steps:
+            errors.append({"loc": ("steps",), "msg": "steps cannot be empty", "type": "value_error"})
+        data["steps"] = converted_steps
+        if data.get("total_time_ms") is not None and data["total_time_ms"] < 0:
+            errors.append({
+                "loc": ("total_time_ms",),
+                "msg": "total_time_ms must be non-negative",
+                "type": "value_error",
+            })
+        if errors:
+            raise ValidationError(errors, type(self))
+        super().__init__(**data)
 
-    @model_validator(mode="after")
-    def validate_steps(self) -> "AgentTrace":
-        if not self.steps:
-            raise ValueError("steps cannot be empty")
-        return self
 
-from __future__ import annotations
-
-"""Pydantic models for agent configuration and responses."""
-
-from typing import List
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-
+# Advanced agent models
 class AgentConfig(BaseModel):
     """Configuration d'un agent conversationnel."""
 
@@ -92,7 +106,9 @@ class IntentResult(BaseModel):
     """Résultat de la classification d'intention."""
 
     intent_type: str = Field(..., description="Intention détectée")
-    confidence_score: float = Field(..., description="Score de confiance pour l'intention")
+    confidence_score: float = Field(
+        ..., description="Score de confiance pour l'intention"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -116,7 +132,9 @@ class DynamicFinancialEntity(BaseModel):
 
     entity_type: str = Field(..., description="Type de l'entité")
     value: str = Field(..., description="Valeur associée à l'entité")
-    confidence_score: float = Field(..., description="Score de confiance de l'entité")
+    confidence_score: float = Field(
+        ..., description="Score de confiance de l'entité"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -174,3 +192,4 @@ class AgentResponse(BaseModel):
         if not 0.0 <= v <= 1.0:
             raise ValueError("confidence_score must be between 0.0 and 1.0")
         return v
+

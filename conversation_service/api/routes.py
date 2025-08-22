@@ -18,6 +18,7 @@ from ..models.conversation_models import (
     ConversationHistoryResponse,
     ConversationStartResponse,
 )
+
 from conversation_service.repository import ConversationRepository
 
 from conversation_service.core.conversation_service import ConversationService
@@ -35,15 +36,7 @@ async def start_conversation(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ConversationStartResponse:
-    """Create a new conversation session for the authenticated user.
-
-    Args:
-        current_user: Authenticated user associated with the request.
-        db: Database session dependency.
-
-    Returns:
-        ConversationStartResponse containing the new conversation identifier.
-    """
+    """Create a new conversation session for the authenticated user."""
     conv_id = orchestrator.start_conversation(current_user.id, db)
     return ConversationStartResponse(
         conversation_id=conv_id, created_at=datetime.utcnow()
@@ -56,6 +49,9 @@ async def get_history(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ConversationHistoryResponse:
+    """Return the message history for a conversation."""
+    service = ConversationService(db)
+    if service.get_for_user(conversation_id, current_user.id) is None:
     """Return the message history for a conversation.
 
     Args:
@@ -113,6 +109,9 @@ async def query_agents(
     db: Session = Depends(get_db),
 ) -> AgentQueryResponse:
     """Send a message to the agent team and return their response."""
+    service = ConversationService(db)
+    conv = service.get_for_user(conversation_id, current_user.id)
+    if conv is None:
     repo = ConversationRepository(db)
     conv = repo.get_by_conversation_id(conversation_id)
     if conv is None or conv.user_id != current_user.id:

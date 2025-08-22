@@ -7,8 +7,6 @@ import pytest
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=object))
 sys.modules.setdefault("conversation_service.models.agent_models", types.SimpleNamespace(AgentConfig=object))
 sys.modules.setdefault("conversation_service.base_agent", types.SimpleNamespace(BaseFinancialAgent=object))
-sys.modules.setdefault("conversation_service.core.cache_manager", types.SimpleNamespace(CacheManager=object))
-sys.modules.setdefault("conversation_service.core.metrics_collector", types.SimpleNamespace(MetricsCollector=object))
 sys.modules.setdefault("conversation_service.utils.logging", types.SimpleNamespace(get_structured_logger=lambda name: None))
 
 _clients_pkg = types.ModuleType("conversation_service.clients")

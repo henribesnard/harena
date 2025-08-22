@@ -1,5 +1,7 @@
 import sys
 import types
+import sys
+import types
 from enum import Enum
 import asyncio
 import pytest
@@ -21,8 +23,6 @@ class DummyLogger:
 # Stub external dependencies required during imports
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=_DummyAssistantAgent))
 sys.modules.setdefault("conversation_service.base_agent", types.SimpleNamespace(BaseFinancialAgent=object))
-sys.modules.setdefault("conversation_service.core.cache_manager", types.SimpleNamespace(CacheManager=object))
-sys.modules.setdefault("conversation_service.core.metrics_collector", types.SimpleNamespace(MetricsCollector=object))
 sys.modules.setdefault(
     "conversation_service.utils.logging",
     types.SimpleNamespace(get_structured_logger=lambda name: DummyLogger()),

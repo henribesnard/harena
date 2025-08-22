@@ -1,3 +1,4 @@
+"""Pydantic models describing agent configurations and traces."""
 """Pydantic models related to agent configuration and execution."""
 """Pydantic models describing agent configuration, steps, and responses."""
 
@@ -76,6 +77,14 @@ class AgentTrace(BaseModel):
         if not converted_steps:
             errors.append({"loc": ("steps",), "msg": "steps cannot be empty", "type": "value_error"})
         data["steps"] = converted_steps
+        if data.get("total_time_ms") is not None and data["total_time_ms"] < 0:
+            errors.append(
+                {
+                    "loc": ("total_time_ms",),
+                    "msg": "total_time_ms must be non-negative",
+                    "type": "value_error",
+                }
+            )
         total = data.get("total_time_ms")
         if total is not None and total < 0:
             errors.append({
@@ -257,7 +266,7 @@ class AgentResponse(BaseModel):
                         "confidence_score": 0.87,
                     }
                 ],
-                "confidence_score": 0.92,
+                "confidence_score": 0.9,
             }
         }
     )

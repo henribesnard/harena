@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Type
 from sqlalchemy.orm import Session
+import uuid
 
 from agent_types import ChatMessage, Response
 from conversation_service.agents.entity_extractor_agent import (

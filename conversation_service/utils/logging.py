@@ -1,53 +1,35 @@
-"""Structured logging utilities for agents."""
-from __future__ import annotations
-
 import json
+import time
 import logging
-import sys
-from typing import Any, Dict
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
+from core.metrics_collector import metrics_collector
 
-class JsonFormatter(logging.Formatter):
-    """Formatter that outputs logs as JSON."""
+logger = logging.getLogger("harena.middleware")
 
-    def format(self, record: logging.LogRecord) -> str:  # pragma: no cover - trivial
-        log_record: Dict[str, Any] = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
+class StructuredLoggingMiddleware(BaseHTTPMiddleware):
+    """Middleware de journalisation structurée des requêtes HTTP."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        start_time = time.time()
+        response: Response = await call_next(request)
+        process_time = time.time() - start_time
+
+        log_payload = {
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "process_time_ms": round(process_time * 1000, 2),
         }
-        extra = getattr(record, "extra", None)
-        if isinstance(extra, dict):
-            log_record.update(extra)
-        return json.dumps(log_record, ensure_ascii=False)
+        logger.info(json.dumps(log_payload))
 
+        metrics_collector.record_request(
+            path=request.url.path,
+            method=request.method,
+            status_code=response.status_code,
+            process_time=process_time,
+        )
 
-def get_structured_logger(name: str, **context: Any) -> logging.Logger:
-    """Return a logger that outputs JSON formatted messages.
-
-    Parameters
-    ----------
-    name:
-        Name of the logger to create or retrieve.
-    context:
-        Optional contextual information to include with every log entry.
-    """
-
-    logger = logging.getLogger(name)
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(JsonFormatter())
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-    if context:
-        class ContextAdapter(logging.LoggerAdapter):
-            def process(self, msg, kwargs):  # pragma: no cover - passthrough
-                extra = kwargs.setdefault("extra", {})
-                extra.update(context)
-                return msg, kwargs
-        return ContextAdapter(logger, {})
-    return logger
-
-
-__all__ = ["get_structured_logger", "JsonFormatter"]
+        return response

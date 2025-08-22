@@ -1,67 +1,36 @@
+"""High level operations for conversations and their messages."""
+
 from __future__ import annotations
-
-from typing import Sequence
-
-from conversation_service.message_repository import ConversationMessageRepository
-from conversation_service.models.conversation_models import MessageCreate
-
-
-class ConversationService:
-    """High level operations for conversations."""
-
-    def __init__(self, repo: ConversationMessageRepository) -> None:
-        self._repo = repo
-
-    def save_conversation_turn(
-        self,
-        *,
-        conversation_db_id: int,
-        user_id: int,
-        messages: Sequence[MessageCreate],
-    ) -> None:
-        """Persist a full conversation turn atomically.
-
-        Parameters
-        ----------
-        conversation_db_id:
-            Database identifier of the conversation.
-        user_id:
-            Identifier of the user owning the conversation.
-        messages:
-            Sequence of messages belonging to the turn, typically a user
-            message followed by the assistant response.
-        """
-
-        self._repo.add_batch(
-            conversation_db_id=conversation_db_id,
-            user_id=user_id,
-            messages=messages,
-        )
-"""Core operations for conversation persistence."""
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
 
 from db_service.models.conversation import Conversation, ConversationTurn
+from conversation_service.message_repository import ConversationMessageRepository
+from conversation_service.models.conversation_models import MessageCreate
 from .repository import ConversationRepository
 
 
 class ConversationService:
-    """High level conversation operations."""
+    """Unified service providing conversation persistence utilities."""
 
     def __init__(self, db: Session) -> None:
         self._db = db
-        self._repo = ConversationRepository(db)
+        self._conv_repo = ConversationRepository(db)
+        self._msg_repo = ConversationMessageRepository(db)
 
+    # ------------------------------------------------------------------
+    # Conversation metadata operations
+    # ------------------------------------------------------------------
     def get_for_user(
         self, conversation_id: str, user_id: int
     ) -> Optional[Conversation]:
         """Return the conversation if owned by ``user_id``."""
 
-        conv = self._repo.get_by_conversation_id(conversation_id)
+        conv = self._conv_repo.get_by_conversation_id(conversation_id)
         if conv is None or conv.user_id != user_id:
             return None
         return conv
@@ -89,6 +58,34 @@ class ConversationService:
         self._db.commit()
         self._db.refresh(turn)
         return turn
+
+    # ------------------------------------------------------------------
+    # Conversation message operations
+    # ------------------------------------------------------------------
+    def record_messages(
+        self,
+        *,
+        conversation_db_id: int,
+        user_id: int,
+        user_message: str,
+        agent_messages: Iterable[Tuple[str, str]],
+        assistant_reply: str,
+    ) -> None:
+        """Persist a full conversation turn's messages atomically."""
+
+        messages: List[MessageCreate] = [
+            MessageCreate(role="user", content=user_message)
+        ]
+        messages.extend(
+            MessageCreate(role=role, content=content)
+            for role, content in agent_messages
+        )
+        messages.append(MessageCreate(role="assistant", content=assistant_reply))
+        self._msg_repo.add_batch(
+            conversation_db_id=conversation_db_id,
+            user_id=user_id,
+            messages=messages,
+        )
 
 
 __all__ = ["ConversationService"]

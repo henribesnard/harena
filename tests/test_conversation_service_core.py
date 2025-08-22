@@ -6,8 +6,8 @@ from db_service.base import Base
 from db_service.models.conversation import Conversation
 from db_service.models.user import User
 
-from conversation_service.core.conversation_service import save_conversation_turn
 from conversation_service.message_repository import ConversationMessageRepository
+from conversation_service.service import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
 
@@ -31,8 +31,8 @@ def test_save_conversation_turn_persists_messages():
         session.commit()
         session.refresh(conv)
 
-        save_conversation_turn(
-            session,
+        svc = ConversationService(session)
+        svc.record_messages(
             conversation_db_id=conv.id,
             user_id=user.id,
             user_message="hello",

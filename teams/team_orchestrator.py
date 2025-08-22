@@ -27,7 +27,6 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
-from conversation_service.core.conversation_service import save_conversation_turn
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.models.conversation_models import (
     ConversationMessage,
@@ -99,8 +98,7 @@ class TeamOrchestrator:
         # Validate user message before any processing to avoid partial writes
         MessageCreate(role="user", content=message)
 
-        repo = ConversationMessageRepository(db)
-        service = ConversationService(repo)
+        service = ConversationService(db)
         if self._conversation_db_id is None:
             raise RuntimeError("Conversation database id not initialised")
         agent_messages: List[Tuple[str, str]] = []
@@ -154,18 +152,7 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
-        service.save_conversation_turn(
-            conversation_db_id=self._conversation_db_id,
-            user_id=user_id,
-            messages=[
-                MessageCreate(role="user", content=message),
-                MessageCreate(role="assistant", content=reply),
-            ],
-        if self._conversation_db_id is None:
-            raise RuntimeError("Conversation database id not initialised")
-
-        save_conversation_turn(
-            db,
+        service.record_messages(
             conversation_db_id=self._conversation_db_id,
             user_id=user_id,
             user_message=message,

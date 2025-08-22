@@ -6,7 +6,6 @@ from db_service.base import Base
 from db_service.models.conversation import Conversation
 from db_service.models.user import User
 from conversation_service.message_repository import ConversationMessageRepository
-from conversation_service.models.conversation_models import MessageCreate
 from conversation_service.service import ConversationService
 
 
@@ -29,15 +28,13 @@ def test_save_conversation_turn_persists_all_messages():
         session.commit()
         session.refresh(conv)
 
-        repo = ConversationMessageRepository(session)
-        svc = ConversationService(repo)
-        svc.save_conversation_turn(
+        svc = ConversationService(session)
+        svc.record_messages(
             conversation_db_id=conv.id,
             user_id=user.id,
-            messages=[
-                MessageCreate(role="user", content="hi"),
-                MessageCreate(role="assistant", content="hello"),
-            ],
+            user_message="hi",
+            agent_messages=[],
+            assistant_reply="hello",
         )
 
         messages = repo.list_models(conv.conversation_id)
@@ -57,16 +54,14 @@ def test_save_conversation_turn_rolls_back_on_failure():
         session.commit()
         session.refresh(conv)
 
-        repo = ConversationMessageRepository(session)
-        svc = ConversationService(repo)
+        svc = ConversationService(session)
         with pytest.raises(ValueError):
-            svc.save_conversation_turn(
+            svc.record_messages(
                 conversation_db_id=conv.id,
                 user_id=user.id,
-                messages=[
-                    MessageCreate(role="user", content="hi"),
-                    MessageCreate(role="assistant", content=""),
-                ],
+                user_message="hi",
+                agent_messages=[],
+                assistant_reply="",
             )
-
+        repo = ConversationMessageRepository(session)
         assert repo.list_models(conv.conversation_id) == []

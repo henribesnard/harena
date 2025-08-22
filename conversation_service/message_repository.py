@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -13,16 +11,7 @@ from db_service.models.conversation import (
     ConversationMessage as ConversationMessageDB,
 )
 
-
-@dataclass
-class ConversationMessage:
-    """Pydantic-like model representing a stored message."""
-
-    user_id: int
-    conversation_id: str
-    role: str
-    content: str
-    timestamp: datetime
+from conversation_service.models.conversation_models import ConversationMessage
 
 
 class ConversationMessageRepository:
@@ -102,4 +91,4 @@ class ConversationMessageRepository:
         ]
 
 
-__all__ = ["ConversationMessageRepository", "ConversationMessage"]
+__all__ = ["ConversationMessageRepository"]

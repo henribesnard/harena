@@ -58,6 +58,7 @@ class TeamOrchestrator:
         self._total_calls = 0
         self._error_calls = 0
         self._conversation_id: Optional[str] = None
+        self._conversation_db_id: Optional[int] = None
         self._user_id: Optional[int] = None
         self._db: Optional[Session] = None
 
@@ -69,6 +70,11 @@ class TeamOrchestrator:
             # Ensure persistence attributes are set for subsequent calls
             self._user_id = self._user_id or user_id
             self._db = self._db or db
+            if self._conversation_db_id is None:
+                conv = ConversationRepository(db).get_by_conversation_id(
+                    self._conversation_id
+                )
+                self._conversation_db_id = conv.id if conv is not None else None
 
         reply = await self.query_agents(
             self._conversation_id, task, self._user_id, self._db
@@ -88,8 +94,11 @@ class TeamOrchestrator:
         repo = ConversationMessageRepository(db)
         # Store the incoming user message so that subsequent calls have access to
         # the full conversation history.
+        if self._conversation_db_id is None:
+            raise RuntimeError("Conversation database id not initialised")
         repo.add(
             conversation_id=conversation_id,
+            conversation_db_id=self._conversation_db_id,
             user_id=user_id,
             role="user",
             content=message,
@@ -155,6 +164,7 @@ class TeamOrchestrator:
         # Persist the assistant's reply as the last turn in the conversation.
         repo.add(
             conversation_id=conversation_id,
+            conversation_db_id=self._conversation_db_id,
             user_id=user_id,
             role="assistant",
             content=reply,
@@ -193,8 +203,11 @@ class TeamOrchestrator:
         context.update(result)
         name = getattr(agent, "name", agent.__class__.__name__)
         if result:
+            if self._conversation_db_id is None:
+                raise RuntimeError("Conversation database id not initialised")
             repo.add(
                 conversation_id=conversation_id,
+                conversation_db_id=self._conversation_db_id,
                 user_id=user_id,
                 role=name,
                 content=json.dumps(result, ensure_ascii=False),
@@ -220,16 +233,20 @@ class TeamOrchestrator:
         """
 
         conv_id = uuid.uuid4().hex
+        conv = ConversationRepository(db).create(user_id, conv_id)
+        history = ConversationMessageRepository(db).list_models(conv_id)
         ConversationRepository(db).create(user_id, conv_id)
         try:
             history = ConversationMessageRepository(db).list_models(conv_id)
         except sqlalchemy.exc.ProgrammingError:
             history = []
+
         self.context = {
             "user_id": user_id,
             "history": [asdict(m) for m in history],
         }
         self._conversation_id = conv_id
+        self._conversation_db_id = conv.id
         self._user_id = user_id
         self._db = db
         return conv_id

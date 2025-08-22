@@ -4,51 +4,54 @@ from typing import Any, Optional, Dict, Tuple
 
 
 class MultiLevelCache:
-    """Simple in-memory cache with optional TTL support.
+    """Cache simple en mémoire avec support optionnel du TTL.
 
-    This minimal implementation provides the asynchronous interface expected by
-    ``SearchEngine`` without relying on ``conversation_service``.  It stores
-    values in a dictionary along with an optional expiration timestamp and is
-    namespaced by ``user_id`` to ensure isolation between users.
+    Malgré son nom, cette implémentation ne fournit **qu'une seule couche** de
+    cache en mémoire. Elle offre simplement l'interface asynchrone attendue par
+    ``SearchEngine`` sans dépendre de ``conversation_service`` ni d'une base
+    Redis. Les valeurs sont stockées dans un dictionnaire avec, pour chaque
+    entrée, un éventuel horodatage d'expiration. Les clés sont en outre
+    préfixées par ``user_id`` afin d'isoler les données entre utilisateurs.
     """
 
     def __init__(self) -> None:
+        # Dictionnaire interne : {"user_id:key": (timestamp_expiration, valeur)}
         self._store: Dict[str, Tuple[Optional[float], Any]] = {}
 
     def _format_key(self, user_id: int, key: str) -> str:
         return f"{user_id}:{key}"
 
     async def get(self, user_id: int, key: str) -> Any:
-        """Retrieve a value from the cache for ``user_id``.
+        """Récupère la valeur mise en cache pour ``user_id``.
 
-        Returns ``None`` if the key is not present or has expired."""
+        Retourne ``None`` si la clé est absente ou expirée."""
         namespaced_key = self._format_key(user_id, key)
         item = self._store.get(namespaced_key)
         if not item:
             return None
         expires_at, value = item
         if expires_at is not None and expires_at < time.time():
-            # Entry expired; remove it and behave as a miss
+            # Entrée expirée : on la supprime et on se comporte comme un miss
             self._store.pop(namespaced_key, None)
             return None
         return value
 
     async def set(self, user_id: int, key: str, value: Any, ttl: Optional[int] = None) -> None:
-        """Store a value for ``user_id`` with an optional TTL in seconds."""
+        """Stocke une valeur pour ``user_id`` avec un TTL optionnel (en secondes)."""
         namespaced_key = self._format_key(user_id, key)
         expires_at = time.time() + ttl if ttl is not None else None
         self._store[namespaced_key] = (expires_at, value)
 
     async def clear(self) -> None:
-        """Clear all items from the cache."""
+        """Supprime toutes les entrées du cache."""
         self._store.clear()
 
 
 def generate_cache_key(prefix: str, **parts: Any) -> str:
-    """Generate a deterministic cache key from the provided parts.
+    """Génère une clé de cache déterministe à partir des éléments fournis.
 
-    The parts are serialised in a stable order and hashed to avoid overly long
-    keys."""
+    Les éléments sont sérialisés dans un ordre stable puis hachés afin
+    d'éviter des clés trop longues."""
     raw = "|".join(f"{k}:{parts[k]}" for k in sorted(parts))
     digest = hashlib.sha256(raw.encode()).hexdigest()
     return f"{prefix}:{digest}"

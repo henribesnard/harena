@@ -2,13 +2,13 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from db_service.base import Base
-from db_service.models.conversation import Conversation
+from db_service.models.conversation import (
+    Conversation,
+    ConversationMessage as ConversationMessageDB,
+)
 from db_service.models.user import User
+
 from conversation_service.core.conversation_service import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
 
@@ -33,6 +33,24 @@ def test_save_conversation_turn_persists_all_messages():
         session.refresh(conv)
 
         svc = ConversationService(session)
+
+        def _add_batch(self, *, conversation_db_id, user_id, messages):
+            objs = []
+            for m in messages:
+                msg = ConversationMessageDB(
+                    conversation_id=conversation_db_id,
+                    user_id=user_id,
+                    role=m.role,
+                    content=m.content,
+                )
+                self._db.add(msg)
+                self._db.flush()
+                self._db.refresh(msg)
+                objs.append(msg)
+            return objs
+
+        svc._msg_repo.add_batch = _add_batch.__get__(svc._msg_repo, type(svc._msg_repo))
+
         svc.save_conversation_turn_atomic(
             conversation=conv,
             user_message="hi",
@@ -41,6 +59,8 @@ def test_save_conversation_turn_persists_all_messages():
 
         msgs = ConversationMessageRepository(session).list_models(conv.conversation_id)
         assert [m.role for m in msgs] == ["user", "assistant"]
+        session.refresh(conv)
+        assert conv.total_turns == 1
 
 
 def test_save_conversation_turn_rolls_back_on_failure():
@@ -57,11 +77,19 @@ def test_save_conversation_turn_rolls_back_on_failure():
         session.refresh(conv)
 
         svc = ConversationService(session)
-        with pytest.raises(ValueError):
+
+        def _fail(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        svc._msg_repo.add_batch = _fail
+
+        with pytest.raises(RuntimeError):
             svc.save_conversation_turn_atomic(
                 conversation=conv,
                 user_message="hi",
-                assistant_reply="",
+                assistant_reply="hello",
             )
 
         assert ConversationMessageRepository(session).list_models(conv.conversation_id) == []
+        session.refresh(conv)
+        assert conv.total_turns == 0

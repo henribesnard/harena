@@ -5,8 +5,6 @@ from .agent_models import (
     AgentTrace,
     AgentConfig,
     AgentResponse,
-    AgentStep,
-    AgentTrace,
     DynamicFinancialEntity,
     IntentResult,
 )
@@ -38,8 +36,6 @@ __all__ = [
     "ConversationRequest",
     "ConversationResponse",
     "ConfidenceThreshold",
-
-    "IntentType",
     "EntityType",
     "IntentType",
     "QueryType",

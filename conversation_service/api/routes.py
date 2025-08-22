@@ -18,9 +18,6 @@ from ..models.conversation_models import (
     ConversationHistoryResponse,
     ConversationStartResponse,
 )
-from conversation_service.repository import ConversationRepository
-from conversation_service.service import ConversationService
-
 from conversation_service.core.conversation_service import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
@@ -36,15 +33,7 @@ async def start_conversation(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ConversationStartResponse:
-    """Create a new conversation session for the authenticated user.
-
-    Args:
-        current_user: Authenticated user associated with the request.
-        db: Database session dependency.
-
-    Returns:
-        ConversationStartResponse containing the new conversation identifier.
-    """
+    """Create a new conversation session for the authenticated user."""
     conv_id = orchestrator.start_conversation(current_user.id, db)
     return ConversationStartResponse(
         conversation_id=conv_id, created_at=datetime.utcnow()
@@ -57,26 +46,7 @@ async def get_history(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ConversationHistoryResponse:
-    """Return the message history for a conversation.
-
-    Args:
-        conversation_id: Identifier of the conversation to retrieve history for.
-        current_user: Authenticated user associated with the request.
-        db: Database session dependency.
-
-    Returns:
-        ConversationHistoryResponse containing the conversation history.
-
-    Raises:
-        HTTPException: If the conversation does not exist for the user.
-    """
-    repo = ConversationRepository(db)
-    conv = repo.get_by_conversation_id(conversation_id)
-    if conv is None or conv.user_id != current_user.id:
-        logger.error(
-            "Conversation not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
+    """Return the message history for a conversation."""
     service = ConversationService(db)
     if service.get_for_user(conversation_id, current_user.id) is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -100,33 +70,10 @@ async def query_agents(
     db: Session = Depends(get_db),
 ) -> AgentQueryResponse:
     """Send a message to the agent team and return their response."""
-    repo = ConversationRepository(db)
-    conv = repo.get_by_conversation_id(conversation_id)
-    if conv is None or conv.user_id != current_user.id:
-        logger.error(
-            "Conversation not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-
-    """Send a message to the agent team and return their response.
-
-    Args:
-        conversation_id: Identifier of the conversation being queried.
-        payload: Request payload containing the message to send.
-        current_user: Authenticated user associated with the request.
-        db: Database session dependency.
-
-    Returns:
-        AgentQueryResponse with the agent team's reply.
-
-    Raises:
-        HTTPException: If the conversation does not exist for the user.
-    """
     service = ConversationService(db)
     conv = service.get_for_user(conversation_id, current_user.id)
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    service = ConversationService(db)
     try:
         reply = await orchestrator.query_agents(
             conversation_id, payload.message, current_user.id, db

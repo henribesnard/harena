@@ -153,7 +153,7 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
-        service.save_conversation_turn_atomic(
+        service.save_conversation_turn(
             conversation=conv,
             user_message=message,
             agent_messages=agent_messages,

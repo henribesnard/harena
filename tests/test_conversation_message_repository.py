@@ -59,3 +59,23 @@ def test_add_batch_rolls_back_on_failure():
                 ],
             )
         assert repo.list_models(conv_id) == []
+
+
+def test_list_by_conversation_returns_chronological_order():
+    Session = create_session()
+    with Session() as s:
+        user_id, conv_db_id, conv_id = prepare(s)
+        repo = ConversationMessageRepository(s)
+        repo.add_batch(
+            conversation_db_id=conv_db_id,
+            user_id=user_id,
+            messages=[
+                MessageCreate(role="user", content="hi"),
+                MessageCreate(role="assistant", content="hello"),
+            ],
+        )
+        objs = repo.list_by_conversation(conv_id)
+        assert [o.role for o in objs] == ["user", "assistant"]
+
+
+

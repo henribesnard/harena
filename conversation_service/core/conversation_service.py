@@ -80,5 +80,27 @@ class ConversationService:
             self._db.rollback()
             raise
 
+    # Backwards compatible wrapper --------------------------------------------
+    def save_conversation_turn(
+        self,
+        *,
+        conversation: Conversation,
+        user_message: str,
+        agent_messages: Iterable[Tuple[str, str]] = (),
+        assistant_reply: str,
+    ) -> None:
+        """Alias for :meth:`save_conversation_turn_atomic`.
+
+        Older callers used ``save_conversation_turn``; keep the convenience
+        wrapper to avoid touching their call sites.
+        """
+
+        self.save_conversation_turn_atomic(
+            conversation=conversation,
+            user_message=user_message,
+            agent_messages=agent_messages,
+            assistant_reply=assistant_reply,
+        )
+
 
 __all__ = ["ConversationService"]

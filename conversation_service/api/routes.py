@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import logging
 from datetime import datetime
 
@@ -19,6 +18,9 @@ from ..models.conversation_models import (
     ConversationHistoryResponse,
     ConversationStartResponse,
 )
+from conversation_service.repository import ConversationRepository
+from conversation_service.service import ConversationService
+
 from conversation_service.core.conversation_service import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
@@ -27,7 +29,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["conversation"])
 
 orchestrator = TeamOrchestrator()
-logger = logging.getLogger(__name__)
 
 
 @router.post("/start", response_model=ConversationStartResponse)
@@ -69,6 +70,13 @@ async def get_history(
     Raises:
         HTTPException: If the conversation does not exist for the user.
     """
+    repo = ConversationRepository(db)
+    conv = repo.get_by_conversation_id(conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        logger.error(
+            "Conversation not found",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+        )
     service = ConversationService(db)
     if service.get_for_user(conversation_id, current_user.id) is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -91,6 +99,15 @@ async def query_agents(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> AgentQueryResponse:
+    """Send a message to the agent team and return their response."""
+    repo = ConversationRepository(db)
+    conv = repo.get_by_conversation_id(conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        logger.error(
+            "Conversation not found",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+        )
+
     """Send a message to the agent team and return their response.
 
     Args:
@@ -109,15 +126,24 @@ async def query_agents(
     conv = service.get_for_user(conversation_id, current_user.id)
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    service = ConversationService(db)
     try:
         reply = await orchestrator.query_agents(
             conversation_id, payload.message, current_user.id, db
         )
     except ValueError as exc:
+        logger.error(
+            "Invalid agent query",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - unexpected errors
-        logger.exception("Failed to process conversation turn", exc_info=exc)
+        logger.exception(
+            "Failed to process conversation turn",
+            extra={"conversation_id": conversation_id, "user_id": current_user.id},
+        )
         raise HTTPException(
-            status_code=500, detail="Internal server error"
+            status_code=500,
+            detail="Internal server error",
         ) from exc
     return AgentQueryResponse(conversation_id=conversation_id, reply=reply)

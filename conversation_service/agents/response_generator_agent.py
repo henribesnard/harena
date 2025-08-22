@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Any, AsyncGenerator, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 
 class ResponseGeneratorAgent:
@@ -144,11 +144,5 @@ class ResponseGeneratorAgent:
         return text
 
 
-async def stream_response(message: str) -> AsyncGenerator[str, None]:
-    """Fallback async generator returning the message directly."""
-
-    yield f"Response: {message}"
-
-
-__all__ = ["ResponseGeneratorAgent", "stream_response"]
+__all__ = ["ResponseGeneratorAgent"]
 

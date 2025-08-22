@@ -1,15 +1,6 @@
 """Pydantic models describing agent configurations and traces."""
 
 from __future__ import annotations
-"""Pydantic models describing agent traces, configuration, and responses."""
-
-"""Pydantic models related to agent configuration and execution."""
-
-  from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-from __future__ import annotations
-
-from __future__ import annotations
 
 from typing import Any, List
 
@@ -19,12 +10,10 @@ from pydantic import (
     Field,
     ValidationError,
     field_validator,
+    model_validator,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
-# Agent trace models
 class AgentStep(BaseModel):
     """Single step executed by an agent."""
 
@@ -61,17 +50,16 @@ class AgentTrace(BaseModel):
             errors.append({"loc": ("steps",), "msg": "steps cannot be empty", "type": "value_error"})
         data["steps"] = converted_steps
         if data.get("total_time_ms") is not None and data["total_time_ms"] < 0:
-            errors.append({
-                "loc": ("total_time_ms",),
-                "msg": "total_time_ms must be non-negative",
-                "type": "value_error",
-            })
+            errors.append(
+                {
+                    "loc": ("total_time_ms",),
+                    "msg": "total_time_ms must be non-negative",
+                    "type": "value_error",
+                }
+            )
         if errors:
             raise ValidationError(errors, type(self))
         super().__init__(**data)
-
-
-# Advanced agent models
 
     @field_validator("total_time_ms")
     @classmethod
@@ -207,7 +195,7 @@ class AgentResponse(BaseModel):
                         "confidence_score": 0.87,
                     }
                 ],
-                "confidence_score": 0.92,
+                "confidence_score": 0.9,
             }
         }
     )

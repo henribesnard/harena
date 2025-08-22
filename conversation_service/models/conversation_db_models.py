@@ -9,7 +9,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError,
     field_validator,
     model_validator,
 )
@@ -56,47 +55,12 @@ class Conversation(BaseModel):
         }
     )
 
-    def __init__(self, **data: Any) -> None:
-        errors = []
-        if data.get("user_id") is not None and data["user_id"] <= 0:
-            errors.append({"loc": ("user_id",), "msg": "user_id must be positive", "type": "value_error"})
-        total_turns = data.get("total_turns")
-        max_turns = data.get("max_turns")
-        if (
-            total_turns is not None
-            and max_turns is not None
-            and total_turns > max_turns
-        ):
-            errors.append({
-                "loc": ("total_turns",),
-                "msg": "total_turns cannot exceed max_turns",
-                "type": "value_error",
-            })
-        created_at = data.get("created_at")
-        updated_at = data.get("updated_at")
-        last_activity_at = data.get("last_activity_at")
-        if created_at and updated_at and updated_at < created_at:
-            errors.append({
-                "loc": ("updated_at",),
-                "msg": "updated_at must be after created_at",
-                "type": "value_error",
-            })
-        if created_at and last_activity_at and last_activity_at < created_at:
-            errors.append({
-                "loc": ("last_activity_at",),
-                "msg": "last_activity_at must be after created_at",
-                "type": "value_error",
-            })
-        if errors:
-            raise ValidationError(errors, type(self))
-        super().__init__(**data)
 
-
-    @field_validator("user_id")
+    @field_validator("id", "user_id")
     @classmethod
-    def user_id_positive(cls, v: int) -> int:
+    def id_positive(cls, v: int) -> int:
         if v <= 0:
-            raise ValueError("user_id must be positive")
+            raise ValueError("must be positive")
         return v
 
     @model_validator(mode="after")
@@ -141,33 +105,8 @@ class ConversationSummary(BaseModel):
         }
     )
 
-    def __init__(self, **data: Any) -> None:
-        errors = []
-        for field in ("conversation_id", "start_turn", "end_turn"):
-            if data.get(field) is not None and data[field] <= 0:
-                errors.append({"loc": (field,), "msg": "must be positive", "type": "value_error"})
-        start = data.get("start_turn")
-        end = data.get("end_turn")
-        if start is not None and end is not None and end < start:
-            errors.append({
-                "loc": ("end_turn",),
-                "msg": "end_turn must be >= start_turn",
-                "type": "value_error",
-            })
-        created_at = data.get("created_at")
-        updated_at = data.get("updated_at")
-        if created_at and updated_at and updated_at < created_at:
-            errors.append({
-                "loc": ("updated_at",),
-                "msg": "updated_at must be after created_at",
-                "type": "value_error",
-            })
-        if errors:
-            raise ValidationError(errors, type(self))
-        super().__init__(**data)
 
-
-    @field_validator("conversation_id", "start_turn", "end_turn")
+    @field_validator("id", "conversation_id", "start_turn", "end_turn")
     @classmethod
     def positive_numbers(cls, v: int) -> int:
         if v <= 0:
@@ -230,28 +169,15 @@ class ConversationTurn(BaseModel):
         }
     )
 
-    def __init__(self, **data: Any) -> None:
-        errors = []
-        for field in ("conversation_id", "turn_number", "search_results_count"):
-            if data.get(field) is not None and data[field] < 0:
-                errors.append({"loc": (field,), "msg": "must be non-negative", "type": "value_error"})
-        for field in ("processing_time_ms", "search_execution_time_ms", "confidence_score"):
-            if data.get(field) is not None and data[field] < 0:
-                errors.append({"loc": (field,), "msg": "must be non-negative", "type": "value_error"})
-        created_at = data.get("created_at")
-        updated_at = data.get("updated_at")
-        if created_at and updated_at and updated_at < created_at:
-            errors.append({
-                "loc": ("updated_at",),
-                "msg": "updated_at must be after created_at",
-                "type": "value_error",
-            })
-        if errors:
-            raise ValidationError(errors, type(self))
-        super().__init__(**data)
 
+    @field_validator("id", "conversation_id")
+    @classmethod
+    def positive_ids(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("must be positive")
+        return v
 
-    @field_validator("conversation_id", "turn_number", "search_results_count")
+    @field_validator("search_results_count")
     @classmethod
     def non_negative(cls, v: int) -> int:
         if v < 0:

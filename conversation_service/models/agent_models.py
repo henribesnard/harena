@@ -1,8 +1,10 @@
-"""Models describing agent execution traces."""
+"""Pydantic models related to agent configuration and execution."""
+
+from __future__ import annotations
 
 from typing import List
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AgentStep(BaseModel):
@@ -37,14 +39,6 @@ class AgentTrace(BaseModel):
         if not self.steps:
             raise ValueError("steps cannot be empty")
         return self
-
-from __future__ import annotations
-
-"""Pydantic models for agent configuration and responses."""
-
-from typing import List
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AgentConfig(BaseModel):

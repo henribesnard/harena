@@ -119,7 +119,7 @@ class ServiceLoader:
             logger.info(f"🔑 OPENAI_API_KEY configurée: {openai_key[:20]}...")
 
             # Initialisation simplifiée du service de conversation
-            from teams.team_orchestrator import TeamOrchestrator
+            from conversation_service.teams.team_orchestrator import TeamOrchestrator
 
             logger.info("⚙️ Initialisation du service de conversation...")
 

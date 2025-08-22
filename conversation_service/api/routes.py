@@ -19,8 +19,6 @@ from ..models.conversation_models import (
     ConversationStartResponse,
 )
 
-from conversation_service.repository import ConversationRepository
-
 from conversation_service.core.conversation_service import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
@@ -52,22 +50,6 @@ async def get_history(
     """Return the message history for a conversation."""
     service = ConversationService(db)
     if service.get_for_user(conversation_id, current_user.id) is None:
-    """Return the message history for a conversation.
-
-    Args:
-        conversation_id: Identifier of the conversation to retrieve history for.
-        current_user: Authenticated user associated with the request.
-        db: Database session dependency.
-
-    Returns:
-        ConversationHistoryResponse containing the conversation history.
-
-    Raises:
-        HTTPException: If the conversation does not exist for the user.
-    """
-    repo = ConversationRepository(db)
-    conv = repo.get_by_conversation_id(conversation_id)
-    if conv is None or conv.user_id != current_user.id:
         logger.error(
             "Conversation not found",
             extra={"conversation_id": conversation_id, "user_id": current_user.id},
@@ -110,11 +92,7 @@ async def query_agents(
 ) -> AgentQueryResponse:
     """Send a message to the agent team and return their response."""
     service = ConversationService(db)
-    conv = service.get_for_user(conversation_id, current_user.id)
-    if conv is None:
-    repo = ConversationRepository(db)
-    conv = repo.get_by_conversation_id(conversation_id)
-    if conv is None or conv.user_id != current_user.id:
+    if service.get_for_user(conversation_id, current_user.id) is None:
         logger.error(
             "Conversation not found",
             extra={"conversation_id": conversation_id, "user_id": current_user.id},

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,10 @@ from db_service.models.conversation import (
     ConversationMessage as ConversationMessageDB,
 )
 
-from conversation_service.models.conversation_models import ConversationMessage
+from conversation_service.models.conversation_models import (
+    ConversationMessage,
+    MessageCreate,
+)
 
 
 class ConversationMessageRepository:
@@ -42,8 +45,10 @@ class ConversationMessageRepository:
             timestamps.
         """
 
-        # Create and immediately persist the ORM model so that callers can
-        # query it straight away (for example to build conversation history).
+        # Validate using pydantic model
+        if conversation_db_id <= 0 or user_id <= 0:
+            raise ValueError("conversation_db_id and user_id must be positive")
+        MessageCreate(role=role, content=content)
         msg = ConversationMessageDB(
             conversation_id=conversation_db_id,
             user_id=user_id,
@@ -54,6 +59,41 @@ class ConversationMessageRepository:
         self._db.commit()
         self._db.refresh(msg)
         return msg
+
+    def add_batch(
+        self,
+        *,
+        conversation_db_id: int,
+        user_id: int,
+        messages: Sequence[MessageCreate],
+    ) -> List[ConversationMessageDB]:
+        """Persist multiple messages atomically.
+
+        All messages are inserted in a single transaction. If any insertion
+        fails, the transaction is rolled back and the exception propagated.
+        """
+
+        objs: List[ConversationMessageDB] = []
+        try:
+            if conversation_db_id <= 0 or user_id <= 0:
+                raise ValueError("conversation_db_id and user_id must be positive")
+            for m in messages:
+                MessageCreate(role=m.role, content=m.content)  # validation
+                obj = ConversationMessageDB(
+                    conversation_id=conversation_db_id,
+                    user_id=user_id,
+                    role=m.role,
+                    content=m.content,
+                )
+                self._db.add(obj)
+                objs.append(obj)
+            self._db.commit()
+            for obj in objs:
+                self._db.refresh(obj)
+            return objs
+        except Exception:
+            self._db.rollback()
+            raise
 
     def list_by_conversation(self, conversation_id: str) -> List[ConversationMessageDB]:
         """Return ORM messages for ``conversation_id`` ordered chronologically."""

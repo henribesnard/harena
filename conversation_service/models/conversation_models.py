@@ -1,5 +1,7 @@
 """Pydantic models for the conversation service API (phase 2)."""
 
+"""Pydantic models for conversation requests and responses."""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -21,6 +23,9 @@ class ConversationMetadata(BaseModel):
             }
         }
     )
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"intent": "greeting", "confidence_score": 0.95}
+    })
 
 
 class ConversationContext(BaseModel):
@@ -37,6 +42,8 @@ class ConversationContext(BaseModel):
             }
         }
     )
+    })
+
 
 
 class ConversationRequest(BaseModel):
@@ -93,6 +100,21 @@ class ConversationResponse(BaseModel):
             }
         },
     )
+
+    model_config = ConfigDict(str_strip_whitespace=True, json_schema_extra={
+        "example": {
+            "response": "Bonjour! Comment puis-je vous aider?",
+            "language": "fr",
+            "context": {
+                "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                "turn_number": 1,
+            },
+            "metadata": {
+                "intent": "greeting",
+                "confidence_score": 0.95,
+            },
+        }
+    })
 
     @field_validator("language")
     @classmethod

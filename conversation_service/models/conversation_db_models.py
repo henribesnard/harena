@@ -1,3 +1,6 @@
+
+"""Pydantic models representing conversation data persisted in the database."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,27 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class Conversation(BaseModel):
-    """Représente une conversation utilisateur.
-
-    Example:
-        {
-            "id": 1,
-            "conversation_id": "conv_123",
-            "user_id": 42,
-            "title": "Budget 2024",
-            "status": "active",
-            "language": "fr",
-            "domain": "finance",
-            "total_turns": 2,
-            "max_turns": 50,
-            "last_activity_at": "2024-06-01T12:00:00Z",
-            "conversation_metadata": {"topic": "budget"},
-            "user_preferences": {"tone": "friendly"},
-            "session_metadata": {"browser": "firefox"},
-            "created_at": "2024-06-01T12:00:00Z",
-            "updated_at": "2024-06-01T12:05:00Z"
-        }
-    """
+    """Représente une conversation utilisateur."""
 
     id: int
     conversation_id: str
@@ -61,7 +44,7 @@ class Conversation(BaseModel):
             "user_preferences": {"tone": "friendly"},
             "session_metadata": {"browser": "firefox"},
             "created_at": "2024-06-01T12:00:00Z",
-            "updated_at": "2024-06-01T12:05:00Z"
+            "updated_at": "2024-06-01T12:05:00Z",
         }
     })
 
@@ -83,23 +66,20 @@ class Conversation(BaseModel):
         return self
 
 
-class ConversationSummary(BaseModel):
-    """Résumé partiel d'une conversation.
 
-    Example:
-        {
-            "id": 1,
-            "conversation_id": 1,
-            "start_turn": 1,
-            "end_turn": 4,
-            "summary_text": "...",
-            "key_topics": ["budget", "économie"],
-            "important_entities": [{"name": "Paris", "type": "city"}],
-            "summary_method": "llm",
-            "created_at": "2024-06-01T12:00:00Z",
-            "updated_at": "2024-06-01T12:05:00Z"
-        }
-    """
+    @model_validator(mode="after")
+    def validate_consistency(self) -> "Conversation":
+        if self.total_turns > self.max_turns:
+            raise ValueError("total_turns cannot exceed max_turns")
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at must be after created_at")
+        if self.last_activity_at < self.created_at:
+            raise ValueError("last_activity_at must be after created_at")
+        return self
+
+
+class ConversationSummary(BaseModel):
+    """Résumé partiel d'une conversation."""
 
     id: int
     conversation_id: int
@@ -123,7 +103,7 @@ class ConversationSummary(BaseModel):
             "important_entities": [{"name": "Paris", "type": "city"}],
             "summary_method": "llm",
             "created_at": "2024-06-01T12:00:00Z",
-            "updated_at": "2024-06-01T12:05:00Z"
+            "updated_at": "2024-06-01T12:05:00Z",
         }
     })
 
@@ -143,31 +123,16 @@ class ConversationSummary(BaseModel):
         return self
 
 
-class ConversationTurn(BaseModel):
-    """Tour de conversation entre l'utilisateur et l'assistant.
 
-    Example:
-        {
-            "id": 10,
-            "turn_id": "turn_0010",
-            "conversation_id": 1,
-            "turn_number": 3,
-            "user_message": "Quel est mon solde ?",
-            "assistant_response": "Votre solde est de 50€.",
-            "processing_time_ms": 120.5,
-            "confidence_score": 0.98,
-            "error_occurred": false,
-            "error_message": null,
-            "intent_result": {"name": "check_balance"},
-            "agent_chain": [{"agent": "retrieval", "status": "ok"}],
-            "search_query_used": "balance account",
-            "search_results_count": 3,
-            "search_execution_time_ms": 50.2,
-            "turn_metadata": {"debug": true},
-            "created_at": "2024-06-01T12:00:00Z",
-            "updated_at": "2024-06-01T12:00:01Z"
-        }
-    """
+    @model_validator(mode="after")
+    def validate_turns(self) -> "ConversationSummary":
+        if self.end_turn < self.start_turn:
+            raise ValueError("end_turn must be >= start_turn")
+        return self
+
+
+class ConversationTurn(BaseModel):
+    """Tour de conversation entre l'utilisateur et l'assistant."""
 
     id: int
     turn_id: str
@@ -207,7 +172,7 @@ class ConversationTurn(BaseModel):
             "search_execution_time_ms": 50.2,
             "turn_metadata": {"debug": True},
             "created_at": "2024-06-01T12:00:00Z",
-            "updated_at": "2024-06-01T12:00:01Z"
+            "updated_at": "2024-06-01T12:00:01Z",
         }
     })
 
@@ -220,6 +185,23 @@ class ConversationTurn(BaseModel):
 
     @model_validator(mode="after")
     def validate_times(self) -> "ConversationTurn":
+    @field_validator("conversation_id", "turn_number", "search_results_count")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("must be non-negative")
+        return v
+
+    @field_validator("processing_time_ms", "search_execution_time_ms", "confidence_score")
+    @classmethod
+    def positive_floats(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError("must be non-negative")
+        return v
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "ConversationTurn":
+
         if self.updated_at < self.created_at:
             raise ValueError("updated_at must be after created_at")
         return self

@@ -49,10 +49,10 @@ sys.modules.setdefault("fastapi", fastapi_module)
 config_pkg = types.ModuleType("config")
 config_pkg.__path__ = []  # mark as package
 autogen_mod = types.ModuleType("config.autogen_config")
-class AutogenConfig:  # simple placeholder
+class AutoGenConfig:  # simple placeholder
     pass
-autogen_settings = AutogenConfig()
-autogen_mod.AutogenConfig = AutogenConfig
+autogen_settings = AutoGenConfig()
+autogen_mod.AutoGenConfig = AutoGenConfig
 autogen_mod.autogen_settings = autogen_settings
 config_pkg.autogen_config = autogen_mod
 sys.modules.setdefault("config", config_pkg)

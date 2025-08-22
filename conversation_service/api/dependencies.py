@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import HTTPException, WebSocket, status
 
 from ..clients import CacheClient, OpenAIClient, SearchClient
-from config.autogen_config import AutogenConfig, autogen_settings
+from config.autogen_config import AutoGenConfig, autogen_settings
 from config_service.config import settings
 from openai_config import openai_config
 
@@ -73,7 +73,7 @@ async def get_cache_client() -> CacheClient:
     return _cache_client
 
 
-def get_autogen_config() -> AutogenConfig:
+def get_autogen_config() -> AutoGenConfig:
     """Provide AutoGen configuration settings."""
 
     return autogen_settings

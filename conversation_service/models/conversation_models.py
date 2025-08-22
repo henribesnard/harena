@@ -15,10 +15,7 @@ class ConversationMetadata(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {
-                "intent": "greeting",
-                "confidence_score": 0.95,
-            }
+            "example": {"intent": "greeting", "confidence_score": 0.95}
         }
     )
 
@@ -100,4 +97,3 @@ class ConversationResponse(BaseModel):
         if len(v) != 2 or not v.isalpha():
             raise ValueError("language must be a 2-letter ISO code")
         return v.lower()
-

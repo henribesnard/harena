@@ -16,12 +16,12 @@ from pydantic import (
 
 
 class Conversation(BaseModel):
-    """Représente une conversation utilisateur."""
+    """Represents a persisted conversation."""
 
     id: int
     conversation_id: str
     user_id: int
-    title: Optional[str] = None
+    title: str | None = None
     status: str
     language: str
     domain: str
@@ -91,6 +91,7 @@ class Conversation(BaseModel):
             raise ValidationError(errors, type(self))
         super().__init__(**data)
 
+
     @field_validator("user_id")
     @classmethod
     def user_id_positive(cls, v: int) -> int:
@@ -110,7 +111,7 @@ class Conversation(BaseModel):
 
 
 class ConversationSummary(BaseModel):
-    """Résumé partiel d'une conversation."""
+    """Partial summary of a conversation."""
 
     id: int
     conversation_id: int
@@ -165,6 +166,7 @@ class ConversationSummary(BaseModel):
             raise ValidationError(errors, type(self))
         super().__init__(**data)
 
+
     @field_validator("conversation_id", "start_turn", "end_turn")
     @classmethod
     def positive_numbers(cls, v: int) -> int:
@@ -182,7 +184,7 @@ class ConversationSummary(BaseModel):
 
 
 class ConversationTurn(BaseModel):
-    """Tour de conversation entre l'utilisateur et l'assistant."""
+    """Single turn exchanged in a conversation."""
 
     id: int
     turn_id: str
@@ -248,6 +250,7 @@ class ConversationTurn(BaseModel):
             raise ValidationError(errors, type(self))
         super().__init__(**data)
 
+
     @field_validator("conversation_id", "turn_number", "search_results_count")
     @classmethod
     def non_negative(cls, v: int) -> int:
@@ -255,7 +258,9 @@ class ConversationTurn(BaseModel):
             raise ValueError("must be non-negative")
         return v
 
-    @field_validator("processing_time_ms", "search_execution_time_ms", "confidence_score")
+    @field_validator(
+        "processing_time_ms", "search_execution_time_ms", "confidence_score"
+    )
     @classmethod
     def positive_floats(cls, v: Optional[float]) -> Optional[float]:
         if v is not None and v < 0:

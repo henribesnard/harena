@@ -27,13 +27,12 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
-from conversation_service.core.conversation_service import save_conversation_turn
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.models.conversation_models import (
     ConversationMessage,
     MessageCreate,
 )
-from conversation_service.service import ConversationService
+from conversation_service.core.conversation_service import ConversationService
 from conversation_service.repository import ConversationRepository
 
 logger = logging.getLogger(__name__)
@@ -99,9 +98,9 @@ class TeamOrchestrator:
         # Validate user message before any processing to avoid partial writes
         MessageCreate(role="user", content=message)
 
-        repo = ConversationMessageRepository(db)
-        service = ConversationService(repo)
-        if self._conversation_db_id is None:
+        service = ConversationService(db)
+        conv = ConversationRepository(db).get_by_conversation_id(conversation_id)
+        if conv is None:
             raise RuntimeError("Conversation database id not initialised")
         agent_messages: List[Tuple[str, str]] = []
 
@@ -154,20 +153,8 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
-        service.save_conversation_turn(
-            conversation_db_id=self._conversation_db_id,
-            user_id=user_id,
-            messages=[
-                MessageCreate(role="user", content=message),
-                MessageCreate(role="assistant", content=reply),
-            ],
-        if self._conversation_db_id is None:
-            raise RuntimeError("Conversation database id not initialised")
-
-        save_conversation_turn(
-            db,
-            conversation_db_id=self._conversation_db_id,
-            user_id=user_id,
+        service.save_conversation_turn_atomic(
+            conversation=conv,
             user_message=message,
             agent_messages=agent_messages,
             assistant_reply=reply,
@@ -232,11 +219,12 @@ class TeamOrchestrator:
         """
 
         conv_id = uuid.uuid4().hex
-        # Use an explicit transaction so that higher-level services control
-        # when the session is committed.  This mirrors the approach used for
-        # message persistence.
-        with db.begin():
+        try:
             conv = ConversationRepository(db).create(user_id, conv_id)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
         try:
             history = ConversationMessageRepository(db).list_models(conv_id)

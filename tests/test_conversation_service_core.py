@@ -1,4 +1,5 @@
 import pytest
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -6,7 +7,7 @@ from db_service.base import Base
 from db_service.models.conversation import Conversation
 from db_service.models.user import User
 
-from conversation_service.core.conversation_service import save_conversation_turn
+from conversation_service.core.conversation_service import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
 from teams.team_orchestrator import TeamOrchestrator
 
@@ -31,10 +32,9 @@ def test_save_conversation_turn_persists_messages():
         session.commit()
         session.refresh(conv)
 
-        save_conversation_turn(
-            session,
-            conversation_db_id=conv.id,
-            user_id=user.id,
+        service = ConversationService(session)
+        service.save_conversation_turn_atomic(
+            conversation=conv,
             user_message="hello",
             agent_messages=[("agent", "{}")],
             assistant_reply="hi",

@@ -2,12 +2,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from db_service.base import Base
 from db_service.models.conversation import Conversation
 from db_service.models.user import User
+from conversation_service.core.conversation_service import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
-from conversation_service.models.conversation_models import MessageCreate
-from conversation_service.service import ConversationService
 
 
 def _setup_session():
@@ -29,19 +32,15 @@ def test_save_conversation_turn_persists_all_messages():
         session.commit()
         session.refresh(conv)
 
-        repo = ConversationMessageRepository(session)
-        svc = ConversationService(repo)
-        svc.save_conversation_turn(
-            conversation_db_id=conv.id,
-            user_id=user.id,
-            messages=[
-                MessageCreate(role="user", content="hi"),
-                MessageCreate(role="assistant", content="hello"),
-            ],
+        svc = ConversationService(session)
+        svc.save_conversation_turn_atomic(
+            conversation=conv,
+            user_message="hi",
+            assistant_reply="hello",
         )
 
-        messages = repo.list_models(conv.conversation_id)
-        assert [m.role for m in messages] == ["user", "assistant"]
+        msgs = ConversationMessageRepository(session).list_models(conv.conversation_id)
+        assert [m.role for m in msgs] == ["user", "assistant"]
 
 
 def test_save_conversation_turn_rolls_back_on_failure():
@@ -57,16 +56,12 @@ def test_save_conversation_turn_rolls_back_on_failure():
         session.commit()
         session.refresh(conv)
 
-        repo = ConversationMessageRepository(session)
-        svc = ConversationService(repo)
+        svc = ConversationService(session)
         with pytest.raises(ValueError):
-            svc.save_conversation_turn(
-                conversation_db_id=conv.id,
-                user_id=user.id,
-                messages=[
-                    MessageCreate(role="user", content="hi"),
-                    MessageCreate(role="assistant", content=""),
-                ],
+            svc.save_conversation_turn_atomic(
+                conversation=conv,
+                user_message="hi",
+                assistant_reply="",
             )
 
-        assert repo.list_models(conv.conversation_id) == []
+        assert ConversationMessageRepository(session).list_models(conv.conversation_id) == []

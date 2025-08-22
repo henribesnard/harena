@@ -20,7 +20,7 @@ from ..models.conversation_models import (
     ConversationStartResponse,
 )
 
-from conversation_service.core.conversation_service import ConversationService
+from conversation_service.core import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
 logger = logging.getLogger(__name__)

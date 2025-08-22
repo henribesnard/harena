@@ -97,7 +97,6 @@ class TeamOrchestrator:
         if self._conversation_db_id is None:
             raise RuntimeError("Conversation database id not initialised")
         repo.add(
-            conversation_id=conversation_id,
             conversation_db_id=self._conversation_db_id,
             user_id=user_id,
             role="user",
@@ -163,7 +162,6 @@ class TeamOrchestrator:
 
         # Persist the assistant's reply as the last turn in the conversation.
         repo.add(
-            conversation_id=conversation_id,
             conversation_db_id=self._conversation_db_id,
             user_id=user_id,
             role="assistant",
@@ -206,7 +204,6 @@ class TeamOrchestrator:
             if self._conversation_db_id is None:
                 raise RuntimeError("Conversation database id not initialised")
             repo.add(
-                conversation_id=conversation_id,
                 conversation_db_id=self._conversation_db_id,
                 user_id=user_id,
                 role=name,

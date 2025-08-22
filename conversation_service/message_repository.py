@@ -34,7 +34,6 @@ class ConversationMessageRepository:
     def add(
         self,
         *,
-        conversation_id: str,
         conversation_db_id: int,
         user_id: int,
         role: str,
@@ -43,9 +42,9 @@ class ConversationMessageRepository:
         """Persist a new message to the database.
 
         Parameters mirror the columns of :class:`ConversationMessageDB` so
-        that callers can explicitly state the ``conversation_id`` and
-        ``user_id`` associated with the message along with its ``role`` and
-        textual ``content``.
+        that callers can explicitly state the ``conversation_id`` (via
+        ``conversation_db_id``) and ``user_id`` associated with the message
+        along with its ``role`` and textual ``content``.
 
         Returns
         -------
@@ -72,7 +71,9 @@ class ConversationMessageRepository:
 
         return (
             self._db.query(ConversationMessageDB)
-            .join(Conversation, Conversation.id == ConversationMessageDB.conversation_id)
+            .join(
+                Conversation, Conversation.id == ConversationMessageDB.conversation_id
+            )
             .filter(Conversation.conversation_id == conversation_id)
             # ``created_at`` is more explicit for chronological ordering than the
             # auto-incremented primary key.

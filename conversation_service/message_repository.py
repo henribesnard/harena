@@ -9,6 +9,7 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from db_service.models.conversation import (
+    Conversation,
     ConversationMessage as ConversationMessageDB,
 )
 
@@ -34,6 +35,7 @@ class ConversationMessageRepository:
         self,
         *,
         conversation_id: str,
+        conversation_db_id: int,
         user_id: int,
         role: str,
         content: str,
@@ -55,7 +57,7 @@ class ConversationMessageRepository:
         # Create and immediately persist the ORM model so that callers can
         # query it straight away (for example to build conversation history).
         msg = ConversationMessageDB(
-            conversation_id=conversation_id,
+            conversation_id=conversation_db_id,
             user_id=user_id,
             role=role,
             content=content,
@@ -70,7 +72,8 @@ class ConversationMessageRepository:
 
         return (
             self._db.query(ConversationMessageDB)
-            .filter(ConversationMessageDB.conversation_id == conversation_id)
+            .join(Conversation, Conversation.id == ConversationMessageDB.conversation_id)
+            .filter(Conversation.conversation_id == conversation_id)
             # ``created_at`` is more explicit for chronological ordering than the
             # auto-incremented primary key.
             .order_by(ConversationMessageDB.created_at)
@@ -89,7 +92,7 @@ class ConversationMessageRepository:
         return [
             ConversationMessage(
                 user_id=m.user_id,
-                conversation_id=m.conversation_id,
+                conversation_id=conversation_id,
                 role=m.role,
                 content=m.content,
                 timestamp=m.created_at,

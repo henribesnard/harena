@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Conversation(BaseModel):
@@ -34,8 +36,8 @@ class Conversation(BaseModel):
     status: str
     language: str
     domain: str
-    total_turns: int
-    max_turns: int
+    total_turns: int = Field(ge=0)
+    max_turns: int = Field(ge=0)
     last_activity_at: datetime
     conversation_metadata: Dict[str, Any] = Field(default_factory=dict)
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
@@ -63,6 +65,23 @@ class Conversation(BaseModel):
         }
     })
 
+    @field_validator("user_id")
+    @classmethod
+    def user_id_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("user_id must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def validate_consistency(self) -> "Conversation":
+        if self.total_turns > self.max_turns:
+            raise ValueError("total_turns cannot exceed max_turns")
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at must be after created_at")
+        if self.last_activity_at < self.created_at:
+            raise ValueError("last_activity_at must be after created_at")
+        return self
+
 
 class ConversationSummary(BaseModel):
     """Résumé partiel d'une conversation.
@@ -84,8 +103,8 @@ class ConversationSummary(BaseModel):
 
     id: int
     conversation_id: int
-    start_turn: int
-    end_turn: int
+    start_turn: int = Field(ge=1)
+    end_turn: int = Field(ge=1)
     summary_text: str
     key_topics: List[str] = Field(default_factory=list)
     important_entities: List[Dict[str, Any]] = Field(default_factory=list)
@@ -107,6 +126,21 @@ class ConversationSummary(BaseModel):
             "updated_at": "2024-06-01T12:05:00Z"
         }
     })
+
+    @field_validator("conversation_id", "start_turn", "end_turn")
+    @classmethod
+    def positive_numbers(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def validate_turns(self) -> "ConversationSummary":
+        if self.end_turn < self.start_turn:
+            raise ValueError("end_turn must be >= start_turn")
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at must be after created_at")
+        return self
 
 
 class ConversationTurn(BaseModel):
@@ -138,18 +172,18 @@ class ConversationTurn(BaseModel):
     id: int
     turn_id: str
     conversation_id: int
-    turn_number: int
-    user_message: str
-    assistant_response: str
-    processing_time_ms: Optional[float] = None
-    confidence_score: Optional[float] = None
+    turn_number: int = Field(ge=1)
+    user_message: str = Field(min_length=1)
+    assistant_response: str = Field(min_length=1)
+    processing_time_ms: Optional[float] = Field(default=None, ge=0.0)
+    confidence_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     error_occurred: bool
     error_message: Optional[str] = None
     intent_result: Optional[Dict[str, Any]] = None
     agent_chain: List[Dict[str, Any]] = Field(default_factory=list)
     search_query_used: Optional[str] = None
-    search_results_count: int
-    search_execution_time_ms: Optional[float] = None
+    search_results_count: int = Field(ge=0)
+    search_execution_time_ms: Optional[float] = Field(default=None, ge=0.0)
     turn_metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
@@ -176,3 +210,16 @@ class ConversationTurn(BaseModel):
             "updated_at": "2024-06-01T12:00:01Z"
         }
     })
+
+    @field_validator("conversation_id")
+    @classmethod
+    def conversation_id_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("conversation_id must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def validate_times(self) -> "ConversationTurn":
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at must be after created_at")
+        return self

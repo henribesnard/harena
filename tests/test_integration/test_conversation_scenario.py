@@ -1,12 +1,11 @@
 import sys
+import sys
 import types
 from enum import Enum
 
 sys.modules.setdefault("autogen", types.SimpleNamespace(AssistantAgent=object))
 sys.modules.setdefault("conversation_service.models.agent_models", types.SimpleNamespace(AgentConfig=object))
 sys.modules.setdefault("conversation_service.base_agent", types.SimpleNamespace(BaseFinancialAgent=object))
-sys.modules.setdefault("conversation_service.core.cache_manager", types.SimpleNamespace(CacheManager=object))
-sys.modules.setdefault("conversation_service.core.metrics_collector", types.SimpleNamespace(MetricsCollector=object))
 
 
 class DummyLogger:

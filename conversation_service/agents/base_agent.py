@@ -42,9 +42,6 @@ except Exception:  # pragma: no cover - dependency not available
 # Local imports
 from ..models.agent_models import AgentConfig, AgentResponse
 from ..models.core_models import FinancialEntity
-from ..core.cache_manager import CacheManager
-from ..core.metrics_collector import MetricsCollector
-from ..core.validators import HarenaValidators
 from ..utils.logging import get_structured_logger
 
 __all__ = ["BaseFinancialAgent", "AgentPerformanceTracker", "PromptOptimizer"]
@@ -330,8 +327,8 @@ class BaseFinancialAgent(ABC):
         self,
         config: AgentConfig,
         openai_client: Optional[OpenAIClient] = None,
-        cache_manager: Optional[CacheManager] = None,
-        metrics_collector: Optional[MetricsCollector] = None,
+        cache_manager: Optional[Any] = None,
+        metrics_collector: Optional[Any] = None,
     ):
         """Initialize base financial agent.
 

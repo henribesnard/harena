@@ -6,6 +6,17 @@ Les anciens modules `agents`, `clients`, `models` et `utils` ont été supprimé
 Leur implémentation est désormais centralisée sous le package
 `conversation_service`.
 
+Structure simplifiée :
+
+```
+conversation_service/
+    core/
+        conversation_service.py
+        transaction_manager.py
+    repository.py
+    message_repository.py
+```
+
 ## Tests unitaires
 
 Avant d'exécuter les tests, installez les dépendances Web de base :

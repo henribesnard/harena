@@ -26,7 +26,6 @@ from conversation_service.agents.query_generator_agent import (
 from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
-from conversation_service.core.metrics_collector import metrics_collector
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.models.conversation_models import (
     ConversationMessage,
@@ -55,7 +54,6 @@ class TeamOrchestrator:
         self._responder = responder
 
         self.context: Dict[str, Any] = {}
-        self._metrics = metrics_collector
         self._total_calls = 0
         self._error_calls = 0
         self._conversation_id: Optional[str] = None
@@ -88,7 +86,6 @@ class TeamOrchestrator:
         if not message.strip():
             raise ValueError("message must not be empty")
 
-        start = time.time()
         history_models = self.get_history(conversation_id, db) or []
         ctx: Dict[str, Any] = {
             "user_id": user_id,
@@ -105,7 +102,6 @@ class TeamOrchestrator:
         agent_messages: List[Tuple[str, str]] = []
 
         self._total_calls += 1
-        success = True
         try:
             tasks = []
             if self._classifier is not None:
@@ -146,7 +142,6 @@ class TeamOrchestrator:
             )
             reply = ctx.get("response", "")
         except Exception:  # pragma: no cover - defensive
-            success = False
             self._error_calls += 1
             logger.exception("Agent processing failed")
             reply = (
@@ -160,10 +155,6 @@ class TeamOrchestrator:
             assistant_reply=reply,
         )
 
-        duration = (time.time() - start) * 1000
-        self._metrics.record_orchestrator_call(
-            operation="query_agents", success=success, processing_time_ms=duration
-        )
         self.context = dict(ctx)
         return reply
 
@@ -178,7 +169,6 @@ class TeamOrchestrator:
             return context
 
         payload["context"] = context
-        start = time.time()
         name = getattr(agent, "name", agent.__class__.__name__)
         try:
             response = await agent.process(payload)  # type: ignore[call-arg]
@@ -192,16 +182,10 @@ class TeamOrchestrator:
                 messages.append(
                     (name, json.dumps(result, ensure_ascii=False))
                 )
-            success = True
         except Exception:
             result = {}
-            success = False
             logger.exception("Agent %s failed", name)
 
-        duration_ms = int((time.time() - start) * 1000)
-        await self._metrics.record_agent_call(
-            agent_name=name, success=success, processing_time_ms=duration_ms
-        )
         return context
 
     def start_conversation(self, user_id: int, db: Session) -> str:

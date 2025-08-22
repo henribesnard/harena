@@ -82,3 +82,28 @@ def test_get_history_unknown_conversation_returns_404(app_and_session):
     client = TestClient(app)
     resp = client.get("/conversation/unknown/history")
     assert resp.status_code == 404
+
+
+def test_get_history_foreign_conversation_returns_404(app_and_session):
+    app, SessionLocal, user = app_and_session
+    with SessionLocal() as session:
+        other = User(email="other@example.com", password_hash="x")
+        session.add(other)
+        session.commit()
+        session.refresh(other)
+        conv = ConversationRepository(session).create(other.id, "c2")
+        session.commit()
+        conv_id = conv.conversation_id
+
+    client = TestClient(app)
+    resp = client.get(f"/conversation/{conv_id}/history")
+    assert resp.status_code == 404
+
+
+def test_query_unknown_conversation_returns_404(app_and_session):
+    app, _, _ = app_and_session
+    client = TestClient(app)
+    resp = client.post(
+        "/conversation/unknown/query", json={"message": "hi"}
+    )
+    assert resp.status_code == 404

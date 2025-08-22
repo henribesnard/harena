@@ -1,7 +1,9 @@
 """Repository for persisting and retrieving conversation messages."""
-
 from __future__ import annotations
 
+import logging
+from contextlib import contextmanager
+from typing import List, Sequence
 from typing import Iterable, List, Sequence
 
 from sqlalchemy.orm import Session
@@ -29,6 +31,34 @@ class ConversationMessageRepository:
         user_id: int,
         messages: Sequence[MessageCreate],
     ) -> List[ConversationMessageDB]:
+        """Persist multiple messages atomically.
+
+        All messages are inserted in a single transaction. If any insertion
+        fails, the transaction is rolled back and the exception propagated.
+        """
+
+        instances: List[ConversationMessageDB] = []
+        with self.transaction():
+            for m in messages:
+                # Validate message fields and shared identifiers
+                MessageCreate(role=m.role, content=m.content)
+                self._validate(
+                    conversation_db_id=conversation_db_id,
+                    user_id=user_id,
+                    content=m.content,
+                )
+                msg = ConversationMessageDB(
+                    conversation_id=conversation_db_id,
+                    user_id=user_id,
+                    role=m.role,
+                    content=m.content,
+                )
+                self._db.add(msg)
+                self._db.flush()
+                self._db.refresh(msg)
+                instances.append(msg)
+
+        return instances
         """Persist multiple messages without committing the transaction."""
 
         objs = [

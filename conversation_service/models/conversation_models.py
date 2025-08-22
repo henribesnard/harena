@@ -46,6 +46,24 @@ class AgentQueryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class MessageCreate(BaseModel):
+    """Input model for creating a conversation message."""
+
+    role: Literal["user", "assistant"] = Field(
+        ..., description="Role of the message author"
+    )
+    content: str = Field(..., description="Message content")
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("content must not be empty")
+        return v
+
+
 class ConversationMessage(BaseModel):
     """Single message persisted in the conversation history."""
 

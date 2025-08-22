@@ -77,7 +77,10 @@ class CacheManager:
         if model is not None:
             validated = validate_model(model, value)
             l1_value = validated
-            l2_value = validated.dict()
+            try:
+                l2_value = validated.model_dump()
+            except AttributeError:  # pragma: no cover - support for Pydantic v1
+                l2_value = validated.dict()
         else:
             l1_value = l2_value = value
 

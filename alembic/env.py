@@ -15,6 +15,9 @@ from sqlalchemy import engine_from_config, MetaData
 from sqlalchemy import pool
 from alembic import context
 
+# Sauvegarde de la base avant migration
+from scripts.db_backup import backup_database
+
 # Configurer le logger
 logger = logging.getLogger("alembic")
 
@@ -129,6 +132,8 @@ def run_migrations_online() -> None:
         )
 
         with context.begin_transaction():
+            # Sauvegarde automatique avant la migration
+            backup_database(database_url)
             logger.info("Exécution des migrations en mode online")
             context.run_migrations()
 

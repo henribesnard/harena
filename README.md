@@ -105,6 +105,40 @@ uvicorn conversation_service.main:app --reload
 The FastAPI app is built by `create_app()` in `conversation_service/main.py`.
 
 
+## Table `conversation_messages`
+
+La table `conversation_messages` enregistre chaque message individuel échangé dans une conversation.
+
+| Colonne | Type | Exemple |
+| --- | --- | --- |
+| `id` | `int` | `1` |
+| `conversation_id` | `int` (FK `conversations.id`) | `42` |
+| `user_id` | `int` (FK `users.id`) | `7` |
+| `role` | `varchar(20)` | `'user'` |
+| `content` | `text` | `'Bonjour'` |
+| `created_at` | `timestamp` | `2025-08-21T22:54:06Z` |
+| `updated_at` | `timestamp` | `2025-08-21T22:54:06Z` |
+
+### Exemple d’utilisation
+
+```sql
+INSERT INTO conversation_messages (conversation_id, user_id, role, content)
+VALUES (42, 7, 'user', 'Bonjour');
+```
+
+### Migration
+
+```bash
+alembic upgrade 5038c27e9983
+```
+
+### Rollback
+
+```bash
+alembic downgrade 6eb09f813ccf
+```
+
+
 ## Local data seed
 
 For development, populate the `harena_transactions` Elasticsearch index with a

@@ -11,18 +11,10 @@ from sqlalchemy.orm import Session
 import uuid
 
 from agent_types import ChatMessage, Response
-from conversation_service.agents.entity_extractor_agent import (
-    EntityExtractorAgent,
-)
-from conversation_service.agents.intent_classifier_agent import (
-    IntentClassifierAgent,
-)
-from conversation_service.agents.query_generator_agent import (
-    QueryGeneratorAgent,
-)
-from conversation_service.agents.response_generator_agent import (
-    ResponseGeneratorAgent,
-)
+from conversation_service.agents.entity_extractor import EntityExtractorAgent
+from conversation_service.agents.intent_classifier import IntentClassifierAgent
+from conversation_service.agents.query_generator import QueryGeneratorAgent
+from conversation_service.agents.response_generator import ResponseGeneratorAgent
 from conversation_service.core import ConversationService
 from conversation_service.repository import ConversationRepository
 

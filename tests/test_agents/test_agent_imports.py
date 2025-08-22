@@ -4,7 +4,7 @@ import types
 import pytest
 
 MODULES = [
-    ("conversation_service.agents.entity_extractor_agent", ["EntityExtractionCache"]),
+    ("conversation_service.agents.entity_extractor", ["EntityExtractorAgent"]),
     ("conversation_service.agents.intent_classifier_agent", ["IntentClassificationCache"]),
     ("conversation_service.agents.query_generator_agent", ["QueryOptimizer"]),
     (

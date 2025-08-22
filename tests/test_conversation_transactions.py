@@ -9,7 +9,7 @@ from db_service.models.user import User
 from conversation_service.core import ConversationService
 from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.repository import ConversationRepository
-from teams.team_orchestrator import TeamOrchestrator
+from conversation_service.teams.team_orchestrator import TeamOrchestrator
 
 
 def _setup_session():

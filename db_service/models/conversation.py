@@ -86,6 +86,11 @@ class Conversation(Base, TimestampMixin):
     conversation_metadata = Column(JSON, default=dict, nullable=False)
     user_preferences = Column(JSON, default=dict, nullable=False)
     session_metadata = Column(JSON, default=dict, nullable=False)
+    intents = Column(JSON, nullable=True)
+    entities = Column(JSON, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
     
     # Relations
     user = relationship("User", back_populates="conversations")
@@ -162,6 +167,11 @@ class ConversationTurn(Base, TimestampMixin):
     entities_extracted = Column(JSON, default=list, nullable=True)
     intent_confidence = Column(DECIMAL(5, 4), default=0, nullable=False)
     total_tokens_used = Column(Integer, default=0, nullable=False)
+    intent = Column(JSON, nullable=True)
+    entities = Column(JSON, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
     
     # Recherche et résultats
     search_query_used = Column(Text, nullable=True)

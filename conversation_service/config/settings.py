@@ -9,21 +9,32 @@ from __future__ import annotations
 
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Pydantic settings for environment‑driven configuration."""
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
+
+    # Search service
+    search_service_url: str = Field(
+        "http://localhost:8000/api/v1/search", env="SEARCH_SERVICE_URL"
+    )
+
+    # Redis
+    redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
+    redis_password: Optional[str] = Field(default=None, env="REDIS_PASSWORD")
+    redis_db: int = Field(default=0, env="REDIS_DB")
+    redis_max_connections: int = Field(10, env="REDIS_MAX_CONNECTIONS")
+    redis_health_check_interval: int = Field(30, env="REDIS_HEALTH_CHECK_INTERVAL")
+    redis_retry_on_timeout: bool = Field(True, env="REDIS_RETRY_ON_TIMEOUT")
+    redis_cache_prefix: str = Field("conversation_service", env="REDIS_CACHE_PREFIX")
 
     # OpenAI
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
-
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_PASSWORD: Optional[str] = None
 
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -31,7 +42,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-"""Instance global de configuration."""
+"""Instance globale de configuration."""
 
 
 def reload_settings() -> Settings:

@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import redis.asyncio as redis
 
-from conversation_service.settings import settings
+from conversation_service.config.settings import settings
 
 
 class CacheClient:

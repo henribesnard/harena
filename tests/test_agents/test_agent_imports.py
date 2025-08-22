@@ -9,8 +9,9 @@ MODULES = [
     ("conversation_service.agents.query_generator_agent", ["QueryOptimizer"]),
     (
         "conversation_service.agents.response_generator_agent",
-        ["ResponseGeneratorAgent", "stream_response"],
+        ["ResponseGeneratorAgent"],
     ),
+    ("conversation_service.utils.streaming", ["stream_response"]),
 ]
 
 

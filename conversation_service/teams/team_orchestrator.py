@@ -24,6 +24,7 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core import ConversationService
+from conversation_service.repository import ConversationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -214,19 +215,17 @@ class TeamOrchestrator:
             raise
 
         service = self._conversation_service_cls(db)
-        conv = service.create_conversation(user_id)
-        history = service.list_history(conv.conversation_id)
+        history = service.list_history(conv_id)
 
         self.context = {
             "user_id": user_id,
             "history": [m.model_dump() for m in history],
         }
-        self._conversation_id = conv.conversation_id
         self._conversation_id = conv_id
         self._conversation_db_id = conv_db_id
         self._user_id = user_id
         self._db = db
-        return conv.conversation_id
+        return conv_id
 
     def get_history(
         self, conversation_id: str, db: Session

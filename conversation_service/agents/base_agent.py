@@ -40,8 +40,8 @@ except Exception:  # pragma: no cover - dependency not available
     OpenAIClient = Any  # type: ignore
 
 # Local imports
-from ..models.agent_models import AgentConfig, AgentResponse
-from ..models.core_models import FinancialEntity
+from ..models.agent_models import AgentConfig
+from ..models.core_models import AgentResponse
 from ..utils.logging import get_structured_logger
 
 __all__ = ["BaseFinancialAgent", "AgentPerformanceTracker", "PromptOptimizer"]

@@ -6,6 +6,15 @@ Les anciens modules `agents`, `clients`, `models` et `utils` ont été supprimé
 Leur implémentation est désormais centralisée sous le package
 `conversation_service`.
 
+## Architecture basée sur AutoGen
+
+Harena s'appuie maintenant sur une architecture orientée agents reposant sur
+la bibliothèque **AutoGen**. Une équipe spécialisée d'agents (classification
+d'intention, extraction d'entités, génération de requêtes et de réponses)
+collabore pour traiter chaque message utilisateur. Le `TeamOrchestrator`
+coordonne ces agents et persiste l'intégralité des échanges d'un tour de
+conversation via le `ConversationService`.
+
 ## Tests unitaires
 
 Avant d'exécuter les tests, installez les dépendances Web de base :

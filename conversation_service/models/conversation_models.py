@@ -49,12 +49,17 @@ class AgentQueryResponse(BaseModel):
 class MessageCreate(BaseModel):
     """Input model for creating a conversation message."""
 
-    role: Literal["user", "assistant"] = Field(
-        ..., description="Role of the message author"
-    )
+    role: str = Field(..., description="Role of the message author")
     content: str = Field(..., description="Message content")
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("role must not be empty")
+        return v
 
     @field_validator("content")
     @classmethod

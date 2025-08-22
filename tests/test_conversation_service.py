@@ -29,9 +29,8 @@ def test_save_conversation_turn_persists_all_messages():
         session.commit()
         session.refresh(conv)
 
-        repo = ConversationMessageRepository(session)
-        svc = ConversationService(repo)
-        svc.save_conversation_turn(
+        svc = ConversationService(session)
+        svc.save_conversation_turn_atomic(
             conversation_db_id=conv.id,
             user_id=user.id,
             messages=[
@@ -40,6 +39,7 @@ def test_save_conversation_turn_persists_all_messages():
             ],
         )
 
+        repo = ConversationMessageRepository(session)
         messages = repo.list_models(conv.conversation_id)
         assert [m.role for m in messages] == ["user", "assistant"]
 
@@ -57,10 +57,9 @@ def test_save_conversation_turn_rolls_back_on_failure():
         session.commit()
         session.refresh(conv)
 
-        repo = ConversationMessageRepository(session)
-        svc = ConversationService(repo)
+        svc = ConversationService(session)
         with pytest.raises(ValueError):
-            svc.save_conversation_turn(
+            svc.save_conversation_turn_atomic(
                 conversation_db_id=conv.id,
                 user_id=user.id,
                 messages=[
@@ -69,4 +68,5 @@ def test_save_conversation_turn_rolls_back_on_failure():
                 ],
             )
 
+        repo = ConversationMessageRepository(session)
         assert repo.list_models(conv.conversation_id) == []

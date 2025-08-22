@@ -10,7 +10,6 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-import sqlalchemy
 from sqlalchemy.orm import Session
 
 from agent_types import ChatMessage, Response
@@ -27,14 +26,11 @@ from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
 from conversation_service.core.metrics_collector import metrics_collector
-from conversation_service.core.conversation_service import save_conversation_turn
-from conversation_service.message_repository import ConversationMessageRepository
 from conversation_service.models.conversation_models import (
     ConversationMessage,
     MessageCreate,
 )
 from conversation_service.service import ConversationService
-from conversation_service.repository import ConversationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +61,7 @@ class TeamOrchestrator:
         self._db: Optional[Session] = None
 
     async def run(self, task: str, user_id: int, db: Session) -> Response:
+        service = ConversationService(db)
         if self._conversation_id is None:
             # Lazily initialise conversation and context
             self.start_conversation(user_id, db)
@@ -73,9 +70,7 @@ class TeamOrchestrator:
             self._user_id = self._user_id or user_id
             self._db = self._db or db
             if self._conversation_db_id is None:
-                conv = ConversationRepository(db).get_by_conversation_id(
-                    self._conversation_id
-                )
+                conv = service.get_for_user(self._conversation_id, user_id)
                 self._conversation_db_id = conv.id if conv is not None else None
 
         reply = await self.query_agents(
@@ -99,8 +94,7 @@ class TeamOrchestrator:
         # Validate user message before any processing to avoid partial writes
         MessageCreate(role="user", content=message)
 
-        repo = ConversationMessageRepository(db)
-        service = ConversationService(repo)
+        service = ConversationService(db)
         if self._conversation_db_id is None:
             raise RuntimeError("Conversation database id not initialised")
         agent_messages: List[Tuple[str, str]] = []
@@ -154,23 +148,14 @@ class TeamOrchestrator:
                 "Désolé, une erreur est survenue lors du traitement de votre demande."
             )
 
-        service.save_conversation_turn(
+        msgs = [MessageCreate(role="user", content=message)]
+        for role, content in agent_messages:
+            msgs.append(MessageCreate(role=role, content=content))
+        msgs.append(MessageCreate(role="assistant", content=reply))
+        service.save_conversation_turn_atomic(
             conversation_db_id=self._conversation_db_id,
             user_id=user_id,
-            messages=[
-                MessageCreate(role="user", content=message),
-                MessageCreate(role="assistant", content=reply),
-            ],
-        if self._conversation_db_id is None:
-            raise RuntimeError("Conversation database id not initialised")
-
-        save_conversation_turn(
-            db,
-            conversation_db_id=self._conversation_db_id,
-            user_id=user_id,
-            user_message=message,
-            agent_messages=agent_messages,
-            assistant_reply=reply,
+            messages=msgs,
         )
 
         duration = (time.time() - start) * 1000
@@ -232,16 +217,9 @@ class TeamOrchestrator:
         """
 
         conv_id = uuid.uuid4().hex
-        # Use an explicit transaction so that higher-level services control
-        # when the session is committed.  This mirrors the approach used for
-        # message persistence.
-        with db.begin():
-            conv = ConversationRepository(db).create(user_id, conv_id)
-
-        try:
-            history = ConversationMessageRepository(db).list_models(conv_id)
-        except sqlalchemy.exc.ProgrammingError:
-            history = []
+        service = ConversationService(db)
+        conv = service.create_conversation(user_id, conv_id)
+        history = service.list_history(conv_id)
 
         self.context = {
             "user_id": user_id,
@@ -256,13 +234,11 @@ class TeamOrchestrator:
     def get_history(
         self, conversation_id: str, db: Session
     ) -> Optional[List[ConversationMessage]]:
-        repo = ConversationRepository(db)
-        if repo.get_by_conversation_id(conversation_id) is None:
+        service = ConversationService(db)
+        user_id = self._user_id or 0
+        if service.get_for_user(conversation_id, user_id) is None:
             return None
-        try:
-            return ConversationMessageRepository(db).list_models(conversation_id)
-        except sqlalchemy.exc.ProgrammingError:
-            return []
+        return service.list_history(conversation_id)
 
     def get_error_metrics(self) -> Dict[str, float]:
         return {

@@ -32,6 +32,28 @@ class ConversationService:
         return conv
 
     # --- Persistence ----------------------------------------------------------
+    def save_conversation_turn(
+        self,
+        *,
+        conversation: Conversation,
+        user_message: str,
+        agent_messages: Iterable[Tuple[str, str]] = (),
+        assistant_reply: str,
+    ) -> None:
+        """Persist a complete conversation turn.
+
+        This method delegates to :meth:`save_conversation_turn_atomic` to
+        perform the actual database operations. It exists as a public API
+        that hides the implementation detail of atomic transactions.
+        """
+
+        self.save_conversation_turn_atomic(
+            conversation=conversation,
+            user_message=user_message,
+            agent_messages=agent_messages,
+            assistant_reply=assistant_reply,
+        )
+
     def save_conversation_turn_atomic(
         self,
         *,

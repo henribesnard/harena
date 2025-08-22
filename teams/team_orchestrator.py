@@ -26,11 +26,6 @@ from conversation_service.agents.query_generator_agent import (
 from conversation_service.agents.response_generator_agent import (
     ResponseGeneratorAgent,
 )
-from conversation_service.message_repository import ConversationMessageRepository
-from conversation_service.models.conversation_models import (
-    ConversationMessage,
-    MessageCreate,
-)
 from conversation_service.core.conversation_service import ConversationService
 from conversation_service.repository import ConversationRepository
 
@@ -103,9 +98,6 @@ class TeamOrchestrator:
             "history": [m.model_dump() for m in history_models],
         }
 
-        # Validate user message before any processing to avoid partial writes
-        MessageCreate(role="user", content=message)
-
         service = self._conversation_service_cls(db)
         conv = ConversationRepository(db).get_by_conversation_id(conversation_id)
         if conv is None:
@@ -160,7 +152,7 @@ class TeamOrchestrator:
             )
 
         try:
-            service.save_conversation_turn_atomic(
+            service.save_conversation_turn(
                 conversation=conv,
                 user_message=message,
                 agent_messages=agent_messages,
@@ -224,8 +216,9 @@ class TeamOrchestrator:
             db.rollback()
             raise
 
+        service = self._conversation_service_cls(db)
         try:
-            history = ConversationMessageRepository(db).list_models(conv_id)
+            history = service._msg_repo.list_models(conv_id)
         except sqlalchemy.exc.ProgrammingError:
             history = []
 
@@ -241,12 +234,13 @@ class TeamOrchestrator:
 
     def get_history(
         self, conversation_id: str, db: Session
-    ) -> Optional[List[ConversationMessage]]:
+    ) -> Optional[List[Any]]:
         repo = ConversationRepository(db)
         if repo.get_by_conversation_id(conversation_id) is None:
             return None
+        service = self._conversation_service_cls(db)
         try:
-            return ConversationMessageRepository(db).list_models(conversation_id)
+            return service._msg_repo.list_models(conversation_id)
         except sqlalchemy.exc.ProgrammingError:
             return []
 

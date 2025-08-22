@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import List, Sequence
 from contextlib import contextmanager
 from typing import Any, Dict, List
 
@@ -13,7 +14,10 @@ from db_service.models.conversation import (
     ConversationMessage as ConversationMessageDB,
 )
 
-from conversation_service.models.conversation_models import ConversationMessage
+from conversation_service.models.conversation_models import (
+    ConversationMessage,
+    MessageCreate,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +74,10 @@ class ConversationMessageRepository:
             timestamps.
         """
 
+        # Validate using pydantic model
+        if conversation_db_id <= 0 or user_id <= 0:
+            raise ValueError("conversation_db_id and user_id must be positive")
+        MessageCreate(role=role, content=content)
         self._validate(
             conversation_db_id=conversation_db_id,
             user_id=user_id,
@@ -93,6 +101,36 @@ class ConversationMessageRepository:
         *,
         conversation_db_id: int,
         user_id: int,
+        messages: Sequence[MessageCreate],
+    ) -> List[ConversationMessageDB]:
+        """Persist multiple messages atomically.
+
+        All messages are inserted in a single transaction. If any insertion
+        fails, the transaction is rolled back and the exception propagated.
+        """
+
+        objs: List[ConversationMessageDB] = []
+        try:
+            if conversation_db_id <= 0 or user_id <= 0:
+                raise ValueError("conversation_db_id and user_id must be positive")
+            for m in messages:
+                MessageCreate(role=m.role, content=m.content)  # validation
+                obj = ConversationMessageDB(
+                    conversation_id=conversation_db_id,
+                    user_id=user_id,
+                    role=m.role,
+                    content=m.content,
+                )
+                self._db.add(obj)
+                objs.append(obj)
+            self._db.commit()
+            for obj in objs:
+                self._db.refresh(obj)
+            return objs
+        except Exception:
+            self._db.rollback()
+            raise
+
         messages: List[tuple[str, str]],
     ) -> List[ConversationMessageDB]:
         """Persist multiple messages in a single transaction.

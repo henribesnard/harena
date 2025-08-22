@@ -1,13 +1,12 @@
 """
 Application Harena pour développement local.
-Version avec conversation_service.
+Version sans conversation_service.
 
 ✅ SERVICES DISPONIBLES:
 - User Service: Gestion utilisateurs
 - Sync Service: Synchronisation Bridge API
 - Enrichment Service: Elasticsearch uniquement (v2.0)
 - Search Service: Recherche lexicale simplifiée
-- Conversation Service: Orchestration des conversations
 """
 
 import logging
@@ -372,34 +371,6 @@ def create_app():
                 "architecture": "simplified_unified"
             }
 
-        # 5. Conversation Service
-        try:
-            from conversation_service.api.routes import router as conversation_router
-            app.include_router(
-                conversation_router,
-                prefix="/api/v1/conversation",
-                tags=["conversation"],
-            )
-            routes_count = (
-                len(conversation_router.routes)
-                if hasattr(conversation_router, "routes")
-                else 0
-            )
-            loader.services_status["conversation_service"] = {
-                "status": "ok",
-                "prefix": "/api/v1/conversation",
-                "routes": routes_count,
-            }
-            logger.info(
-                f"✅ conversation_service: {routes_count} routes sur /api/v1/conversation"
-            )
-        except Exception as e:
-            logger.error(f"❌ conversation_service: {e}")
-            loader.services_status["conversation_service"] = {
-                "status": "error",
-                "error": str(e),
-            }
-
         # Compter les services réussis
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
         logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")
@@ -446,10 +417,9 @@ def create_app():
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détails spéciaux pour search_service, enrichment_service et conversation_service
+        # Détails spéciaux pour search_service et enrichment_service
         search_status = loader.services_status.get("search_service", {})
         enrichment_status = loader.services_status.get("enrichment_service", {})
-        conversation_status = loader.services_status.get("conversation_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -473,11 +443,6 @@ def create_app():
                 "elasticsearch_available": enrichment_status.get("elasticsearch_available", False),
                 "initialized": enrichment_status.get("initialized", False),
                 "error": enrichment_status.get("error")
-            },
-            "conversation_service": {
-                "status": conversation_status.get("status"),
-                "routes": conversation_status.get("routes"),
-                "prefix": conversation_status.get("prefix"),
             }
         }
 
@@ -503,10 +468,6 @@ def create_app():
                     "User sync operations"
                 ]
             },
-            "conversation_service_details": {
-                "routes": loader.services_status.get("conversation_service", {}).get("routes"),
-                "prefix": loader.services_status.get("conversation_service", {}).get("prefix"),
-            },
 
         }
 
@@ -522,7 +483,6 @@ def create_app():
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
                 "search_service - Recherche lexicale (Architecture simplifiée)",
-                "conversation_service - Orchestration des conversations",
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
@@ -542,7 +502,7 @@ if __name__ == "__main__":
     logger.info("📡 Accès: http://localhost:8000")
     logger.info("📚 Docs: http://localhost:8000/docs")
     logger.info("🔍 Status: http://localhost:8000/status")
-    logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
+    logger.info("🏦 Services Core: User, Sync, Enrichment, Search")
     logger.info("✅ Architecture allégée pour développement core")
     
     uvicorn.run(

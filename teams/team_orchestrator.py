@@ -232,7 +232,12 @@ class TeamOrchestrator:
         """
 
         conv_id = uuid.uuid4().hex
-        conv = ConversationRepository(db).create(user_id, conv_id)
+        # Use an explicit transaction so that higher-level services control
+        # when the session is committed.  This mirrors the approach used for
+        # message persistence.
+        with db.begin():
+            conv = ConversationRepository(db).create(user_id, conv_id)
+
         try:
             history = ConversationMessageRepository(db).list_models(conv_id)
         except sqlalchemy.exc.ProgrammingError:

@@ -16,7 +16,10 @@ class ConversationRepository:
     def create(self, user_id: int, conversation_id: str) -> Conversation:
         conv = Conversation(user_id=user_id, conversation_id=conversation_id)
         self._db.add(conv)
-        self._db.commit()
+        # Flush the session so that an ID is assigned without committing the
+        # transaction.  The surrounding service is responsible for committing
+        # or rolling back the unit of work.
+        self._db.flush()
         self._db.refresh(conv)
         return conv
 

@@ -55,6 +55,49 @@ class ConversationMessageRepository:
         self._db.refresh(msg)
         return msg
 
+    def add_batch(
+        self,
+        *,
+        conversation_db_id: int,
+        user_id: int,
+        messages: List[tuple[str, str]],
+    ) -> List[ConversationMessageDB]:
+        """Persist multiple messages in a single transaction.
+
+        Parameters
+        ----------
+        conversation_db_id:
+            Database identifier of the conversation.
+        user_id:
+            Identifier of the user owning the conversation.
+        messages:
+            Sequence of ``(role, content)`` tuples representing the messages to
+            persist in order.
+
+        Returns
+        -------
+        List[ConversationMessageDB]
+            The ORM instances corresponding to the newly created messages.
+        """
+
+        objs = [
+            ConversationMessageDB(
+                conversation_id=conversation_db_id,
+                user_id=user_id,
+                role=role,
+                content=content,
+            )
+            for role, content in messages
+        ]
+        self._db.add_all(objs)
+        # Flush so that auto-generated fields (e.g., primary keys, timestamps)
+        # are populated before returning. The surrounding transaction is
+        # responsible for committing.
+        self._db.flush()
+        for obj in objs:
+            self._db.refresh(obj)
+        return objs
+
     def list_by_conversation(self, conversation_id: str) -> List[ConversationMessageDB]:
         """Return ORM messages for ``conversation_id`` ordered chronologically."""
 

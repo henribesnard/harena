@@ -94,6 +94,16 @@ Pour un benchmark d'intention, consultez [README_intent_benchmark.md](README_int
 The conversation service now performs a full agent health check during
 startup. If any agent reports an unhealthy status, initialization fails and
 the process exits instead of running in a degraded state.
+### Usage
+
+Run the conversation service with [Uvicorn](https://www.uvicorn.org/):
+
+```bash
+uvicorn conversation_service.main:app --reload
+```
+
+The FastAPI app is built by `create_app()` in `conversation_service/main.py`.
+
 
 ## Local data seed
 

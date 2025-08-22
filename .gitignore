@@ -63,7 +63,10 @@ coverage.xml
 secrets.json
 config.json
 !alembic/versions/.gitkeep
+# Markdown files are ignored by default, but keep documentation for
+# the conversation service configuration.
 *.md
+!conversation_service/config/README.md
 
 
 # Dossiers de données locales ou volumineuses

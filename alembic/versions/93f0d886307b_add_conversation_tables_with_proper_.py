@@ -35,6 +35,11 @@ def upgrade() -> None:
     sa.Column('conversation_metadata', sa.JSON(), nullable=False),
     sa.Column('user_preferences', sa.JSON(), nullable=False),
     sa.Column('session_metadata', sa.JSON(), nullable=False),
+    sa.Column('intents', sa.JSON(), nullable=True),
+    sa.Column('entities', sa.JSON(), nullable=True),
+    sa.Column('prompt_tokens', sa.Integer(), nullable=True),
+    sa.Column('completion_tokens', sa.Integer(), nullable=True),
+    sa.Column('total_tokens', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
@@ -78,6 +83,15 @@ def upgrade() -> None:
     sa.Column('error_message', sa.Text(), nullable=True),
     sa.Column('intent_result', sa.JSON(), nullable=True),
     sa.Column('agent_chain', sa.JSON(), nullable=False),
+    sa.Column('intent_classification', sa.JSON(), nullable=True),
+    sa.Column('entities_extracted', sa.JSON(), nullable=True),
+    sa.Column('intent_confidence', sa.Numeric(5, 4), nullable=True),
+    sa.Column('total_tokens_used', sa.Integer(), nullable=True),
+    sa.Column('intent', sa.JSON(), nullable=True),
+    sa.Column('entities', sa.JSON(), nullable=True),
+    sa.Column('prompt_tokens', sa.Integer(), nullable=True),
+    sa.Column('completion_tokens', sa.Integer(), nullable=True),
+    sa.Column('total_tokens', sa.Integer(), nullable=True),
     sa.Column('search_query_used', sa.Text(), nullable=True),
     sa.Column('search_results_count', sa.Integer(), nullable=False),
     sa.Column('search_execution_time_ms', sa.Float(), nullable=True),
@@ -104,6 +118,15 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_conversation_turns_turn_id'))
         batch_op.drop_index(batch_op.f('ix_conversation_turns_id'))
         batch_op.drop_index(batch_op.f('ix_conversation_turns_conversation_id'))
+        batch_op.drop_column('intent_classification')
+        batch_op.drop_column('entities_extracted')
+        batch_op.drop_column('intent_confidence')
+        batch_op.drop_column('total_tokens_used')
+        batch_op.drop_column('intent')
+        batch_op.drop_column('entities')
+        batch_op.drop_column('prompt_tokens')
+        batch_op.drop_column('completion_tokens')
+        batch_op.drop_column('total_tokens')
 
     op.drop_table('conversation_turns')
     with op.batch_alter_table('conversation_summaries', schema=None) as batch_op:
@@ -117,6 +140,11 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_conversations_last_activity_at'))
         batch_op.drop_index(batch_op.f('ix_conversations_id'))
         batch_op.drop_index(batch_op.f('ix_conversations_conversation_id'))
+        batch_op.drop_column('intents')
+        batch_op.drop_column('entities')
+        batch_op.drop_column('prompt_tokens')
+        batch_op.drop_column('completion_tokens')
+        batch_op.drop_column('total_tokens')
 
     op.drop_table('conversations')
     # ### end Alembic commands ###

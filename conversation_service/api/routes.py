@@ -19,7 +19,7 @@ from ..models.conversation_models import (
     ConversationHistoryResponse,
     ConversationStartResponse,
 )
-from conversation_service.service import ConversationService
+from conversation_service.core.conversation_service import ConversationService
 from teams.team_orchestrator import TeamOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -69,14 +69,6 @@ async def get_history(
     Raises:
         HTTPException: If the conversation does not exist for the user.
     """
-    repo = ConversationRepository(db)
-    conv = repo.get_by_conversation_id(conversation_id)
-    if conv is None or conv.user_id != current_user.id:
-        logger.error(
-            "Conversation not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-    """Return the message history for a conversation."""
     service = ConversationService(db)
     if service.get_for_user(conversation_id, current_user.id) is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -113,14 +105,6 @@ async def query_agents(
     Raises:
         HTTPException: If the conversation does not exist for the user.
     """
-    repo = ConversationRepository(db)
-    conv = repo.get_by_conversation_id(conversation_id)
-    if conv is None or conv.user_id != current_user.id:
-        logger.error(
-            "Conversation not found",
-            extra={"conversation_id": conversation_id, "user_id": current_user.id},
-        )
-    """Send a message to the agent team and return their response."""
     service = ConversationService(db)
     conv = service.get_for_user(conversation_id, current_user.id)
     if conv is None:
@@ -128,11 +112,6 @@ async def query_agents(
     try:
         reply = await orchestrator.query_agents(
             conversation_id, payload.message, current_user.id, db
-        )
-        service.save_conversation_turn(
-            conversation=conv,
-            user_message=payload.message,
-            assistant_response=reply,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

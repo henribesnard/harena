@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from uuid import UUID
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .enums import IntentType
 
 
 class ConversationMetadata(BaseModel):
     """Optional metadata associated with a conversation."""
 
-    intent: str | None = None
+    intent: IntentType | None = None
     confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
 
     model_config = ConfigDict(
@@ -42,6 +45,7 @@ class ConversationRequest(BaseModel):
     message: str = Field(min_length=1)
     language: str = Field(min_length=2, max_length=2)
     context: ConversationContext
+    user_preferences: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(
         str_strip_whitespace=True,
@@ -53,6 +57,7 @@ class ConversationRequest(BaseModel):
                     "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
                     "turn_number": 1,
                 },
+                "user_preferences": {"tone": "friendly"},
             }
         },
     )
@@ -72,6 +77,8 @@ class ConversationResponse(BaseModel):
     language: str = Field(min_length=2, max_length=2)
     context: ConversationContext
     metadata: ConversationMetadata | None = None
+    suggested_actions: List[str] = Field(default_factory=list)
+    user_preferences: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(
         str_strip_whitespace=True,
@@ -87,6 +94,8 @@ class ConversationResponse(BaseModel):
                     "intent": "greeting",
                     "confidence_score": 0.95,
                 },
+                "suggested_actions": ["check_balance"],
+                "user_preferences": {"tone": "friendly"},
             }
         },
     )

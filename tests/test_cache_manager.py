@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from cache_manager import CacheManager
+from conversation_service.core import CacheManager
 
 
 class DummyRedis:
@@ -89,7 +89,7 @@ from typing import Optional
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from conversation_service.core import CacheManager, MetricsCollector
+from conversation_service.core import MetricsCollector
 
 
 class FakeCacheClient:

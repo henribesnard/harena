@@ -2,12 +2,12 @@ from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from conversation_service.api.routes import router as conversation_router
 from core.metrics_collector import metrics_collector
+from . import websocket
 
 
 router = APIRouter()
-router.include_router(conversation_router, prefix="/conversation")
+router.include_router(websocket.router)
 
 
 @router.get("/metrics", include_in_schema=False)

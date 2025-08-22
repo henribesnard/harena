@@ -1,3 +1,5 @@
+"""Schémas de réponse pour le service de recherche."""
+
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 
@@ -29,6 +31,29 @@ class SearchResult(BaseModel):
     # Métadonnées de recherche
     score: Optional[float] = Field(None, description="Score de pertinence")
     highlights: Optional[Dict[str, List[str]]] = Field(None, description="Surlignade des termes")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "transaction_id": "user_34_tx_12345",
+                "user_id": 34,
+                "account_id": 101,
+                "amount": -45.67,
+                "amount_abs": 45.67,
+                "currency_code": "EUR",
+                "transaction_type": "debit",
+                "date": "2024-01-15",
+                "month_year": "2024-01",
+                "weekday": "Monday",
+                "primary_description": "RESTAURANT LE BISTROT",
+                "merchant_name": "Le Bistrot",
+                "category_name": "Restaurant",
+                "operation_type": "card_payment",
+                "score": 1.0,
+                "highlights": {"primary_description": ["bistrot"]}
+            }
+        }
+    )
 
 class SearchResponse(BaseModel):
     """Réponse standardisée du service de recherche"""
@@ -70,14 +95,17 @@ class SearchResponse(BaseModel):
                         "merchant_name": "Le Bistrot",
                         "category_name": "Restaurant",
                         "operation_type": "card_payment",
-                        "score": 1.0
+                        "score": 1.0,
+                        "highlights": {"primary_description": ["bistrot"]}
                     }
                 ],
                 "total_results": 156,
                 "returned_results": 1,
                 "processing_time_ms": 45,
                 "elasticsearch_took": 23,
-                "cache_hit": False
+                "cache_hit": False,
+                "aggregations": {"category_name": {"buckets": [{"key": "Restaurant", "doc_count": 120}]}},
+                "query_info": {"raw_query": "restaurant italien"}
             }
         }
     )

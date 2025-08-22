@@ -1,3 +1,5 @@
+"""Expose les modèles publics du Search Service."""
+
 from .request import SearchRequest
 from .response import SearchResponse, SearchResult
 from .llm_models import (
@@ -7,6 +9,7 @@ from .llm_models import (
     LLMExtractedInsights,
 )
 
+__all__ = ["SearchRequest", "SearchResponse", "SearchResult"]
 __all__ = [
     "SearchRequest",
     "SearchResponse",

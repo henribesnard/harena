@@ -1,3 +1,5 @@
+"""Schémas de requêtes pour le service de recherche."""
+
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Dict, Any, Optional
 

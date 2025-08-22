@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from typing import List, Sequence
 from typing import Iterable, List, Sequence
 
 from sqlalchemy.orm import Session
@@ -23,6 +22,21 @@ class ConversationMessageRepository:
 
     def __init__(self, db: Session) -> None:
         self._db = db
+
+    @contextmanager
+    def transaction(self):
+        try:
+            yield
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
+
+    def _validate(
+        self, *, conversation_db_id: int, user_id: int, content: str
+    ) -> None:
+        if not content.strip():
+            raise ValueError("content must not be empty")
 
     def add_batch(
         self,
@@ -59,22 +73,6 @@ class ConversationMessageRepository:
                 instances.append(msg)
 
         return instances
-        """Persist multiple messages without committing the transaction."""
-
-        objs = [
-            ConversationMessageDB(
-                conversation_id=conversation_db_id,
-                user_id=user_id,
-                role=m.role,
-                content=m.content,
-            )
-            for m in messages
-        ]
-        self._db.add_all(objs)
-        self._db.flush()
-        for obj in objs:
-            self._db.refresh(obj)
-        return objs
 
     def list_by_conversation(self, conversation_id: str) -> List[ConversationMessageDB]:
         """Return ORM messages for ``conversation_id`` ordered chronologically."""

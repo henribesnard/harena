@@ -1,6 +1,8 @@
 """Expose conversation service models for external use."""
 
 from .agent_models import (
+    AgentStep,
+    AgentTrace,
     AgentConfig,
     AgentResponse,
     AgentStep,
@@ -36,6 +38,8 @@ __all__ = [
     "ConversationRequest",
     "ConversationResponse",
     "ConfidenceThreshold",
+
+    "IntentType",
     "EntityType",
     "IntentType",
     "QueryType",

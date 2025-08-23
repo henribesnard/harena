@@ -76,6 +76,7 @@ class ConversationCreate(BaseModel):
     # Additional optional metadata fields
     financial_context: Dict[str, object] = Field(default_factory=dict)
     user_preferences_ai: Dict[str, object] = Field(default_factory=dict)
+    key_entities_history: List[Dict[str, object]] = Field(default_factory=list)
     key_entities_history: List[Any] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="allow")

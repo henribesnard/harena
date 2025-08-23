@@ -58,14 +58,15 @@ class ConversationRepository:
             >>> repo.create(ConversationCreate(user_id=1))  # doctest: +SKIP
             Conversation(...)
         """
+        # Accept any additional fields present on the Pydantic model and
+        # forward them to the ORM layer. This allows the repository to remain
+        # resilient as new columns (e.g. ``financial_context`` or
+        # ``user_preferences_ai``) are added to ``ConversationORM`` without
+        # requiring further changes here.
+        conv_data = conversation_in.model_dump(exclude_unset=True)
+        allowed_fields = {c.name for c in ConversationORM.__table__.columns}
         db_conv = ConversationORM(
-            user_id=conversation_in.user_id,
-            title=conversation_in.title,
-            language=conversation_in.language,
-            domain=conversation_in.domain,
-            conversation_metadata=conversation_in.conversation_metadata,
-            user_preferences=conversation_in.user_preferences,
-            session_metadata=conversation_in.session_metadata,
+            **{k: v for k, v in conv_data.items() if k in allowed_fields}
         )
         self.db.add(db_conv)
         self.db.commit()
@@ -144,12 +145,12 @@ class ConversationRepository:
             raise ValueError("Conversation not found")
 
         next_turn_number = conv.total_turns + 1
+        turn_data = turn_in.model_dump(exclude_unset=True)
+        allowed_fields = {c.name for c in ConversationTurnORM.__table__.columns}
         db_turn = ConversationTurnORM(
             conversation_id=conv.id,
             turn_number=next_turn_number,
-            user_message=turn_in.user_message,
-            assistant_response=turn_in.assistant_response,
-            turn_metadata=turn_in.turn_metadata,
+            **{k: v for k, v in turn_data.items() if k in allowed_fields},
         )
         self.db.add(db_turn)
         conv.total_turns = next_turn_number

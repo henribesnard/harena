@@ -40,6 +40,15 @@ def upgrade() -> None:
     sa.Column('prompt_tokens', sa.Integer(), nullable=True),
     sa.Column('completion_tokens', sa.Integer(), nullable=True),
     sa.Column('total_tokens', sa.Integer(), nullable=True),
+    sa.Column('financial_context', sa.JSON(), nullable=False),
+    sa.Column('user_preferences_ai', sa.JSON(), nullable=False),
+    sa.Column('key_entities_history', sa.JSON(), nullable=False),
+    sa.Column('intent_classification', sa.JSON(), nullable=False),
+    sa.Column('entities_extracted', sa.JSON(), nullable=False),
+    sa.Column('intent_confidence', sa.Numeric(5, 4), nullable=True),
+    sa.Column('total_tokens_used', sa.Integer(), nullable=False),
+    sa.Column('openai_usage_stats', sa.JSON(), nullable=False),
+    sa.Column('openai_cost_usd', sa.Float(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
@@ -92,6 +101,11 @@ def upgrade() -> None:
     sa.Column('prompt_tokens', sa.Integer(), nullable=True),
     sa.Column('completion_tokens', sa.Integer(), nullable=True),
     sa.Column('total_tokens', sa.Integer(), nullable=True),
+    sa.Column('financial_context', sa.JSON(), nullable=False),
+    sa.Column('user_preferences_ai', sa.JSON(), nullable=False),
+    sa.Column('key_entities_history', sa.JSON(), nullable=False),
+    sa.Column('openai_usage_stats', sa.JSON(), nullable=False),
+    sa.Column('openai_cost_usd', sa.Float(), nullable=False),
     sa.Column('search_query_used', sa.Text(), nullable=True),
     sa.Column('search_results_count', sa.Integer(), nullable=False),
     sa.Column('search_execution_time_ms', sa.Float(), nullable=True),
@@ -122,6 +136,11 @@ def downgrade() -> None:
         batch_op.drop_column('entities_extracted')
         batch_op.drop_column('intent_confidence')
         batch_op.drop_column('total_tokens_used')
+        batch_op.drop_column('financial_context')
+        batch_op.drop_column('user_preferences_ai')
+        batch_op.drop_column('key_entities_history')
+        batch_op.drop_column('openai_usage_stats')
+        batch_op.drop_column('openai_cost_usd')
         batch_op.drop_column('intent')
         batch_op.drop_column('entities')
         batch_op.drop_column('prompt_tokens')
@@ -145,6 +164,15 @@ def downgrade() -> None:
         batch_op.drop_column('prompt_tokens')
         batch_op.drop_column('completion_tokens')
         batch_op.drop_column('total_tokens')
+        batch_op.drop_column('financial_context')
+        batch_op.drop_column('user_preferences_ai')
+        batch_op.drop_column('key_entities_history')
+        batch_op.drop_column('intent_classification')
+        batch_op.drop_column('entities_extracted')
+        batch_op.drop_column('intent_confidence')
+        batch_op.drop_column('total_tokens_used')
+        batch_op.drop_column('openai_usage_stats')
+        batch_op.drop_column('openai_cost_usd')
 
     op.drop_table('conversations')
     # ### end Alembic commands ###

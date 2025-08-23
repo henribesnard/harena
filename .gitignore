@@ -68,6 +68,7 @@ config.json
 # the conversation service configuration.
 *.md
 !conversation_service/config/README.md
+!conversation_service/prompts/README.md
 
 
 # Dossiers de données locales ou volumineuses

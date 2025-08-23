@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import List, Dict, Any
 from typing import List, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -82,7 +83,18 @@ class DynamicFinancialEntity(BaseModel):
     """Financial entity extracted from a message."""
 
     entity_type: EntityType = Field(..., description="Type of the entity")
-    value: str = Field(..., description="Value associated with the entity")
+    raw_value: str = Field(
+        ..., description="Original value extracted from the text"
+    )
+    normalized_value: str | None = Field(
+        default=None, description="Normalized value, if available"
+    )
+    context: str | None = Field(
+        default=None, description="Source sentence for the entity"
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata about the extraction"
+    )
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score for the entity"
     )

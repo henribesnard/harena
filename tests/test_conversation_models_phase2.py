@@ -58,6 +58,16 @@ def test_conversation_id_uuid():
 def test_confidence_score_range():
     ctx = ConversationContext(conversation_id=uuid4(), turn_number=1)
     with pytest.raises(ValidationError):
+        ConversationMetadata(
+            intent=IntentType.GREETING,
+            confidence_score=1.5,
+            extraction_mode="auto",
+        )
+    with pytest.raises(ValidationError):
+        ConversationMetadata(
+            intent=IntentType.GREETING,
+            confidence_score=-0.1,
+            extraction_mode="auto",
         ConversationResponse(
             original_message="Hi",
             response="Hi",
@@ -86,6 +96,11 @@ def test_turn_number_positive():
 
 def test_conversation_response_valid():
     ctx = ConversationContext(conversation_id=uuid4(), turn_number=2)
+    meta = ConversationMetadata(
+        intent=IntentType.GREETING,
+        confidence_score=0.8,
+        extraction_mode="auto",
+    )
     entity = DynamicFinancialEntity(
         entity_type=EntityType.ACCOUNT,
         value="123",
@@ -109,3 +124,35 @@ def test_conversation_response_valid():
     assert resp.confidence_score == 0.8
     assert resp.suggested_actions == ["check_balance"]
     assert resp.user_preferences["tone"] == "friendly"
+
+def test_metadata_invalid_intent():
+    with pytest.raises(ValidationError):
+        ConversationMetadata(
+            intent="NOT_AN_INTENT",
+            confidence_score=0.5,
+            extraction_mode="auto",
+        )
+
+
+def test_metadata_negative_cache_stats():
+    with pytest.raises(ValidationError):
+        ConversationMetadata(
+            intent=IntentType.GREETING,
+            cache_stats={"hits": -1},
+            extraction_mode="auto",
+        )
+
+
+def test_context_invalid_session_state():
+    with pytest.raises(ValidationError):
+        ConversationContext(conversation_id=uuid4(), turn_number=1, session_state="old")
+
+
+def test_auto_summary_not_empty():
+    with pytest.raises(ValidationError):
+        ConversationContext(
+            conversation_id=uuid4(),
+            turn_number=1,
+            auto_summary="",
+        )
+

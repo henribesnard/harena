@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from uuid import UUID
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -14,16 +14,10 @@ from .agent_models import DynamicFinancialEntity
 class ConversationContext(BaseModel):
     """Context information provided with a request or response."""
 
-    conversation_id: UUID | None = None
     turn_number: int = Field(ge=1)
 
     model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
-                "turn_number": 1,
-            }
-        }
+        json_schema_extra={"example": {"turn_number": 1}}
     )
 
 
@@ -32,6 +26,8 @@ class ConversationRequest(BaseModel):
 
     message: str = Field(min_length=1)
     language: str = Field(min_length=2, max_length=2)
+    extraction_mode: Literal["strict", "flexible"] = "strict"
+    conversation_id: UUID | None = None
     context: ConversationContext
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
 
@@ -41,10 +37,9 @@ class ConversationRequest(BaseModel):
             "example": {
                 "message": "Bonjour",
                 "language": "fr",
-                "context": {
-                    "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
-                    "turn_number": 1,
-                },
+                "extraction_mode": "strict",
+                "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                "context": {"turn_number": 1},
                 "user_preferences": {"tone": "friendly"},
             }
         },
@@ -56,6 +51,16 @@ class ConversationRequest(BaseModel):
         if len(v) != 2 or not v.isalpha():
             raise ValueError("language must be a 2-letter ISO code")
         return v.lower()
+
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_conversation_id(cls, v: UUID | None) -> UUID | None:
+        if v is None:
+            return v
+        try:
+            return UUID(str(v))
+        except ValueError as e:
+            raise ValueError("conversation_id must be a valid UUID") from e
 
 
 class ConversationResponse(BaseModel):
@@ -90,6 +95,10 @@ class ConversationResponse(BaseModel):
                 "context": {
                     "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
                     "turn_number": 1,
+                "context": {"turn_number": 1},
+                "metadata": {
+                    "intent": "greeting",
+                    "confidence_score": 0.95,
                 },
                 "suggested_actions": ["check_balance"],
                 "user_preferences": {"tone": "friendly"},

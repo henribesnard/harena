@@ -12,10 +12,11 @@ from conversation_service.models import (
 
 
 def test_conversation_request_valid():
-    ctx = ConversationContext(conversation_id=uuid4(), turn_number=1)
+    ctx = ConversationContext(turn_number=1)
     req = ConversationRequest(
         message="Hello",
         language="en",
+        conversation_id=uuid4(),
         context=ctx,
         user_preferences={"tone": "formal"},
     )
@@ -25,12 +26,22 @@ def test_conversation_request_valid():
 
 def test_user_message_not_empty():
     with pytest.raises(ValidationError):
-        ConversationRequest(message="", language="en", context={"turn_number": 1})
+        ConversationRequest(
+            message="",
+            language="en",
+            conversation_id=uuid4(),
+            context={"turn_number": 1},
+        )
 
 
 def test_language_two_letters():
     with pytest.raises(ValidationError):
-        ConversationRequest(message="Hi", language="eng", context={"turn_number": 1})
+        ConversationRequest(
+            message="Hi",
+            language="eng",
+            conversation_id=uuid4(),
+            context={"turn_number": 1},
+        )
 
 
 def test_conversation_id_uuid():
@@ -38,7 +49,8 @@ def test_conversation_id_uuid():
         ConversationRequest(
             message="Hi",
             language="en",
-            context={"conversation_id": "not-a-uuid", "turn_number": 1},
+            conversation_id="not-a-uuid",
+            context={"turn_number": 1},
         )
 
 
@@ -51,11 +63,11 @@ def test_confidence_score_range():
 
 def test_turn_number_positive():
     with pytest.raises(ValidationError):
-        ConversationContext(conversation_id=uuid4(), turn_number=0)
+        ConversationContext(turn_number=0)
 
 
 def test_conversation_response_valid():
-    ctx = ConversationContext(conversation_id=uuid4(), turn_number=2)
+    ctx = ConversationContext(turn_number=2)
     meta = ConversationMetadata(intent=IntentType.GREETING, confidence_score=0.8)
     resp = ConversationResponse(
         response="Hello!",

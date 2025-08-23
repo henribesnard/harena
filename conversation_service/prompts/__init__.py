@@ -1,3 +1,4 @@
+"""Prompt utilities for the conversation service."""
 """Prompt templates used by the conversation service."""
 """Prompt templates for the conversation service."""
 

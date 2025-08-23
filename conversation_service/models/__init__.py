@@ -15,7 +15,6 @@ from .conversation_db_models import (
 )
 from .conversation_models import (
     ConversationContext,
-    ConversationMetadata,
     ConversationRequest,
     ConversationResponse,
 )
@@ -32,7 +31,6 @@ __all__ = [
     "DynamicFinancialEntity",
     "IntentResult",
     "ConversationContext",
-    "ConversationMetadata",
     "ConversationRequest",
     "ConversationResponse",
     "ConfidenceThreshold",

@@ -13,8 +13,9 @@ ENTITY_EXTRACTION_SYSTEM_PROMPT = (
     "Tu es un assistant spécialisé dans l'extraction d'entités financières. "
     "À partir d'un message, identifie toutes les entités suivantes lorsqu'elles sont présentes: "
     "AMOUNT, TEMPORAL, MERCHANT, CATEGORY. "
-    "Réponds uniquement avec un tableau JSON d'objets {\"entity_type\": ..., \"value\": ...}. "
-    "N'ajoute pas de texte supplémentaire."
+    "Réponds uniquement avec un tableau JSON d'objets {\"entity_type\": ..., "
+    "\"raw_value\": ..., \"normalized_value\": ..., \"context\": ..., "
+    "\"metadata\": ..., \"confidence_score\": ...}. N'ajoute pas de texte supplémentaire."
 )
 
 FEW_SHOT_EXAMPLES: List[List[Dict[str, str]]] = [
@@ -26,14 +27,18 @@ FEW_SHOT_EXAMPLES: List[List[Dict[str, str]]] = [
                 [
                     {
                         "entity_type": "AMOUNT",
-                        "value": "12,50€",
-                        "normalized": {"amount": "12.50", "currency": "EUR"},
+                        "raw_value": "12,50€",
+                        "normalized_value": "12.50 EUR",
                     },
-                    {"entity_type": "MERCHANT", "value": "Carrefur"},
+                    {
+                        "entity_type": "MERCHANT",
+                        "raw_value": "Carrefur",
+                        "normalized_value": "carrefur",
+                    },
                     {
                         "entity_type": "TEMPORAL",
-                        "value": "5 Janv 2024",
-                        "normalized": {"date": "2024-01-05"},
+                        "raw_value": "5 Janv 2024",
+                        "normalized_value": "2024-01-05",
                     },
                 ],
                 ensure_ascii=False,
@@ -48,11 +53,19 @@ FEW_SHOT_EXAMPLES: List[List[Dict[str, str]]] = [
                 [
                     {
                         "entity_type": "AMOUNT",
-                        "value": "30 USD",
-                        "normalized": {"amount": "30", "currency": "USD"},
+                        "raw_value": "30 USD",
+                        "normalized_value": "30 USD",
                     },
-                    {"entity_type": "MERCHANT", "value": "Walmrt"},
-                    {"entity_type": "TEMPORAL", "value": "avant-hier"},
+                    {
+                        "entity_type": "MERCHANT",
+                        "raw_value": "Walmrt",
+                        "normalized_value": "walmart",
+                    },
+                    {
+                        "entity_type": "TEMPORAL",
+                        "raw_value": "avant-hier",
+                        "normalized_value": "avant-hier",
+                    },
                 ],
                 ensure_ascii=False,
             ),
@@ -69,19 +82,23 @@ FEW_SHOT_EXAMPLES: List[List[Dict[str, str]]] = [
                 [
                     {
                         "entity_type": "AMOUNT",
-                        "value": "3000¥",
-                        "normalized": {"amount": "3000", "currency": "JPY"},
+                        "raw_value": "3000¥",
+                        "normalized_value": "3000 JPY",
                     },
-                    {"entity_type": "MERCHANT", "value": "Uniqlo"},
+                    {
+                        "entity_type": "MERCHANT",
+                        "raw_value": "Uniqlo",
+                        "normalized_value": "uniqlo",
+                    },
                     {
                         "entity_type": "TEMPORAL",
-                        "value": "12/07/23",
-                        "normalized": {"date": "2023-07-12"},
+                        "raw_value": "12/07/23",
+                        "normalized_value": "2023-07-12",
                     },
                     {
                         "entity_type": "CATEGORY",
-                        "value": "vêtements",
-                        "normalized": "vetements",
+                        "raw_value": "vêtements",
+                        "normalized_value": "vetements",
                     },
                 ],
                 ensure_ascii=False,
@@ -177,20 +194,20 @@ def normalize_category(text: str) -> str:
 
 
 def normalize_entity(entity: Dict[str, Any]) -> Dict[str, Any]:
-    """Return entity with an additional 'normalized' field when possible."""
+    """Return entity with an additional 'normalized_value' field when possible."""
     entity_type = entity.get("entity_type")
-    value = entity.get("value", "")
+    raw_value = entity.get("raw_value", "")
     normalized: Any = None
     if entity_type == "AMOUNT":
-        normalized = normalize_amount(value)
+        amount = normalize_amount(raw_value)
+        if amount:
+            normalized = f"{amount['amount']} {amount['currency']}"
     elif entity_type in {"TEMPORAL", "DATE", "PERIOD"}:
-        date = normalize_date(value)
-        if date:
-            normalized = {"date": date}
+        normalized = normalize_date(raw_value)
     elif entity_type == "CATEGORY":
-        normalized = normalize_category(value)
+        normalized = normalize_category(raw_value)
     if normalized is not None:
-        entity["normalized"] = normalized
+        entity["normalized_value"] = normalized
     return entity
 
 

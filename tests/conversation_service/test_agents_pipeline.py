@@ -2,6 +2,8 @@ pytest_plugins = ("pytest_asyncio",)
 
 import json
 from types import SimpleNamespace
+import json
+from types import SimpleNamespace
 from typing import Dict
 
 import pytest
@@ -63,8 +65,11 @@ class FakeOpenAIClient:
                 entities.append(
                     {
                         "entity_type": EntityType.MERCHANT,
-                        "value": "Amazon",
+                        "raw_value": "Amazon",
                         "confidence_score": 0.8,
+                        "normalized_value": "amazon",
+                        "context": user_content,
+                        "metadata": {"source": "llm"},
                     }
                 )
             content = json.dumps({"entities": entities})
@@ -102,6 +107,13 @@ async def test_intent_classifier_handles_many_intents():
         result = await classifier.classify(text)
         assert result.intent_type == expected
         assert 0.0 <= result.confidence_score <= 1.0
+        step = classifier.last_step
+        assert step is not None
+        assert step.agent_name == "intent-classifier"
+        assert step.success is True
+        assert step.error_message is None
+        assert "duration_ms" in step.metrics
+        assert step.from_cache is False
 
 
 @pytest.mark.asyncio
@@ -110,6 +122,11 @@ async def test_invalid_json_raises():
     classifier = IntentClassifier(client)
     with pytest.raises(ValueError):
         await classifier.classify("bad json")
+    step = classifier.last_step
+    assert step is not None
+    assert step.agent_name == "intent-classifier"
+    assert step.success is False
+    assert step.error_message is not None
 
 
 class Pipeline:
@@ -132,5 +149,5 @@ async def test_agent_pipeline_end_to_end():
     pipeline = Pipeline(client)
     result = await pipeline.run("show all transactions at amazon")
     assert result.intent.intent_type == IntentType.TRANSACTION_SEARCH
-    assert result.entities and result.entities[0].value == "Amazon"
+    assert result.entities and result.entities[0].raw_value == "Amazon"
     assert result.response.startswith("Result for")

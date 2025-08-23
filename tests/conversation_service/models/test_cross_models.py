@@ -6,7 +6,7 @@ from conversation_service.models import AgentStep, AgentTrace, ConversationTurn
 def test_agent_steps_roundtrip_with_conversation_turn():
     now = datetime.now(timezone.utc)
     later = now + timedelta(seconds=5)
-    step = AgentStep(agent="retriever", status="ok")
+    step = AgentStep(agent_name="retriever", success=True)
     turn = ConversationTurn(
         id=1,
         turn_id="t1",
@@ -27,7 +27,7 @@ def test_agent_steps_roundtrip_with_conversation_turn():
 def test_agent_trace_processing_time_matches():
     now = datetime.now(timezone.utc)
     later = now + timedelta(seconds=5)
-    step = AgentStep(agent="retriever", status="ok")
+    step = AgentStep(agent_name="retriever", success=True)
     trace = AgentTrace(steps=[step], total_time_ms=20.0)
     turn = ConversationTurn(
         id=1,

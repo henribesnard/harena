@@ -38,6 +38,7 @@ class ConversationMetadata(BaseModel):
         }
     )
 
+
     @field_validator("agents_used")
     @classmethod
     def _agents_not_empty(cls, v: List[str]) -> List[str]:
@@ -63,7 +64,6 @@ class ConversationMetadata(BaseModel):
 class ConversationContext(BaseModel):
     """Context information provided with a request or response."""
 
-    conversation_id: UUID | None = None
     turn_number: int = Field(ge=1)
     recent_intents: List[IntentType] = Field(default_factory=list)
     previous_entities: List[DynamicFinancialEntity] = Field(default_factory=list)
@@ -83,6 +83,7 @@ class ConversationContext(BaseModel):
                 "auto_summary": None,
             }
         }
+        json_schema_extra={"example": {"turn_number": 1}}
     )
 
     @field_validator("auto_summary")
@@ -98,6 +99,8 @@ class ConversationRequest(BaseModel):
 
     message: str = Field(min_length=1)
     language: str = Field(min_length=2, max_length=2)
+    extraction_mode: Literal["strict", "flexible"] = "strict"
+    conversation_id: UUID | None = None
     context: ConversationContext
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
 
@@ -107,10 +110,9 @@ class ConversationRequest(BaseModel):
             "example": {
                 "message": "Bonjour",
                 "language": "fr",
-                "context": {
-                    "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
-                    "turn_number": 1,
-                },
+                "extraction_mode": "strict",
+                "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                "context": {"turn_number": 1},
                 "user_preferences": {"tone": "friendly"},
             }
         },
@@ -123,27 +125,50 @@ class ConversationRequest(BaseModel):
             raise ValueError("language must be a 2-letter ISO code")
         return v.lower()
 
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_conversation_id(cls, v: UUID | None) -> UUID | None:
+        if v is None:
+            return v
+        try:
+            return UUID(str(v))
+        except ValueError as e:
+            raise ValueError("conversation_id must be a valid UUID") from e
+
 
 class ConversationResponse(BaseModel):
     """Response returned by the conversation service."""
 
-    response: str = Field(min_length=1)
+    original_message: str = Field(min_length=1, description="Original user message")
+    response: str = Field(min_length=1, description="Generated response")
+    intent: IntentType = Field(..., description="Detected intent for the message")
+    entities: List[DynamicFinancialEntity] = Field(
+        default_factory=list, description="Extracted entities"
+    )
+    confidence_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Confidence score for the intent"
+    )
     language: str = Field(min_length=2, max_length=2)
     context: ConversationContext
-    metadata: ConversationMetadata | None = None
-    suggested_actions: List[str] = Field(default_factory=list)
+    suggested_actions: List[str] = Field(
+        default_factory=list, description="Recommended follow-up actions"
+    )
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(
         str_strip_whitespace=True,
         json_schema_extra={
             "example": {
+                "original_message": "Bonjour",
                 "response": "Bonjour! Comment puis-je vous aider?",
+                "intent": "GREETING",
+                "entities": [],
+                "confidence_score": 0.95,
                 "language": "fr",
                 "context": {
                     "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
                     "turn_number": 1,
-                },
+                "context": {"turn_number": 1},
                 "metadata": {
                     "intent": "greeting",
                     "confidence_score": 0.95,

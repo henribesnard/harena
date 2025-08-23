@@ -1,4 +1,5 @@
 """Prompt templates for the conversation service."""
+
 """Prompt templates for intent classification."""
 """Prompt templates and response schemas for conversation agents."""
 

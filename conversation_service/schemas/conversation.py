@@ -38,6 +38,8 @@ class ConversationTurnCreate(BaseModel):
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
+    openai_usage_stats: Dict[str, Any] = Field(default_factory=dict)
+    openai_cost_usd: float = 0.0
     search_query_used: Optional[str] = None
     search_results_count: int = 0
     search_execution_time_ms: Optional[float] = None

@@ -172,7 +172,9 @@ class ConversationTurn(Base, TimestampMixin):
     prompt_tokens = Column(Integer, nullable=True)
     completion_tokens = Column(Integer, nullable=True)
     total_tokens = Column(Integer, nullable=True)
-    
+    openai_usage_stats = Column(JSON, default=dict, nullable=True)
+    openai_cost_usd = Column(Float, default=0.0, nullable=True)
+
     # Recherche et résultats
     search_query_used = Column(Text, nullable=True)
     search_results_count = Column(Integer, default=0, nullable=False)

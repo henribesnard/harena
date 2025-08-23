@@ -74,7 +74,6 @@ class ConversationContext(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
                 "turn_number": 1,
                 "recent_intents": ["greeting"],
                 "previous_entities": [],
@@ -83,7 +82,6 @@ class ConversationContext(BaseModel):
                 "auto_summary": None,
             }
         }
-        json_schema_extra={"example": {"turn_number": 1}}
     )
 
     @field_validator("auto_summary")
@@ -168,7 +166,7 @@ class ConversationResponse(BaseModel):
                 "context": {
                     "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
                     "turn_number": 1,
-                "context": {"turn_number": 1},
+                },
                 "metadata": {
                     "intent": "greeting",
                     "confidence_score": 0.95,

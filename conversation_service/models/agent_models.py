@@ -2,25 +2,43 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationError
 
 from .enums import EntityType, IntentType
 
 
 class AgentStep(BaseModel):
-    """Single step executed by an agent."""
+    """Single step executed by an agent with execution metadata."""
 
-    agent: str = Field(..., min_length=1, description="Name of the agent")
-    status: str = Field(..., min_length=1, description="Resulting status of the step")
+    agent_name: str = Field(..., min_length=1, description="Name of the agent")
+    success: bool = Field(..., description="Whether the step executed successfully")
+    error_message: str | None = Field(
+        default=None, description="Error message if the step failed"
+    )
+    metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Execution metrics such as duration, tokens or cost",
+    )
+    from_cache: bool = Field(
+        False, description="Indicates if the response originated from cache"
+    )
+    reasoning_trace: str | None = Field(
+        default=None, description="Optional reasoning trace returned by the agent"
+    )
 
-    @field_validator("agent", "status")
+    @field_validator("agent_name")
     @classmethod
     def _not_empty(cls, value: str) -> str:
         if not value:
             raise ValueError("must not be empty")
         return value
+
+    def __init__(self, **data: Any) -> None:  # type: ignore[override]
+        super().__init__(**data)
+        if not getattr(self, "agent_name", None):
+            raise ValidationError("agent_name must not be empty")
 
 
 class AgentTrace(BaseModel):

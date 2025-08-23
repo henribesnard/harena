@@ -158,7 +158,16 @@ class ConversationTurn(BaseModel):
                 "error_occurred": False,
                 "error_message": None,
                 "intent_result": {"name": "check_balance"},
-                "agent_chain": [{"agent": "retrieval", "status": "ok"}],
+                "agent_chain": [
+                    {
+                        "agent_name": "retrieval",
+                        "success": True,
+                        "error_message": None,
+                        "metrics": {},
+                        "from_cache": False,
+                        "reasoning_trace": None,
+                    }
+                ],
                 "search_query_used": "balance account",
                 "search_results_count": 3,
                 "search_execution_time_ms": 50.2,

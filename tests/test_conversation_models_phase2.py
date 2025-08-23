@@ -68,6 +68,8 @@ def test_confidence_score_range():
             intent=IntentType.GREETING,
             confidence_score=-0.1,
             extraction_mode="auto",
+        )
+    with pytest.raises(ValidationError):
         ConversationResponse(
             original_message="Hi",
             response="Hi",

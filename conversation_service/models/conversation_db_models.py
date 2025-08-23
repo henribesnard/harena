@@ -30,6 +30,11 @@ class Conversation(BaseModel):
     conversation_metadata: Dict[str, Any] = Field(default_factory=dict)
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
     session_metadata: Dict[str, Any] = Field(default_factory=dict)
+    intents: List[Dict[str, Any]] | None = None
+    entities: List[Dict[str, Any]] | None = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -137,6 +142,11 @@ class ConversationTurn(BaseModel):
     error_message: Optional[str] = None
     intent_result: Optional[Dict[str, Any]] = None
     agent_chain: List[Dict[str, Any]] = Field(default_factory=list)
+    intent: Optional[Dict[str, Any]] = None
+    entities: Optional[List[Dict[str, Any]]] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
     search_query_used: Optional[str] = None
     search_results_count: int = Field(ge=0)
     search_execution_time_ms: Optional[float] = Field(default=None, ge=0.0)

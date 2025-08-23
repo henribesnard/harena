@@ -63,8 +63,11 @@ class FakeOpenAIClient:
                 entities.append(
                     {
                         "entity_type": EntityType.MERCHANT,
-                        "value": "Amazon",
+                        "raw_value": "Amazon",
                         "confidence_score": 0.8,
+                        "normalized_value": "amazon",
+                        "context": user_content,
+                        "metadata": {"source": "llm"},
                     }
                 )
             content = json.dumps({"entities": entities})
@@ -132,5 +135,5 @@ async def test_agent_pipeline_end_to_end():
     pipeline = Pipeline(client)
     result = await pipeline.run("show all transactions at amazon")
     assert result.intent.intent_type == IntentType.TRANSACTION_SEARCH
-    assert result.entities and result.entities[0].value == "Amazon"
+    assert result.entities and result.entities[0].raw_value == "Amazon"
     assert result.response.startswith("Result for")

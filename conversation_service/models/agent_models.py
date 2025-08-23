@@ -74,6 +74,15 @@ class AgentResponse(BaseModel):
     entities: List[DynamicFinancialEntity] = Field(
         default_factory=list, description="Extracted financial entities"
     )
+    reasoning: str | None = Field(
+        None, description="Reasoning provided by the agent for the response"
+    )
+    latency_ms: float | None = Field(
+        None, ge=0, description="Time taken to produce the response in milliseconds"
+    )
+    suggested_actions: List[str] = Field(
+        default_factory=list, description="Suggested follow-up actions"
+    )
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Overall confidence score for the response"
     )

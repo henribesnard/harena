@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from typing import Any, Dict, Mapping
 
 import sys, pathlib
@@ -33,6 +34,10 @@ except Exception:  # pragma: no cover - openai optional for tests
 def _openai_call(prompt: str, model: str) -> Mapping[str, Any]:
     if OpenAI is None:
         raise RuntimeError("openai package not available")
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY manquante : chargez-la depuis .env ou exportez-la."
+        )
     client = OpenAI()
     resp = client.responses.create(model=model, input=prompt)
     text = resp.output_text

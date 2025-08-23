@@ -59,11 +59,8 @@ class ConversationRepository:
             Conversation(...)
         """
         # Accept any additional fields present on the Pydantic model and
-        # forward them to the ORM layer.  Thanks to the ``allowed_fields``
-        # filter, any new JSON columns such as ``financial_context``,
-        # ``user_preferences_ai`` or ``key_entities_history`` – and metrics
-        # like ``openai_usage_stats`` or ``openai_cost_usd`` – are passed
-        # directly to ``ConversationORM`` without needing explicit handling.
+        # forward them to the ORM layer.  The ``allowed_fields`` filter ensures
+        # only columns that actually exist on ``ConversationORM`` are persisted.
         conv_data = conversation_in.model_dump(exclude_unset=True)
         allowed_fields = {c.name for c in ConversationORM.__table__.columns}
         db_conv = ConversationORM(
@@ -147,12 +144,14 @@ class ConversationRepository:
 
         next_turn_number = conv.total_turns + 1
         turn_data = turn_in.model_dump(exclude_unset=True)
+        # Remove legacy fields that are no longer persisted.
+        for legacy in ("financial_context", "user_preferences_ai", "key_entities_history"):
+            turn_data.pop(legacy, None)
         allowed_fields = {c.name for c in ConversationTurnORM.__table__.columns}
         db_turn = ConversationTurnORM(
             conversation_id=conv.id,
             turn_number=next_turn_number,
-            # ``allowed_fields`` ensures new attributes such as
-            # ``financial_context``, ``key_entities_history``,
+            # ``allowed_fields`` ensures extra attributes such as
             # ``openai_usage_stats`` or ``openai_cost_usd`` are forwarded
             # automatically when present on the Pydantic model.
             **{k: v for k, v in turn_data.items() if k in allowed_fields},

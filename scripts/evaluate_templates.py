@@ -41,14 +41,19 @@ def _openai_call(prompt: str, model: str, api_key: str | None = None) -> Mapping
     if OpenAI is None:
         raise RuntimeError("openai package not available")
     if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError(
-            "OPENAI_API_KEY manquante : chargez-la depuis .env ou exportez-la."
-        )
+        raise RuntimeError("OPENAI_API_KEY is missing")
     client = OpenAI()
     client = OpenAI(api_key=api_key) if api_key else OpenAI()
-    resp = client.responses.create(model=model, input=prompt)
+    resp = client.responses.create(
+        model=model,
+        input=prompt,
+        response_format={"type": "json_object"},
+    )
     text = resp.output_text
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON response: {text}") from exc
     return {
         "intent": data.get("intent"),
         "entities": data.get("entities", {}),

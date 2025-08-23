@@ -1,6 +1,6 @@
 """Integration tests for dynamic entity fields in conversation turns."""
 
-from sqlalchemy import Column, Float, JSON, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from db_service.base import Base
@@ -13,23 +13,7 @@ from conversation_service.schemas import (
 )
 
 
-def _add_dynamic_columns() -> None:
-    """Inject dynamic columns into the ORM for testing."""
-    if "openai_usage_stats" not in ConversationTurnORM.__table__.columns:
-        openai_usage_stats_col = Column("openai_usage_stats", JSON, nullable=True, default=dict)
-        ConversationTurnORM.__table__.append_column(openai_usage_stats_col)
-        ConversationTurnORM.openai_usage_stats = openai_usage_stats_col
-        ConversationTurnORM.__mapper__.add_property("openai_usage_stats", ConversationTurnORM.openai_usage_stats)
-    if "openai_cost_usd" not in ConversationTurnORM.__table__.columns:
-        openai_cost_usd_col = Column("openai_cost_usd", Float, nullable=True, default=0.0)
-        ConversationTurnORM.__table__.append_column(openai_cost_usd_col)
-        ConversationTurnORM.openai_cost_usd = openai_cost_usd_col
-        ConversationTurnORM.__mapper__.add_property("openai_cost_usd", ConversationTurnORM.openai_cost_usd)
-
-
 def test_add_turn_with_entities() -> None:
-    _add_dynamic_columns()
-
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(bind=engine)
@@ -52,8 +36,7 @@ def test_add_turn_with_entities() -> None:
     repo.add_turn(conv.conversation_id, turn_in)
 
     db_turn = db.query(ConversationTurnORM).filter_by(turn_number=1).first()
-    raw_data = {k: v for k, v in db_turn.__dict__.items() if not k.startswith("_")}
-    stored_turn = ConversationTurn.model_validate(raw_data)
+    stored_turn = ConversationTurn.model_validate(db_turn, from_attributes=True)
 
     assert stored_turn.entities_extracted == [{"name": "Paris"}]
     assert stored_turn.intent_classification == {"intent": "greet"}

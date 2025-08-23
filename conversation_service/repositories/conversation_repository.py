@@ -59,10 +59,11 @@ class ConversationRepository:
             Conversation(...)
         """
         # Accept any additional fields present on the Pydantic model and
-        # forward them to the ORM layer. This allows the repository to remain
-        # resilient as new columns (e.g. ``financial_context`` or
-        # ``user_preferences_ai``) are added to ``ConversationORM`` without
-        # requiring further changes here.
+        # forward them to the ORM layer.  Thanks to the ``allowed_fields``
+        # filter, any new JSON columns such as ``financial_context``,
+        # ``user_preferences_ai`` or ``key_entities_history`` – and metrics
+        # like ``openai_usage_stats`` or ``openai_cost_usd`` – are passed
+        # directly to ``ConversationORM`` without needing explicit handling.
         conv_data = conversation_in.model_dump(exclude_unset=True)
         allowed_fields = {c.name for c in ConversationORM.__table__.columns}
         db_conv = ConversationORM(
@@ -150,6 +151,10 @@ class ConversationRepository:
         db_turn = ConversationTurnORM(
             conversation_id=conv.id,
             turn_number=next_turn_number,
+            # ``allowed_fields`` ensures new attributes such as
+            # ``financial_context``, ``key_entities_history``,
+            # ``openai_usage_stats`` or ``openai_cost_usd`` are forwarded
+            # automatically when present on the Pydantic model.
             **{k: v for k, v in turn_data.items() if k in allowed_fields},
         )
         self.db.add(db_turn)

@@ -30,6 +30,11 @@ class Conversation(BaseModel):
     conversation_metadata: Dict[str, Any] = Field(default_factory=dict)
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
     session_metadata: Dict[str, Any] = Field(default_factory=dict)
+    intents: List[Dict[str, Any]] | None = None
+    entities: List[Dict[str, Any]] | None = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
     financial_context: Dict[str, Any] = Field(default_factory=dict)
     user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
     key_entities_history: List[Dict[str, Any]] = Field(default_factory=list)
@@ -171,6 +176,11 @@ class ConversationTurn(BaseModel):
     error_message: Optional[str] = None
     intent_result: Optional[Dict[str, Any]] = None
     agent_chain: List[Dict[str, Any]] = Field(default_factory=list)
+    intent: Optional[Dict[str, Any]] = None
+    entities: Optional[List[Dict[str, Any]]] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
     financial_context: Dict[str, Any] = Field(default_factory=dict)
     user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
     key_entities_history: List[Dict[str, Any]] = Field(default_factory=list)

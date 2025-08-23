@@ -6,7 +6,10 @@ from config_service.config import settings
 
 
 def check_permissions() -> None:
-    engine = create_engine(settings.DATABASE_URL)
+    database_url = settings.DATABASE_URL or "sqlite://"
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    engine = create_engine(database_url)
     query = text(
         """
         SELECT grantee, privilege_type, column_name

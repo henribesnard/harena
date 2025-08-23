@@ -30,6 +30,15 @@ class Conversation(BaseModel):
     conversation_metadata: Dict[str, Any] = Field(default_factory=dict)
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
     session_metadata: Dict[str, Any] = Field(default_factory=dict)
+    financial_context: Dict[str, Any] = Field(default_factory=dict)
+    user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
+    key_entities_history: List[Dict[str, Any]] = Field(default_factory=list)
+    intent_classification: Dict[str, Any] = Field(default_factory=dict)
+    entities_extracted: List[Dict[str, Any]] = Field(default_factory=list)
+    intent_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    total_tokens_used: int = Field(default=0, ge=0)
+    openai_usage_stats: Dict[str, Any] = Field(default_factory=dict)
+    openai_cost_usd: float = Field(default=0.0, ge=0.0)
     created_at: datetime
     updated_at: datetime
 
@@ -49,6 +58,15 @@ class Conversation(BaseModel):
                 "conversation_metadata": {"topic": "budget"},
                 "user_preferences": {"tone": "friendly"},
                 "session_metadata": {"browser": "firefox"},
+                "financial_context": {"balance": 1000},
+                "user_preferences_ai": {"style": "formal"},
+                "key_entities_history": [{"name": "Compte", "type": "bank_account"}],
+                "intent_classification": {"intent": "check_balance"},
+                "entities_extracted": [{"name": "solde", "type": "financial"}],
+                "intent_confidence": 0.95,
+                "total_tokens_used": 200,
+                "openai_usage_stats": {"prompt_tokens": 150, "completion_tokens": 50},
+                "openai_cost_usd": 0.04,
                 "created_at": "2024-06-01T12:00:00Z",
                 "updated_at": "2024-06-01T12:05:00Z",
             }
@@ -61,6 +79,22 @@ class Conversation(BaseModel):
     def id_positive(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("must be positive")
+        return v
+
+    @field_validator("total_tokens_used")
+    @classmethod
+    def non_negative_tokens(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("must be non-negative")
+        return v
+
+    @field_validator("intent_confidence", "openai_cost_usd")
+    @classmethod
+    def non_negative_floats(
+        cls, v: Optional[float]
+    ) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError("must be non-negative")
         return v
 
     @model_validator(mode="after")
@@ -137,6 +171,15 @@ class ConversationTurn(BaseModel):
     error_message: Optional[str] = None
     intent_result: Optional[Dict[str, Any]] = None
     agent_chain: List[Dict[str, Any]] = Field(default_factory=list)
+    financial_context: Dict[str, Any] = Field(default_factory=dict)
+    user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
+    key_entities_history: List[Dict[str, Any]] = Field(default_factory=list)
+    intent_classification: Dict[str, Any] = Field(default_factory=dict)
+    entities_extracted: List[Dict[str, Any]] = Field(default_factory=list)
+    intent_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    total_tokens_used: int = Field(default=0, ge=0)
+    openai_usage_stats: Dict[str, Any] = Field(default_factory=dict)
+    openai_cost_usd: float = Field(default=0.0, ge=0.0)
     search_query_used: Optional[str] = None
     search_results_count: int = Field(ge=0)
     search_execution_time_ms: Optional[float] = Field(default=None, ge=0.0)
@@ -168,6 +211,15 @@ class ConversationTurn(BaseModel):
                         "reasoning_trace": None,
                     }
                 ],
+                "financial_context": {"balance": 50},
+                "user_preferences_ai": {"style": "casual"},
+                "key_entities_history": [{"name": "Compte", "type": "bank_account"}],
+                "intent_classification": {"intent": "check_balance"},
+                "entities_extracted": [{"name": "solde", "type": "financial"}],
+                "intent_confidence": 0.93,
+                "total_tokens_used": 30,
+                "openai_usage_stats": {"prompt_tokens": 20, "completion_tokens": 10},
+                "openai_cost_usd": 0.003,
                 "search_query_used": "balance account",
                 "search_results_count": 3,
                 "search_execution_time_ms": 50.2,
@@ -185,8 +237,7 @@ class ConversationTurn(BaseModel):
         if v <= 0:
             raise ValueError("must be positive")
         return v
-
-    @field_validator("search_results_count")
+    @field_validator("search_results_count", "total_tokens_used")
     @classmethod
     def non_negative(cls, v: int) -> int:
         if v < 0:
@@ -194,7 +245,11 @@ class ConversationTurn(BaseModel):
         return v
 
     @field_validator(
-        "processing_time_ms", "search_execution_time_ms", "confidence_score"
+        "processing_time_ms",
+        "search_execution_time_ms",
+        "confidence_score",
+        "intent_confidence",
+        "openai_cost_usd",
     )
     @classmethod
     def positive_floats(cls, v: Optional[float]) -> Optional[float]:

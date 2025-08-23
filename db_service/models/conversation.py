@@ -94,13 +94,7 @@ class Conversation(Base, TimestampMixin):
     financial_context = Column(JSON, default=dict, nullable=False)
     user_preferences_ai = Column(JSON, default=dict, nullable=False)
     key_entities_history = Column(JSON, default=list, nullable=False)
-    intent_classification = Column(JSON, default=dict, nullable=False)
-    entities_extracted = Column(JSON, default=list, nullable=False)
-    intent_confidence = Column(DECIMAL(5, 4), nullable=True)
-    total_tokens_used = Column(Integer, default=0, nullable=False)
-    openai_usage_stats = Column(JSON, default=dict, nullable=False)
-    openai_cost_usd = Column(Float, default=0.0, nullable=False)
-    
+
     # Relations
     user = relationship("User", back_populates="conversations")
     turns = relationship(
@@ -177,9 +171,6 @@ class ConversationTurn(Base, TimestampMixin):
     prompt_tokens = Column(Integer, nullable=True)
     completion_tokens = Column(Integer, nullable=True)
     total_tokens = Column(Integer, nullable=True)
-    financial_context = Column(JSON, default=dict, nullable=False)
-    user_preferences_ai = Column(JSON, default=dict, nullable=False)
-    key_entities_history = Column(JSON, default=list, nullable=False)
     intent_classification = Column(JSON, default=dict, nullable=False)
     entities_extracted = Column(JSON, default=list, nullable=False)
     intent_confidence = Column(DECIMAL(5, 4), nullable=True)

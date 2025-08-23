@@ -20,7 +20,7 @@ def test_agent_models_validation_and_json():
     data = {"steps": [s.model_dump() for s in trace.steps], "total_time_ms": trace.total_time_ms}
     json_data = json.dumps(data)
     loaded = AgentTrace(**json.loads(json_data))
-    loaded_step = AgentStep(**loaded.steps[0])
+    loaded_step = loaded.steps[0]
     assert loaded_step.model_dump() == step.model_dump()
     assert loaded.total_time_ms == trace.total_time_ms
 

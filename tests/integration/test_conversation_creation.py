@@ -8,16 +8,14 @@ def test_conversation_create_with_metadata(db_session, user):
     conv = repo.create(
         ConversationCreate(
             user_id=user.id,
-            financial_context={"balance": 100},
-            user_preferences_ai={"tone": "formal"},
-            key_entities_history=[{"name": "Account", "type": "bank_account"}],
+            conversation_metadata={"topic": "budget"},
+            user_preferences={"tone": "formal"},
+            session_metadata={"ip": "127.0.0.1"},
         )
     )
 
     fetched = repo.get_conversation(conv.conversation_id, user_id=user.id)
 
-    assert fetched.financial_context == {"balance": 100}
-    assert fetched.user_preferences_ai == {"tone": "formal"}
-    assert fetched.key_entities_history == [
-        {"name": "Account", "type": "bank_account"}
-    ]
+    assert fetched.conversation_metadata == {"topic": "budget"}
+    assert fetched.user_preferences == {"tone": "formal"}
+    assert fetched.session_metadata == {"ip": "127.0.0.1"}

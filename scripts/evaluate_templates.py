@@ -15,6 +15,8 @@ import argparse
 import json
 from typing import Any, Dict, Mapping
 
+import sys, pathlib
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 from monitoring.evaluation import (
     Sample,
     aggregate_metrics,

@@ -52,10 +52,16 @@ def test_agent_config_and_enums():
 
     entity = DynamicFinancialEntity(
         entity_type=EntityType.ACCOUNT,
-        value="123",
+        raw_value="123",
+        normalized_value="123",
+        context="account number is 123",
+        metadata={"source": "test"},
         confidence_score=0.8,
     )
     assert entity.entity_type is EntityType.ACCOUNT
+    assert entity.metadata == {"source": "test"}
 
     with pytest.raises(ValidationError):
-        DynamicFinancialEntity(entity_type="BAD", value="1", confidence_score=0.1)
+        DynamicFinancialEntity(
+            entity_type="BAD", raw_value="1", confidence_score=0.1
+        )

@@ -26,12 +26,18 @@ from monitoring.evaluation import (
 )
 
 try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+try:
     from openai import OpenAI
 except Exception:  # pragma: no cover - openai optional for tests
     OpenAI = None  # type: ignore
 
 
-def _openai_call(prompt: str, model: str) -> Mapping[str, Any]:
+def _openai_call(prompt: str, model: str, api_key: str | None = None) -> Mapping[str, Any]:
     if OpenAI is None:
         raise RuntimeError("openai package not available")
     if not os.getenv("OPENAI_API_KEY"):
@@ -39,6 +45,7 @@ def _openai_call(prompt: str, model: str) -> Mapping[str, Any]:
             "OPENAI_API_KEY manquante : chargez-la depuis .env ou exportez-la."
         )
     client = OpenAI()
+    client = OpenAI(api_key=api_key) if api_key else OpenAI()
     resp = client.responses.create(model=model, input=prompt)
     text = resp.output_text
     data = json.loads(text)
@@ -53,6 +60,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate template variants")
     parser.add_argument("fixture", help="JSON fixture with templates and samples")
     parser.add_argument("--model", default="gpt-4o-mini", help="Model to use")
+    parser.add_argument("--api-key", help="OpenAI API key", default=None)
     args = parser.parse_args()
 
     with open(args.fixture, "r", encoding="utf-8") as fh:
@@ -64,7 +72,10 @@ def main() -> None:
     results_by_variant: Dict[str, Any] = {}
     for name, template in templates.items():
         results_by_variant[name] = evaluate_variant(
-            samples, template, lambda p: _openai_call(p, args.model), model=args.model
+            samples,
+            template,
+            lambda p: _openai_call(p, args.model, args.api_key),
+            model=args.model,
         )
 
     summary = aggregate_metrics(results_by_variant)

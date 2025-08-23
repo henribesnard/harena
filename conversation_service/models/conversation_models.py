@@ -8,19 +8,7 @@ from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .enums import IntentType
-
-
-class ConversationMetadata(BaseModel):
-    """Optional metadata associated with a conversation."""
-
-    intent: IntentType | None = None
-    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {"intent": "greeting", "confidence_score": 0.95}
-        }
-    )
+from .agent_models import DynamicFinancialEntity
 
 
 class ConversationContext(BaseModel):
@@ -78,19 +66,35 @@ class ConversationRequest(BaseModel):
 class ConversationResponse(BaseModel):
     """Response returned by the conversation service."""
 
-    response: str = Field(min_length=1)
+    original_message: str = Field(min_length=1, description="Original user message")
+    response: str = Field(min_length=1, description="Generated response")
+    intent: IntentType = Field(..., description="Detected intent for the message")
+    entities: List[DynamicFinancialEntity] = Field(
+        default_factory=list, description="Extracted entities"
+    )
+    confidence_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Confidence score for the intent"
+    )
     language: str = Field(min_length=2, max_length=2)
     context: ConversationContext
-    metadata: ConversationMetadata | None = None
-    suggested_actions: List[str] = Field(default_factory=list)
+    suggested_actions: List[str] = Field(
+        default_factory=list, description="Recommended follow-up actions"
+    )
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(
         str_strip_whitespace=True,
         json_schema_extra={
             "example": {
+                "original_message": "Bonjour",
                 "response": "Bonjour! Comment puis-je vous aider?",
+                "intent": "GREETING",
+                "entities": [],
+                "confidence_score": 0.95,
                 "language": "fr",
+                "context": {
+                    "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "turn_number": 1,
                 "context": {"turn_number": 1},
                 "metadata": {
                     "intent": "greeting",

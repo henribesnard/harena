@@ -2,6 +2,8 @@ pytest_plugins = ("pytest_asyncio",)
 
 import json
 from types import SimpleNamespace
+import json
+from types import SimpleNamespace
 from typing import Dict
 
 import pytest
@@ -105,6 +107,13 @@ async def test_intent_classifier_handles_many_intents():
         result = await classifier.classify(text)
         assert result.intent_type == expected
         assert 0.0 <= result.confidence_score <= 1.0
+        step = classifier.last_step
+        assert step is not None
+        assert step.agent_name == "intent-classifier"
+        assert step.success is True
+        assert step.error_message is None
+        assert "duration_ms" in step.metrics
+        assert step.from_cache is False
 
 
 @pytest.mark.asyncio
@@ -113,6 +122,11 @@ async def test_invalid_json_raises():
     classifier = IntentClassifier(client)
     with pytest.raises(ValueError):
         await classifier.classify("bad json")
+    step = classifier.last_step
+    assert step is not None
+    assert step.agent_name == "intent-classifier"
+    assert step.success is False
+    assert step.error_message is not None
 
 
 class Pipeline:

@@ -235,62 +235,22 @@ class EntityType(str, Enum):
 
 
 class QueryType(str, Enum):
-    """Types de requêtes supportées par le service."""
+    """Catégories principales des requêtes utilisateur."""
 
     FINANCIAL_QUERY = "FINANCIAL_QUERY"
-    """Requête liée aux transactions financières.
-
-    Exemple: "Liste mes achats de juin"."""
-
-    FILTER_REQUEST = "FILTER_REQUEST"
-    """Demande de filtrage supplémentaire.
-
-    Exemple: "Seulement les débits"."""
+    """Questions sur les transactions ou autres données financières."""
 
     SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
-    """Analyse globale des dépenses.
-
-    Exemple: "Analyse mes dépenses"."""
-
-    TREND_ANALYSIS = "TREND_ANALYSIS"
-    """Analyse de tendance des dépenses.
-
-    Exemple: "Évolution de mes dépenses"."""
+    """Demandes d'analyse des dépenses ou des tendances."""
 
     ACCOUNT_BALANCE = "ACCOUNT_BALANCE"
-    """Questions sur le solde d'un compte.
+    """Questions sur le solde actuel ou historique d'un compte."""
 
-    Exemple: "Quel est mon solde ?"""
-
-    GREETING = "GREETING"
-    """Formule de salutation.
-
-    Exemple: "Salut"."""
-
-    CONFIRMATION = "CONFIRMATION"
-    """Réponse de confirmation.
-
-    Exemple: "Merci"."""
-
-    CLARIFICATION = "CLARIFICATION"
-    """Demande de clarification.
-
-    Exemple: "Peux-tu préciser ?"""
-
-    GENERAL_QUESTION = "GENERAL_QUESTION"
-    """Question générale ne correspondant à aucune autre catégorie.
-
-    Exemple: "Que peux-tu faire ?"""
+    CONVERSATION = "CONVERSATION"
+    """Messages conversationnels généraux comme les salutations ou clarifications."""
 
     UNSUPPORTED = "UNSUPPORTED"
-    """Intention non supportée par la plateforme.
-
-    Exemple: "Effectue un virement"."""
-
-    UNCLEAR_INTENT = "UNCLEAR_INTENT"
-    """Intention ambiguë ou inconnue.
-
-    Exemple: "ghjk"."""
+    """Requêtes hors du périmètre de la plateforme."""
 
 
 class ConfidenceThreshold(float, Enum):

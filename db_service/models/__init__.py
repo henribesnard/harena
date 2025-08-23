@@ -1,6 +1,7 @@
+# db_service/models/__init__.py
 """
 Import tous les modèles pour qu'ils soient disponibles via db_service.models.
-Inclut maintenant les modèles de conversation pour le service IA.
+Version SIMPLIFIÉE avec seulement les modèles existants.
 """
 
 # Import modèles utilisateur
@@ -12,15 +13,13 @@ from db_service.models.sync import (
     RawStock, AccountInformation, BridgeInsight, SyncTask, SyncStat
 )
 
-# NOUVEAU : Import modèles de conversation IA
+# Import modèles conversation SIMPLIFIÉS (seulement ceux qui existent)
 from db_service.models.conversation import (
     Conversation,
-    ConversationTurn,
-    ConversationSummary,
-    ConversationMessage,
+    ConversationTurn
 )
 
-# Exporter tous les modèles
+# Exporter seulement les modèles qui existent réellement
 __all__ = [
     # Modèles utilisateur
     'User', 'BridgeConnection', 'UserPreference',
@@ -29,6 +28,6 @@ __all__ = [
     'SyncItem', 'SyncAccount', 'LoanDetail', 'RawTransaction', 'BridgeCategory',
     'RawStock', 'AccountInformation', 'BridgeInsight', 'SyncTask', 'SyncStat',
     
-    # NOUVEAU : Modèles conversation IA
-    'Conversation', 'ConversationTurn', 'ConversationSummary', 'ConversationMessage'
+    # Modèles conversation SIMPLES (seulement ceux qui existent)
+    'Conversation', 'ConversationTurn'
 ]

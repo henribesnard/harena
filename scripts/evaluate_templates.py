@@ -45,12 +45,12 @@ def _openai_call(prompt: str, model: str, api_key: str | None = None) -> Mapping
             "OPENAI_API_KEY is missing: load it from .env or export it."
         )
     client = OpenAI(api_key=api_key) if api_key else OpenAI()
-    resp = client.responses.create(
+    resp = client.chat.completions.create(
         model=model,
-        input=prompt,
+        messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )
-    text = resp.output_text
+    text = resp.choices[0].message.content
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:

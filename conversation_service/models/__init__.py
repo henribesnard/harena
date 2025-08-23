@@ -19,6 +19,18 @@ from .conversation_models import (
     ConversationResponse,
 )
 from .enums import ConfidenceThreshold, EntityType, IntentType, QueryType
+from .financial_models import (
+    FlexibleFinancialTransaction,
+    DynamicSpendingAnalysis,
+    FlexibleSearchCriteria,
+    LLMExtractedInsights,
+)
+from .contracts import (
+    DynamicSearchServiceQuery,
+    SearchServiceResponse,
+    UserServiceProfile,
+    DynamicCacheKey,
+)
 
 __all__ = [
     "AgentStep",
@@ -37,5 +49,13 @@ __all__ = [
     "EntityType",
     "IntentType",
     "QueryType",
+    "FlexibleFinancialTransaction",
+    "DynamicSpendingAnalysis",
+    "FlexibleSearchCriteria",
+    "LLMExtractedInsights",
+    "DynamicSearchServiceQuery",
+    "SearchServiceResponse",
+    "UserServiceProfile",
+    "DynamicCacheKey",
 ]
 

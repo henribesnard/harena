@@ -33,16 +33,8 @@ class ConversationTurnCreate(BaseModel):
     entities_extracted: List[Dict[str, Any]] = Field(default_factory=list)
     intent_confidence: float = 0
     total_tokens_used: int = 0
-    financial_context: Dict[str, Any] = Field(default_factory=dict)
-    user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
-    key_entities_history: List[Dict[str, Any]] = Field(default_factory=list)
     openai_usage_stats: Dict[str, Any] = Field(default_factory=dict)
     openai_cost_usd: float = 0.0
-    intent: Optional[Dict[str, Any]] = None
-    entities: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
     search_query_used: Optional[str] = None
     search_results_count: int = 0
     search_execution_time_ms: Optional[float] = None
@@ -73,21 +65,6 @@ class ConversationCreate(BaseModel):
     conversation_metadata: Dict[str, Any] = Field(default_factory=dict)
     user_preferences: Dict[str, Any] = Field(default_factory=dict)
     session_metadata: Dict[str, Any] = Field(default_factory=dict)
-    # Additional optional metadata fields
-    financial_context: Dict[str, Any] = Field(default_factory=dict)
-    user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
-    intents: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
-    entities: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
-    intent_classification: Dict[str, Any] = Field(default_factory=dict)
-    entities_extracted: List[Dict[str, Any]] = Field(default_factory=list)
-    intent_confidence: Dict[str, Any] = Field(default_factory=dict)
-    total_tokens_used: Dict[str, Any] = Field(default_factory=dict)
-    openai_usage_stats: Dict[str, Any] = Field(default_factory=dict)
-    openai_cost_usd: Dict[str, Any] = Field(default_factory=dict)
-    key_entities_history: List[Dict[str, Any]] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="allow")
 

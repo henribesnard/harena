@@ -89,7 +89,7 @@ class Conversation(Base, TimestampMixin):
     financial_context = Column(JSON, default=dict, nullable=False)
     user_preferences_ai = Column(JSON, default=dict, nullable=False)
     key_entities_history = Column(JSON, default=list, nullable=False)
-    
+
     # Relations
     user = relationship("User", back_populates="conversations")
     turns = relationship(

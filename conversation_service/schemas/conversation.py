@@ -12,7 +12,7 @@ Example:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import Any, List, Optional, Dict
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -22,6 +22,27 @@ class ConversationTurnCreate(BaseModel):
     user_message: str
     assistant_response: str
     turn_metadata: Dict[str, object] = Field(default_factory=dict)
+    # Additional optional AI processing fields
+    processing_time_ms: Optional[float] = None
+    confidence_score: Optional[float] = None
+    error_occurred: bool = False
+    error_message: Optional[str] = None
+    intent_result: Optional[Dict[str, Any]] = None
+    agent_chain: List[Any] = Field(default_factory=list)
+    intent_classification: Dict[str, Any] = Field(default_factory=dict)
+    entities_extracted: List[Any] = Field(default_factory=list)
+    intent_confidence: float = 0
+    total_tokens_used: int = 0
+    intent: Optional[Dict[str, Any]] = None
+    entities: Optional[Dict[str, Any]] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    search_query_used: Optional[str] = None
+    search_results_count: int = 0
+    search_execution_time_ms: Optional[float] = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class ConversationTurn(ConversationTurnCreate):
@@ -34,7 +55,7 @@ class ConversationTurn(ConversationTurnCreate):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="allow")
 
 
 class ConversationCreate(BaseModel):
@@ -47,6 +68,11 @@ class ConversationCreate(BaseModel):
     conversation_metadata: Dict[str, object] = Field(default_factory=dict)
     user_preferences: Dict[str, object] = Field(default_factory=dict)
     session_metadata: Dict[str, object] = Field(default_factory=dict)
+    # Additional optional metadata fields
+    financial_context: Dict[str, object] = Field(default_factory=dict)
+    user_preferences_ai: Dict[str, object] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="allow")
 
 
 class Conversation(ConversationCreate):
@@ -62,4 +88,4 @@ class Conversation(ConversationCreate):
     updated_at: datetime
     turns: List[ConversationTurn] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="allow")

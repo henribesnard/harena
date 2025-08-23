@@ -33,6 +33,11 @@ class ConversationTurnCreate(BaseModel):
     entities_extracted: List[Any] = Field(default_factory=list)
     intent_confidence: float = 0
     total_tokens_used: int = 0
+    financial_context: Dict[str, Any] = Field(default_factory=dict)
+    user_preferences_ai: Dict[str, Any] = Field(default_factory=dict)
+    key_entities_history: List[Any] = Field(default_factory=list)
+    openai_usage_stats: Dict[str, Any] = Field(default_factory=dict)
+    openai_cost_usd: float = 0
     intent: Optional[Dict[str, Any]] = None
     entities: Optional[Dict[str, Any]] = None
     prompt_tokens: Optional[int] = None
@@ -73,6 +78,8 @@ class ConversationCreate(BaseModel):
     # Additional optional metadata fields
     financial_context: Dict[str, object] = Field(default_factory=dict)
     user_preferences_ai: Dict[str, object] = Field(default_factory=dict)
+    key_entities_history: List[Dict[str, object]] = Field(default_factory=list)
+    key_entities_history: List[Any] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="allow")
 

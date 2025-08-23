@@ -42,7 +42,7 @@ def _openai_call(prompt: str, model: str, api_key: str | None = None) -> Mapping
         raise RuntimeError("openai package not available")
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError(
-            "OPENAI_API_KEY manquante : chargez-la depuis .env ou exportez-la."
+            "OPENAI_API_KEY is missing: load it from .env or export it."
         )
     client = OpenAI()
     client = OpenAI(api_key=api_key) if api_key else OpenAI()

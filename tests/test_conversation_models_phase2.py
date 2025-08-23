@@ -5,9 +5,10 @@ from pydantic import ValidationError
 from conversation_service.models import (
     ConversationRequest,
     ConversationResponse,
-    ConversationMetadata,
     ConversationContext,
     IntentType,
+    DynamicFinancialEntity,
+    EntityType,
 )
 
 
@@ -43,10 +44,27 @@ def test_conversation_id_uuid():
 
 
 def test_confidence_score_range():
+    ctx = ConversationContext(conversation_id=uuid4(), turn_number=1)
     with pytest.raises(ValidationError):
-        ConversationMetadata(intent=IntentType.GREETING, confidence_score=1.5)
+        ConversationResponse(
+            original_message="Hi",
+            response="Hi",
+            intent=IntentType.GREETING,
+            entities=[],
+            confidence_score=1.5,
+            language="en",
+            context=ctx,
+        )
     with pytest.raises(ValidationError):
-        ConversationMetadata(intent=IntentType.GREETING, confidence_score=-0.1)
+        ConversationResponse(
+            original_message="Hi",
+            response="Hi",
+            intent=IntentType.GREETING,
+            entities=[],
+            confidence_score=-0.1,
+            language="en",
+            context=ctx,
+        )
 
 
 def test_turn_number_positive():
@@ -56,20 +74,24 @@ def test_turn_number_positive():
 
 def test_conversation_response_valid():
     ctx = ConversationContext(conversation_id=uuid4(), turn_number=2)
-    meta = ConversationMetadata(intent=IntentType.GREETING, confidence_score=0.8)
+    entity = DynamicFinancialEntity(
+        entity_type=EntityType.ACCOUNT,
+        value="123",
+        confidence_score=0.9,
+    )
     resp = ConversationResponse(
+        original_message="Hi",
         response="Hello!",
+        intent=IntentType.GREETING,
+        entities=[entity],
+        confidence_score=0.8,
         language="en",
         context=ctx,
-        metadata=meta,
         suggested_actions=["check_balance"],
         user_preferences={"tone": "friendly"},
     )
-    assert resp.metadata.confidence_score == 0.8
+    assert resp.intent == IntentType.GREETING
+    assert resp.entities[0].value == "123"
+    assert resp.confidence_score == 0.8
     assert resp.suggested_actions == ["check_balance"]
     assert resp.user_preferences["tone"] == "friendly"
-
-
-def test_metadata_invalid_intent():
-    with pytest.raises(ValidationError):
-        ConversationMetadata(intent="NOT_AN_INTENT", confidence_score=0.5)

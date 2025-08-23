@@ -6,6 +6,7 @@ from conversation_service.models import (
     ConversationRequest,
     ConversationResponse,
     ConversationContext,
+    ConversationMetadata,
     IntentType,
     DynamicFinancialEntity,
     EntityType,
@@ -105,11 +106,9 @@ def test_conversation_response_valid():
     )
     entity = DynamicFinancialEntity(
         entity_type=EntityType.ACCOUNT,
-        value="123",
+        raw_value="123",
         confidence_score=0.9,
     )
-    ctx = ConversationContext(turn_number=2)
-    meta = ConversationMetadata(intent=IntentType.GREETING, confidence_score=0.8)
     resp = ConversationResponse(
         original_message="Hi",
         response="Hello!",
@@ -122,7 +121,7 @@ def test_conversation_response_valid():
         user_preferences={"tone": "friendly"},
     )
     assert resp.intent == IntentType.GREETING
-    assert resp.entities[0].value == "123"
+    assert resp.entities[0].raw_value == "123"
     assert resp.confidence_score == 0.8
     assert resp.suggested_actions == ["check_balance"]
     assert resp.user_preferences["tone"] == "friendly"

@@ -188,15 +188,15 @@ class IntentType(str, Enum):
 class EntityType(str, Enum):
     """Catégories d'entités extraites d'un message."""
 
-    ACCOUNT = "ACCOUNT"
-    """Identifiant de compte bancaire.
+    AMOUNT = "AMOUNT"
+    """Valeur monétaire.
 
-    Exemple: "compte courant"."""
+    Exemple: "50 euros"."""
 
-    TRANSACTION = "TRANSACTION"
-    """Identifiant de transaction.
+    TEMPORAL = "TEMPORAL"
+    """Date ou période temporelle.
 
-    Exemple: "txn_123"."""
+    Exemple: "janvier 2024"."""
 
     MERCHANT = "MERCHANT"
     """Nom d'un marchand.
@@ -208,89 +208,44 @@ class EntityType(str, Enum):
 
     Exemple: "restaurants"."""
 
-    DATE = "DATE"
-    """Date explicite.
+    ACCOUNT = "ACCOUNT"
+    """Identifiant de compte bancaire.
 
-    Exemple: "2024-05-01"."""
-
-    PERIOD = "PERIOD"
-    """Période ou intervalle de dates.
-
-    Exemple: "janvier 2024"."""
-
-    AMOUNT = "AMOUNT"
-    """Valeur monétaire.
-
-    Exemple: "50 euros"."""
+    Exemple: "compte courant"."""
 
     OPERATION_TYPE = "OPERATION_TYPE"
     """Type d'opération financière.
 
     Exemple: "débit"."""
 
-    TEXT = "TEXT"
+    LOCATION = "LOCATION"
+    """Lieu géographique associé à la requête ou à la transaction.
+
+    Exemple: "Paris"."""
+
+    TEXT_QUERY = "TEXT_QUERY"
     """Texte libre de recherche.
 
     Exemple: "abonnement"."""
 
 
 class QueryType(str, Enum):
-    """Types de requêtes supportées par le service."""
+    """Catégories principales des requêtes utilisateur."""
 
     FINANCIAL_QUERY = "FINANCIAL_QUERY"
-    """Requête liée aux transactions financières.
-
-    Exemple: "Liste mes achats de juin"."""
-
-    FILTER_REQUEST = "FILTER_REQUEST"
-    """Demande de filtrage supplémentaire.
-
-    Exemple: "Seulement les débits"."""
+    """Questions sur les transactions ou autres données financières."""
 
     SPENDING_ANALYSIS = "SPENDING_ANALYSIS"
-    """Analyse globale des dépenses.
-
-    Exemple: "Analyse mes dépenses"."""
-
-    TREND_ANALYSIS = "TREND_ANALYSIS"
-    """Analyse de tendance des dépenses.
-
-    Exemple: "Évolution de mes dépenses"."""
+    """Demandes d'analyse des dépenses ou des tendances."""
 
     ACCOUNT_BALANCE = "ACCOUNT_BALANCE"
-    """Questions sur le solde d'un compte.
+    """Questions sur le solde actuel ou historique d'un compte."""
 
-    Exemple: "Quel est mon solde ?"""
-
-    GREETING = "GREETING"
-    """Formule de salutation.
-
-    Exemple: "Salut"."""
-
-    CONFIRMATION = "CONFIRMATION"
-    """Réponse de confirmation.
-
-    Exemple: "Merci"."""
-
-    CLARIFICATION = "CLARIFICATION"
-    """Demande de clarification.
-
-    Exemple: "Peux-tu préciser ?"""
-
-    GENERAL_QUESTION = "GENERAL_QUESTION"
-    """Question générale ne correspondant à aucune autre catégorie.
-
-    Exemple: "Que peux-tu faire ?"""
+    CONVERSATION = "CONVERSATION"
+    """Messages conversationnels généraux comme les salutations ou clarifications."""
 
     UNSUPPORTED = "UNSUPPORTED"
-    """Intention non supportée par la plateforme.
-
-    Exemple: "Effectue un virement"."""
-
-    UNCLEAR_INTENT = "UNCLEAR_INTENT"
-    """Intention ambiguë ou inconnue.
-
-    Exemple: "ghjk"."""
+    """Requêtes hors du périmètre de la plateforme."""
 
 
 class ConfidenceThreshold(float, Enum):

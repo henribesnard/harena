@@ -41,14 +41,13 @@ def test_query_type_matches_categories():
 
 def test_entity_type_expected_values():
     expected = {
-        "ACCOUNT",
-        "TRANSACTION",
+        "AMOUNT",
+        "TEMPORAL",
         "MERCHANT",
         "CATEGORY",
-        "DATE",
-        "PERIOD",
-        "AMOUNT",
+        "ACCOUNT",
         "OPERATION_TYPE",
-        "TEXT",
+        "LOCATION",
+        "TEXT_QUERY",
     }
     assert expected == {e.value for e in EntityType}

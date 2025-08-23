@@ -188,15 +188,15 @@ class IntentType(str, Enum):
 class EntityType(str, Enum):
     """Catégories d'entités extraites d'un message."""
 
-    ACCOUNT = "ACCOUNT"
-    """Identifiant de compte bancaire.
+    AMOUNT = "AMOUNT"
+    """Valeur monétaire.
 
-    Exemple: "compte courant"."""
+    Exemple: "50 euros"."""
 
-    TRANSACTION = "TRANSACTION"
-    """Identifiant de transaction.
+    TEMPORAL = "TEMPORAL"
+    """Date ou période temporelle.
 
-    Exemple: "txn_123"."""
+    Exemple: "janvier 2024"."""
 
     MERCHANT = "MERCHANT"
     """Nom d'un marchand.
@@ -208,27 +208,22 @@ class EntityType(str, Enum):
 
     Exemple: "restaurants"."""
 
-    DATE = "DATE"
-    """Date explicite.
+    ACCOUNT = "ACCOUNT"
+    """Identifiant de compte bancaire.
 
-    Exemple: "2024-05-01"."""
-
-    PERIOD = "PERIOD"
-    """Période ou intervalle de dates.
-
-    Exemple: "janvier 2024"."""
-
-    AMOUNT = "AMOUNT"
-    """Valeur monétaire.
-
-    Exemple: "50 euros"."""
+    Exemple: "compte courant"."""
 
     OPERATION_TYPE = "OPERATION_TYPE"
     """Type d'opération financière.
 
     Exemple: "débit"."""
 
-    TEXT = "TEXT"
+    LOCATION = "LOCATION"
+    """Lieu géographique associé à la requête ou à la transaction.
+
+    Exemple: "Paris"."""
+
+    TEXT_QUERY = "TEXT_QUERY"
     """Texte libre de recherche.
 
     Exemple: "abonnement"."""

@@ -1,3 +1,4 @@
+"""Prompt templates for intent classification."""
 """Prompt templates and response schemas for conversation agents."""
 
 from .base_prompts import (

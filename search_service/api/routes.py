@@ -68,7 +68,7 @@ async def search_transactions(
         # Log de la requête pour monitoring
         logger.info(
             f"Search request from user {request.user_id}: "
-            f"query='{request.query}', filters={len(request.filters)}, limit={request.limit}"
+            f"query='{request.query}', filters={len(request.filters)}, page={request.page}, page_size={request.page_size}"
         )
         
         # Recherche via moteur unifié

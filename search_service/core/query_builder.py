@@ -53,6 +53,9 @@ class QueryBuilder:
             "_source": self._get_source_fields(),
             "size": page_size,
             "from": offset
+
+            "size": request.page_size,
+            "from": request.offset
         }
 
         logger.info(f"Pagination utilisée - page: {page}, page_size: {page_size}")

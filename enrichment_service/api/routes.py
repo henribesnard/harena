@@ -174,20 +174,9 @@ async def sync_user_transactions(
             force_refresh=force_refresh,
         )
 
-        logger.info(f"{result.accounts_synced} accounts, {result.transactions_indexed} transactions indexed")
-
+        # ✅ LOG UNIQUE - Suppression des doublons
         logger.info(
-            f"{result.accounts_synced} accounts, {result.transactions_indexed} transactions indexed"
-        )
-
-        logger.info(
-            "📈 Résultat sync user %s: %s tx, %s indexées, %s mises à jour, %s erreurs, %s comptes",
-            user_id,
-            result.total_transactions,
-            result.transactions_indexed,
-            result.updated,
-            result.errors,
-            result.accounts_synced,
+            f"📈 Sync user {user_id} completed: {result.transactions_indexed} transactions, {result.accounts_indexed} accounts indexed in {result.processing_time:.3f}s"
         )
 
         return result

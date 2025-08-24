@@ -120,17 +120,18 @@ class SearchServiceTester:
         """Vérifie si un champ existe dans la réponse (support notation pointée)."""
         keys = field_path.split('.')
         current = data
-        
+
         try:
             for key in keys:
                 if isinstance(current, dict):
                     current = current[key]
-                elif isinstance(current, list) and current:
-                    current = current[0][key]
+                elif isinstance(current, list):
+                    index = int(key)
+                    current = current[index]
                 else:
                     return False
             return current is not None
-        except (KeyError, TypeError, IndexError):
+        except (KeyError, TypeError, IndexError, ValueError):
             return False
 
     async def run_all_tests(self):

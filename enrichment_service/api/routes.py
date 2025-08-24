@@ -176,7 +176,7 @@ async def sync_user_transactions(
 
         # ✅ LOG UNIQUE - Suppression des doublons
         logger.info(
-            f"📈 Sync user {user_id} completed: {result.transactions_indexed} transactions, {result.accounts_indexed} accounts indexed in {result.processing_time:.3f}s"
+            f"📈 Sync user {user_id} completed: {result.accounts_indexed} accounts, {result.transactions_indexed} transactions indexed in {result.processing_time:.3f}s"
         )
 
         return result

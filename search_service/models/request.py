@@ -65,6 +65,10 @@ class SearchRequest(BaseModel):
         """Alias historique pour ``page_size``."""
         return self.page_size
 
+    @limit.setter
+    def limit(self, value: int) -> None:
+        self.page_size = value
+
     @field_validator('query')
     @classmethod
     def validate_query(cls, v: str) -> str:

@@ -31,12 +31,15 @@ class SearchResult(BaseModel):
     merchant_name: Optional[str] = Field(None, description="Nom du marchand")
     category_name: Optional[str] = Field(None, description="Catégorie")
     operation_type: Optional[str] = Field(None, description="Type d'opération")
-    
+
     # Métadonnées de recherche
-    score: Optional[float] = Field(None, description="Score de pertinence")
+    score: Optional[float] = Field(
+        None, description="Score de pertinence", alias="_score"
+    )
     highlights: Optional[Dict[str, List[str]]] = Field(None, description="Surlignade des termes")
 
     model_config = ConfigDict(
+        populate_by_name=True,
         json_schema_extra={
             "example": {
                 "transaction_id": "user_34_tx_12345",
@@ -57,7 +60,7 @@ class SearchResult(BaseModel):
                 "merchant_name": "Le Bistrot",
                 "category_name": "Restaurant",
                 "operation_type": "card_payment",
-                "score": 1.0,
+                "_score": 1.0,
                 "highlights": {"primary_description": ["bistrot"]}
             }
         }
@@ -111,7 +114,7 @@ class SearchResponse(BaseModel):
                         "merchant_name": "Le Bistrot",
                         "category_name": "Restaurant",
                         "operation_type": "card_payment",
-                        "score": 1.0,
+                        "_score": 1.0,
                         "highlights": {"primary_description": ["bistrot"]}
                     }
                 ],

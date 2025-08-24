@@ -127,12 +127,15 @@ async def sync_user_transactions(
         # Précharger les informations de compte pour toutes les transactions
         account_ids = {tx.account_id for tx in raw_transactions}
         accounts = db.query(SyncAccount).filter(SyncAccount.id.in_(account_ids)).all()
-        accounts_map = {acc.id: acc for acc in accounts}
+        accounts_map = {
+            getattr(acc, "id", getattr(acc, "account_id")): acc for acc in accounts
+        }
 
         # Convertir en TransactionInput avec métadonnées de compte
         transaction_inputs = []
         for raw_tx in raw_transactions:
-            account = accounts_map.get(raw_tx.account_id)
+            account_key = getattr(raw_tx, "account_id", getattr(raw_tx, "id", None))
+            account = accounts_map.get(account_key)
             tx_input = TransactionInput(
                 bridge_transaction_id=raw_tx.bridge_transaction_id,
                 user_id=raw_tx.user_id,

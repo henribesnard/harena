@@ -1,16 +1,54 @@
-import json
 import pytest
-import requests
+from unittest.mock import patch
 
-SEARCH_URL = "http://localhost:8000/api/v1/search/search"
-
-
-def _post(payload: dict) -> requests.Response:
-    response = requests.post(SEARCH_URL, json=payload, timeout=10)
-    response.raise_for_status()
-    return response
+from search_service.core.search_engine import SearchEngine
+from search_service.models.request import SearchRequest
 
 
+def _make_hit(idx: int) -> dict:
+    return {
+        "_source": {
+            "transaction_id": f"tx_{idx}",
+            "user_id": 1,
+            "amount": float(idx),
+            "amount_abs": float(idx),
+            "currency_code": "EUR",
+            "transaction_type": "debit",
+            "date": "2024-01-01",
+            "primary_description": f"desc {idx}",
+        },
+        "_score": 1.0,
+    }
+
+
+def test_aggregation_only_returns_no_results_but_same_aggregations():
+    async def _run():
+        engine = SearchEngine()
+        engine.elasticsearch_client = object()
+        engine.cache_enabled = False
+
+        aggs = {"operation_type": {"terms": {"field": "operation_type"}}}
+
+        base_request = SearchRequest(user_id=1, query="", limit=5, aggregations=aggs, filters={}, metadata={})
+        agg_only_request = SearchRequest(
+            user_id=1, query="", limit=5, aggregations=aggs, aggregation_only=True, filters={}, metadata={}
+        )
+
+        hits = [_make_hit(i) for i in range(2)]
+
+        base_response = {
+            "hits": {"hits": hits, "total": {"value": len(hits)}},
+            "aggregations": {"operation_type": {"buckets": []}},
+            "took": 1,
+        }
+        agg_response = {
+            "hits": {"hits": [], "total": {"value": len(hits)}},
+            "aggregations": {"operation_type": {"buckets": []}},
+            "took": 1,
+        }
+
+        async def fake_exec(es_query, request):
+            return agg_response if request.aggregation_only else base_response
 def test_aggregation_only_returns_no_results_but_same_aggregations():
     """Standard query vs aggregation_only should yield same aggregations"""
     base_payload = {
@@ -22,19 +60,13 @@ def test_aggregation_only_returns_no_results_but_same_aggregations():
     }
     agg_only_payload = {**base_payload, "aggregation_only": True}
 
-    try:
-        full_resp = _post(base_payload)
-        agg_resp = _post(agg_only_payload)
-    except requests.exceptions.RequestException:
-        pytest.skip("search service not available or request invalid")
+        with patch.object(engine, "_execute_search", side_effect=fake_exec):
+            full_resp = await engine.search(base_request)
+            agg_resp = await engine.search(agg_only_request)
 
-    data_full = full_resp.json()
-    data_agg = agg_resp.json()
+        assert agg_resp["results"] == []
+        assert full_resp["aggregations"] == agg_resp["aggregations"]
 
-    assert data_agg.get("results") == []
-    assert data_full.get("aggregations") == data_agg.get("aggregations")
+    import asyncio
 
-    print(
-        f"Full response size: {len(full_resp.content)} bytes\n"
-        f"Aggregation-only response size: {len(agg_resp.content)} bytes"
-    )
+    asyncio.run(_run())

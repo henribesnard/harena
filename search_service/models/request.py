@@ -30,6 +30,11 @@ class SearchRequest(BaseModel):
         default=None, description="Requête d'agrégation optionnelle"
     )
 
+    aggregation_only: bool = Field(
+        default=False,
+        description="Si vrai, seuls les résultats d'agrégations sont renvoyés",
+    )
+
     @field_validator('query')
     @classmethod
     def validate_query(cls, v: str) -> str:
@@ -72,7 +77,11 @@ class SearchRequest(BaseModel):
                 },
                 "limit": 10,
                 "offset": 0,
-                "metadata": {"debug": True}
+                "metadata": {"debug": True},
+                "aggregations": {
+                    "by_category": {"terms": {"field": "category_name"}}
+                },
+                "aggregation_only": False
             }
         }
     )

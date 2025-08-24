@@ -1,39 +1,62 @@
-import json
 import pytest
-import requests
+from unittest.mock import patch
 
-SEARCH_URL = "http://localhost:8000/api/v1/search/search"
+from search_service.core.search_engine import SearchEngine
+from search_service.models.request import SearchRequest
 
 
-def _post(payload: dict) -> requests.Response:
-    response = requests.post(SEARCH_URL, json=payload, timeout=10)
-    response.raise_for_status()
-    return response
+def _make_hit(idx: int) -> dict:
+    return {
+        "_source": {
+            "transaction_id": f"tx_{idx}",
+            "user_id": 1,
+            "amount": float(idx),
+            "amount_abs": float(idx),
+            "currency_code": "EUR",
+            "transaction_type": "debit",
+            "date": "2024-01-01",
+            "primary_description": f"desc {idx}",
+        },
+        "_score": 1.0,
+    }
 
 
 def test_aggregation_only_returns_no_results_but_same_aggregations():
-    """Standard query vs aggregation_only should yield same aggregations"""
-    base_payload = {
-        "user_id": 1,
-        "query": "",
-        "limit": 5,
-        "aggregations": {"operation_type": {"terms": {"field": "operation_type"}}},
-    }
-    agg_only_payload = {**base_payload, "aggregation_only": True}
+    async def _run():
+        engine = SearchEngine()
+        engine.elasticsearch_client = object()
+        engine.cache_enabled = False
 
-    try:
-        full_resp = _post(base_payload)
-        agg_resp = _post(agg_only_payload)
-    except requests.exceptions.RequestException:
-        pytest.skip("search service not available or request invalid")
+        aggs = {"operation_type": {"terms": {"field": "operation_type"}}}
 
-    data_full = full_resp.json()
-    data_agg = agg_resp.json()
+        base_request = SearchRequest(user_id=1, query="", limit=5, aggregations=aggs, filters={}, metadata={})
+        agg_only_request = SearchRequest(
+            user_id=1, query="", limit=5, aggregations=aggs, aggregation_only=True, filters={}, metadata={}
+        )
 
-    assert data_agg.get("results") == []
-    assert data_full.get("aggregations") == data_agg.get("aggregations")
+        hits = [_make_hit(i) for i in range(2)]
 
-    print(
-        f"Full response size: {len(full_resp.content)} bytes\n"
-        f"Aggregation-only response size: {len(agg_resp.content)} bytes"
-    )
+        base_response = {
+            "hits": {"hits": hits, "total": {"value": len(hits)}},
+            "aggregations": {"operation_type": {"buckets": []}},
+            "took": 1,
+        }
+        agg_response = {
+            "hits": {"hits": [], "total": {"value": len(hits)}},
+            "aggregations": {"operation_type": {"buckets": []}},
+            "took": 1,
+        }
+
+        async def fake_exec(es_query, request):
+            return agg_response if request.aggregation_only else base_response
+
+        with patch.object(engine, "_execute_search", side_effect=fake_exec):
+            full_resp = await engine.search(base_request)
+            agg_resp = await engine.search(agg_only_request)
+
+        assert agg_resp["results"] == []
+        assert full_resp["aggregations"] == agg_resp["aggregations"]
+
+    import asyncio
+
+    asyncio.run(_run())

@@ -30,9 +30,10 @@ from enrichment_service.models import (
     ElasticsearchEnrichmentResult,
     BatchEnrichmentResult,
     UserSyncResult,
-    ElasticsearchHealthStatus
+    ElasticsearchHealthStatus,
 )
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
+from enrichment_service.core.account_enrichment_service import AccountEnrichmentService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,8 +41,22 @@ router = APIRouter()
 # Instances globales (initialisées dans main.py)
 elasticsearch_client = None
 elasticsearch_processor = None
+account_enrichment_service = None
 
-def get_elasticsearch_processor() -> ElasticsearchTransactionProcessor:
+
+def get_account_enrichment_service(
+    db: Session = Depends(get_db),
+) -> AccountEnrichmentService:
+    """Retourne l'instance du service d'enrichissement de compte."""
+    global account_enrichment_service
+    if not account_enrichment_service:
+        account_enrichment_service = AccountEnrichmentService(db)
+    return account_enrichment_service
+
+
+def get_elasticsearch_processor(
+    account_service: AccountEnrichmentService = Depends(get_account_enrichment_service),
+) -> ElasticsearchTransactionProcessor:
     """Récupère l'instance du processeur Elasticsearch."""
     global elasticsearch_processor
     if not elasticsearch_processor:
@@ -49,9 +64,11 @@ def get_elasticsearch_processor() -> ElasticsearchTransactionProcessor:
         if not elasticsearch_client:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Elasticsearch client not available"
+                detail="Elasticsearch client not available",
             )
-        elasticsearch_processor = ElasticsearchTransactionProcessor(elasticsearch_client)
+        elasticsearch_processor = ElasticsearchTransactionProcessor(
+            elasticsearch_client, account_service
+        )
     return elasticsearch_processor
 
 # ==========================================
@@ -62,7 +79,8 @@ def get_elasticsearch_processor() -> ElasticsearchTransactionProcessor:
 async def process_single_transaction(
     transaction: TransactionInput,
     force_update: bool = Query(False, description="Force la mise à jour même si elle existe déjà"),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
 ):
     """
     Traite et indexe une transaction individuelle dans Elasticsearch.
@@ -81,7 +99,6 @@ async def process_single_transaction(
         )
     
     try:
-        processor = get_elasticsearch_processor()
         result = await processor.process_single_transaction(transaction, force_update)
         
         if result.status == "error":
@@ -100,7 +117,8 @@ async def process_single_transaction(
 async def process_batch_transactions(
     batch: BatchTransactionInput,
     force_update: bool = Query(False, description="Force la mise à jour même si elles existent déjà"),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
 ):
     """
     Traite et indexe un lot de transactions dans Elasticsearch.
@@ -127,7 +145,6 @@ async def process_batch_transactions(
             )
     
     try:
-        processor = get_elasticsearch_processor()
         result = await processor.process_transactions_batch(batch, force_update)
         
         logger.info(f"Lot traité: {result.successful}/{result.total_transactions} succès")
@@ -145,7 +162,8 @@ async def sync_user_transactions(
     user_id: int,
     force_refresh: bool = Query(False, description="Force la suppression et recréation de tous les documents"),
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
 ):
     """
     Synchronise toutes les transactions d'un utilisateur depuis PostgreSQL vers Elasticsearch.
@@ -215,7 +233,6 @@ async def sync_user_transactions(
         logger.info(f"📊 Synchronisation de {len(transaction_inputs)} transactions pour l'utilisateur {user_id}")
         
         # Synchroniser via le processeur Elasticsearch
-        processor = get_elasticsearch_processor()
         result = await processor.sync_user_transactions(
             user_id=user_id,
             transactions=transaction_inputs,
@@ -234,7 +251,8 @@ async def sync_user_transactions(
 @router.delete("/elasticsearch/user-data/{user_id}")
 async def delete_user_data(
     user_id: int,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
 ):
     """
     Supprime toutes les données d'un utilisateur d'Elasticsearch.
@@ -254,7 +272,6 @@ async def delete_user_data(
         )
     
     try:
-        processor = get_elasticsearch_processor()
         deletion_result = await processor.delete_user_data(user_id)
         
         if deletion_result["status"] == "success":
@@ -286,14 +303,15 @@ async def delete_user_data(
 # ==========================================
 
 @router.get("/elasticsearch/health")
-async def elasticsearch_health():
+async def elasticsearch_health(
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
+):
     """
     Vérifie la santé du service d'enrichissement Elasticsearch.
     
     Retourne l'état d'Elasticsearch et du processeur.
     """
     try:
-        processor = get_elasticsearch_processor()
         health_status = await processor.health_check()
         
         return ElasticsearchHealthStatus(
@@ -316,7 +334,8 @@ async def elasticsearch_health():
 @router.get("/elasticsearch/user-stats/{user_id}")
 async def get_user_statistics(
     user_id: int,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
 ):
     """
     Récupère les statistiques d'un utilisateur dans Elasticsearch.
@@ -334,7 +353,6 @@ async def get_user_statistics(
         )
     
     try:
-        processor = get_elasticsearch_processor()
         stats = await processor.get_user_stats(user_id)
         
         if stats["status"] == "success":
@@ -458,7 +476,8 @@ async def get_index_mapping(
 async def reindex_user_transactions(
     user_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
 ):
     """
     Force la ré-indexation complète d'un utilisateur.
@@ -485,7 +504,8 @@ async def reindex_user_transactions(
         user_id=user_id,
         force_refresh=True,
         current_user=current_user,
-        db=db
+        db=db,
+        processor=processor,
     )
 
 @router.get("/elasticsearch/document-exists/{user_id}/{transaction_id}")

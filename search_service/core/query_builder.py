@@ -82,10 +82,14 @@ class QueryBuilder:
         page = getattr(request, "page", 1)
         page_size = request.page_size
         offset = (page - 1) * page_size
-
         # Construction requête finale
-        sort_criteria = self._build_sort_criteria(request)
+        if request.sort is not None:
+            sort_criteria = request.sort
+            logger.critical(f"🔥 TRI PERSONNALISÉ UTILISÉ: {sort_criteria}")
+        else:
+            sort_criteria = self._build_sort_criteria(request)
 
+        sort_criteria = self._build_sort_criteria(request)
         query = {
             "query": {"bool": bool_query},
             "sort": sort_criteria,

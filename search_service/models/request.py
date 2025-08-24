@@ -1,6 +1,6 @@
 """Schémas de requêtes pour le service de recherche."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -44,6 +44,8 @@ class SearchRequest(BaseModel):
     highlight: Optional[Dict[str, Any]] = Field(
         default=None, description="Paramètres de surlignage optionnels"
     )
+
+    sort: Optional[List[Dict[str, Any]]] = Field(default=None)
 
     aggregation_only: bool = Field(
         default=False,

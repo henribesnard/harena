@@ -7,20 +7,25 @@ dans Elasticsearch.
 """
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
+
+from pythonjsonlogger import jsonlogger
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from enrichment_service.api.routes import router
 from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 from config_service.config import settings
 
-# Configuration du logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(message)s',
+# Configuration du logging JSON
+handler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter(
+    "%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s"
 )
+handler.setFormatter(formatter)
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger("enrichment_service")
 
 # Instances globales
@@ -286,34 +291,11 @@ async def advanced_diagnostic():
     
     return diagnostic
 
-# Endpoint pour métriques de performance (optionnel)
+# Endpoint pour exporter les métriques Prometheus
 @app.get("/metrics")
 async def get_metrics():
-    """Métriques de performance du service."""
-    global elasticsearch_client, elasticsearch_processor
-    
-    metrics = {
-        "timestamp": datetime.now().isoformat(),
-        "service": "enrichment_service_elasticsearch",
-        "uptime_info": {
-            "service_started": True,
-            "elasticsearch_connected": elasticsearch_client is not None and getattr(elasticsearch_client, '_initialized', False),
-            "processor_ready": elasticsearch_processor is not None
-        }
-    }
-    
-    # Ajouter des métriques Elasticsearch si disponible
-    if elasticsearch_client and elasticsearch_client._initialized:
-        try:
-            # Ces métriques pourraient être étendues selon les besoins
-            metrics["elasticsearch_metrics"] = {
-                "client_session_active": elasticsearch_client.session is not None,
-                "index_configured": elasticsearch_client.index_name is not None
-            }
-        except Exception as e:
-            metrics["elasticsearch_metrics"] = {"error": str(e)}
-    
-    return metrics
+    """Expose les métriques au format Prometheus."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 if __name__ == "__main__":
     import uvicorn

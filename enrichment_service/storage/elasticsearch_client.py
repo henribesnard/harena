@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from config_service.config import settings
+from enrichment_service.storage.index_management import ensure_template_and_policy
 
 logger = logging.getLogger("enrichment_service.elasticsearch")
 
@@ -62,11 +63,20 @@ class ElasticsearchClient:
     
     async def _setup_index(self):
         """Crée l'index s'il n'existe pas."""
-        # Vérifier l'existence
+        # S'assurer que le template et la politique ILM existent
+        await ensure_template_and_policy(self.session, self.base_url)
+
+        # Vérifier l'existence de l'alias (index de rollover)
         async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
             if response.status == 200:
-                logger.info(f"📚 Index '{self.index_name}' existe déjà")
+                logger.info(f"📚 Index alias '{self.index_name}' existe déjà")
                 return
+
+        # Créer l'index initial avec alias pour le rollover
+        index_name = f"{self.index_name}-000001"
+        body = {
+            "aliases": {
+                self.index_name: {"is_write_index": True}
         
         # Créer l'index avec mapping optimisé
         mapping = {
@@ -182,10 +192,10 @@ class ElasticsearchClient:
                 }
             }
         }
-        
-        async with self.session.put(f"{self.base_url}/{self.index_name}", json=mapping) as response:
+
+        async with self.session.put(f"{self.base_url}/{index_name}", json=body) as response:
             if response.status in [200, 201]:
-                logger.info(f"✅ Index '{self.index_name}' créé avec succès")
+                logger.info(f"✅ Index '{index_name}' créé avec succès")
             else:
                 error_text = await response.text()
                 logger.error(f"❌ Erreur création index: {response.status} - {error_text}")

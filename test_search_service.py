@@ -73,8 +73,15 @@ class SearchServiceTester:
                     # Vérifier les champs attendus
                     missing_fields = []
                     if expected_fields:
-                        missing_fields = [field for field in expected_fields 
-                                        if not self._field_exists(data, field)]
+                        total_results = data.get("response_metadata", {}).get("total_results", 0)
+                        fields_to_check = [
+                            field for field in expected_fields
+                            if not (field == "results.0.highlights" and total_results == 0)
+                        ]
+                        missing_fields = [
+                            field for field in fields_to_check
+                            if not self._field_exists(data, field)
+                        ]
                     
                     success = len(missing_fields) == 0 and data.get('success', False)
                     

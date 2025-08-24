@@ -1,7 +1,8 @@
 """Schémas de requêtes pour le service de recherche."""
 
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 class SearchRequest(BaseModel):
     """Modèle de requête unifié pour le search service"""
@@ -17,8 +18,18 @@ class SearchRequest(BaseModel):
     )
     
     # Optionnel - Paramètres de pagination
-    limit: int = Field(default=100, description="Nombre de résultats max", ge=1, le=100)
-    offset: int = Field(default=0, description="Décalage pour pagination", ge=0)
+    page: int = Field(default=1, description="Index de page (1 = première)", ge=1)
+    page_size: int = Field(
+        default=100,
+        description="Nombre de résultats par page",
+        ge=1,
+        le=1000,
+    )
+    offset: int = Field(
+        default=0,
+        description="Décalage calculé pour pagination",
+        ge=0,
+    )
     
     # Optionnel - Métadonnées
     metadata: Optional[Dict[str, Any]] = Field(
@@ -34,6 +45,25 @@ class SearchRequest(BaseModel):
         default=False,
         description="Si vrai, seuls les résultats d'agrégations sont renvoyés",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _handle_legacy_limit(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Supporte l'ancien champ ``limit`` comme alias de ``page_size``."""
+        if "page_size" not in values and "limit" in values:
+            values["page_size"] = values.pop("limit")
+        return values
+
+    @model_validator(mode="after")
+    def _compute_offset(self) -> "SearchRequest":
+        """Calcule automatiquement l'offset à partir de la page."""
+        self.offset = (self.page - 1) * self.page_size
+        return self
+
+    @property
+    def limit(self) -> int:
+        """Alias historique pour ``page_size``."""
+        return self.page_size
 
     @field_validator('query')
     @classmethod
@@ -75,8 +105,8 @@ class SearchRequest(BaseModel):
                     "amount": {"gte": -100, "lte": 0},
                     "date": {"gte": "2024-01-01", "lte": "2024-01-31"}
                 },
-                "limit": 10,
-                "offset": 0,
+                "page": 1,
+                "page_size": 10,
                 "metadata": {"debug": True},
                 "aggregations": {
                     "by_category": {"terms": {"field": "category_name"}}

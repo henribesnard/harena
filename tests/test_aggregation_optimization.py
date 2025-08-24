@@ -71,3 +71,5 @@ async def test_aggregation_only_returns_no_results_but_same_aggregations():
     assert first["account_type"] == "checking"
     assert first["account_balance"] == 1000.0
     assert first["account_currency"] == "EUR"
+    assert first["_score"] == 1.0
+    assert "score" not in first

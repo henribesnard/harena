@@ -220,7 +220,7 @@ class SearchEngine:
             has_more_results = (request.offset + returned_results) < total_results
 
             response = {
-                "results": [r.model_dump() for r in results],
+                "results": [r.model_dump(by_alias=True) for r in results],
                 "aggregations": aggregations,
                 "success": True,
                 "error_message": None,

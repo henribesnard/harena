@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from unittest.mock import patch
 
@@ -21,52 +22,42 @@ def _make_hit(idx: int) -> dict:
     }
 
 
-def test_aggregation_only_returns_no_results_but_same_aggregations():
-    async def _run():
-        engine = SearchEngine()
-        engine.elasticsearch_client = object()
-        engine.cache_enabled = False
-
-        aggs = {"operation_type": {"terms": {"field": "operation_type"}}}
-
-        base_request = SearchRequest(user_id=1, query="", limit=5, aggregations=aggs, filters={}, metadata={})
-        agg_only_request = SearchRequest(
-            user_id=1, query="", limit=5, aggregations=aggs, aggregation_only=True, filters={}, metadata={}
-        )
-
-        hits = [_make_hit(i) for i in range(2)]
-
-        base_response = {
-            "hits": {"hits": hits, "total": {"value": len(hits)}},
-            "aggregations": {"operation_type": {"buckets": []}},
-            "took": 1,
-        }
-        agg_response = {
-            "hits": {"hits": [], "total": {"value": len(hits)}},
-            "aggregations": {"operation_type": {"buckets": []}},
-            "took": 1,
-        }
-
-        async def fake_exec(es_query, request):
-            return agg_response if request.aggregation_only else base_response
-def test_aggregation_only_returns_no_results_but_same_aggregations():
-    """Standard query vs aggregation_only should yield same aggregations"""
-    base_payload = {
-        "user_id": 1,
-        "query": "",
-        "page": 1,
-        "page_size": 5,
-        "aggregations": {"operation_type": {"terms": {"field": "operation_type"}}},
+@pytest.mark.asyncio
+async def test_aggregation_only_returns_no_results_but_same_aggregations():
+    engine = SearchEngine()
+    engine.elasticsearch_client = object()
+    engine.cache_enabled = False
+    aggs = {"operation_type": {"terms": {"field": "operation_type"}}}
+    base_request = SearchRequest(
+        user_id=1, query="", limit=5, aggregations=aggs, filters={}, metadata={}
+    )
+    agg_only_request = SearchRequest(
+        user_id=1,
+        query="",
+        limit=5,
+        aggregations=aggs,
+        aggregation_only=True,
+        filters={},
+        metadata={},
+    )
+    hits = [_make_hit(i) for i in range(2)]
+    base_resp = {
+        "hits": {"hits": hits, "total": {"value": len(hits)}},
+        "aggregations": {"operation_type": {"buckets": []}},
+        "took": 1,
     }
-    agg_only_payload = {**base_payload, "aggregation_only": True}
+    agg_resp = {
+        "hits": {"hits": [], "total": {"value": len(hits)}},
+        "aggregations": {"operation_type": {"buckets": []}},
+        "took": 1,
+    }
 
-        with patch.object(engine, "_execute_search", side_effect=fake_exec):
-            full_resp = await engine.search(base_request)
-            agg_resp = await engine.search(agg_only_request)
+    async def fake_exec(es_query, request):
+        return agg_resp if request.aggregation_only else base_resp
 
-        assert agg_resp["results"] == []
-        assert full_resp["aggregations"] == agg_resp["aggregations"]
+    with patch.object(engine, "_execute_search", side_effect=fake_exec):
+        full = await engine.search(base_request)
+        agg_only = await engine.search(agg_only_request)
 
-    import asyncio
-
-    asyncio.run(_run())
+    assert agg_only["results"] == []
+    assert full["aggregations"] == agg_only["aggregations"]

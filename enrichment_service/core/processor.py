@@ -6,6 +6,7 @@ dans Elasticsearch, sans vectorisation ni embeddings.
 """
 import logging
 import time
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -163,54 +164,48 @@ class ElasticsearchTransactionProcessor:
         try:
             # 1. Structurer toutes les transactions
             structured_transactions = []
-            documents_to_index = []
-            
             for tx in transactions:
                 structured_tx = StructuredTransaction.from_transaction_input(tx)
                 structured_transactions.append(structured_tx)
-                
-                # Préparer le document pour l'indexation bulk
-                document_id = structured_tx.get_document_id()
-                documents_to_index.append({
-                    "id": document_id,
-                    "document": structured_tx.to_elasticsearch_document(),
-                    "transaction_id": tx.bridge_transaction_id
-                })
-            
+
             logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
-            
-            # 2. Indexation bulk dans Elasticsearch
-            bulk_result = await self.elasticsearch_client.bulk_index_documents(
-                documents_to_index,
-                force_update=force_update
-            )
-            
-            # 3. Analyser les résultats du bulk
+
+            # 2. Indexation en parallèle via des sous-batches
+            chunk_size = self.elasticsearch_client.default_batch_size * 2
+            batches = [
+                structured_transactions[i:i + chunk_size]
+                for i in range(0, len(structured_transactions), chunk_size)
+            ]
+
+            tasks = [
+                asyncio.create_task(
+                    self.elasticsearch_client.index_transactions_batch(batch)
+                ) for batch in batches
+            ]
+
+            batch_summaries = await asyncio.gather(*tasks)
+
+            # 3. Agréger les résultats
             processing_time = time.time() - start_time
-            successful = bulk_result.get("indexed", 0)
-            failed = bulk_result.get("errors", 0)
             total = len(transactions)
-            
+            successful = sum(s.get("indexed", 0) for s in batch_summaries)
+            failed = sum(s.get("errors", 0) for s in batch_summaries)
+
+            responses = {}
+            for summary in batch_summaries:
+                for resp in summary.get("responses", []):
+                    responses[resp["transaction_id"]] = resp
+
             # 4. Créer les résultats individuels
             results = []
             errors = []
-            
-            bulk_responses = bulk_result.get("responses", [])
-            
-            for i, (tx, structured_tx) in enumerate(zip(transactions, structured_transactions)):
+            for tx, structured_tx in zip(transactions, structured_transactions):
                 document_id = structured_tx.get_document_id()
-                
-                # Déterminer le statut basé sur la réponse bulk
-                if i < len(bulk_responses):
-                    response = bulk_responses[i]
-                    indexed = response.get("success", False)
-                    status = "success" if indexed else "error"
-                    error_msg = response.get("error") if not indexed else None
-                else:
-                    indexed = False
-                    status = "error"
-                    error_msg = "No response from bulk operation"
-                
+                resp = responses.get(tx.bridge_transaction_id, {"success": False, "error": "unknown"})
+                indexed = resp.get("success", False)
+                status = "success" if indexed else "error"
+                error_msg = resp.get("error") if not indexed else None
+
                 result = ElasticsearchEnrichmentResult(
                     transaction_id=tx.bridge_transaction_id,
                     user_id=user_id,
@@ -222,17 +217,17 @@ class ElasticsearchTransactionProcessor:
                         "batch_size": total,
                         "force_update": force_update
                     },
-                    processing_time=processing_time / total,  # Temps moyen par transaction
+                    processing_time=processing_time / total if total else 0,
                     status=status,
                     error_message=error_msg
                 )
                 results.append(result)
-                
+
                 if not indexed and error_msg:
                     errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
-            
+
             logger.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
-            
+
             return BatchEnrichmentResult(
                 user_id=user_id,
                 total_transactions=total,

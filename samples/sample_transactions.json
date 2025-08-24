@@ -1,0 +1,29 @@
+[
+  {
+    "bridge_transaction_id": 1,
+    "user_id": 1,
+    "account_id": 10,
+    "clean_description": "Grocery Store",
+    "amount": -23.45,
+    "date": "2023-01-03T00:00:00",
+    "currency_code": "EUR"
+  },
+  {
+    "bridge_transaction_id": 2,
+    "user_id": 1,
+    "account_id": 10,
+    "provider_description": "Restaurant",
+    "amount": -45.50,
+    "date": "2023-01-05T00:00:00",
+    "currency_code": "EUR"
+  },
+  {
+    "bridge_transaction_id": 3,
+    "user_id": 1,
+    "account_id": 11,
+    "clean_description": "Salary",
+    "amount": 2500.00,
+    "date": "2023-01-15T00:00:00",
+    "currency_code": "EUR"
+  }
+]

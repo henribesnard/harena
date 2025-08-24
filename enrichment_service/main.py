@@ -97,8 +97,6 @@ async def lifespan(app: FastAPI):
     # 5. Affichage des endpoints disponibles
     logger.info("🌐 ENDPOINTS DISPONIBLES:")
     logger.info("   Elasticsearch Processing:")
-    logger.info("     POST /api/v1/enrichment/elasticsearch/process-transaction")
-    logger.info("     POST /api/v1/enrichment/elasticsearch/process-batch")
     logger.info("     POST /api/v1/enrichment/elasticsearch/sync-user/{user_id}")
     logger.info("     DELETE /api/v1/enrichment/elasticsearch/user-data/{user_id}")
     logger.info("   Monitoring & Diagnostics:")

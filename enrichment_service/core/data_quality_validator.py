@@ -5,8 +5,10 @@ from enrichment_service.models import TransactionInput
 class DataQualityValidator:
     """Basic validator to detect transaction anomalies."""
 
-    def __init__(self, amount_threshold: float = 1_000_000):
-        self.amount_threshold = amount_threshold
+    def __init__(self, threshold: float = 1_000_000, **kwargs):
+        if "amount_threshold" in kwargs:
+            threshold = kwargs["amount_threshold"]
+        self.threshold = threshold
 
     def validate_transaction_consistency(self, tx: TransactionInput) -> bool:
         """Check mandatory fields of a transaction."""
@@ -22,7 +24,7 @@ class DataQualityValidator:
 
     def detect_amount_anomalies(self, tx: TransactionInput) -> bool:
         """Return True if amount is outside accepted range."""
-        return abs(tx.amount) > self.amount_threshold or tx.amount == 0
+        return abs(tx.amount) > self.threshold or tx.amount == 0
 
     def validate_account_balance_consistency(
         self, tx: TransactionInput, account_balance: Optional[float] = None

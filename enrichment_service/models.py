@@ -15,6 +15,11 @@ class TransactionInput(BaseModel):
     bridge_transaction_id: int
     user_id: int
     account_id: int
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    account_balance: Optional[float] = None
+    account_currency: Optional[str] = None
+    account_last_sync: Optional[datetime] = None
     clean_description: Optional[str] = None
     provider_description: Optional[str] = None
     amount: float
@@ -24,6 +29,7 @@ class TransactionInput(BaseModel):
     value_date: Optional[datetime] = None
     currency_code: Optional[str] = None
     category_id: Optional[int] = None
+    category_name: Optional[str] = None
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False
@@ -103,6 +109,16 @@ class StructuredTransaction:
     # Métadonnées supplémentaires
     is_future: bool
     is_deleted: bool
+
+    # Informations sur le compte
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    account_balance: Optional[float] = None
+    account_currency: Optional[str] = None
+    account_last_sync: Optional[datetime] = None
+
+    # Information sur la catégorie
+    category_name: Optional[str] = None
     
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> 'StructuredTransaction':
@@ -155,7 +171,13 @@ class StructuredTransaction:
             category_id=tx.category_id,
             operation_type=tx.operation_type,
             is_future=tx.future,
-            is_deleted=tx.deleted
+            is_deleted=tx.deleted,
+            account_name=tx.account_name,
+            account_type=tx.account_type,
+            account_balance=tx.account_balance,
+            account_currency=tx.account_currency,
+            account_last_sync=tx.account_last_sync,
+            category_name=tx.category_name
         )
     
     def to_elasticsearch_document(self) -> Dict[str, Any]:
@@ -169,6 +191,8 @@ class StructuredTransaction:
             "account_type": self.account_type,
             "account_balance": self.account_balance,
             "account_currency_code": self.account_currency_code,
+            "account_currency": self.account_currency,
+            "account_last_sync": self.account_last_sync.isoformat() if self.account_last_sync else None,
             
             # Contenu recherchable
             "searchable_text": self.searchable_text,
@@ -190,6 +214,7 @@ class StructuredTransaction:
             # Catégorisation
             "category_id": self.category_id,
             "operation_type": self.operation_type,
+            "category_name": self.category_name,
             
             # Flags
             "is_future": self.is_future,

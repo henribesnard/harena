@@ -44,21 +44,16 @@ class QueryBuilder:
 
         # Construction requête finale
         query = {
-            "query": {
-                "bool": {
-                    "must": must_filters
-                }
-            },
+            "query": {"bool": {"must": must_filters}},
             "sort": self._build_sort_criteria(request),
             "_source": self._get_source_fields(),
-            "size": page_size,
-            "from": offset
-
             "size": request.page_size,
             "from": request.offset
         }
 
-        logger.info(f"Pagination utilisée - page: {page}, page_size: {page_size}")
+        logger.info(
+            f"Pagination utilisée - page: {page}, page_size: {page_size}, offset: {offset}"
+        )
         logger.debug(f"Built query with {len(must_filters)} filters")
         return query
     

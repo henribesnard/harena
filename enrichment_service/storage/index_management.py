@@ -1,4 +1,5 @@
 """Index template and ILM policy management for Elasticsearch indices."""
+import copy
 import logging
 from typing import Any, Dict
 
@@ -104,21 +105,47 @@ async def _create_ilm_policy(session: Any, base_url: str) -> None:
     async with session.put(url, json=ILM_POLICY) as response:
         if response.status not in (200, 201):
             text = await response.text()
-            logger.error(f"Failed to create ILM policy: {response.status} - {text}")
-            raise Exception(f"Failed to create ILM policy: {text}")
+            raise Exception(text)
         logger.info("ILM policy ensured")
 
-async def _create_index_template(session: Any, base_url: str) -> None:
-    """Create or update index template."""
+async def _create_index_template(
+    session: Any, base_url: str, ilm_enabled: bool = True
+) -> None:
+    """Create or update index template.
+
+    If ``ilm_enabled`` is ``False`` the ILM settings are stripped before
+    sending the template to Elasticsearch so that index management works on
+    clusters without ILM support.
+    """
+    template = copy.deepcopy(INDEX_TEMPLATE)
+    if not ilm_enabled:
+        settings = template["template"]["settings"]
+        settings.pop("index.lifecycle.name", None)
+        settings.pop("index.lifecycle.rollover_alias", None)
+
     url = f"{base_url}/_index_template/{INDEX_TEMPLATE_NAME}"
-    async with session.put(url, json=INDEX_TEMPLATE) as response:
+    async with session.put(url, json=template) as response:
         if response.status not in (200, 201):
             text = await response.text()
-            logger.error(f"Failed to create index template: {response.status} - {text}")
+            logger.error(
+                f"Failed to create index template: {response.status} - {text}"
+            )
             raise Exception(f"Failed to create index template: {text}")
         logger.info("Index template ensured")
 
 async def ensure_template_and_policy(session: Any, base_url: str) -> None:
-    """Ensure both ILM policy and index template exist."""
-    await _create_ilm_policy(session, base_url)
-    await _create_index_template(session, base_url)
+    """Ensure both ILM policy and index template exist.
+
+    If ILM policy creation fails (for instance because the cluster does not
+    support ILM or because auto creation of the ``_ilm`` index is forbidden),
+    the service logs a warning and continues by creating the index template
+    without ILM settings.
+    """
+    ilm_enabled = True
+    try:
+        await _create_ilm_policy(session, base_url)
+    except Exception as exc:  # pragma: no cover - small utility method
+        logger.warning("ILM disabled: %s", exc)
+        ilm_enabled = False
+
+    await _create_index_template(session, base_url, ilm_enabled=ilm_enabled)

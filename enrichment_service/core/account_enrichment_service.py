@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
@@ -15,35 +15,57 @@ class AccountEnrichmentService:
     def __init__(self, db: Session):
         self.db = db
 
-    async def enrich_with_account_data(self, transaction: TransactionInput) -> Dict[str, Optional[str]]:
+    async def enrich_with_account_data(self, transaction: TransactionInput) -> Dict[str, Optional[Any]]:
         """Return additional metadata for a transaction.
 
-        The returned dictionary can contain account name, category name and a
+        The returned dictionary can contain account metadata, category name and a
         merchant name extracted from the description.
         """
-        account_name = self.get_account_details(transaction.account_id)
+
+        account_info = {
+            "account_name": transaction.account_name,
+            "account_type": transaction.account_type,
+            "account_balance": transaction.account_balance,
+            "account_currency": transaction.account_currency,
+            "account_last_sync": transaction.account_last_sync,
+        }
+
+        if not account_info["account_name"]:
+            db_account = self.get_account_details(transaction.account_id)
+            if db_account:
+                account_info.update(db_account)
+
         category_name = self.resolve_category_name(transaction.category_id)
         description = transaction.clean_description or transaction.provider_description or ""
         merchant_name = self.extract_merchant_name(description)
         return {
-            "account_name": account_name,
+            **account_info,
             "category_name": category_name,
             "merchant_name": merchant_name,
         }
 
-    def get_account_details(self, account_id: int) -> Optional[str]:
-        """Fetch the account name for the given account id."""
+    def get_account_details(self, account_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch the full account metadata for the given account id."""
         if not self.db:
             return None
         account = (
             self.db.query(SyncAccount)
-            .filter(SyncAccount.bridge_account_id == account_id)
+            .filter(
+                (SyncAccount.bridge_account_id == account_id)
+                | (SyncAccount.id == account_id)
+            )
             .first()
         )
         if not account:
             logger.debug(f"No account found for id {account_id}")
             return None
-        return account.account_name
+        return {
+            "account_name": account.account_name,
+            "account_type": account.account_type,
+            "account_balance": account.balance,
+            "account_currency": account.currency_code,
+            "account_last_sync": account.last_sync_timestamp,
+        }
 
     def resolve_category_name(self, category_id: Optional[int]) -> Optional[str]:
         """Return the category name for the given category id."""

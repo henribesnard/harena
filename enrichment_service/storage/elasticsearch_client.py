@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from config_service.config import settings
+from enrichment_service.storage.index_management import ensure_template_and_policy
 
 logger = logging.getLogger("enrichment_service.elasticsearch")
 
@@ -62,82 +63,26 @@ class ElasticsearchClient:
     
     async def _setup_index(self):
         """Crée l'index s'il n'existe pas."""
-        # Vérifier l'existence
+        # S'assurer que le template et la politique ILM existent
+        await ensure_template_and_policy(self.session, self.base_url)
+
+        # Vérifier l'existence de l'alias (index de rollover)
         async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
             if response.status == 200:
-                logger.info(f"📚 Index '{self.index_name}' existe déjà")
+                logger.info(f"📚 Index alias '{self.index_name}' existe déjà")
                 return
-        
-        # Créer l'index avec mapping optimisé
-        mapping = {
-            "mappings": {
-                "properties": {
-                    # Identifiants
-                    "user_id": {"type": "integer"},
-                    "transaction_id": {"type": "keyword"},
-                    "account_id": {"type": "integer"},
-                    
-                    # Contenu recherchable
-                    "searchable_text": {
-                        "type": "text",
-                        "analyzer": "standard",
-                        "fields": {
-                            "keyword": {"type": "keyword"}
-                        }
-                    },
-                    "primary_description": {
-                        "type": "text",
-                        "analyzer": "standard",
-                        "fields": {
-                            "keyword": {"type": "keyword"}
-                        }
-                    },
-                    "merchant_name": {
-                        "type": "text",
-                        "analyzer": "standard",
-                        "fields": {
-                            "keyword": {"type": "keyword"}
-                        }
-                    },
-                    
-                    # Données financières
-                    "amount": {"type": "float"},
-                    "amount_abs": {"type": "float"},
-                    "transaction_type": {"type": "keyword"},
-                    "currency_code": {"type": "keyword"},
-                    
-                    # Dates
-                    "date": {"type": "date"},
-                    "transaction_date": {"type": "date"},
-                    "month_year": {"type": "keyword"},
-                    "weekday": {"type": "keyword"},
-                    
-                    # Catégorisation
-                    "category_id": {"type": "integer"},
-                    "category_name": {"type": "keyword"},
-                    "operation_type": {"type": "keyword"},
-                    
-                    # Flags
-                    "is_future": {"type": "boolean"},
-                    "is_deleted": {"type": "boolean"},
-                    
-                    # Métadonnées
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"}
-                }
-            },
-            "settings": {
-                "number_of_shards": 1,
-                "number_of_replicas": 0,
-                "index": {
-                    "max_result_window": 10000
-                }
+
+        # Créer l'index initial avec alias pour le rollover
+        index_name = f"{self.index_name}-000001"
+        body = {
+            "aliases": {
+                self.index_name: {"is_write_index": True}
             }
         }
-        
-        async with self.session.put(f"{self.base_url}/{self.index_name}", json=mapping) as response:
+
+        async with self.session.put(f"{self.base_url}/{index_name}", json=body) as response:
             if response.status in [200, 201]:
-                logger.info(f"✅ Index '{self.index_name}' créé avec succès")
+                logger.info(f"✅ Index '{index_name}' créé avec succès")
             else:
                 error_text = await response.text()
                 logger.error(f"❌ Erreur création index: {response.status} - {error_text}")

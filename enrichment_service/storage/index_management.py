@@ -3,6 +3,8 @@ import copy
 import logging
 from typing import Any, Dict
 
+from config_service.config import settings
+
 logger = logging.getLogger("enrichment_service.index_management")
 
 ILM_POLICY_NAME = "harena_transactions_policy"
@@ -125,6 +127,10 @@ async def _create_index_template(
 
     url = f"{base_url}/_index_template/{INDEX_TEMPLATE_NAME}"
     async with session.put(url, json=template) as response:
+        if response.status == 403:
+            await response.text()  # Consume body to avoid warnings
+            logger.warning("Index template creation forbidden; skipping template setup")
+            return
         if response.status not in (200, 201):
             text = await response.text()
             logger.error(
@@ -141,6 +147,10 @@ async def ensure_template_and_policy(session: Any, base_url: str) -> None:
     the service logs a warning and continues by creating the index template
     without ILM settings.
     """
+    if settings.DISABLE_INDEX_TEMPLATE:
+        logger.warning("Index template creation disabled via configuration; skipping template setup")
+        return
+
     ilm_enabled = True
     try:
         await _create_ilm_policy(session, base_url)

@@ -26,9 +26,6 @@ from db_service.models.sync import RawTransaction
 
 from enrichment_service.models import (
     TransactionInput,
-    BatchTransactionInput,
-    ElasticsearchEnrichmentResult,
-    BatchEnrichmentResult,
     UserSyncResult,
     ElasticsearchHealthStatus,
 )
@@ -75,87 +72,6 @@ def get_elasticsearch_processor(
 # ENDPOINTS ELASTICSEARCH PRINCIPAUX
 # ==========================================
 
-@router.post("/elasticsearch/process-transaction", response_model=ElasticsearchEnrichmentResult)
-async def process_single_transaction(
-    transaction: TransactionInput,
-    force_update: bool = Query(False, description="Force la mise à jour même si elle existe déjà"),
-    current_user: User = Depends(get_current_active_user),
-    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
-):
-    """
-    Traite et indexe une transaction individuelle dans Elasticsearch.
-    
-    Args:
-        transaction: Données de la transaction à traiter
-        force_update: Force la mise à jour si elle existe déjà
-        
-    Returns:
-        ElasticsearchEnrichmentResult: Résultat du traitement
-    """
-    if transaction.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Transaction does not belong to current user"
-        )
-    
-    try:
-        result = await processor.process_single_transaction(transaction, force_update)
-        
-        if result.status == "error":
-            logger.warning(f"Traitement échoué pour transaction {transaction.bridge_transaction_id}: {result.error_message}")
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Erreur lors du traitement de la transaction: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process transaction: {str(e)}"
-        )
-
-@router.post("/elasticsearch/process-batch", response_model=BatchEnrichmentResult)
-async def process_batch_transactions(
-    batch: BatchTransactionInput,
-    force_update: bool = Query(False, description="Force la mise à jour même si elles existent déjà"),
-    current_user: User = Depends(get_current_active_user),
-    processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
-):
-    """
-    Traite et indexe un lot de transactions dans Elasticsearch.
-    
-    Args:
-        batch: Lot de transactions à traiter
-        force_update: Force la mise à jour
-        
-    Returns:
-        BatchEnrichmentResult: Résultat du traitement du lot
-    """
-    if batch.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Batch does not belong to current user"
-        )
-    
-    # Vérifier que toutes les transactions appartiennent au bon utilisateur
-    for tx in batch.transactions:
-        if tx.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Transaction {tx.bridge_transaction_id} does not belong to current user"
-            )
-    
-    try:
-        result = await processor.process_transactions_batch(batch, force_update)
-        
-        logger.info(f"Lot traité: {result.successful}/{result.total_transactions} succès")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Erreur lors du traitement du lot: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process batch: {str(e)}"
-        )
 
 @router.post("/elasticsearch/sync-user/{user_id}", response_model=UserSyncResult)
 async def sync_user_transactions(

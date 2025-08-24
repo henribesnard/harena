@@ -77,6 +77,10 @@ class UserSyncResult(BaseModel):
     status: str = "success"
     error_details: List[str] = []
 
+    @property
+    def indexed(self) -> int:
+        return self.transactions_indexed
+
 @dataclass
 class StructuredTransaction:
     """Transaction structurée pour l'indexation Elasticsearch."""

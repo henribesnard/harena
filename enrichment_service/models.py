@@ -70,6 +70,7 @@ class UserSyncResult(BaseModel):
     indexed: int
     updated: int
     errors: int
+    with_account_metadata: int = 0
     processing_time: float
     status: str = "success"
     error_details: List[str] = []

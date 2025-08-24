@@ -460,6 +460,8 @@ class ElasticsearchTransactionProcessor:
             f"🔄 Synchronisation user {user_id}: {len(transactions)} transactions (force_refresh={force_refresh})"
         )
 
+        account_metadata_enriched = 0
+
         try:
             # Injecter les métadonnées de compte si fournies
             if accounts_map:
@@ -471,6 +473,11 @@ class ElasticsearchTransactionProcessor:
                         tx.account_balance = getattr(acc, "balance", None)
                         tx.account_currency = getattr(acc, "currency_code", None)
                         tx.account_last_sync = getattr(acc, "last_sync_timestamp", None)
+
+            account_metadata_enriched = sum(1 for tx in transactions if tx.account_name)
+            logger.info(
+                f"📝 {account_metadata_enriched} transactions enrichies avec des métadonnées de compte"
+            )
 
             # 1. Optionnel: Nettoyer les données existantes si force_refresh
             if force_refresh:
@@ -505,6 +512,7 @@ class ElasticsearchTransactionProcessor:
                 indexed=indexed_count,
                 updated=updated_count,
                 errors=error_count,
+                with_account_metadata=account_metadata_enriched,
                 processing_time=processing_time,
                 status="success"
                 if error_count == 0
@@ -524,6 +532,7 @@ class ElasticsearchTransactionProcessor:
                 indexed=0,
                 updated=0,
                 errors=len(transactions),
+                with_account_metadata=account_metadata_enriched,
                 processing_time=processing_time,
                 status="failed",
                 error_details=[f"Sync failed: {str(e)}"],

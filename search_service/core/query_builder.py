@@ -17,8 +17,16 @@ class QueryBuilder:
             "account_name^1.0",
             "account_type^1.0",
             "account_currency^1.0",
-            "account_balance"
         ]
+
+    @staticmethod
+    def _is_numeric(value: str) -> bool:
+        """Vérifie si la chaîne fournie représente un nombre."""
+        try:
+            float(value)
+            return True
+        except (TypeError, ValueError):
+            return False
     
     def build_query(self, request: SearchRequest) -> Dict[str, Any]:
         """
@@ -31,11 +39,17 @@ class QueryBuilder:
             {"term": {"user_id": request.user_id}}
         ]
         
-        # Requête textuelle si fournie
+        # Requête textuelle ou numérique si fournie
         if request.query and request.query.strip():
-            text_query = self._build_text_query(request.query)
-            must_filters.append(text_query)
-            logger.debug(f"Added text query for: '{request.query}'")
+            cleaned_query = request.query.strip()
+            if self._is_numeric(cleaned_query):
+                value = float(cleaned_query)
+                must_filters.append({"range": {"account_balance": {"gte": value, "lte": value}}})
+                logger.debug(f"Added numeric account_balance filter for: '{value}'")
+            else:
+                text_query = self._build_text_query(cleaned_query)
+                must_filters.append(text_query)
+                logger.debug(f"Added text query for: '{cleaned_query}'")
         
         # Filtres additionnels
         additional_filters = self._build_additional_filters(request.filters)

@@ -30,6 +30,20 @@ class DummyAccountService:
         }
 
 
+def test_transaction_input_defaults():
+    tx = TransactionInput(
+        bridge_transaction_id=1,
+        user_id=1,
+        account_id=123,
+        amount=0.0,
+        date="2024-01-01T00:00:00",
+    )
+    assert tx.account_balance is None
+    assert tx.deleted is False
+    assert tx.future is False
+    assert tx.recent_transactions == []
+
+
 @pytest.mark.asyncio
 async def test_process_transaction_enriches_account_info():
     processor = ElasticsearchTransactionProcessor(DummyESClient(), DummyAccountService())

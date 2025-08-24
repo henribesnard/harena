@@ -297,19 +297,22 @@ class SearchEngine:
 
         for attempt in range(max_retries):
             try:
+                es_size = 0 if request.aggregation_only else request.page_size
+                es_from = 0 if request.aggregation_only else request.offset
+
                 # Utiliser la méthode search du client existant
                 if hasattr(self.elasticsearch_client, "search"):
                     response = await self.elasticsearch_client.search(
                         index=self.index_name,
                         body=es_query,
-                        size=request.page_size,
-                        from_=request.offset,
+                        size=es_size,
+                        from_=es_from,
                     )
                 else:
                     # Fallback: requête HTTP directe
                     search_url = f"/{self.index_name}/_search"
-                    es_query["size"] = request.page_size
-                    es_query["from"] = request.offset
+                    es_query["size"] = es_size
+                    es_query["from"] = es_from
                     async with self.elasticsearch_client.session.post(
                         f"{self.elasticsearch_client.base_url}{search_url}",
                         json=es_query,
@@ -318,9 +321,7 @@ class SearchEngine:
                             error_text = await resp.text()
                             raise ElasticsearchHTTPError(resp.status, error_text)
                         response = await resp.json()
-
                 return response
-
             except ElasticsearchHTTPError as e:
                 if e.status_code in retry_statuses and attempt < max_retries - 1:
                     wait = backoff_base * (2 ** attempt)

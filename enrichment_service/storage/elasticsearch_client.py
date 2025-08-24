@@ -77,6 +77,119 @@ class ElasticsearchClient:
         body = {
             "aliases": {
                 self.index_name: {"is_write_index": True}
+        
+        # Créer l'index avec mapping optimisé
+        mapping = {
+            "mappings": {
+                "properties": {
+                    # Identifiants
+                    "user_id": {"type": "integer"},
+                    "transaction_id": {"type": "keyword"},
+                    "account_id": {"type": "integer"},
+
+                    # Informations de compte
+                    "account_name": {
+                        "type": "text",
+                        "analyzer": "merchant_analyzer",
+                        "fields": {
+                            "keyword": {"type": "keyword"}
+                        }
+                    },
+                    "account_type": {"type": "keyword"},
+                    "account_balance": {"type": "float"},
+                    "account_currency_code": {"type": "keyword"},
+
+                    # Contenu recherchable
+                    "searchable_text": {
+                        "type": "text",
+                        "analyzer": "french_financial",
+                        "fields": {
+                            "keyword": {"type": "keyword"}
+                        }
+                    },
+                    "primary_description": {
+                        "type": "text",
+                        "analyzer": "french_financial",
+                        "fields": {
+                            "keyword": {"type": "keyword"}
+                        }
+                    },
+                    "merchant_name": {
+                        "type": "text",
+                        "analyzer": "merchant_analyzer",
+                        "fields": {
+                            "keyword": {"type": "keyword"}
+                        }
+                    },
+
+                    # Données financières
+                    "amount": {"type": "float"},
+                    "amount_abs": {"type": "float"},
+                    "transaction_type": {"type": "keyword"},
+                    "currency_code": {"type": "keyword"},
+
+                    # Dates
+                    "date": {"type": "date"},
+                    "transaction_date": {"type": "date"},
+                    "month_year": {"type": "keyword"},
+                    "weekday": {"type": "keyword"},
+
+                    # Catégorisation
+                    "category_id": {"type": "integer"},
+                    "category_name": {"type": "keyword"},
+                    "operation_type": {"type": "keyword"},
+
+                    # Flags
+                    "is_future": {"type": "boolean"},
+                    "is_deleted": {"type": "boolean"},
+
+                    # Métadonnées
+                    "created_at": {"type": "date"},
+                    "updated_at": {"type": "date"}
+                }
+            },
+            "settings": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+                "analysis": {
+                    "filter": {
+                        "french_stop": {
+                            "type": "stop",
+                            "stopwords": "_french_"
+                        },
+                        "french_elision": {
+                            "type": "elision",
+                            "articles_case": True,
+                            "articles": [
+                                "l", "m", "t", "qu", "n", "s", "j", "d", "c", "jusqu",
+                                "quoiqu", "lorsqu", "puisqu"
+                            ]
+                        },
+                        "french_stemmer": {
+                            "type": "stemmer",
+                            "language": "light_french"
+                        }
+                    },
+                    "analyzer": {
+                        "french_financial": {
+                            "tokenizer": "standard",
+                            "filter": [
+                                "lowercase",
+                                "asciifolding",
+                                "french_elision",
+                                "french_stop",
+                                "french_stemmer"
+                            ]
+                        },
+                        "merchant_analyzer": {
+                            "tokenizer": "simple",
+                            "filter": ["lowercase", "asciifolding"]
+                        }
+                    }
+                },
+                "index": {
+                    "max_result_window": 10000
+                }
             }
         }
 
@@ -108,12 +221,16 @@ class ElasticsearchClient:
                 "user_id": structured_transaction.user_id,
                 "transaction_id": structured_transaction.transaction_id,
                 "account_id": structured_transaction.account_id,
-                
+                "account_name": getattr(structured_transaction, 'account_name', ''),
+                "account_type": getattr(structured_transaction, 'account_type', ''),
+                "account_balance": getattr(structured_transaction, 'account_balance', None),
+                "account_currency_code": getattr(structured_transaction, 'account_currency_code', ''),
+
                 # Contenu recherchable
                 "searchable_text": structured_transaction.searchable_text,
                 "primary_description": structured_transaction.primary_description,
                 "merchant_name": getattr(structured_transaction, 'merchant_name', ''),
-                
+
                 # Données financières
                 "amount": structured_transaction.amount,
                 "amount_abs": structured_transaction.amount_abs,
@@ -194,6 +311,10 @@ class ElasticsearchClient:
                 "user_id": tx.user_id,
                 "transaction_id": tx.transaction_id,
                 "account_id": tx.account_id,
+                "account_name": getattr(tx, 'account_name', ''),
+                "account_type": getattr(tx, 'account_type', ''),
+                "account_balance": getattr(tx, 'account_balance', None),
+                "account_currency_code": getattr(tx, 'account_currency_code', ''),
                 "searchable_text": tx.searchable_text,
                 "primary_description": tx.primary_description,
                 "merchant_name": getattr(tx, 'merchant_name', ''),

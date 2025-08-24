@@ -2,6 +2,7 @@ import logging
 import time
 import json
 import asyncio
+import math
 from datetime import datetime
 from collections import deque, defaultdict
 from typing import Dict, Any
@@ -171,6 +172,9 @@ class SearchEngine:
 
             total_results = len(results)
             returned_results = len(results)
+            page_size = request.limit
+            page = (request.offset // page_size) + 1
+            total_pages = math.ceil(total_results / page_size) if page_size else 0
 
             response = {
                 "results": [r.model_dump() for r in results],
@@ -183,7 +187,10 @@ class SearchEngine:
                     "processing_time_ms": execution_time,
                     "total_results": total_results,
                     "returned_results": returned_results,
-                    "has_more_results": total_results > (returned_results + request.offset),
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": total_pages,
+                    "has_more_results": page < total_pages,
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"
                     ),
@@ -209,6 +216,8 @@ class SearchEngine:
         except Exception as e:
             logger.error(f"Search failed for user {request.user_id}: {str(e)}")
             execution_time = int((time.time() - start_time) * 1000)
+            page_size = request.limit
+            page = (request.offset // page_size) + 1
 
             return {
                 "results": [],
@@ -221,6 +230,9 @@ class SearchEngine:
                     "processing_time_ms": execution_time,
                     "total_results": 0,
                     "returned_results": 0,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": 0,
                     "has_more_results": False,
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"

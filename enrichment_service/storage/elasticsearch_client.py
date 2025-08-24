@@ -82,7 +82,9 @@ class ElasticsearchClient:
         body = {
             "aliases": {
                 self.index_name: {"is_write_index": True}
-        
+            }
+        }
+
         # Créer l'index avec mapping optimisé
         mapping = {
             "mappings": {
@@ -102,7 +104,7 @@ class ElasticsearchClient:
                     },
                     "account_type": {"type": "keyword"},
                     "account_balance": {"type": "float"},
-                    "account_currency_code": {"type": "keyword"},
+                    "account_currency": {"type": "keyword"},
 
                     # Contenu recherchable
                     "searchable_text": {
@@ -251,7 +253,7 @@ class ElasticsearchClient:
                 "account_name": getattr(structured_transaction, 'account_name', ''),
                 "account_type": getattr(structured_transaction, 'account_type', ''),
                 "account_balance": getattr(structured_transaction, 'account_balance', None),
-                "account_currency_code": getattr(structured_transaction, 'account_currency_code', ''),
+                "account_currency": getattr(structured_transaction, 'account_currency', ''),
 
                 # Contenu recherchable
                 "searchable_text": structured_transaction.searchable_text,
@@ -396,7 +398,7 @@ class ElasticsearchClient:
                 "account_name": getattr(tx, 'account_name', ''),
                 "account_type": getattr(tx, 'account_type', ''),
                 "account_balance": getattr(tx, 'account_balance', None),
-                "account_currency_code": getattr(tx, 'account_currency_code', ''),
+                "account_currency": getattr(tx, 'account_currency', ''),
                 "searchable_text": tx.searchable_text,
                 "primary_description": tx.primary_description,
                 "merchant_name": getattr(tx, 'merchant_name', ''),

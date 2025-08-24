@@ -27,6 +27,8 @@ class TransactionInput(BaseModel):
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False
+    account_balance: Optional[float] = None
+    recent_transactions: List[float] = []
 
 class BatchTransactionInput(BaseModel):
     """Modèle pour le traitement en lot de transactions."""
@@ -66,7 +68,7 @@ class UserSyncResult(BaseModel):
     status: str = "success"
     error_details: List[str] = []
 
-@dataclass 
+@dataclass
 class StructuredTransaction:
     """Transaction structurée pour l'indexation Elasticsearch."""
     # Identifiants
@@ -93,10 +95,12 @@ class StructuredTransaction:
     # Catégorisation
     category_id: Optional[int]
     operation_type: Optional[str]
-    
+
     # Métadonnées supplémentaires
     is_future: bool
     is_deleted: bool
+    balance_check_passed: Optional[bool] = None
+    quality_score: Optional[float] = None
     
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> 'StructuredTransaction':
@@ -127,7 +131,18 @@ class StructuredTransaction:
             searchable_parts.append(f"Catégorie: {tx.category_id}")
         
         searchable_text = " | ".join(searchable_parts)
-        
+        balance_check_passed = None
+        quality_score = None
+        if tx.account_balance is not None and tx.recent_transactions:
+            from .data_quality import DataQualityValidator
+
+            validator = DataQualityValidator()
+            result = validator.validate_account_balance_consistency(
+                tx.account_balance, tx.recent_transactions
+            )
+            balance_check_passed = result.get("balance_check_passed")
+            quality_score = result.get("quality_score")
+
         return cls(
             transaction_id=tx.bridge_transaction_id,
             user_id=tx.user_id,
@@ -145,46 +160,54 @@ class StructuredTransaction:
             category_id=tx.category_id,
             operation_type=tx.operation_type,
             is_future=tx.future,
-            is_deleted=tx.deleted
+            is_deleted=tx.deleted,
+            balance_check_passed=balance_check_passed,
+            quality_score=quality_score,
         )
     
     def to_elasticsearch_document(self) -> Dict[str, Any]:
         """Convertit en document Elasticsearch."""
-        return {
+        doc = {
             # Identifiants
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
             "account_id": self.account_id,
-            
+
             # Contenu recherchable
             "searchable_text": self.searchable_text,
             "primary_description": self.primary_description,
-            
+
             # Données financières
             "amount": self.amount,
             "amount_abs": self.amount_abs,
             "transaction_type": self.transaction_type,
             "currency_code": self.currency_code,
-            
+
             # Dates (optimisées pour les requêtes Elasticsearch)
             "date": self.date.isoformat(),
             "date_str": self.date_str,
             "month_year": self.month_year,
             "weekday": self.weekday,
             "timestamp": self.date.timestamp(),
-            
+
             # Catégorisation
             "category_id": self.category_id,
             "operation_type": self.operation_type,
-            
+
             # Flags
             "is_future": self.is_future,
             "is_deleted": self.is_deleted,
-            
+
             # Métadonnées d'indexation
             "indexed_at": datetime.now().isoformat(),
-            "version": "2.0-elasticsearch"
+            "version": "2.0-elasticsearch",
         }
+
+        if self.balance_check_passed is not None:
+            doc["balance_check_passed"] = self.balance_check_passed
+        if self.quality_score is not None:
+            doc["quality_score"] = self.quality_score
+        return doc
     
     def get_document_id(self) -> str:
         """Génère l'ID du document Elasticsearch."""

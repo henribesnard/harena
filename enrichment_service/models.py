@@ -7,7 +7,7 @@ et l'indexation des transactions financières dans Elasticsearch.
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Modèles Pydantic pour l'API
 class TransactionInput(BaseModel):
@@ -33,8 +33,7 @@ class TransactionInput(BaseModel):
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False
-    account_balance: Optional[float] = None
-    recent_transactions: List[float] = []
+    recent_transactions: List[float] = Field(default_factory=list)
 
 class BatchTransactionInput(BaseModel):
     """Modèle pour le traitement en lot de transactions."""
@@ -116,6 +115,7 @@ class StructuredTransaction:
     account_balance: Optional[float] = None
     account_currency_code: Optional[str] = None
     account_currency: Optional[str] = None
+    account_currency_code: Optional[str] = None
     account_last_sync: Optional[datetime] = None
 
     # Information sur la catégorie

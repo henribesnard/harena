@@ -13,7 +13,11 @@ class QueryBuilder:
             "searchable_text^2.0",      # Champ principal enrichi
             "primary_description^1.5",   # Description transaction
             "merchant_name^1.8",         # Nom marchand
-            "category_name^1.0"          # Catégorie
+            "category_name^1.0",         # Catégorie
+            "account_name^1.0",
+            "account_type^1.0",
+            "account_currency^1.0",
+            "account_balance"
         ]
     
     def build_query(self, request: SearchRequest) -> Dict[str, Any]:
@@ -105,7 +109,8 @@ class QueryBuilder:
         # Champs qui nécessitent .keyword pour les filtres exacts
         keyword_fields = {
             'category_name', 'merchant_name', 'operation_type',
-            'currency_code', 'transaction_type', 'weekday'
+            'currency_code', 'transaction_type', 'weekday',
+            'account_name', 'account_type', 'account_currency'
         }
         
         if field in keyword_fields:
@@ -130,6 +135,7 @@ class QueryBuilder:
         """Définit les champs à retourner dans les résultats"""
         return [
             "transaction_id", "user_id", "account_id",
+            "account_name", "account_type", "account_balance", "account_currency",
             "amount", "amount_abs", "currency_code", "transaction_type",
             "date", "month_year", "weekday",
             "primary_description", "merchant_name", "category_name", "operation_type"
@@ -254,7 +260,8 @@ class QueryBuilder:
         allowed_fields = {
             "amount", "amount_abs", "date", "transaction_id", "user_id", "account_id",
             "currency_code", "transaction_type", "operation_type", "category_name",
-            "merchant_name", "primary_description", "month_year", "weekday"
+            "merchant_name", "primary_description", "month_year", "weekday",
+            "account_name", "account_type", "account_balance", "account_currency"
         }
         
         validated = {}

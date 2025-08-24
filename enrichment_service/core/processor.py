@@ -16,6 +16,10 @@ from enrichment_service.models import (
     BatchEnrichmentResult,
     UserSyncResult,
     StructuredTransaction,
+
+)
+from enrichment_service.core.account_enrichment_service import (
+    AccountEnrichmentService,
 )
 from enrichment_service.core.data_quality_validator import DataQualityValidator
 
@@ -27,16 +31,33 @@ class ElasticsearchTransactionProcessor:
     Gère la structuration et l'indexation des données financières.
     """
     
-    def __init__(self, elasticsearch_client):
-        """
-        Initialise le processeur avec le client Elasticsearch.
-        
-        Args:
-            elasticsearch_client: Instance du client Elasticsearch
-        """
+    def __init__(
+        self,
+        elasticsearch_client,
+        account_enrichment_service: Optional[AccountEnrichmentService] = None,
+    ):
+        """Initialise le processeur avec le client Elasticsearch et les services externes."""
         self.elasticsearch_client = elasticsearch_client
         self.validator = DataQualityValidator()
+        self.account_enrichment_service = account_enrichment_service
         logger.info("ElasticsearchTransactionProcessor initialisé")
+
+    def _apply_enrichment(self, structured_tx: StructuredTransaction, data: Dict[str, Optional[str]]):
+        """Append enrichment information to the searchable text."""
+        if not data:
+            return
+        parts = []
+        account = data.get("account_name")
+        category = data.get("category_name")
+        merchant = data.get("merchant_name")
+        if account:
+            parts.append(f"Compte: {account}")
+        if category:
+            parts.append(f"Catégorie: {category}")
+        if merchant:
+            parts.append(f"Marchand: {merchant}")
+        if parts:
+            structured_tx.searchable_text += " | " + " | ".join(parts)
     
     
 
@@ -63,8 +84,17 @@ class ElasticsearchTransactionProcessor:
         logger.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
 
         try:
-            # 1. Structurer la transaction
+            # 1. Enrichir les données du compte avant structuration
+            enriched = {}
+            if self.account_enrichment_service:
+                try:
+                    enriched = await self.account_enrichment_service.enrich_with_account_data(transaction)
+                except Exception as e:  # pragma: no cover - logging only
+                    logger.warning(f"Enrichment failed for tx {transaction_id}: {e}")
+
+            # 2. Structurer la transaction
             structured_tx = StructuredTransaction.from_transaction_input(transaction)
+            self._apply_enrichment(structured_tx, enriched)
             logger.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
 
             # 2. Valider la qualité des données
@@ -90,6 +120,7 @@ class ElasticsearchTransactionProcessor:
                     processing_time=processing_time,
                     status="skipped",
                 )
+
 
             # 3. Générer l'ID du document
             document_id = structured_tx.get_document_id()
@@ -204,7 +235,14 @@ class ElasticsearchTransactionProcessor:
             errors = []
             valid_pairs = []
 
+
             for tx in transactions:
+                enriched = {}
+                if self.account_enrichment_service:
+                    try:
+                        enriched = await self.account_enrichment_service.enrich_with_account_data(tx)
+                    except Exception as e:  # pragma: no cover - logging only
+                        logger.warning(f"Enrichment failed for tx {tx.bridge_transaction_id}: {e}")
                 structured_tx = StructuredTransaction.from_transaction_input(tx)
                 is_valid, quality_score, flags = self.validator.evaluate(tx)
                 structured_tx.quality_score = quality_score
@@ -228,6 +266,7 @@ class ElasticsearchTransactionProcessor:
                     )
                     errors.append(f"Transaction {tx.bridge_transaction_id}: data_quality")
                     continue
+                self._apply_enrichment(structured_tx, enriched)
                 structured_transactions.append(structured_tx)
                 valid_pairs.append((tx, structured_tx))
                 document_id = structured_tx.get_document_id()

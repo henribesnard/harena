@@ -1,4 +1,5 @@
 import pytest
+import logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, AsyncMock
@@ -27,7 +28,7 @@ def create_test_app(processor_mock, db_mock, user):
 
     return app
 
-def test_sync_user_endpoint_invokes_processor():
+def test_sync_user_endpoint_invokes_processor(caplog):
     dummy_user = User(id=1, email="test@example.com", password_hash="x")
     dummy_user.is_active = True
     dummy_user.is_superuser = True
@@ -93,6 +94,7 @@ def test_sync_user_endpoint_invokes_processor():
             updated=0,
             errors=0,
             with_account_metadata=1,
+            accounts_synced=1,
             processing_time=0.0,
         )
     )
@@ -100,7 +102,8 @@ def test_sync_user_endpoint_invokes_processor():
     app = create_test_app(processor_mock, dummy_db, dummy_user)
     client = TestClient(app)
 
-    response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
+    with caplog.at_level(logging.INFO):
+        response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
     assert response.status_code == 200
     processor_mock.sync_user_transactions.assert_awaited_once()
     kwargs = processor_mock.sync_user_transactions.await_args.kwargs
@@ -108,6 +111,8 @@ def test_sync_user_endpoint_invokes_processor():
     assert len(kwargs["transactions"]) == 1
     assert kwargs["accounts_map"][123].account_name == "Main"
     assert response.json()["with_account_metadata"] == 1
+    assert response.json()["accounts_synced"] == 1
+    assert "1 accounts, 1 transactions indexed" in caplog.text
 
 
 def test_sync_user_with_account_without_id_returns_200():
@@ -175,6 +180,7 @@ def test_sync_user_with_account_without_id_returns_200():
             updated=0,
             errors=0,
             with_account_metadata=1,
+            accounts_synced=1,
             processing_time=0.0,
         )
     )

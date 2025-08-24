@@ -89,7 +89,8 @@ class SearchRequest(BaseModel):
             'category_name', 'merchant_name', 'operation_type',
             'currency_code', 'transaction_type', 'month_year',
             'weekday', 'amount', 'amount_abs', 'date', 'account_id',
-            'primary_description', 'searchable_text'
+            'primary_description', 'searchable_text',
+            'account_name', 'account_type', 'account_balance', 'account_currency'
         }
         
         for field in v.keys():

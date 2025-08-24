@@ -11,6 +11,11 @@ def _make_hit(idx: int) -> dict:
         "_source": {
             "transaction_id": f"tx_{idx}",
             "user_id": 1,
+            "account_id": 10 + idx,
+            "account_name": f"Account {idx}",
+            "account_type": "checking",
+            "account_balance": 1000.0 + idx,
+            "account_currency": "EUR",
             "amount": float(idx),
             "amount_abs": float(idx),
             "currency_code": "EUR",
@@ -61,3 +66,8 @@ async def test_aggregation_only_returns_no_results_but_same_aggregations():
 
     assert agg_only["results"] == []
     assert full["aggregations"] == agg_only["aggregations"]
+    first = full["results"][0]
+    assert first["account_name"] == "Account 0"
+    assert first["account_type"] == "checking"
+    assert first["account_balance"] == 1000.0
+    assert first["account_currency"] == "EUR"

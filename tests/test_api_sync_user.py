@@ -92,6 +92,7 @@ def test_sync_user_endpoint_invokes_processor():
             indexed=1,
             updated=0,
             errors=0,
+            with_account_metadata=1,
             processing_time=0.0,
         )
     )
@@ -106,6 +107,7 @@ def test_sync_user_endpoint_invokes_processor():
     assert kwargs["user_id"] == 1
     assert len(kwargs["transactions"]) == 1
     assert kwargs["accounts_map"][123].account_name == "Main"
+    assert response.json()["with_account_metadata"] == 1
 
 
 def test_sync_user_with_account_without_id_returns_200():
@@ -172,6 +174,7 @@ def test_sync_user_with_account_without_id_returns_200():
             indexed=1,
             updated=0,
             errors=0,
+            with_account_metadata=1,
             processing_time=0.0,
         )
     )

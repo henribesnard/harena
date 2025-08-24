@@ -119,6 +119,7 @@ async def sync_user_transactions(
                 indexed=0,
                 updated=0,
                 errors=0,
+                with_account_metadata=0,
                 processing_time=0.0,
                 status="success",
                 error_details=[]

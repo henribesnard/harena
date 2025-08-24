@@ -167,6 +167,7 @@ async def sync_user_transactions(
         result = await processor.sync_user_transactions(
             user_id=user_id,
             transactions=transaction_inputs,
+            accounts=accounts,
             accounts_map=accounts_map,
             force_refresh=force_refresh,
         )

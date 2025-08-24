@@ -67,7 +67,8 @@ class UserSyncResult(BaseModel):
     """Résultat de synchronisation utilisateur."""
     user_id: int
     total_transactions: int
-    indexed: int
+    transactions_indexed: int
+    accounts_indexed: int = 0
     updated: int
     errors: int
     with_account_metadata: int = 0

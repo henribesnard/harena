@@ -434,6 +434,73 @@ class ElasticsearchClient:
         except Exception as e:
             logger.error(f"❌ Erreur vérification existence document {document_id}: {e}")
             return False
+
+    async def index_accounts(self, accounts: List[Any], user_id: int) -> int:
+        """Indexe des documents de comptes dans l'index ``harena_accounts``.
+
+        Args:
+            accounts: Liste d'objets représentant les comptes à indexer
+            user_id: Identifiant de l'utilisateur propriétaire des comptes
+
+        Returns:
+            int: Nombre de comptes effectivement indexés
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+
+        if not accounts:
+            return 0
+
+        bulk_body: List[str] = []
+        for acc in accounts:
+            account_id = getattr(acc, "id", getattr(acc, "account_id", None))
+            if account_id is None:
+                continue
+
+            document = {
+                "account_id": account_id,
+                "user_id": user_id,
+                "account_name": getattr(acc, "account_name", None),
+                "account_type": getattr(acc, "account_type", None),
+                "balance": getattr(acc, "balance", None),
+                "currency_code": getattr(acc, "currency_code", None),
+                "last_sync_timestamp": getattr(acc, "last_sync_timestamp", None).isoformat()
+                if getattr(acc, "last_sync_timestamp", None)
+                else None,
+            }
+
+            doc_id = f"user_{user_id}_acc_{account_id}"
+            bulk_body.append(json.dumps({"index": {"_index": "harena_accounts", "_id": doc_id}}))
+            bulk_body.append(json.dumps(document))
+
+        if not bulk_body:
+            return 0
+
+        bulk_data = "\n".join(bulk_body) + "\n"
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/harena_accounts/_bulk",
+                data=bulk_data,
+                headers={"Content-Type": "application/x-ndjson"},
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    indexed = sum(
+                        1
+                        for item in result.get("items", [])
+                        if item.get("index", {}).get("status") in [200, 201]
+                    )
+                    return indexed
+                else:
+                    error_text = await response.text()
+                    logger.error(
+                        f"❌ Erreur indexation comptes: {response.status} - {error_text}"
+                    )
+                    return 0
+        except Exception as e:
+            logger.error(f"❌ Exception indexation comptes: {e}")
+            return 0
     
     async def index_document(self, document_id: str, document: Dict[str, Any]) -> bool:
         """

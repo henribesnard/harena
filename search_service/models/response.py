@@ -64,6 +64,10 @@ class SearchResponse(BaseModel):
     # Métadonnées de la recherche
     total_results: int = Field(..., description="Nombre total de résultats")
     returned_results: int = Field(..., description="Nombre de résultats retournés")
+    page: int = Field(..., description="Numéro de page courant (1-indexé)")
+    page_size: int = Field(..., description="Nombre de résultats par page")
+    total_pages: int = Field(..., description="Nombre total de pages disponibles")
+    has_more_results: bool = Field(..., description="Indique s'il reste d'autres résultats")
     processing_time_ms: int = Field(..., description="Temps de traitement en ms")
     
     # Informations Elasticsearch
@@ -101,6 +105,10 @@ class SearchResponse(BaseModel):
                 ],
                 "total_results": 156,
                 "returned_results": 1,
+                "page": 1,
+                "page_size": 10,
+                "total_pages": 16,
+                "has_more_results": True,
                 "processing_time_ms": 45,
                 "elasticsearch_took": 23,
                 "cache_hit": False,

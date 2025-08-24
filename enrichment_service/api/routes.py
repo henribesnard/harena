@@ -116,7 +116,8 @@ async def sync_user_transactions(
             return UserSyncResult(
                 user_id=user_id,
                 total_transactions=0,
-                indexed=0,
+                transactions_indexed=0,
+                accounts_indexed=0,
                 updated=0,
                 errors=0,
                 with_account_metadata=0,
@@ -173,12 +174,14 @@ async def sync_user_transactions(
             force_refresh=force_refresh,
         )
 
-        logger.info(f"{result.accounts_synced} accounts, {result.indexed} transactions indexed")
+        logger.info(
+            f"{result.accounts_synced} accounts, {result.transactions_indexed} transactions indexed"
+        )
         logger.info(
             "📈 Résultat sync user %s: %s tx, %s indexées, %s mises à jour, %s erreurs, %s comptes",
             user_id,
             result.total_transactions,
-            result.indexed,
+            result.transactions_indexed,
             result.updated,
             result.errors,
             result.accounts_synced,

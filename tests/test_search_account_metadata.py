@@ -55,5 +55,7 @@ def test_search_returns_account_metadata():
         assert result["account_type"] == "checking"
         assert result["account_balance"] == 1234.56
         assert result["account_currency"] == "EUR"
+        assert result["_score"] == 1.0
+        assert "score" not in result
 
     asyncio.run(_run())

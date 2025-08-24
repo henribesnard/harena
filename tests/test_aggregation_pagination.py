@@ -70,5 +70,7 @@ def test_pagination_with_aggregations_returns_all_hits():
         assert first["account_type"] == "checking"
         assert first["account_balance"] == 2001.0
         assert first["account_currency"] == "EUR"
+        assert first["_score"] == 1.0
+        assert "score" not in first
 
     asyncio.run(_run())

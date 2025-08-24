@@ -74,6 +74,10 @@ async def search_transactions(
         # Recherche via moteur unifié
         results = await engine.search(request)
 
+        # Vérification du succès de la recherche
+        if not results["success"]:
+            raise HTTPException(status_code=502, detail=results["error_message"])
+
         # Log des résultats
         metadata = results.get("response_metadata", {})
         logger.info(

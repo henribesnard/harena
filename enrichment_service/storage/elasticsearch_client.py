@@ -82,7 +82,9 @@ class ElasticsearchClient:
         body = {
             "aliases": {
                 self.index_name: {"is_write_index": True}
-        
+            }
+        }
+
         # Créer l'index avec mapping optimisé
         mapping = {
             "mappings": {

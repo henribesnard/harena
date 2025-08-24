@@ -33,7 +33,9 @@ class TransactionInput(BaseModel):
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False
+    recent_transactions: List[float] = []
     recent_transactions: List[float] = Field(default_factory=list)
+
 
 class BatchTransactionInput(BaseModel):
     """Modèle pour le traitement en lot de transactions."""
@@ -76,6 +78,7 @@ class UserSyncResult(BaseModel):
 @dataclass
 class StructuredTransaction:
     """Transaction structurée pour l'indexation Elasticsearch."""
+
     # Identifiants
     transaction_id: int
     user_id: int
@@ -109,6 +112,7 @@ class StructuredTransaction:
     balance_check_passed: Optional[bool] = None
     quality_score: Optional[float] = None
 
+
     # Informations de compte
     account_name: Optional[str] = None
     account_type: Optional[str] = None
@@ -121,36 +125,32 @@ class StructuredTransaction:
     # Information sur la catégorie
     category_name: Optional[str] = None
 
-    
+    # Métadonnées supplémentaires
+    balance_check_passed: Optional[bool] = None
+    quality_score: Optional[float] = None
+
     @classmethod
-    def from_transaction_input(cls, tx: TransactionInput) -> 'StructuredTransaction':
+    def from_transaction_input(cls, tx: TransactionInput) -> "StructuredTransaction":
         """Crée une StructuredTransaction à partir d'une TransactionInput."""
-        # Description principale
         primary_desc = tx.clean_description or tx.provider_description or "Transaction"
-        
-        # Type de transaction
         tx_type = "debit" if tx.amount < 0 else "credit"
-        
-        # Formatage des dates
-        date_str = tx.date.strftime('%Y-%m-%d')
-        month_year = tx.date.strftime('%Y-%m')
-        weekday = tx.date.strftime('%A')
-        
-        # Création du texte recherchable optimisé pour Elasticsearch
+
+        date_str = tx.date.strftime("%Y-%m-%d")
+        month_year = tx.date.strftime("%Y-%m")
+        weekday = tx.date.strftime("%A")
+
         searchable_parts = [
             f"Description: {primary_desc}",
             f"Montant: {abs(tx.amount):.2f} {tx.currency_code or 'EUR'}",
             f"Type: {tx_type}",
-            f"Date: {date_str}"
+            f"Date: {date_str}",
         ]
-        
         if tx.operation_type:
             searchable_parts.append(f"Opération: {tx.operation_type}")
-            
         if tx.category_id:
             searchable_parts.append(f"Catégorie: {tx.category_id}")
-        
         searchable_text = " | ".join(searchable_parts)
+
         balance_check_passed = None
         quality_score = None
         if tx.account_balance is not None and tx.recent_transactions:
@@ -181,35 +181,30 @@ class StructuredTransaction:
             operation_type=tx.operation_type,
             is_future=tx.future,
             is_deleted=tx.deleted,
-            balance_check_passed=balance_check_passed,
-            quality_score=quality_score,
             account_name=tx.account_name,
             account_type=tx.account_type,
             account_balance=tx.account_balance,
             account_currency=tx.account_currency,
             account_last_sync=tx.account_last_sync,
             category_name=tx.category_name,
+            balance_check_passed=balance_check_passed,
+            quality_score=quality_score,
+
         )
-    
+
     def to_elasticsearch_document(self) -> Dict[str, Any]:
         """Convertit en document Elasticsearch."""
         doc = {
-            # Identifiants
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
             "account_id": self.account_id,
-
             "account_name": self.account_name,
             "account_type": self.account_type,
             "account_balance": self.account_balance,
             "account_currency": self.account_currency,
             "account_last_sync": self.account_last_sync.isoformat() if self.account_last_sync else None,
-
-            # Contenu recherchable
             "searchable_text": self.searchable_text,
             "primary_description": self.primary_description,
-
-            # Données financières
             "amount": self.amount,
             "amount_abs": self.amount_abs,
             "transaction_type": self.transaction_type,
@@ -221,22 +216,17 @@ class StructuredTransaction:
             "month_year": self.month_year,
             "weekday": self.weekday,
             "timestamp": self.date.timestamp(),
-
-            # Catégorisation
             "category_id": self.category_id,
             "operation_type": self.operation_type,
-
             "category_name": self.category_name,
 
             # Flags
+
             "is_future": self.is_future,
             "is_deleted": self.is_deleted,
-
-            # Métadonnées d'indexation
             "indexed_at": datetime.now().isoformat(),
             "version": "2.0-elasticsearch",
         }
-
         if self.balance_check_passed is not None:
             doc["balance_check_passed"] = self.balance_check_passed
         if self.quality_score is not None:

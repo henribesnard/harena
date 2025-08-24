@@ -167,6 +167,26 @@ class SearchEngine:
             # Sécurité supplémentaire : filtrer par user_id côté application
             results = [r for r in processed if r.user_id == request.user_id]
 
+            # Extraire le nombre total de résultats rapporté par Elasticsearch
+            total_hits = self._get_total_hits(es_response)
+            es_took = es_response.get("took", 0)
+
+            # ✅ Nouvelle logique : si des agrégations sont demandées et que
+            # aggregation_only est False, on récupère toutes les pages de résultats
+            if request.aggregations and not request.aggregation_only:
+                current_offset = request.offset + request.limit
+                while len(results) + request.offset < total_hits:
+                    next_req_data = request.model_dump()
+                    next_req_data["offset"] = current_offset
+                    next_request = SearchRequest(**next_req_data)
+                    page_response = await self._execute_search(es_query, next_request)
+                    es_took += page_response.get("took", 0)
+                    page_processed = self._process_results(page_response)
+                    page_results = [r for r in page_processed if r.user_id == request.user_id]
+                    if not page_results:
+                        break
+                    results.extend(page_results)
+                    current_offset += request.limit
             aggregations = es_response.get("aggregations")
             total_hits = es_response.get("hits", {}).get("total", {}).get("value", len(results))
 
@@ -190,6 +210,9 @@ class SearchEngine:
             # Calcul temps d'exécution
             execution_time = int((time.time() - start_time) * 1000)
 
+            total_pages = max(1, (total_hits + request.limit - 1) // request.limit)
+            total_results = total_hits
+
             returned_results = len(results)
             page_size = request.limit
             page = (request.offset // page_size) + 1
@@ -206,15 +229,18 @@ class SearchEngine:
                     "processing_time_ms": execution_time,
                     "total_results": total_results,
                     "returned_results": returned_results,
+                    "has_more_results": returned_results + request.offset < total_results,
+                    "total_pages": total_pages,
                     "page": page,
                     "page_size": page_size,
                     "total_pages": total_pages,
                     "has_more_results": page < total_pages,
                     "has_more_results": (request.offset + returned_results) < total_results,
+
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"
                     ),
-                    "elasticsearch_took": es_response.get("took", 0),
+                    "elasticsearch_took": es_took,
                     "cache_hit": False,
                 },
             }

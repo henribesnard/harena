@@ -522,4 +522,59 @@ async def sync_user_transactions(
                 status="failed",
                 error_details=[f"Sync failed: {str(e)}"]
             )
+
+
+async def _processor_health_check(self) -> Dict[str, Any]:
+    """Check availability of Elasticsearch and optional database."""
+    status = "healthy"
+    es_info: Dict[str, Any] = {"available": False}
+
+    try:
+        start = time.perf_counter()
+        es_ok = await self.elasticsearch_client.ping()
+        es_info["available"] = bool(es_ok)
+        es_info["response_time_ms"] = (time.perf_counter() - start) * 1000
+        if not es_ok:
+            status = "unhealthy"
+    except Exception as e:  # pragma: no cover - logging only
+        es_info = {"available": False, "error": str(e)}
+        status = "unhealthy"
+
+    db_info: Optional[Dict[str, Any]] = None
+    if getattr(self, "account_enrichment_service", None) is not None:
+        try:
+            start = time.perf_counter()
+
+            from db_service.session import SessionLocal
+            from sqlalchemy import text
+
+            def _db_ping():
+                with SessionLocal() as session:
+                    session.execute(text("SELECT 1"))
+
+            await asyncio.get_running_loop().run_in_executor(None, _db_ping)
+            db_info = {
+                "available": True,
+                "response_time_ms": (time.perf_counter() - start) * 1000,
+            }
+        except Exception as e:  # pragma: no cover - logging only
+            db_info = {"available": False, "error": str(e)}
+            status = "unhealthy"
+
+    health: Dict[str, Any] = {
+        "status": status,
+        "timestamp": datetime.now().isoformat(),
+        "elasticsearch": es_info,
+        "capabilities": {
+            "transaction_processing": True,
+            "batch_processing": True,
+            "user_sync": True,
+        },
+    }
+    if db_info is not None:
+        health["database"] = db_info
+    return health
+
+
+ElasticsearchTransactionProcessor.health_check = _processor_health_check
     

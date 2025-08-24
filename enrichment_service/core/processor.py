@@ -323,70 +323,41 @@ class ElasticsearchTransactionProcessor:
 
             logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
 
-            # 2. Indexation en parallèle via des sous-batches
-            chunk_size = self.elasticsearch_client.default_batch_size * 2
-            batches = [
-                structured_transactions[i:i + chunk_size]
-                for i in range(0, len(structured_transactions), chunk_size)
-            ]
-
-            tasks = [
-                asyncio.create_task(
-                    self.elasticsearch_client.index_transactions_batch(batch)
-                ) for batch in batches
-            ]
-
-            batch_summaries = await asyncio.gather(*tasks)
-
-            # 3. Agréger les résultats
-            processing_time = time.time() - start_time
-            total = len(transactions)
-            successful = sum(s.get("indexed", 0) for s in batch_summaries)
-            failed = sum(s.get("errors", 0) for s in batch_summaries)
-
-            responses = {}
-            for summary in batch_summaries:
-                for resp in summary.get("responses", []):
-                    responses[resp["transaction_id"]] = resp
-
-            # 4. Créer les résultats individuels
-            results = []
-            errors = []
+            # 2. Préparer les documents pour l'indexation
+            chunk_size = getattr(self.elasticsearch_client, "default_batch_size", 500) * 2
             for tx, structured_tx in zip(transactions, structured_transactions):
                 document_id = structured_tx.get_document_id()
-                resp = responses.get(tx.bridge_transaction_id, {"success": False, "error": "unknown"})
-                indexed = resp.get("success", False)
-                status = "success" if indexed else "error"
-                error_msg = resp.get("error") if not indexed else None
-
                 valid_pairs.append((tx, structured_tx))
-                document_id = structured_tx.get_document_id()
-                documents_to_index.append({
-                    "id": document_id,
-                    "document": structured_tx.to_elasticsearch_document(),
-                    "transaction_id": tx.bridge_transaction_id,
-                })
-            
-            log.debug(f"📋 {len(structured_transactions)} transactions structurées")
-            
-            # 2. Indexation bulk dans Elasticsearch
+                documents_to_index.append(
+                    {
+                        "id": document_id,
+                        "document": structured_tx.to_elasticsearch_document(),
+                        "transaction_id": tx.bridge_transaction_id,
+                    }
+                )
 
-            logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
+            # 3. Indexation bulk par paquets
+            doc_batches = [
+                documents_to_index[i : i + chunk_size]
+                for i in range(0, len(documents_to_index), chunk_size)
+            ]
 
-            bulk_result = await self.elasticsearch_client.bulk_index_documents(
-                documents_to_index,
-                force_update=force_update,
-            )
-            
-            # 3. Analyser les résultats du bulk
-            processing_time = time.perf_counter() - start_time
+            bulk_responses = []
+            successful = 0
+            failed = 0
+            for batch_docs in doc_batches:
+                bulk_result = await self.elasticsearch_client.bulk_index_documents(
+                    batch_docs, force_update=force_update
+                )
+                successful += bulk_result.get("indexed", 0)
+                failed += bulk_result.get("errors", 0)
+                bulk_responses.extend(bulk_result.get("responses", []))
 
+            # 4. Analyser les résultats
             processing_time = time.time() - start_time
-            successful = bulk_result.get("indexed", 0)
-            failed = bulk_result.get("errors", 0) + len([r for r in results if r.status == "skipped"])
             total = len(transactions)
-
-            bulk_responses = bulk_result.get("responses", [])
+            results = []
+            errors = []
 
             for i, (tx, structured_tx) in enumerate(valid_pairs):
                 document_id = structured_tx.get_document_id()
@@ -399,7 +370,6 @@ class ElasticsearchTransactionProcessor:
                     indexed = False
                     status = "error"
                     error_msg = "No response from bulk operation"
-
 
                 result = ElasticsearchEnrichmentResult(
                     transaction_id=tx.bridge_transaction_id,
@@ -414,7 +384,6 @@ class ElasticsearchTransactionProcessor:
                         "quality_score": structured_tx.quality_score,
                     },
                     processing_time=processing_time / total if total else 0,
-
                     status=status,
                     error_message=error_msg,
                 )
@@ -432,7 +401,6 @@ class ElasticsearchTransactionProcessor:
             logger.info(
                 f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s"
             )
-
 
             return BatchEnrichmentResult(
                 user_id=user_id,

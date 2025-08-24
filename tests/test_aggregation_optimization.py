@@ -29,12 +29,12 @@ async def test_aggregation_only_returns_no_results_but_same_aggregations():
     engine.cache_enabled = False
     aggs = {"operation_type": {"terms": {"field": "operation_type"}}}
     base_request = SearchRequest(
-        user_id=1, query="", limit=5, aggregations=aggs, filters={}, metadata={}
+        user_id=1, query="", page_size=5, aggregations=aggs, filters={}, metadata={}
     )
     agg_only_request = SearchRequest(
         user_id=1,
         query="",
-        limit=5,
+        page_size=5,
         aggregations=aggs,
         aggregation_only=True,
         filters={},

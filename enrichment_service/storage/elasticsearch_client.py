@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from config_service.config import settings
+from enrichment_service.storage.index_management import ensure_template_and_policy
 
 logger = logging.getLogger("enrichment_service.elasticsearch")
 
@@ -62,11 +63,20 @@ class ElasticsearchClient:
     
     async def _setup_index(self):
         """Crée l'index s'il n'existe pas."""
-        # Vérifier l'existence
+        # S'assurer que le template et la politique ILM existent
+        await ensure_template_and_policy(self.session, self.base_url)
+
+        # Vérifier l'existence de l'alias (index de rollover)
         async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
             if response.status == 200:
-                logger.info(f"📚 Index '{self.index_name}' existe déjà")
+                logger.info(f"📚 Index alias '{self.index_name}' existe déjà")
                 return
+
+        # Créer l'index initial avec alias pour le rollover
+        index_name = f"{self.index_name}-000001"
+        body = {
+            "aliases": {
+                self.index_name: {"is_write_index": True}
         
         # Créer l'index avec mapping optimisé
         mapping = {
@@ -76,51 +86,65 @@ class ElasticsearchClient:
                     "user_id": {"type": "integer"},
                     "transaction_id": {"type": "keyword"},
                     "account_id": {"type": "integer"},
-                    
+
+                    # Informations de compte
+                    "account_name": {
+                        "type": "text",
+                        "analyzer": "merchant_analyzer",
+                        "fields": {
+                            "keyword": {"type": "keyword"}
+                        }
+                    },
+                    "account_type": {"type": "keyword"},
+                    "account_balance": {"type": "float"},
+                    "account_currency_code": {"type": "keyword"},
+
                     # Contenu recherchable
                     "searchable_text": {
                         "type": "text",
-                        "analyzer": "standard",
+                        "analyzer": "french_financial",
                         "fields": {
                             "keyword": {"type": "keyword"}
                         }
                     },
                     "primary_description": {
                         "type": "text",
-                        "analyzer": "standard",
+                        "analyzer": "french_financial",
                         "fields": {
                             "keyword": {"type": "keyword"}
                         }
                     },
                     "merchant_name": {
                         "type": "text",
-                        "analyzer": "standard",
+                        "analyzer": "merchant_analyzer",
                         "fields": {
                             "keyword": {"type": "keyword"}
                         }
                     },
-                    
+
                     # Données financières
                     "amount": {"type": "float"},
                     "amount_abs": {"type": "float"},
                     "transaction_type": {"type": "keyword"},
                     "currency_code": {"type": "keyword"},
+                    "quality_score": {"type": "float"},
                     
+
                     # Dates
                     "date": {"type": "date"},
                     "transaction_date": {"type": "date"},
                     "month_year": {"type": "keyword"},
                     "weekday": {"type": "keyword"},
-                    
+
                     # Catégorisation
                     "category_id": {"type": "integer"},
                     "category_name": {"type": "keyword"},
                     "operation_type": {"type": "keyword"},
-                    
+
                     # Flags
                     "is_future": {"type": "boolean"},
                     "is_deleted": {"type": "boolean"},
-                    
+
                     # Métadonnées
                     "created_at": {"type": "date"},
                     "updated_at": {"type": "date"}
@@ -129,15 +153,51 @@ class ElasticsearchClient:
             "settings": {
                 "number_of_shards": 1,
                 "number_of_replicas": 0,
+                "analysis": {
+                    "filter": {
+                        "french_stop": {
+                            "type": "stop",
+                            "stopwords": "_french_"
+                        },
+                        "french_elision": {
+                            "type": "elision",
+                            "articles_case": True,
+                            "articles": [
+                                "l", "m", "t", "qu", "n", "s", "j", "d", "c", "jusqu",
+                                "quoiqu", "lorsqu", "puisqu"
+                            ]
+                        },
+                        "french_stemmer": {
+                            "type": "stemmer",
+                            "language": "light_french"
+                        }
+                    },
+                    "analyzer": {
+                        "french_financial": {
+                            "tokenizer": "standard",
+                            "filter": [
+                                "lowercase",
+                                "asciifolding",
+                                "french_elision",
+                                "french_stop",
+                                "french_stemmer"
+                            ]
+                        },
+                        "merchant_analyzer": {
+                            "tokenizer": "simple",
+                            "filter": ["lowercase", "asciifolding"]
+                        }
+                    }
+                },
                 "index": {
                     "max_result_window": 10000
                 }
             }
         }
-        
-        async with self.session.put(f"{self.base_url}/{self.index_name}", json=mapping) as response:
+
+        async with self.session.put(f"{self.base_url}/{index_name}", json=body) as response:
             if response.status in [200, 201]:
-                logger.info(f"✅ Index '{self.index_name}' créé avec succès")
+                logger.info(f"✅ Index '{index_name}' créé avec succès")
             else:
                 error_text = await response.text()
                 logger.error(f"❌ Erreur création index: {response.status} - {error_text}")
@@ -163,17 +223,22 @@ class ElasticsearchClient:
                 "user_id": structured_transaction.user_id,
                 "transaction_id": structured_transaction.transaction_id,
                 "account_id": structured_transaction.account_id,
-                
+                "account_name": getattr(structured_transaction, 'account_name', ''),
+                "account_type": getattr(structured_transaction, 'account_type', ''),
+                "account_balance": getattr(structured_transaction, 'account_balance', None),
+                "account_currency_code": getattr(structured_transaction, 'account_currency_code', ''),
+
                 # Contenu recherchable
                 "searchable_text": structured_transaction.searchable_text,
                 "primary_description": structured_transaction.primary_description,
                 "merchant_name": getattr(structured_transaction, 'merchant_name', ''),
-                
+
                 # Données financières
                 "amount": structured_transaction.amount,
                 "amount_abs": structured_transaction.amount_abs,
                 "transaction_type": structured_transaction.transaction_type,
                 "currency_code": structured_transaction.currency_code,
+                "quality_score": getattr(structured_transaction, 'quality_score', 1.0),
                 
                 # Dates
                 "date": structured_transaction.date_str,
@@ -249,6 +314,10 @@ class ElasticsearchClient:
                 "user_id": tx.user_id,
                 "transaction_id": tx.transaction_id,
                 "account_id": tx.account_id,
+                "account_name": getattr(tx, 'account_name', ''),
+                "account_type": getattr(tx, 'account_type', ''),
+                "account_balance": getattr(tx, 'account_balance', None),
+                "account_currency_code": getattr(tx, 'account_currency_code', ''),
                 "searchable_text": tx.searchable_text,
                 "primary_description": tx.primary_description,
                 "merchant_name": getattr(tx, 'merchant_name', ''),
@@ -256,6 +325,7 @@ class ElasticsearchClient:
                 "amount_abs": tx.amount_abs,
                 "transaction_type": tx.transaction_type,
                 "currency_code": tx.currency_code,
+                "quality_score": getattr(tx, 'quality_score', 1.0),
                 "date": tx.date_str,
                 "transaction_date": tx.date_str,
                 "month_year": tx.month_year,

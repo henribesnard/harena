@@ -10,6 +10,10 @@ class SearchResult(BaseModel):
     transaction_id: str = Field(..., description="ID unique de la transaction")
     user_id: int = Field(..., description="ID utilisateur")
     account_id: Optional[int] = Field(None, description="ID du compte")
+    account_name: Optional[str] = Field(None, description="Nom du compte")
+    account_type: Optional[str] = Field(None, description="Type de compte")
+    account_balance: Optional[float] = Field(None, description="Solde du compte")
+    account_currency: Optional[str] = Field(None, description="Devise du compte")
     
     # Montants
     amount: float = Field(..., description="Montant avec signe")
@@ -38,6 +42,10 @@ class SearchResult(BaseModel):
                 "transaction_id": "user_34_tx_12345",
                 "user_id": 34,
                 "account_id": 101,
+                "account_name": "Compte courant",
+                "account_type": "checking",
+                "account_balance": 1000.0,
+                "account_currency": "EUR",
                 "amount": -45.67,
                 "amount_abs": 45.67,
                 "currency_code": "EUR",
@@ -88,6 +96,10 @@ class SearchResponse(BaseModel):
                         "transaction_id": "user_34_tx_12345",
                         "user_id": 34,
                         "account_id": 101,
+                        "account_name": "Compte courant",
+                        "account_type": "checking",
+                        "account_balance": 1000.0,
+                        "account_currency": "EUR",
                         "amount": -45.67,
                         "amount_abs": 45.67,
                         "currency_code": "EUR",

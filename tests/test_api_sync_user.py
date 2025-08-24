@@ -114,6 +114,7 @@ def test_sync_user_endpoint_invokes_processor(caplog):
     assert len(kwargs["accounts"]) == 1
     assert response.json()["with_account_metadata"] == 1
     assert response.json()["accounts_synced"] == 1
+    assert response.json()["transactions_indexed"] == 1
     assert "1 accounts, 1 transactions indexed" in caplog.text
 
 
@@ -193,3 +194,4 @@ def test_sync_user_with_account_without_id_returns_200():
 
     response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
     assert response.status_code == 200
+    assert response.json()["transactions_indexed"] == 1

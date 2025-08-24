@@ -9,6 +9,7 @@ from enrichment_service.api.routes import router, get_account_enrichment_service
 from user_service.api.deps import get_current_active_user
 from db_service.session import get_db
 from db_service.models.user import User
+from db_service.models.sync import RawTransaction, SyncAccount
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 from enrichment_service.models import UserSyncResult
 
@@ -48,6 +49,16 @@ def test_sync_user_endpoint_invokes_processor():
         future=False,
     )
 
+    account = SimpleNamespace(
+        id=123,
+        account_id=123,
+        account_name="test",
+        account_type="checking",
+        balance=0.0,
+        currency_code="EUR",
+        last_sync_timestamp=datetime(2024, 1, 1),
+    )
+
     class DummyQuery:
         def __init__(self, results):
             self._results = results
@@ -59,13 +70,18 @@ def test_sync_user_endpoint_invokes_processor():
             return self._results
 
     class DummyDB:
-        def __init__(self, results):
-            self._results = results
+        def __init__(self, tx_results, account_results):
+            self.tx_results = tx_results
+            self.account_results = account_results
 
         def query(self, model):
-            return DummyQuery(self._results)
+            if model is RawTransaction:
+                return DummyQuery(self.tx_results)
+            if model is SyncAccount:
+                return DummyQuery(self.account_results)
+            return DummyQuery([])
 
-    dummy_db = DummyDB([raw_tx])
+    dummy_db = DummyDB([raw_tx], [account])
 
     processor_mock = MagicMock(spec=ElasticsearchTransactionProcessor)
     processor_mock.sync_user_transactions = AsyncMock(
@@ -88,3 +104,78 @@ def test_sync_user_endpoint_invokes_processor():
     kwargs = processor_mock.sync_user_transactions.await_args.kwargs
     assert kwargs["user_id"] == 1
     assert len(kwargs["transactions"]) == 1
+
+
+def test_sync_user_with_account_without_id_returns_200():
+    dummy_user = User(id=1, email="test@example.com", password_hash="x")
+    dummy_user.is_active = True
+    dummy_user.is_superuser = True
+
+    raw_tx = SimpleNamespace(
+        bridge_transaction_id=1,
+        user_id=1,
+        account_id=123,
+        clean_description="desc",
+        provider_description=None,
+        amount=10.0,
+        date=datetime(2024, 1, 1),
+        booking_date=None,
+        transaction_date=None,
+        value_date=None,
+        currency_code="EUR",
+        category_id=None,
+        operation_type=None,
+        deleted=False,
+        future=False,
+    )
+
+    account = SimpleNamespace(
+        account_id=123,
+        account_name="test",
+        account_type="checking",
+        balance=0.0,
+        currency_code="EUR",
+        last_sync_timestamp=datetime(2024, 1, 1),
+    )
+
+    class DummyQuery:
+        def __init__(self, results):
+            self._results = results
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def all(self):
+            return self._results
+
+    class DummyDB:
+        def __init__(self, tx_results, account_results):
+            self.tx_results = tx_results
+            self.account_results = account_results
+
+        def query(self, model):
+            if model is RawTransaction:
+                return DummyQuery(self.tx_results)
+            if model is SyncAccount:
+                return DummyQuery(self.account_results)
+            return DummyQuery([])
+
+    dummy_db = DummyDB([raw_tx], [account])
+
+    processor_mock = MagicMock(spec=ElasticsearchTransactionProcessor)
+    processor_mock.sync_user_transactions = AsyncMock(
+        return_value=UserSyncResult(
+            user_id=1,
+            total_transactions=1,
+            indexed=1,
+            updated=0,
+            errors=0,
+            processing_time=0.0,
+        )
+    )
+
+    app = create_test_app(processor_mock, dummy_db, dummy_user)
+    client = TestClient(app)
+
+    response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
+    assert response.status_code == 200

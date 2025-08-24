@@ -69,6 +69,9 @@ class QueryBuilder:
             "from": request.offset
         }
 
+        if request.highlight:
+            query["highlight"] = request.highlight
+
         logger.info(
             f"Pagination utilisée - page: {page}, page_size: {page_size}, offset: {offset}"
         )

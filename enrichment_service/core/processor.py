@@ -10,13 +10,14 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from enrichment_service.models import (
-    TransactionInput, 
+    TransactionInput,
     BatchTransactionInput,
-    ElasticsearchEnrichmentResult, 
+    ElasticsearchEnrichmentResult,
     BatchEnrichmentResult,
     UserSyncResult,
-    StructuredTransaction
+    StructuredTransaction,
 )
+from enrichment_service.core.data_quality_validator import DataQualityValidator
 
 logger = logging.getLogger(__name__)
 
@@ -34,66 +35,99 @@ class ElasticsearchTransactionProcessor:
             elasticsearch_client: Instance du client Elasticsearch
         """
         self.elasticsearch_client = elasticsearch_client
+        self.validator = DataQualityValidator()
         logger.info("ElasticsearchTransactionProcessor initialisé")
     
+    
+
+
     async def process_single_transaction(
-        self, 
+        self,
         transaction: TransactionInput,
-        force_update: bool = False
+        force_update: bool = False,
     ) -> ElasticsearchEnrichmentResult:
         """
         Traite et indexe une transaction unique dans Elasticsearch.
-        
+
         Args:
             transaction: Transaction à traiter
             force_update: Force la mise à jour même si elle existe
-            
+
         Returns:
             ElasticsearchEnrichmentResult: Résultat du traitement
         """
         start_time = time.time()
         user_id = transaction.user_id
         transaction_id = transaction.bridge_transaction_id
-        
+
         logger.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
-        
+
         try:
             # 1. Structurer la transaction
             structured_tx = StructuredTransaction.from_transaction_input(transaction)
             logger.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
-            
-            # 2. Générer l'ID du document
+
+            # 2. Valider la qualité des données
+            is_valid, quality_score, flags = self.validator.evaluate(transaction)
+            structured_tx.quality_score = quality_score
+            if not is_valid:
+                processing_time = time.time() - start_time
+                logger.warning(
+                    f"🚫 Qualité insuffisante pour transaction {transaction_id}: {flags}"
+                )
+                return ElasticsearchEnrichmentResult(
+                    transaction_id=transaction_id,
+                    user_id=user_id,
+                    searchable_text=structured_tx.searchable_text,
+                    document_id="",
+                    indexed=False,
+                    metadata={
+                        "action": "skipped",
+                        "reason": "data_quality",
+                        "quality_score": quality_score,
+                        "flags": flags,
+                    },
+                    processing_time=processing_time,
+                    status="skipped",
+                )
+
+            # 3. Générer l'ID du document
             document_id = structured_tx.get_document_id()
-            
-            # 3. Vérifier si le document existe déjà (si pas de force_update)
+
+            # 4. Vérifier si le document existe déjà (si pas de force_update)
             if not force_update:
                 exists = await self.elasticsearch_client.document_exists(document_id)
                 if exists:
                     logger.debug(f"⏭️ Transaction {transaction_id} existe déjà, ignorée")
                     processing_time = time.time() - start_time
-                    
                     return ElasticsearchEnrichmentResult(
                         transaction_id=transaction_id,
                         user_id=user_id,
                         searchable_text=structured_tx.searchable_text,
                         document_id=document_id,
                         indexed=False,
-                        metadata={"action": "skipped", "reason": "document_exists"},
+                        metadata={
+                            "action": "skipped",
+                            "reason": "document_exists",
+                            "quality_score": quality_score,
+                        },
                         processing_time=processing_time,
-                        status="skipped"
+                        status="skipped",
                     )
-            
-            # 4. Indexer dans Elasticsearch
+
+            # 5. Indexer dans Elasticsearch
             success = await self.elasticsearch_client.index_document(
                 document_id=document_id,
-                document=structured_tx.to_elasticsearch_document()
+                document=structured_tx.to_elasticsearch_document(),
             )
-            
+
             processing_time = time.time() - start_time
-            
+
             if success:
-                logger.debug(f"✅ Transaction {transaction_id} indexée avec succès ({processing_time:.3f}s)")
-                
+                logger.debug(
+                    f"✅ Transaction {transaction_id} indexée avec succès ({processing_time:.3f}s)"
+                )
+
                 return ElasticsearchEnrichmentResult(
                     transaction_id=transaction_id,
                     user_id=user_id,
@@ -103,30 +137,33 @@ class ElasticsearchTransactionProcessor:
                     metadata={
                         "action": "created" if not force_update else "updated",
                         "elasticsearch_index": self.elasticsearch_client.index_name,
-                        "document_size": len(str(structured_tx.to_elasticsearch_document()))
+                        "document_size": len(
+                            str(structured_tx.to_elasticsearch_document())
+                        ),
+                        "quality_score": quality_score,
                     },
                     processing_time=processing_time,
-                    status="success"
+                    status="success",
                 )
             else:
                 logger.error(f"❌ Échec indexation transaction {transaction_id}")
-                
+
                 return ElasticsearchEnrichmentResult(
                     transaction_id=transaction_id,
                     user_id=user_id,
                     searchable_text=structured_tx.searchable_text,
                     document_id=document_id,
                     indexed=False,
-                    metadata={"action": "failed"},
+                    metadata={"action": "failed", "quality_score": quality_score},
                     processing_time=processing_time,
                     status="error",
-                    error_message="Elasticsearch indexing failed"
+                    error_message="Elasticsearch indexing failed",
                 )
-                
+
         except Exception as e:
             processing_time = time.time() - start_time
             logger.error(f"💥 Exception traitement transaction {transaction_id}: {e}")
-            
+
             return ElasticsearchEnrichmentResult(
                 transaction_id=transaction_id,
                 user_id=user_id,
@@ -136,71 +173,86 @@ class ElasticsearchTransactionProcessor:
                 metadata={"action": "error"},
                 processing_time=processing_time,
                 status="error",
-                error_message=str(e)
+                error_message=str(e),
             )
-    
+
     async def process_transactions_batch(
-        self, 
+        self,
         batch_input: BatchTransactionInput,
-        force_update: bool = False
+        force_update: bool = False,
     ) -> BatchEnrichmentResult:
         """
         Traite un lot de transactions en mode bulk Elasticsearch.
-        
+
         Args:
             batch_input: Lot de transactions à traiter
             force_update: Force la mise à jour même si elles existent
-            
+
         Returns:
             BatchEnrichmentResult: Résultat du traitement en lot
         """
         start_time = time.time()
         user_id = batch_input.user_id
         transactions = batch_input.transactions
-        
+
         logger.info(f"🔄 Traitement en lot: {len(transactions)} transactions pour user {user_id}")
-        
+
         try:
-            # 1. Structurer toutes les transactions
             structured_transactions = []
             documents_to_index = []
-            
+            results = []
+            errors = []
+            valid_pairs = []
+
             for tx in transactions:
                 structured_tx = StructuredTransaction.from_transaction_input(tx)
+                is_valid, quality_score, flags = self.validator.evaluate(tx)
+                structured_tx.quality_score = quality_score
+                if not is_valid:
+                    results.append(
+                        ElasticsearchEnrichmentResult(
+                            transaction_id=tx.bridge_transaction_id,
+                            user_id=user_id,
+                            searchable_text=structured_tx.searchable_text,
+                            document_id="",
+                            indexed=False,
+                            metadata={
+                                "batch_processing": True,
+                                "reason": "data_quality",
+                                "quality_score": quality_score,
+                                "flags": flags,
+                            },
+                            processing_time=0,
+                            status="skipped",
+                        )
+                    )
+                    errors.append(f"Transaction {tx.bridge_transaction_id}: data_quality")
+                    continue
                 structured_transactions.append(structured_tx)
-                
-                # Préparer le document pour l'indexation bulk
+                valid_pairs.append((tx, structured_tx))
                 document_id = structured_tx.get_document_id()
                 documents_to_index.append({
                     "id": document_id,
                     "document": structured_tx.to_elasticsearch_document(),
-                    "transaction_id": tx.bridge_transaction_id
+                    "transaction_id": tx.bridge_transaction_id,
                 })
-            
+
             logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
-            
-            # 2. Indexation bulk dans Elasticsearch
+
             bulk_result = await self.elasticsearch_client.bulk_index_documents(
                 documents_to_index,
-                force_update=force_update
+                force_update=force_update,
             )
-            
-            # 3. Analyser les résultats du bulk
+
             processing_time = time.time() - start_time
             successful = bulk_result.get("indexed", 0)
-            failed = bulk_result.get("errors", 0)
+            failed = bulk_result.get("errors", 0) + len([r for r in results if r.status == "skipped"])
             total = len(transactions)
-            
-            # 4. Créer les résultats individuels
-            results = []
-            errors = []
-            
+
             bulk_responses = bulk_result.get("responses", [])
-            
-            for i, (tx, structured_tx) in enumerate(zip(transactions, structured_transactions)):
+
+            for i, (tx, structured_tx) in enumerate(valid_pairs):
                 document_id = structured_tx.get_document_id()
-                
-                # Déterminer le statut basé sur la réponse bulk
                 if i < len(bulk_responses):
                     response = bulk_responses[i]
                     indexed = response.get("success", False)
@@ -210,7 +262,7 @@ class ElasticsearchTransactionProcessor:
                     indexed = False
                     status = "error"
                     error_msg = "No response from bulk operation"
-                
+
                 result = ElasticsearchEnrichmentResult(
                     transaction_id=tx.bridge_transaction_id,
                     user_id=user_id,
@@ -220,19 +272,21 @@ class ElasticsearchTransactionProcessor:
                     metadata={
                         "batch_processing": True,
                         "batch_size": total,
-                        "force_update": force_update
+                        "force_update": force_update,
+                        "quality_score": structured_tx.quality_score,
                     },
-                    processing_time=processing_time / total,  # Temps moyen par transaction
+                    processing_time=processing_time / max(len(valid_pairs), 1),
                     status=status,
-                    error_message=error_msg
+                    error_message=error_msg,
                 )
                 results.append(result)
-                
                 if not indexed and error_msg:
                     errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
-            
-            logger.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
-            
+
+            logger.info(
+                f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s"
+            )
+
             return BatchEnrichmentResult(
                 user_id=user_id,
                 total_transactions=total,
@@ -240,14 +294,13 @@ class ElasticsearchTransactionProcessor:
                 failed=failed,
                 processing_time=processing_time,
                 results=results,
-                errors=errors
+                errors=errors,
             )
-            
+
         except Exception as e:
             processing_time = time.time() - start_time
             logger.error(f"💥 Erreur traitement en lot: {e}")
-            
-            # Créer des résultats d'erreur pour toutes les transactions
+
             results = []
             for tx in transactions:
                 result = ElasticsearchEnrichmentResult(
@@ -259,10 +312,10 @@ class ElasticsearchTransactionProcessor:
                     metadata={"batch_processing": True, "error": "batch_failed"},
                     processing_time=0,
                     status="error",
-                    error_message=str(e)
+                    error_message=str(e),
                 )
                 results.append(result)
-            
+
             return BatchEnrichmentResult(
                 user_id=user_id,
                 total_transactions=len(transactions),
@@ -270,10 +323,9 @@ class ElasticsearchTransactionProcessor:
                 failed=len(transactions),
                 processing_time=processing_time,
                 results=results,
-                errors=[f"Batch processing failed: {str(e)}"]
+                errors=[f"Batch processing failed: {str(e)}"],
             )
-    
-    async def sync_user_transactions(
+async def sync_user_transactions(
         self, 
         user_id: int, 
         transactions: List[TransactionInput],

@@ -97,6 +97,7 @@ class StructuredTransaction:
     # Métadonnées supplémentaires
     is_future: bool
     is_deleted: bool
+    quality_score: float = 1.0
     
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> 'StructuredTransaction':
@@ -165,6 +166,7 @@ class StructuredTransaction:
             "amount_abs": self.amount_abs,
             "transaction_type": self.transaction_type,
             "currency_code": self.currency_code,
+            "quality_score": self.quality_score,
             
             # Dates (optimisées pour les requêtes Elasticsearch)
             "date": self.date.isoformat(),

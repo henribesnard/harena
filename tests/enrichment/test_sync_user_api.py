@@ -1,11 +1,9 @@
 from datetime import datetime
 
 from fastapi import FastAPI
-from datetime import datetime
 import sys
 import types
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -113,7 +111,7 @@ def create_app_and_db():
     return app, es_client, db
 
 
-def test_sync_user_produces_account_metadata():
+def test_sync_user_produces_account_metadata(sample_es_account_response):
     app, es_client, db = create_app_and_db()
     client = TestClient(app)
 
@@ -122,13 +120,8 @@ def test_sync_user_produces_account_metadata():
     assert es_client.documents, "No documents indexed"
 
     doc = es_client.documents[0]["document"]
-    assert doc["transaction_id"] == 10
-    assert doc["account_id"] == 1
-    assert doc["account_name"] == "Main Account"
-    assert doc["account_type"] == "checking"
-    assert doc["account_balance"] == 1000.0
-    assert doc["account_currency"] == "EUR"
-    assert doc["account_last_sync"] == datetime(2024, 1, 2).isoformat()
+    for field, value in sample_es_account_response.items():
+        assert doc[field] == value
 
     db.close()
 

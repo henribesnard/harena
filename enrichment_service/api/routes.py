@@ -173,12 +173,12 @@ async def sync_user_transactions(
             force_refresh=force_refresh,
         )
 
-        logger.info(f"{result.accounts_synced} accounts, {result.indexed} transactions indexed")
+        logger.info(f"{result.accounts_synced} accounts, {result.transactions_indexed} transactions indexed")
         logger.info(
             "📈 Résultat sync user %s: %s tx, %s indexées, %s mises à jour, %s erreurs, %s comptes",
             user_id,
             result.total_transactions,
-            result.indexed,
+            result.transactions_indexed,
             result.updated,
             result.errors,
             result.accounts_synced,

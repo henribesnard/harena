@@ -82,12 +82,6 @@ class StructuredTransaction:
     user_id: int
     account_id: int
 
-    # Informations de compte
-    account_name: Optional[str] = None
-    account_type: Optional[str] = None
-    account_balance: Optional[float] = None
-    account_currency_code: Optional[str] = None
-    
     # Contenu principal
     searchable_text: str
     primary_description: str
@@ -113,12 +107,12 @@ class StructuredTransaction:
     is_deleted: bool
     balance_check_passed: Optional[bool] = None
     quality_score: Optional[float] = None
-    quality_score: float = 1.0
 
     # Informations sur le compte
     account_name: Optional[str] = None
     account_type: Optional[str] = None
     account_balance: Optional[float] = None
+    account_currency_code: Optional[str] = None
     account_currency: Optional[str] = None
     account_last_sync: Optional[datetime] = None
 
@@ -171,10 +165,6 @@ class StructuredTransaction:
             transaction_id=tx.bridge_transaction_id,
             user_id=tx.user_id,
             account_id=tx.account_id,
-            account_name=None,
-            account_type=None,
-            account_balance=None,
-            account_currency_code=None,
             searchable_text=searchable_text,
             primary_description=primary_desc,
             amount=tx.amount,

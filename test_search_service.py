@@ -120,13 +120,19 @@ class SearchServiceTester:
         """Vérifie si un champ existe dans la réponse (support notation pointée)."""
         keys = field_path.split('.')
         current = data
-        
+
         try:
             for key in keys:
                 if isinstance(current, dict):
+                    # Convertir les clés numériques potentielles pour les dictionnaires
+                    key = int(key) if key.isdigit() else key
                     current = current[key]
-                elif isinstance(current, list) and current:
-                    current = current[0][key]
+                elif isinstance(current, list):
+                    # Gérer les indices de liste avec conversion en entier et contrôle des erreurs
+                    try:
+                        current = current[int(key)]
+                    except (ValueError, IndexError, TypeError):
+                        return False
                 else:
                     return False
             return current is not None

@@ -102,7 +102,20 @@ class SearchRequest(BaseModel):
             if field not in allowed_fields:
                 # On log un warning mais on ne bloque pas pour la flexibilité
                 pass
-        
+
+        return v
+
+    @field_validator('highlight')
+    @classmethod
+    def validate_highlight(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Validation simple de la structure de surlignage"""
+        if v is None:
+            return None
+        if not isinstance(v, dict):
+            raise ValueError("highlight must be a dictionary")
+        fields = v.get('fields')
+        if not isinstance(fields, dict) or not fields:
+            raise ValueError("highlight must contain a non-empty 'fields' mapping")
         return v
     
     model_config = ConfigDict(

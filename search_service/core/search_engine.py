@@ -78,6 +78,7 @@ class SearchEngine:
             query=request.query,
             filters=json.dumps(request.filters, sort_keys=True),
             aggregations=json.dumps(request.aggregations, sort_keys=True),
+            highlight=json.dumps(request.highlight, sort_keys=True),
             aggregation_only=request.aggregation_only,
             offset=request.offset,
             page_size=request.page_size,

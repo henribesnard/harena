@@ -307,99 +307,32 @@ class ElasticsearchClient:
             return False
     
     async def index_transactions_batch(
-        self,
-        structured_transactions: List,
-        initial_batch_size: int = None,
-        max_retries: int = 3,
-        target_time: float = 2.0,
+        self, structured_transactions: List
     ) -> Dict[str, Any]:
-        """Indexe un lot de transactions dans Elasticsearch."""
+        """Indexe un lot de transactions en déléguant à ``bulk_index_documents``.
+
+        Cette méthode est conservée pour compatibilité mais utilise désormais
+        exclusivement ``StructuredTransaction.to_elasticsearch_document()`` pour
+        générer les documents avant de les passer au bulk indexer.
+        """
 
         if not self._initialized:
             raise ValueError("ElasticsearchClient not initialized")
 
         if not structured_transactions:
-            return {"indexed": 0, "errors": 0, "total": 0}
+            return {"indexed": 0, "errors": 0, "total": 0, "responses": []}
 
-        # Préparer le bulk request
-        bulk_body: List[str] = []
+        documents_to_index = []
         for tx in structured_transactions:
-            doc_id = f"user_{tx.user_id}_tx_{tx.transaction_id}"
-
-            # Action header
-            bulk_body.append(
-                json.dumps({"index": {"_index": self.index_name, "_id": doc_id}})
+            documents_to_index.append(
+                {
+                    "id": tx.get_document_id(),
+                    "document": tx.to_elasticsearch_document(),
+                    "transaction_id": tx.transaction_id,
+                }
             )
 
-            # Document data
-            doc = {
-                "user_id": tx.user_id,
-                "transaction_id": tx.transaction_id,
-                "account_id": tx.account_id,
-                "account_name": getattr(tx, "account_name", ""),
-                "account_type": getattr(tx, "account_type", ""),
-                "account_balance": getattr(tx, "account_balance", None),
-                "account_currency": getattr(tx, "account_currency", ""),
-                "searchable_text": tx.searchable_text,
-                "primary_description": tx.primary_description,
-                "merchant_name": getattr(tx, "merchant_name", ""),
-                "amount": tx.amount,
-                "amount_abs": tx.amount_abs,
-                "transaction_type": tx.transaction_type,
-                "currency_code": tx.currency_code,
-                "quality_score": getattr(tx, "quality_score", 1.0),
-                "date": tx.date_str,
-                "transaction_date": tx.date_str,
-                "month_year": tx.month_year,
-                "weekday": tx.weekday,
-                "category_id": tx.category_id,
-                "operation_type": tx.operation_type,
-                "is_future": tx.is_future,
-                "is_deleted": tx.is_deleted,
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-            }
-            bulk_body.append(json.dumps(doc))
-
-        bulk_data = "\n".join(bulk_body) + "\n"
-
-        try:
-            async with self.session.post(
-                f"{self.base_url}/{self.index_name}/_bulk",
-                data=bulk_data,
-                headers={"Content-Type": "application/x-ndjson"},
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-
-                    indexed_count = 0
-                    error_count = 0
-                    for item in result.get("items", []):
-                        if "index" in item:
-                            if item["index"].get("status") in [200, 201]:
-                                indexed_count += 1
-                            else:
-                                error_count += 1
-                                logger.error(f"❌ Erreur bulk item: {item['index']}")
-
-                    return {
-                        "indexed": indexed_count,
-                        "errors": error_count,
-                        "total": len(structured_transactions),
-                    }
-
-                error_text = await response.text()
-                logger.error(
-                    f"❌ Bulk indexation failed: {response.status} - {error_text}"
-                )
-        except Exception as e:
-            logger.error(f"❌ Exception bulk indexation: {e}")
-
-        return {
-            "indexed": 0,
-            "errors": len(structured_transactions),
-            "total": len(structured_transactions),
-        }
+        return await self.bulk_index_documents(documents_to_index)
     
     async def delete_user_transactions(self, user_id: int) -> bool:
         """

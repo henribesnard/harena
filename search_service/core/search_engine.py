@@ -288,8 +288,11 @@ class SearchEngine:
         VERSION CORRIGÉE - Robuste aux données manquantes/nulles
         """
         results = []
-        
+
         hits = es_response.get('hits', {}).get('hits', [])
+        if not hits:
+            logger.debug("No hits returned from Elasticsearch")
+            return []
         logger.debug(f"Processing {len(hits)} hits from Elasticsearch")
         
         for i, hit in enumerate(hits):

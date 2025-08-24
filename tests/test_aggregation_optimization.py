@@ -49,6 +49,16 @@ def test_aggregation_only_returns_no_results_but_same_aggregations():
 
         async def fake_exec(es_query, request):
             return agg_response if request.aggregation_only else base_response
+def test_aggregation_only_returns_no_results_but_same_aggregations():
+    """Standard query vs aggregation_only should yield same aggregations"""
+    base_payload = {
+        "user_id": 1,
+        "query": "",
+        "page": 1,
+        "page_size": 5,
+        "aggregations": {"operation_type": {"terms": {"field": "operation_type"}}},
+    }
+    agg_only_payload = {**base_payload, "aggregation_only": True}
 
         with patch.object(engine, "_execute_search", side_effect=fake_exec):
             full_resp = await engine.search(base_request)

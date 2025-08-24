@@ -45,7 +45,9 @@ class QueryBuilder:
                 }
             },
             "sort": self._build_sort_criteria(request),
-            "_source": self._get_source_fields()
+            "_source": self._get_source_fields(),
+            "size": request.limit,
+            "from": request.offset
         }
         
         logger.debug(f"Built query with {len(must_filters)} filters")
@@ -132,37 +134,178 @@ class QueryBuilder:
     def build_aggregation_query(
         self, request: SearchRequest, aggregation: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Construction d'une requête avec agrégations simples.
-
+        """Construction d'une requête avec agrégations Elasticsearch natives.
+        
+        ✅ CORRECTION MAJEURE : Supporte maintenant les deux formats :
+        1. Format Elasticsearch natif (PRIORITÉ) : {"my_agg": {"sum": {"field": "amount"}}}
+        2. Format abstrait legacy : {"group_by": [...], "metrics": [...]}
+        
         Args:
             request: Requête de recherche de base.
-            aggregation: Paramètres d'agrégation optionnels comprenant
-                ``group_by`` et ``metrics``.
+            aggregation: Agrégations au format Elasticsearch natif ou abstrait.
         """
         base_query = self.build_query(request)
 
-        aggregation = aggregation or {}
+        if not aggregation:
+            logger.debug("No aggregations provided")
+            return base_query
+
         aggregations: Dict[str, Any] = {}
-        group_by = aggregation.get("group_by") or []
-        metrics = aggregation.get("metrics") or []
 
-        if group_by:
-            for field in group_by:
-                field_name = self._get_filter_field_name(field)
-                agg_def: Dict[str, Any] = {
-                    "terms": {"field": field_name, "size": 10}
-                }
-                sub_aggs: Dict[str, Any] = {}
-                if "sum" in metrics:
-                    sub_aggs["amount_sum"] = {"sum": {"field": "amount"}}
-                if sub_aggs:
-                    agg_def["aggs"] = sub_aggs
-                aggregations[f"{field}_terms"] = agg_def
-        elif "sum" in metrics:
-            aggregations["amount_sum"] = {"sum": {"field": "amount"}}
+        # ✅ NOUVEAU : Détection et traitement du format Elasticsearch natif
+        if self._is_elasticsearch_native_format(aggregation):
+            logger.debug("Processing Elasticsearch native aggregation format")
+            # Validation et passage direct des agrégations
+            validated_aggs = self._validate_elasticsearch_aggregations(aggregation)
+            aggregations = validated_aggs
+        
+        # ✅ ANCIEN : Support format abstrait pour compatibilité arrière
+        else:
+            logger.debug("Processing legacy abstract aggregation format")
+            group_by = aggregation.get("group_by") or []
+            metrics = aggregation.get("metrics") or []
 
+            if group_by:
+                for field in group_by:
+                    field_name = self._get_filter_field_name(field)
+                    agg_def: Dict[str, Any] = {
+                        "terms": {"field": field_name, "size": 10}
+                    }
+                    sub_aggs: Dict[str, Any] = {}
+                    if "sum" in metrics:
+                        sub_aggs["amount_sum"] = {"sum": {"field": "amount"}}
+                    if sub_aggs:
+                        agg_def["aggs"] = sub_aggs
+                    aggregations[f"{field}_terms"] = agg_def
+            elif "sum" in metrics:
+                aggregations["amount_sum"] = {"sum": {"field": "amount"}}
+
+        # Ajouter les agrégations à la requête finale
         if aggregations:
             base_query["aggs"] = aggregations
-            base_query["size"] = min(request.limit, 10)
+            logger.info(f"Added {len(aggregations)} aggregations to query: {list(aggregations.keys())}")
+        else:
+            logger.warning("No valid aggregations generated from input")
 
         return base_query
+
+    def _is_elasticsearch_native_format(self, aggregation: Dict[str, Any]) -> bool:
+        """Détecte si les agrégations sont au format Elasticsearch natif.
+        
+        Format natif : {"total_sum": {"sum": {"field": "amount_abs"}}}
+        Format abstrait : {"group_by": ["category"], "metrics": ["sum"]}
+        """
+        # Si contient les clés abstraites, c'est l'ancien format
+        abstract_keys = {"group_by", "metrics", "types"}
+        if any(key in aggregation for key in abstract_keys):
+            return False
+        
+        # Vérifier que c'est bien du format Elasticsearch natif
+        elasticsearch_agg_types = {
+            # Métriques simples
+            "sum", "avg", "min", "max", "value_count", "cardinality",
+            "stats", "extended_stats", "percentiles", "percentile_ranks",
+            
+            # Buckets
+            "terms", "date_histogram", "histogram", "range", "date_range",
+            "filters", "filter", "missing", "nested", "reverse_nested",
+            "global", "sampler", "diversified_sampler"
+        }
+        
+        # Vérifier chaque agrégation
+        for agg_name, agg_def in aggregation.items():
+            if not isinstance(agg_def, dict):
+                continue
+                
+            # Chercher un type d'agrégation ES valide au niveau racine
+            agg_types_found = set(agg_def.keys()) & elasticsearch_agg_types
+            if agg_types_found:
+                return True
+                
+            # Vérifier les sous-agrégations (aggs)
+            if "aggs" in agg_def and isinstance(agg_def["aggs"], dict):
+                return True
+        
+        return False
+
+    def _validate_elasticsearch_aggregations(self, aggregation: Dict[str, Any]) -> Dict[str, Any]:
+        """Valide et nettoie les agrégations Elasticsearch natives.
+        
+        Effectue une validation basique pour éviter les injections malveillantes
+        et s'assurer que les champs référencés existent.
+        """
+        # Champs autorisés pour les agrégations
+        allowed_fields = {
+            "amount", "amount_abs", "date", "transaction_id", "user_id", "account_id",
+            "currency_code", "transaction_type", "operation_type", "category_name",
+            "merchant_name", "primary_description", "month_year", "weekday"
+        }
+        
+        validated = {}
+        
+        for agg_name, agg_def in aggregation.items():
+            # Validation nom agrégation (pas d'injection)
+            if not isinstance(agg_name, str) or len(agg_name) > 100:
+                logger.warning(f"Invalid aggregation name: {agg_name}")
+                continue
+                
+            if not isinstance(agg_def, dict):
+                logger.warning(f"Invalid aggregation definition for {agg_name}")
+                continue
+                
+            # Validation récursive de la définition
+            validated_def = self._validate_aggregation_definition(agg_def, allowed_fields)
+            if validated_def:
+                validated[agg_name] = validated_def
+        
+        logger.debug(f"Validated aggregations: {list(validated.keys())}")
+        return validated
+
+    def _validate_aggregation_definition(self, agg_def: Dict[str, Any], allowed_fields: set) -> Optional[Dict[str, Any]]:
+        """Valide récursivement une définition d'agrégation."""
+        validated = {}
+        
+        for key, value in agg_def.items():
+            # Clé 'field' - valider que le champ existe
+            if key == "field" and isinstance(value, str):
+                # Retirer .keyword pour la validation
+                field_name = value.replace(".keyword", "")
+                if field_name in allowed_fields:
+                    validated[key] = value
+                else:
+                    logger.warning(f"Field not allowed in aggregation: {value}")
+                    return None  # Rejeter toute l'agrégation
+            
+            # Clé 'aggs' - validation récursive
+            elif key == "aggs" and isinstance(value, dict):
+                sub_aggs = {}
+                for sub_name, sub_def in value.items():
+                    validated_sub = self._validate_aggregation_definition(sub_def, allowed_fields)
+                    if validated_sub:
+                        sub_aggs[sub_name] = validated_sub
+                if sub_aggs:
+                    validated[key] = sub_aggs
+            
+            # Autres clés - passage direct avec validation basique
+            else:
+                # Limiter les valeurs numériques
+                if isinstance(value, (int, float)):
+                    if -1000000 <= value <= 1000000:  # Limites raisonnables
+                        validated[key] = value
+                    else:
+                        logger.warning(f"Numeric value out of range: {value}")
+                        return None
+                
+                # Strings courtes seulement
+                elif isinstance(value, str) and len(value) <= 100:
+                    validated[key] = value
+                
+                # Dictionnaires et listes - passage direct
+                elif isinstance(value, (dict, list)):
+                    validated[key] = value
+                
+                else:
+                    logger.warning(f"Invalid value type for key {key}: {type(value)}")
+                    return None
+        
+        return validated if validated else None

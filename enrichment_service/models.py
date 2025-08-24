@@ -33,7 +33,6 @@ class TransactionInput(BaseModel):
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False
-    recent_transactions: List[float] = []
     recent_transactions: List[float] = Field(default_factory=list)
 
 

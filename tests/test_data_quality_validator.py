@@ -36,7 +36,9 @@ def test_structured_transaction_includes_quality_fields():
     assert doc["balance_check_passed"] is True
     assert doc["quality_score"] == 1.0
 from datetime import datetime
-from enrichment_service.core.data_quality_validator import DataQualityValidator
+from enrichment_service.core.data_quality_validator import (
+    DataQualityValidator as CoreDataQualityValidator,
+)
 from enrichment_service.models import TransactionInput
 
 
@@ -54,7 +56,7 @@ def make_tx(**kwargs):
 
 
 def test_detect_amount_anomaly():
-    validator = DataQualityValidator(amount_threshold=1000)
+    validator = CoreDataQualityValidator(amount_threshold=1000)
     tx = make_tx(amount=5000)
     assert validator.detect_amount_anomalies(tx)
     is_valid, score, flags = validator.evaluate(tx)
@@ -64,7 +66,7 @@ def test_detect_amount_anomaly():
 
 
 def test_missing_currency_code_inconsistency():
-    validator = DataQualityValidator()
+    validator = CoreDataQualityValidator()
     tx = make_tx(currency_code=None)
     assert not validator.validate_transaction_consistency(tx)
     is_valid, score, flags = validator.evaluate(tx)
@@ -73,7 +75,7 @@ def test_missing_currency_code_inconsistency():
 
 
 def test_account_balance_inconsistency():
-    validator = DataQualityValidator()
+    validator = CoreDataQualityValidator()
     tx = make_tx(amount=-150)
     assert not validator.validate_account_balance_consistency(tx, account_balance=100)
     is_valid, score, flags = validator.evaluate(tx, account_balance=100)

@@ -414,7 +414,6 @@ class ElasticsearchTransactionProcessor:
                         "quality_score": structured_tx.quality_score,
                     },
                     processing_time=processing_time / total if total else 0,
-                    processing_time=processing_time / max(len(valid_pairs), 1),
 
                     status=status,
                     error_message=error_msg,
@@ -423,12 +422,6 @@ class ElasticsearchTransactionProcessor:
 
                 if not indexed and error_msg:
                     errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
-
-            logger.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
-                if not indexed and error_msg:
-                    errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
-            
-            log.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
 
             cache_hits = len([r for r in results if r.status == "skipped"])
             if cache_hits:
@@ -562,114 +555,3 @@ async def sync_user_transactions(
                 error_details=[f"Sync failed: {str(e)}"]
             )
     
-    async def delete_user_data(self, user_id: int) -> Dict[str, Any]:
-        """
-        Supprime toutes les données d'un utilisateur d'Elasticsearch.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            
-        Returns:
-            Dict: Résultat de la suppression
-        """
-        logger.info(f"🗑️ Suppression des données pour user {user_id}")
-        
-        try:
-            deleted_count = await self.elasticsearch_client.delete_user_transactions(user_id)
-            
-            logger.info(f"✅ {deleted_count} documents supprimés pour user {user_id}")
-            
-            return {
-                "user_id": user_id,
-                "deleted_count": deleted_count,
-                "status": "success",
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur suppression user {user_id}: {e}")
-            
-            return {
-                "user_id": user_id,
-                "deleted_count": 0,
-                "status": "error",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
-    
-    async def get_user_stats(self, user_id: int) -> Dict[str, Any]:
-        """
-        Récupère les statistiques d'un utilisateur dans Elasticsearch.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            
-        Returns:
-            Dict: Statistiques de l'utilisateur
-        """
-        try:
-            stats = await self.elasticsearch_client.get_user_statistics(user_id)
-            
-            return {
-                "user_id": user_id,
-                "timestamp": datetime.now().isoformat(),
-                "elasticsearch_stats": stats,
-                "status": "success"
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération stats user {user_id}: {e}")
-            
-            return {
-                "user_id": user_id,
-                "timestamp": datetime.now().isoformat(),
-                "elasticsearch_stats": {},
-                "status": "error",
-                "error": str(e)
-            }
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """
-        Vérifie l'état de santé du processeur et d'Elasticsearch.
-        
-        Returns:
-            Dict: Statut de santé
-        """
-        try:
-            # Vérifier la disponibilité d'Elasticsearch
-            es_healthy = await self.elasticsearch_client.health_check()
-            
-            # Obtenir des métriques de base
-            es_info = await self.elasticsearch_client.get_cluster_info() if es_healthy else {}
-            
-            return {
-                "processor": "ElasticsearchTransactionProcessor",
-                "version": "2.0.0",
-                "status": "healthy" if es_healthy else "degraded",
-                "timestamp": datetime.now().isoformat(),
-                "elasticsearch": {
-                    "available": es_healthy,
-                    "cluster_info": es_info,
-                    "index_name": self.elasticsearch_client.index_name if hasattr(self.elasticsearch_client, 'index_name') else "unknown"
-                },
-                "capabilities": {
-                    "single_transaction_processing": True,
-                    "batch_processing": True,
-                    "user_sync": True,
-                    "data_deletion": True,
-                    "statistics": True
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur health check: {e}")
-            
-            return {
-                "processor": "ElasticsearchTransactionProcessor", 
-                "version": "2.0.0",
-                "status": "error",
-                "timestamp": datetime.now().isoformat(),
-                "error": str(e),
-                "elasticsearch": {"available": False},
-                "capabilities": {}
-            }

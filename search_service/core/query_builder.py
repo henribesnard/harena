@@ -88,6 +88,8 @@ class QueryBuilder:
             logger.critical(f"🔥 TRI PERSONNALISÉ UTILISÉ: {sort_criteria}")
         else:
             sort_criteria = self._build_sort_criteria(request)
+
+        sort_criteria = self._build_sort_criteria(request)
         query = {
             "query": {"bool": bool_query},
             "sort": sort_criteria,
@@ -95,6 +97,10 @@ class QueryBuilder:
             "size": request.page_size,
             "from": request.offset
         }
+
+        # Activer le tracking des scores lorsque _score est utilisé avec au moins un autre tri
+        if any("_score" in field for field in sort_criteria) and len(sort_criteria) > 1:
+            query["track_scores"] = True
 
         # ✅ CORRECTION HIGHLIGHTING : Toujours ajouté si demandé
         if request.highlight:

@@ -53,6 +53,14 @@ class FailingILMSession(MockSession):
         return MockResponse()
 
 
+class ForbiddenTemplateSession(MockSession):
+    def put(self, url, json):
+        self.calls.append((url, json))
+        if "_index_template" in url:
+            return MockResponse(status=403, text="Forbidden")
+        return MockResponse()
+
+
 @pytest.mark.asyncio
 async def test_ensure_template_and_policy_bypasses_ilm_on_error():
     session = FailingILMSession()
@@ -64,6 +72,32 @@ async def test_ensure_template_and_policy_bypasses_ilm_on_error():
     )
 
     # Template call should not contain ILM settings
-    settings = session.calls[1][1]["template"]["settings"]
-    assert "index.lifecycle.name" not in settings
-    assert "index.lifecycle.rollover_alias" not in settings
+    tmpl_settings = session.calls[1][1]["template"]["settings"]
+    assert "index.lifecycle.name" not in tmpl_settings
+    assert "index.lifecycle.rollover_alias" not in tmpl_settings
+
+
+@pytest.mark.asyncio
+async def test_ensure_template_and_policy_continues_on_template_forbidden():
+    session = ForbiddenTemplateSession()
+    await ensure_template_and_policy(session, "http://es:9200")
+
+    # Both ILM policy and template endpoints are called
+    assert session.calls[0][0] == (
+        "http://es:9200/_ilm/policy/harena_transactions_policy"
+    )
+    assert session.calls[1][0] == (
+        "http://es:9200/_index_template/harena_transactions_template"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ensure_template_and_policy_skipped_when_disabled(monkeypatch):
+    session = MockSession()
+    monkeypatch.setattr(
+        "enrichment_service.storage.index_management.settings.DISABLE_INDEX_TEMPLATE",
+        True,
+    )
+    await ensure_template_and_policy(session, "http://es:9200")
+
+    assert session.calls == []

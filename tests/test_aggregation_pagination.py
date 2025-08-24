@@ -11,6 +11,11 @@ def _make_hit(idx: int) -> dict:
         "_source": {
             "transaction_id": f"tx_{idx}",
             "user_id": 1,
+            "account_id": 20 + idx,
+            "account_name": f"Account {idx}",
+            "account_type": "checking",
+            "account_balance": 2000.0 + idx,
+            "account_currency": "EUR",
             "amount": float(idx),
             "amount_abs": float(idx),
             "currency_code": "EUR",
@@ -60,5 +65,10 @@ def test_pagination_with_aggregations_returns_all_hits():
         assert len(resp["results"]) == total_hits
         assert resp["response_metadata"]["total_pages"] > 1
         assert resp["response_metadata"]["returned_results"] == total_hits
+        first = resp["results"][0]
+        assert first["account_name"] == "Account 1"
+        assert first["account_type"] == "checking"
+        assert first["account_balance"] == 2001.0
+        assert first["account_currency"] == "EUR"
 
     asyncio.run(_run())

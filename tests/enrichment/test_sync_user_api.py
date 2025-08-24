@@ -123,10 +123,12 @@ def test_sync_user_produces_account_metadata():
 
     doc = es_client.documents[0]["document"]
     assert doc["transaction_id"] == 10
+    assert doc["account_id"] == 1
     assert doc["account_name"] == "Main Account"
     assert doc["account_type"] == "checking"
     assert doc["account_balance"] == 1000.0
     assert doc["account_currency"] == "EUR"
+    assert doc["account_last_sync"] == datetime(2024, 1, 2).isoformat()
 
     db.close()
 

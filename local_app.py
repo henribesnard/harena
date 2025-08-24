@@ -48,63 +48,6 @@ class ServiceLoader:
         self.services_status = {}
         self.search_service_initialized = False
         self.search_service_error = None
-    
-    async def initialize_search_service(self, app: FastAPI):
-        """Initialise le search_service - COPIE EXACTE"""
-        logger.info("🔍 Initialisation du search_service...")
-        
-        try:
-            # Vérifier BONSAI_URL
-            bonsai_url = settings.BONSAI_URL
-            if not bonsai_url:
-                raise ValueError("BONSAI_URL n'est pas configurée")
-            
-            logger.info(f"📡 BONSAI_URL configurée: {bonsai_url[:50]}...")
-            
-            # Import des modules search_service avec nouvelle architecture
-            from search_service.core import initialize_default_client
-            from search_service.api import initialize_search_engine
-            
-            # Initialiser le client Elasticsearch
-            logger.info("📡 Initialisation du client Elasticsearch...")
-            elasticsearch_client = await initialize_default_client()
-            logger.info("✅ Client Elasticsearch initialisé")
-            
-            # Test de connexion
-            health = await elasticsearch_client.health_check()
-            if health.get("status") != "healthy":
-                logger.warning(f"⚠️ Elasticsearch health: {health}")
-            else:
-                logger.info("✅ Test de connexion Elasticsearch réussi")
-            
-            # Initialiser le moteur de recherche
-            logger.info("🔍 Initialisation du moteur de recherche...")
-            initialize_search_engine(elasticsearch_client)
-            logger.info("✅ Moteur de recherche initialisé")
-            
-            # Mettre les composants dans app.state pour les routes
-            app.state.service_initialized = True
-            app.state.elasticsearch_client = elasticsearch_client
-            app.state.initialization_error = None
-            
-            self.search_service_initialized = True
-            self.search_service_error = None
-            
-            logger.info("🎉 Search Service complètement initialisé!")
-            return True
-            
-        except Exception as e:
-            error_msg = f"Erreur initialisation search_service: {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            
-            # Marquer l'échec dans app.state
-            app.state.service_initialized = False
-            app.state.elasticsearch_client = None
-            app.state.initialization_error = error_msg
-            
-            self.search_service_initialized = False
-            self.search_service_error = error_msg
-            return False
 
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
         """Charge et enregistre un router de service"""
@@ -316,59 +259,84 @@ def create_app():
                 "version": "2.0.0-elasticsearch"
             }
 
-        # 4. Search Service
+        # 4. Search Service - VERSION CORRIGÉE POUR MES CORRECTIONS
         logger.info("🔍 Chargement et initialisation du search_service...")
         try:
-            # D'abord initialiser les composants Elasticsearch
-            search_init_success = await loader.initialize_search_service(app)
+            # Vérifier BONSAI_URL
+            bonsai_url = settings.BONSAI_URL
+            if not bonsai_url:
+                raise ValueError("BONSAI_URL n'est pas configurée")
             
-            # Ensuite charger les routes avec la méthode standardisée
-            if search_init_success:
-                router_success = loader.load_service_router(
-                    app, 
-                    "search_service", 
-                    "search_service.api.routes", 
-                    "/api/v1/search"
-                )
-                
-                if router_success:
-                    # Initialiser le moteur dans les routes
-                    try:
-                        from search_service.api import initialize_search_engine
-                        elasticsearch_client = getattr(app.state, 'elasticsearch_client', None)
-                        if elasticsearch_client:
-                            initialize_search_engine(elasticsearch_client)
-                            logger.info("✅ Search engine initialisé dans les routes")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Erreur initialisation search engine dans routes: {e}")
-                    
-                    loader.services_status["search_service"]["initialized"] = True
-                    loader.services_status["search_service"]["architecture"] = "simplified_unified"
-                    logger.info("✅ search_service: Complètement initialisé")
-                else:
-                    logger.error("❌ search_service: Initialisation OK mais router non chargé")
-                    loader.services_status["search_service"] = {
-                        "status": "degraded", 
-                        "routes": 0, 
-                        "prefix": "/api/v1/search",
-                        "initialized": True,
-                        "error": "Router loading failed",
-                        "architecture": "simplified_unified"
-                    }
+            logger.info(f"📡 BONSAI_URL configurée: {bonsai_url[:50]}...")
+            
+            # ✅ CORRECTION : Import direct de mes classes corrigées
+            from search_service.core.elasticsearch_client import ElasticsearchClient
+            from search_service.core.search_engine import SearchEngine
+            from search_service.api.routes import router as search_router, initialize_search_engine
+            
+            # Initialiser le client Elasticsearch directement
+            logger.info("📡 Initialisation du client Elasticsearch...")
+            elasticsearch_client = ElasticsearchClient()
+            await elasticsearch_client.initialize()
+            logger.info("✅ Client Elasticsearch initialisé")
+            
+            # Test de connexion
+            health = await elasticsearch_client.health_check()
+            if health.get("status") != "healthy":
+                logger.warning(f"⚠️ Elasticsearch health: {health}")
             else:
-                logger.error("❌ search_service: Initialisation des composants échouée")
-                loader.services_status["search_service"] = {
-                    "status": "error", 
-                    "error": loader.search_service_error,
-                    "architecture": "simplified_unified"
-                }
-                    
+                logger.info("✅ Test de connexion Elasticsearch réussi")
+            
+            # ✅ CORRECTION : Initialisation directe du moteur avec mes corrections
+            search_engine = SearchEngine(
+                elasticsearch_client=elasticsearch_client,
+                cache_enabled=True
+            )
+            logger.info("✅ SearchEngine initialisé avec mes corrections")
+            
+            # Injecter dans les routes
+            initialize_search_engine(elasticsearch_client)
+            
+            # Charger les routes
+            app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+            routes_count = len(search_router.routes) if hasattr(search_router, 'routes') else 0
+            logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search")
+            
+            # Mettre dans app.state
+            app.state.service_initialized = True
+            app.state.elasticsearch_client = elasticsearch_client
+            app.state.search_engine = search_engine
+            app.state.initialization_error = None
+            
+            loader.search_service_initialized = True
+            loader.search_service_error = None
+            
+            loader.services_status["search_service"] = {
+                "status": "ok", 
+                "routes": routes_count, 
+                "prefix": "/api/v1/search",
+                "initialized": True,
+                "architecture": "corrected_direct"
+            }
+            
+            logger.info("🎉 search_service: Complètement initialisé avec corrections!")
+            
         except Exception as e:
-            logger.error(f"❌ search_service: Erreur générale - {str(e)}")
+            error_msg = f"Erreur initialisation search_service: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            
+            # Marquer l'échec
+            app.state.service_initialized = False
+            app.state.elasticsearch_client = None
+            app.state.initialization_error = error_msg
+            
+            loader.search_service_initialized = False
+            loader.search_service_error = error_msg
+            
             loader.services_status["search_service"] = {
                 "status": "error",
-                "error": str(e),
-                "architecture": "simplified_unified"
+                "error": error_msg,
+                "architecture": "corrected_direct"
             }
 
         # Compter les services réussis
@@ -456,7 +424,7 @@ def create_app():
             "search_service_details": {
                 "initialized": loader.search_service_initialized,
                 "error": loader.search_service_error,
-                "architecture": "simplified_unified"
+                "architecture": "corrected_direct"
             },
             "enrichment_service_details": {
                 "architecture": "elasticsearch_only",
@@ -482,7 +450,7 @@ def create_app():
                 "user_service - Gestion utilisateurs",
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
-                "search_service - Recherche lexicale (Architecture simplifiée)",
+                "search_service - Recherche lexicale (Architecture corrigée)",
             ],
             "endpoints": {
                 "/health": "Contrôle santé",

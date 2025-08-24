@@ -1,6 +1,6 @@
 """Schémas de réponse pour le service de recherche."""
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from typing import List, Optional, Dict, Any
 
 class SearchResult(BaseModel):
@@ -32,14 +32,28 @@ class SearchResult(BaseModel):
     category_name: Optional[str] = Field(None, description="Catégorie")
     operation_type: Optional[str] = Field(None, description="Type d'opération")
 
-    # Métadonnées de recherche
-    score: Optional[float] = Field(
-        None, description="Score de pertinence", alias="_score"
+    # ✅ CORRECTION CRITIQUE : Métadonnées de recherche avec garanties
+    score: float = Field(
+        default=0.0, 
+        description="Score de pertinence", 
+        alias="_score"
     )
-    highlights: Optional[Dict[str, List[str]]] = Field(None, description="Surlignade des termes")
+    highlights: Optional[Dict[str, List[str]]] = Field(
+        default=None, 
+        description="Surlignade des termes"
+    )
+
+    # ✅ NOUVEAU : Garantir que _score apparaît toujours dans le JSON
+    @field_serializer('score', when_used='always')
+    def serialize_score(self, value: float) -> float:
+        """Garantit que _score apparaît toujours, même si 0.0"""
+        return value if value is not None else 0.0
 
     model_config = ConfigDict(
         populate_by_name=True,
+        # ✅ CORRECTION : Garantir inclusion des champs par défaut
+        use_enum_values=True,
+        validate_assignment=True,
         json_schema_extra={
             "example": {
                 "transaction_id": "user_34_tx_12345",
@@ -61,7 +75,7 @@ class SearchResult(BaseModel):
                 "category_name": "Restaurant",
                 "operation_type": "card_payment",
                 "_score": 1.0,
-                "highlights": {"primary_description": ["bistrot"]}
+                "highlights": {"primary_description": ["<em>bistrot</em>"]}
             }
         }
     )
@@ -115,7 +129,7 @@ class SearchResponse(BaseModel):
                         "category_name": "Restaurant",
                         "operation_type": "card_payment",
                         "_score": 1.0,
-                        "highlights": {"primary_description": ["bistrot"]}
+                        "highlights": {"primary_description": ["<em>bistrot</em>"]}
                     }
                 ],
                 "total_results": 156,

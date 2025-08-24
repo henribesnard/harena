@@ -1,0 +1,34 @@
+{
+  "title": "Enrichment Service",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Enrichment Throughput",
+      "targets": [
+        {"expr": "rate(enrichment_processing_seconds_count[5m])"}
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Processor Error Rate",
+      "targets": [
+        {"expr": "rate(enrichment_errors_total[5m])"}
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Data Quality Score",
+      "targets": [
+        {"expr": "account_enrichment_data_quality_score"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1
+        }
+      }
+    }
+  ]
+}

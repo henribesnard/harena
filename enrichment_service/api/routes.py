@@ -313,22 +313,28 @@ async def elasticsearch_health(
     """
     try:
         health_status = await processor.health_check()
-        
+        if health_status["status"] != "healthy":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=health_status,
+            )
+
         return ElasticsearchHealthStatus(
             status=health_status["status"],
             timestamp=health_status["timestamp"],
             elasticsearch=health_status["elasticsearch"],
+            database=health_status.get("database"),
             capabilities=health_status["capabilities"],
-            performance_metrics=health_status.get("performance_metrics")
+            performance_metrics=health_status.get("performance_metrics"),
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur health check: {e}")
-        return ElasticsearchHealthStatus(
-            status="error",
-            timestamp=datetime.now().isoformat(),
-            elasticsearch={"available": False, "error": str(e)},
-            capabilities={}
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
         )
 
 @router.get("/elasticsearch/user-stats/{user_id}")

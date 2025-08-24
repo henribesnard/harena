@@ -243,5 +243,6 @@ class ElasticsearchHealthStatus(BaseModel):
     status: str
     timestamp: str
     elasticsearch: Dict[str, Any]
+    database: Optional[Dict[str, Any]] = None
     capabilities: Dict[str, bool]
     performance_metrics: Optional[Dict[str, Any]] = None

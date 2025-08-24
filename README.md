@@ -152,6 +152,23 @@ This script runs `search_service/scripts/seed_transactions.py` and requires an
 Elasticsearch instance accessible via the `BONSAI_URL` environment variable
 or a local node at `http://localhost:9200`.
 
+## Elasticsearch index migration
+
+The `harena_transactions` index now includes account metadata
+(`account_name`, `account_type`, `account_balance`,
+`account_currency_code`) and custom analyzers (`french_financial`,
+`merchant_analyzer`). Each text field also exposes a `.keyword` subfield
+for exact filtering.
+
+To migrate existing data into the new mapping run:
+
+```bash
+python scripts/migrate_es_index.py
+```
+
+The script creates a new `<index>_v2` index with the updated mapping and
+reindexes all documents from the current index.
+
 ## Search Service models
 
 Les modèles Pydantic exposés par le Search Service se trouvent dans le dossier

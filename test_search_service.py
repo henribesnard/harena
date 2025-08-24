@@ -128,12 +128,9 @@ class SearchServiceTester:
                     key = int(key) if key.isdigit() else key
                     current = current[key]
                 elif isinstance(current, list):
-                    index = int(key)
-                    current = current[index]
-                    # Gérer les indices de liste avec conversion en entier et contrôle des erreurs
                     try:
                         current = current[int(key)]
-                    except (ValueError, IndexError, TypeError):
+                    except (ValueError, IndexError):
                         return False
 
                 else:

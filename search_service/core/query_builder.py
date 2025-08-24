@@ -88,8 +88,6 @@ class QueryBuilder:
             logger.critical(f"🔥 TRI PERSONNALISÉ UTILISÉ: {sort_criteria}")
         else:
             sort_criteria = self._build_sort_criteria(request)
-
-        sort_criteria = self._build_sort_criteria(request)
         query = {
             "query": {"bool": bool_query},
             "sort": sort_criteria,

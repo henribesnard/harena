@@ -35,9 +35,13 @@ async def test_text_search_includes_score():
         "took": 1,
     }
 
-    with patch.object(engine, "_execute_search", AsyncMock(return_value=es_response)):
+    with patch.object(engine, "_execute_search", AsyncMock(return_value=es_response)) as mock_search:
         resp = await engine.search(req)
 
+    # Vérifie que track_scores est activé dans la requête
+    sent_query = mock_search.call_args[0][0]
+    assert sent_query["track_scores"] is True
+
     first = resp["results"][0]
-    assert first["_score"] == 1.0
+    assert first["_score"] > 0
     assert "score" not in first

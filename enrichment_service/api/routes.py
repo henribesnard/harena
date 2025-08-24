@@ -128,7 +128,8 @@ async def sync_user_transactions(
         account_ids = {tx.account_id for tx in raw_transactions}
         accounts = db.query(SyncAccount).filter(SyncAccount.id.in_(account_ids)).all()
         accounts_map = {
-            getattr(acc, "id", getattr(acc, "account_id")): acc for acc in accounts
+            (acc.id if hasattr(acc, "id") else acc.account_id): acc
+            for acc in accounts
         }
 
         # Convertir en TransactionInput avec métadonnées de compte

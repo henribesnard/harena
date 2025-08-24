@@ -6,7 +6,9 @@ dans Elasticsearch, sans vectorisation ni embeddings.
 """
 import logging
 import time
+import asyncio
 import uuid
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -281,12 +283,11 @@ class ElasticsearchTransactionProcessor:
 
         try:
             structured_transactions = []
+
             documents_to_index = []
             results = []
             errors = []
             valid_pairs = []
-
-
             for tx in transactions:
                 enriched = {}
                 if self.account_enrichment_service:
@@ -319,6 +320,45 @@ class ElasticsearchTransactionProcessor:
                     continue
                 self._apply_enrichment(structured_tx, enriched)
                 structured_transactions.append(structured_tx)
+
+            logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
+
+            # 2. Indexation en parallèle via des sous-batches
+            chunk_size = self.elasticsearch_client.default_batch_size * 2
+            batches = [
+                structured_transactions[i:i + chunk_size]
+                for i in range(0, len(structured_transactions), chunk_size)
+            ]
+
+            tasks = [
+                asyncio.create_task(
+                    self.elasticsearch_client.index_transactions_batch(batch)
+                ) for batch in batches
+            ]
+
+            batch_summaries = await asyncio.gather(*tasks)
+
+            # 3. Agréger les résultats
+            processing_time = time.time() - start_time
+            total = len(transactions)
+            successful = sum(s.get("indexed", 0) for s in batch_summaries)
+            failed = sum(s.get("errors", 0) for s in batch_summaries)
+
+            responses = {}
+            for summary in batch_summaries:
+                for resp in summary.get("responses", []):
+                    responses[resp["transaction_id"]] = resp
+
+            # 4. Créer les résultats individuels
+            results = []
+            errors = []
+            for tx, structured_tx in zip(transactions, structured_transactions):
+                document_id = structured_tx.get_document_id()
+                resp = responses.get(tx.bridge_transaction_id, {"success": False, "error": "unknown"})
+                indexed = resp.get("success", False)
+                status = "success" if indexed else "error"
+                error_msg = resp.get("error") if not indexed else None
+
                 valid_pairs.append((tx, structured_tx))
                 document_id = structured_tx.get_document_id()
                 documents_to_index.append({
@@ -360,6 +400,7 @@ class ElasticsearchTransactionProcessor:
                     status = "error"
                     error_msg = "No response from bulk operation"
 
+
                 result = ElasticsearchEnrichmentResult(
                     transaction_id=tx.bridge_transaction_id,
                     user_id=user_id,
@@ -372,11 +413,18 @@ class ElasticsearchTransactionProcessor:
                         "force_update": force_update,
                         "quality_score": structured_tx.quality_score,
                     },
+                    processing_time=processing_time / total if total else 0,
                     processing_time=processing_time / max(len(valid_pairs), 1),
+
                     status=status,
                     error_message=error_msg,
                 )
                 results.append(result)
+
+                if not indexed and error_msg:
+                    errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
+
+            logger.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
                 if not indexed and error_msg:
                     errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
             
@@ -391,6 +439,7 @@ class ElasticsearchTransactionProcessor:
             logger.info(
                 f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s"
             )
+
 
             return BatchEnrichmentResult(
                 user_id=user_id,

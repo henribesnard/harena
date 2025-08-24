@@ -461,6 +461,7 @@ class ElasticsearchTransactionProcessor:
         )
 
         account_metadata_enriched = 0
+        accounts_synced = len({tx.account_id for tx in transactions})
 
         try:
             # Injecter les métadonnées de compte si fournies
@@ -494,7 +495,6 @@ class ElasticsearchTransactionProcessor:
 
             # 3. Convertir le résultat batch en résultat de sync utilisateur
             processing_time = time.time() - start_time
-
             indexed_count = sum(
                 1 for result in batch_result.results if result.status == "success" and result.indexed
             )
@@ -506,6 +506,8 @@ class ElasticsearchTransactionProcessor:
             error_count = len(batch_result.errors)
             error_details = batch_result.errors.copy()
 
+            logger.info(f"{accounts_synced} accounts, {indexed_count} transactions indexed")
+
             return UserSyncResult(
                 user_id=user_id,
                 total_transactions=len(transactions),
@@ -513,6 +515,7 @@ class ElasticsearchTransactionProcessor:
                 updated=updated_count,
                 errors=error_count,
                 with_account_metadata=account_metadata_enriched,
+                accounts_synced=accounts_synced,
                 processing_time=processing_time,
                 status="success"
                 if error_count == 0
@@ -533,6 +536,7 @@ class ElasticsearchTransactionProcessor:
                 updated=0,
                 errors=len(transactions),
                 with_account_metadata=account_metadata_enriched,
+                accounts_synced=accounts_synced,
                 processing_time=processing_time,
                 status="failed",
                 error_details=[f"Sync failed: {str(e)}"],

@@ -120,6 +120,7 @@ async def sync_user_transactions(
                 updated=0,
                 errors=0,
                 with_account_metadata=0,
+                accounts_synced=0,
                 processing_time=0.0,
                 status="success",
                 error_details=[]
@@ -170,7 +171,9 @@ async def sync_user_transactions(
             accounts_map=accounts_map,
             force_refresh=force_refresh,
         )
-        
+
+        logger.info(f"{result.accounts_synced} accounts, {result.indexed} transactions indexed")
+
         return result
         
     except Exception as e:

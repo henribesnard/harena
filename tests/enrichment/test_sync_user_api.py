@@ -118,6 +118,7 @@ def test_sync_user_produces_account_metadata(sample_es_account_response):
     response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
     assert response.status_code == 200
     assert es_client.documents, "No documents indexed"
+    assert response.json()["accounts_synced"] == 1
 
     doc = es_client.documents[0]["document"]
     for field, value in sample_es_account_response.items():

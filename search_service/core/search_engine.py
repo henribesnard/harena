@@ -5,7 +5,7 @@ import asyncio
 import math
 from datetime import datetime
 from collections import deque, defaultdict
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 from search_service.utils.cache import (
     MultiLevelCache,
@@ -36,10 +36,15 @@ class ElasticsearchHTTPError(Exception):
         self.message = message
         super().__init__(f"Elasticsearch error {status_code}: {message}")
 
+
 logger = logging.getLogger(__name__)
 
+
 class SearchEngine:
-    """Moteur de recherche unifié utilisant le client Elasticsearch existant"""
+    """
+    Moteur de recherche unifié utilisant le client Elasticsearch existant
+    VERSION CORRIGÉE - Support complet _score et highlights
+    """
 
     def __init__(self, elasticsearch_client=None, cache_enabled: bool = True):
         self.elasticsearch_client = elasticsearch_client
@@ -120,15 +125,11 @@ class SearchEngine:
         self.cache_misses = 0
 
     async def search(self, request: SearchRequest) -> Dict[str, Any]:
-        """Execute a search and always return a structured response.
-
-        This method now guarantees that even in error scenarios a predictable
-        response structure is returned.  This structure contains a
-        ``response_metadata`` block with default timings and counts so that
-        higher level services (e.g. ``SearchServiceResponse``) can safely
-        parse the output.
         """
-
+        Execute a search and always return a structured response.
+        
+        VERSION CORRIGÉE - Support complet _score et highlights
+        """
         start_time = time.time()
 
         try:
@@ -166,7 +167,7 @@ class SearchEngine:
             es_response = await self._execute_search(es_query, request)
 
             # Traitement des résultats
-            processed = self._process_results(es_response)
+            processed = self._process_results(es_response, request)
             # Sécurité supplémentaire : filtrer par user_id côté application
             results = [r for r in processed if r.user_id == request.user_id]
 
@@ -184,12 +185,13 @@ class SearchEngine:
                     next_request = SearchRequest(**next_req_data)
                     page_response = await self._execute_search(es_query, next_request)
                     es_took += page_response.get("took", 0)
-                    page_processed = self._process_results(page_response)
+                    page_processed = self._process_results(page_response, next_request)
                     page_results = [r for r in page_processed if r.user_id == request.user_id]
                     if not page_results:
                         break
                     results.extend(page_results)
                     current_offset += request.limit
+            
             aggregations = es_response.get("aggregations")
             total_hits = es_response.get("hits", {}).get("total", {}).get("value", len(results))
 
@@ -200,7 +202,7 @@ class SearchEngine:
                     next_request = request.model_copy(update={"offset": next_offset, "aggregations": None})
                     es_query_page = self.query_builder.build_query(next_request)
                     es_response_page = await self._execute_search(es_query_page, next_request)
-                    processed_page = self._process_results(es_response_page)
+                    processed_page = self._process_results(es_response_page, next_request)
                     page_results = [r for r in processed_page if r.user_id == request.user_id]
                     if not page_results:
                         break
@@ -220,11 +222,8 @@ class SearchEngine:
             total_pages = math.ceil(total_results / page_size) if page_size else 0
             has_more_results = (request.offset + returned_results) < total_results
 
-            # Ensure each SearchResult is serialized with alias fields (e.g. `_score`)
-            serialized_results = [r.model_dump(by_alias=True) for r in results]
-            for data in serialized_results:
-                if "_score" not in data and "score" in data:
-                    data["_score"] = data.pop("score")
+            # ✅ CORRECTION CRITIQUE : Sérialisation robuste avec _score et highlights
+            serialized_results = self._serialize_results_with_score_and_highlights(results, request)
 
             response = {
                 "results": serialized_results,
@@ -241,7 +240,6 @@ class SearchEngine:
                     "total_pages": total_pages,
                     "page": page,
                     "page_size": page_size,
-
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"
                     ),
@@ -250,13 +248,13 @@ class SearchEngine:
                 },
             }
 
-            if request.metadata.get("debug"):
+            if request.metadata and request.metadata.get("debug"):
                 response["response_metadata"]["debug_info"] = self._build_debug_info(
                     request, es_query
                 )
 
             # Mise en cache du résultat
-            if self.cache_enabled:
+            if self.cache_enabled and cache_key:
                 await self.cache.set(request.user_id, cache_key, response, ttl=settings.SEARCH_CACHE_TTL)
 
             logger.info(
@@ -292,6 +290,73 @@ class SearchEngine:
                     "cache_hit": False,
                 },
             }
+
+    def _serialize_results_with_score_and_highlights(
+        self, 
+        results: List[SearchResult], 
+        request: SearchRequest
+    ) -> List[Dict[str, Any]]:
+        """
+        ✅ NOUVELLE MÉTHODE - Sérialisation robuste avec _score et highlights
+        
+        Corrige les problèmes identifiés :
+        1. _score toujours présent même si score=0
+        2. highlights correctement propagées
+        3. Debug logging pour diagnostiquer
+        """
+        serialized_results = []
+        
+        for i, result in enumerate(results):
+            try:
+                # Sérialisation standard avec alias
+                result_data = result.model_dump(by_alias=True)
+                
+                # ✅ CORRECTION 1: Assurer que _score existe toujours
+                if "_score" not in result_data:
+                    score_value = getattr(result, 'score', 0.0)
+                    result_data["_score"] = float(score_value) if score_value is not None else 0.0
+                
+                # ✅ CORRECTION 2: Assurer que highlights est correctement présent
+                if request.highlight and hasattr(result, 'highlights'):
+                    highlights_value = getattr(result, 'highlights', None)
+                    if highlights_value is not None:
+                        result_data["highlights"] = highlights_value
+                    elif "highlights" not in result_data:
+                        # Highlights demandées mais pas présentes -> None explicite
+                        result_data["highlights"] = None
+                
+                # ✅ Debug logging temporaire (à retirer après validation)
+                if (request.metadata and request.metadata.get("debug") and 
+                    i == 0 and len(results) > 0):
+                    logger.debug(f"First result serialization:")
+                    logger.debug(f"  - _score: {result_data.get('_score')}")
+                    logger.debug(f"  - highlights: {result_data.get('highlights')}")
+                    logger.debug(f"  - keys: {list(result_data.keys())}")
+                
+                serialized_results.append(result_data)
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to serialize result {i}: {str(e)}")
+                logger.error(f"   Result type: {type(result)}")
+                logger.error(f"   Result data: {result}")
+                
+                # Créer un résultat minimal en cas d'erreur de sérialisation
+                minimal_result = {
+                    "transaction_id": getattr(result, 'transaction_id', f'error_{i}'),
+                    "user_id": getattr(result, 'user_id', 0),
+                    "amount": 0.0,
+                    "amount_abs": 0.0,
+                    "currency_code": "EUR",
+                    "transaction_type": "error",
+                    "date": "",
+                    "primary_description": f"Serialization error: {str(e)[:100]}",
+                    "_score": 0.0,
+                    "highlights": None
+                }
+                serialized_results.append(minimal_result)
+        
+        logger.debug(f"✅ Serialized {len(serialized_results)}/{len(results)} results successfully")
+        return serialized_results
     
     async def _execute_search(self, es_query: Dict[str, Any], request: SearchRequest) -> Dict[str, Any]:
         """Exécute la recherche via le client Elasticsearch avec retries."""
@@ -346,10 +411,14 @@ class SearchEngine:
                     continue
                 raise
     
-    def _process_results(self, es_response: Dict[str, Any]) -> list[SearchResult]:
+    def _process_results(
+        self, 
+        es_response: Dict[str, Any], 
+        request: Optional[SearchRequest] = None
+    ) -> List[SearchResult]:
         """
         Traite les résultats Elasticsearch en objets SearchResult
-        VERSION CORRIGÉE - Robuste aux données manquantes/nulles
+        VERSION CORRIGÉE - Support robuste _score et highlights
         """
         results = []
 
@@ -357,11 +426,13 @@ class SearchEngine:
         if not hits:
             logger.debug("No hits returned from Elasticsearch")
             return []
+        
         logger.debug(f"Processing {len(hits)} hits from Elasticsearch")
         
         for i, hit in enumerate(hits):
             source = hit.get('_source', {})
             score = hit.get('_score')
+            highlights = hit.get('highlight')  # ✅ Extraction highlighting
             
             try:
                 # ✅ CORRECTION : Gestion robuste de tous les champs avec valeurs par défaut sécurisées
@@ -390,20 +461,22 @@ class SearchEngine:
                     category_name=source.get('category_name'),      # Peut être None ou ""
                     operation_type=source.get('operation_type'),    # Peut être None ou ""
                     
-                    # Métadonnées de recherche
+                    # ✅ CORRECTION SCORE : Métadonnées de recherche avec gestion robuste
                     score=float(score) if score is not None else 0.0,
-                    highlights=hit.get('highlight')
+                    
+                    # ✅ CORRECTION HIGHLIGHTS : Gestion robuste highlights
+                    highlights=highlights if highlights else None
                 )
                 results.append(result)
                 
                 # Log de succès pour debug
-                logger.debug(f"✅ Successfully processed result {i+1}: {result.transaction_id} - {result.primary_description[:50]}")
+                logger.debug(f"✅ Successfully processed result {i+1}: {result.transaction_id} - score={result.score} - highlights={'present' if result.highlights else 'none'}")
                 
             except ValueError as ve:
                 # Erreur de conversion de type (int, float)
                 logger.error(f"❌ ValueError processing search result {i+1}: {str(ve)}")
                 logger.error(f"   Problematic source data: {json.dumps(source, indent=2, default=str)}")
-                logger.error(f"   Score: {score}")
+                logger.error(f"   Score: {score}, Highlights: {highlights}")
                 
                 # Essayer de créer un résultat minimal avec des types corrects
                 try:
@@ -416,7 +489,8 @@ class SearchEngine:
                         transaction_type='error',
                         date='',
                         primary_description=f'Erreur conversion: {str(ve)[:100]}',
-                        score=0.0
+                        score=0.0,
+                        highlights=None
                     )
                     results.append(minimal_result)
                     logger.warning(f"⚠️ Created minimal result for failed conversion {i+1}")
@@ -429,7 +503,7 @@ class SearchEngine:
                 logger.error(f"❌ General error processing search result {i+1}: {str(e)}")
                 logger.error(f"   Exception type: {type(e).__name__}")
                 logger.error(f"   Source data: {json.dumps(source, indent=2, default=str)}")
-                logger.error(f"   Score: {score}")
+                logger.error(f"   Score: {score}, Highlights: {highlights}")
                 
                 # Log des champs spécifiques pour debug
                 logger.error(f"   transaction_id: {repr(source.get('transaction_id'))}")
@@ -471,6 +545,7 @@ class SearchEngine:
                 "page": request.page,
                 "page_size": request.page_size,
                 "offset": request.offset,
+                "highlight_requested": bool(request.highlight),
             },
             "elasticsearch_query": es_query,
             "index_used": self.index_name

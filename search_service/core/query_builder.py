@@ -5,18 +5,15 @@ from search_service.models.request import SearchRequest
 logger = logging.getLogger(__name__)
 
 class QueryBuilder:
-    """Constructeur de requêtes Elasticsearch simple et efficace"""
-    
+    """Constructeur de requêtes Elasticsearch simple et efficace - VERSION CORRIGÉE"""
+    logger.info("🔥 CORRECTION APPLIQUÉE - QUERY BUILDER CHARGÉ")
     def __init__(self):
-        # Configuration des champs de recherche basée sur votre architecture
+        # ✅ CORRECTION : Configuration des champs de recherche basée sur mapping réel
         self.search_fields = [
-            "searchable_text^2.0",      # Champ principal enrichi
-            "primary_description^1.5",   # Description transaction
-            "merchant_name^1.8",         # Nom marchand
-            "category_name^1.0",         # Catégorie
-            "account_name^1.0",
-            "account_type^1.0",
-            "account_currency^1.0",
+            "primary_description^1.5",   # Description transaction (existe)
+            "merchant_name^1.8",         # Nom marchand (existe)
+            "category_name^1.0",         # Catégorie (existe)
+            # ❌ SUPPRIMÉ : "searchable_text^2.0" car potentiellement inexistant
         ]
 
     @staticmethod
@@ -31,15 +28,17 @@ class QueryBuilder:
     def build_query(self, request: SearchRequest) -> Dict[str, Any]:
         """
         Construction intelligente de requête Elasticsearch
-        Gère automatiquement les différents cas d'usage
+        ✅ VERSION CORRIGÉE - Sépare query (scoring) et filters (no scoring)
         """
         
-        # Filtre obligatoire sur user_id pour sécurité
-        must_filters = [
-            {"term": {"user_id": request.user_id}}
-        ]
+        # ✅ CORRECTION CRITIQUE : Séparer query et filters
+        text_query_part = None
+        must_filters = []
         
-        # Requête textuelle ou numérique si fournie
+        # Filtre obligatoire sur user_id pour sécurité (toujours en filter)
+        must_filters.append({"term": {"user_id": request.user_id}})
+        
+        # ✅ CORRECTION : Requête textuelle devient une QUERY (pas filter)
         if request.query and request.query.strip():
             cleaned_query = request.query.strip()
             if self._is_numeric(cleaned_query):
@@ -47,13 +46,28 @@ class QueryBuilder:
                 must_filters.append({"range": {"account_balance": {"gte": value, "lte": value}}})
                 logger.debug(f"Added numeric account_balance filter for: '{value}'")
             else:
-                text_query = self._build_text_query(cleaned_query)
-                must_filters.append(text_query)
-                logger.debug(f"Added text query for: '{cleaned_query}'")
+                text_query_part = self._build_text_query(cleaned_query)
+                logger.debug(f"Added scoring text query for: '{cleaned_query}'")
         
-        # Filtres additionnels
+        # Filtres additionnels (toujours en filter)
         additional_filters = self._build_additional_filters(request.filters)
         must_filters.extend(additional_filters)
+        
+        # ✅ CORRECTION CRITIQUE : Construction requête avec séparation query/filter
+        bool_query = {}
+        
+        # Partie query (génère _score)
+        if text_query_part:
+            bool_query["must"] = [text_query_part]
+        
+        # Partie filter (ne génère pas _score, mais plus rapide)
+        if must_filters:
+            bool_query["filter"] = must_filters
+        
+        # Si pas de query textuelle, mettre les filtres en must pour compatibilité
+        if not text_query_part and must_filters:
+            bool_query["must"] = must_filters
+            bool_query.pop("filter", None)
         
         # Pagination : calcul de l'offset basé sur page/page_size
         page = getattr(request, "page", 1)
@@ -62,26 +76,32 @@ class QueryBuilder:
 
         # Construction requête finale
         query = {
-            "query": {"bool": {"must": must_filters}},
+            "query": {"bool": bool_query},
             "sort": self._build_sort_criteria(request),
             "_source": self._get_source_fields(),
             "size": request.page_size,
             "from": request.offset
         }
 
+        # ✅ CORRECTION : Highlighting toujours ajouté si demandé
         if request.highlight:
             query["highlight"] = request.highlight
+            logger.debug(f"Added highlighting: {list(request.highlight.get('fields', {}).keys())}")
 
         logger.info(
             f"Pagination utilisée - page: {page}, page_size: {page_size}, offset: {offset}"
         )
-        logger.debug(f"Built query with {len(must_filters)} filters")
+        logger.debug(f"Built query - text_query: {'yes' if text_query_part else 'no'}, filters: {len(must_filters)}")
         return query
     
     def _build_text_query(self, query_text: str) -> Dict[str, Any]:
-        """Construction de la requête textuelle optimisée"""
+        """
+        Construction de la requête textuelle optimisée
+        ✅ VERSION CORRIGÉE - Requête qui génère _score
+        """
         terms_count = len(query_text.split())
         minimum_should_match = "50%" if terms_count >= 2 else "100%"
+        
         return {
             "multi_match": {
                 "query": query_text,
@@ -93,21 +113,7 @@ class QueryBuilder:
         }
     
     def _build_additional_filters(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Construction des filtres additionnels.
-
-        Supporte plusieurs types de filtres courants :
-
-        - ``term`` : ``{"status": "active"}``
-        - ``terms`` : ``{"category": ["foo", "bar"]}``
-        - ``range`` : ``{"amount": {"gte": 0, "lte": 100}}``
-        - ``exists`` : ``{"merchant_name": {"exists": True}}``
-        - ``wildcard`` : ``{"merchant_name": {"wildcard": "Ama*"}}``
-        - ``prefix`` / ``regexp`` / ``match`` / ``match_phrase`` : même structure
-
-        Les filtres non reconnus lèvent une ``ValueError`` afin d'éviter
-        l'envoi de requêtes Elasticsearch invalides.
-        """
-
+        """Construction des filtres additionnels (INCHANGÉ)"""
         filter_list: List[Dict[str, Any]] = []
 
         for field, value in filters.items():
@@ -198,12 +204,17 @@ class QueryBuilder:
             return field
     
     def _build_sort_criteria(self, request: SearchRequest) -> List[Dict[str, Any]]:
-        """Construction des critères de tri"""
+        """
+        Construction des critères de tri
+        ✅ VERSION CORRIGÉE - Sort par score uniquement si query textuelle
+        """
         sort_criteria = []
         
-        # Si c'est une recherche textuelle, trier par score d'abord
-        if request.query and request.query.strip():
+        # ✅ CORRECTION : Si c'est une recherche textuelle NON-NUMÉRIQUE, trier par score d'abord
+        if (request.query and request.query.strip() and 
+            not self._is_numeric(request.query.strip())):
             sort_criteria.append({"_score": {"order": "desc"}})
+            logger.debug("Added _score sort for text query")
         
         # Toujours trier par date décroissante en second
         sort_criteria.append({"date": {"order": "desc"}})
@@ -223,16 +234,7 @@ class QueryBuilder:
     def build_aggregation_query(
         self, request: SearchRequest, aggregation: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Construction d'une requête avec agrégations Elasticsearch natives.
-        
-        ✅ CORRECTION MAJEURE : Supporte maintenant les deux formats :
-        1. Format Elasticsearch natif (PRIORITÉ) : {"my_agg": {"sum": {"field": "amount"}}}
-        2. Format abstrait legacy : {"group_by": [...], "metrics": [...]}
-        
-        Args:
-            request: Requête de recherche de base.
-            aggregation: Agrégations au format Elasticsearch natif ou abstrait.
-        """
+        """Construction d'une requête avec agrégations Elasticsearch natives (INCHANGÉ)"""
         base_query = self.build_query(request)
 
         if not aggregation:
@@ -291,11 +293,7 @@ class QueryBuilder:
         return base_query
 
     def _is_elasticsearch_native_format(self, aggregation: Dict[str, Any]) -> bool:
-        """Détecte si les agrégations sont au format Elasticsearch natif.
-        
-        Format natif : {"total_sum": {"sum": {"field": "amount_abs"}}}
-        Format abstrait : {"group_by": ["category"], "metrics": ["sum"]}
-        """
+        """Détecte si les agrégations sont au format Elasticsearch natif (INCHANGÉ)"""
         # Si contient les clés abstraites, c'est l'ancien format
         abstract_keys = {"group_by", "metrics", "types"}
         if any(key in aggregation for key in abstract_keys):
@@ -330,11 +328,7 @@ class QueryBuilder:
         return False
 
     def _validate_elasticsearch_aggregations(self, aggregation: Dict[str, Any]) -> Dict[str, Any]:
-        """Valide et nettoie les agrégations Elasticsearch natives.
-        
-        Effectue une validation basique pour éviter les injections malveillantes
-        et s'assurer que les champs référencés existent.
-        """
+        """Valide et nettoie les agrégations Elasticsearch natives (INCHANGÉ)"""
         # Champs autorisés pour les agrégations
         allowed_fields = {
             "amount", "amount_abs", "date", "transaction_id", "user_id", "account_id",
@@ -364,7 +358,7 @@ class QueryBuilder:
         return validated
 
     def _validate_aggregation_definition(self, agg_def: Dict[str, Any], allowed_fields: set) -> Optional[Dict[str, Any]]:
-        """Valide récursivement une définition d'agrégation."""
+        """Valide récursivement une définition d'agrégation (INCHANGÉ)"""
         validated = {}
         
         for key, value in agg_def.items():

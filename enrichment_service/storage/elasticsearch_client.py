@@ -127,6 +127,8 @@ class ElasticsearchClient:
                     "amount_abs": {"type": "float"},
                     "transaction_type": {"type": "keyword"},
                     "currency_code": {"type": "keyword"},
+                    "quality_score": {"type": "float"},
+                    
 
                     # Dates
                     "date": {"type": "date"},
@@ -236,6 +238,7 @@ class ElasticsearchClient:
                 "amount_abs": structured_transaction.amount_abs,
                 "transaction_type": structured_transaction.transaction_type,
                 "currency_code": structured_transaction.currency_code,
+                "quality_score": getattr(structured_transaction, 'quality_score', 1.0),
                 
                 # Dates
                 "date": structured_transaction.date_str,
@@ -322,6 +325,7 @@ class ElasticsearchClient:
                 "amount_abs": tx.amount_abs,
                 "transaction_type": tx.transaction_type,
                 "currency_code": tx.currency_code,
+                "quality_score": getattr(tx, 'quality_score', 1.0),
                 "date": tx.date_str,
                 "transaction_date": tx.date_str,
                 "month_year": tx.month_year,

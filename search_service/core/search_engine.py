@@ -77,7 +77,7 @@ class SearchEngine:
             query=request.query,
             filters=json.dumps(request.filters, sort_keys=True),
             offset=request.offset,
-            limit=request.limit,
+            page_size=request.page_size,
         )
 
     def _check_rate_limit(self, user_id: int) -> None:
@@ -263,13 +263,13 @@ class SearchEngine:
                     response = await self.elasticsearch_client.search(
                         index=self.index_name,
                         body=es_query,
-                        size=request.limit,
+                        size=request.page_size,
                         from_=request.offset,
                     )
                 else:
                     # Fallback: requête HTTP directe
                     search_url = f"/{self.index_name}/_search"
-                    es_query["size"] = request.limit
+                    es_query["size"] = request.page_size
                     es_query["from"] = request.offset
                     async with self.elasticsearch_client.session.post(
                         f"{self.elasticsearch_client.base_url}{search_url}",
@@ -419,8 +419,9 @@ class SearchEngine:
                 "user_id": request.user_id,
                 "query": request.query,
                 "filters": request.filters,
-                "limit": request.limit,
-                "offset": request.offset
+                "page": request.page,
+                "page_size": request.page_size,
+                "offset": request.offset,
             },
             "elasticsearch_query": es_query,
             "index_used": self.index_name

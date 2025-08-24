@@ -94,6 +94,7 @@ def test_sync_user_endpoint_invokes_processor():
             updated=0,
             errors=0,
             with_account_metadata=1,
+            accounts_synced=1,
             processing_time=0.0,
         )
     )
@@ -178,6 +179,7 @@ def test_sync_user_with_account_without_id_returns_200():
             updated=0,
             errors=0,
             with_account_metadata=1,
+            accounts_synced=1,
             processing_time=0.0,
         )
     )

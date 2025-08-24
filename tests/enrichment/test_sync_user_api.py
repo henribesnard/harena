@@ -22,6 +22,9 @@ async def get_current_active_user():  # type: ignore
 
 deps_stub.get_current_active_user = get_current_active_user
 sys.modules["user_service.api.deps"] = deps_stub
+import importlib
+import enrichment_service.api.routes as routes
+importlib.reload(routes)
 
 from enrichment_service.api.routes import (
     router,
@@ -29,6 +32,9 @@ from enrichment_service.api.routes import (
     get_elasticsearch_processor,
     get_current_active_user,
 )
+router = routes.router
+get_db = routes.get_db
+get_elasticsearch_processor = routes.get_elasticsearch_processor
 from enrichment_service.core.account_enrichment_service import AccountEnrichmentService
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 
@@ -135,6 +141,7 @@ def test_sync_user_produces_account_metadata(sample_es_account_response):
 
     response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
     assert response.status_code == 200
+    assert response.json()["accounts_synced"] == 1
     assert es_client.documents, "No documents indexed"
 
     doc = es_client.documents[0]["document"]

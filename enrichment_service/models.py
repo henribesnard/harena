@@ -15,6 +15,11 @@ class TransactionInput(BaseModel):
     bridge_transaction_id: int
     user_id: int
     account_id: int
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    account_balance: Optional[float] = None
+    account_currency: Optional[str] = None
+    account_last_sync: Optional[datetime] = None
     clean_description: Optional[str] = None
     provider_description: Optional[str] = None
     amount: float
@@ -24,6 +29,7 @@ class TransactionInput(BaseModel):
     value_date: Optional[datetime] = None
     currency_code: Optional[str] = None
     category_id: Optional[int] = None
+    category_name: Optional[str] = None
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False
@@ -73,6 +79,12 @@ class StructuredTransaction:
     transaction_id: int
     user_id: int
     account_id: int
+
+    # Informations de compte
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    account_balance: Optional[float] = None
+    account_currency_code: Optional[str] = None
     
     # Contenu principal
     searchable_text: str
@@ -97,6 +109,18 @@ class StructuredTransaction:
     # Métadonnées supplémentaires
     is_future: bool
     is_deleted: bool
+    quality_score: float = 1.0
+
+    # Informations sur le compte
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    account_balance: Optional[float] = None
+    account_currency: Optional[str] = None
+    account_last_sync: Optional[datetime] = None
+
+    # Information sur la catégorie
+    category_name: Optional[str] = None
+
     
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> 'StructuredTransaction':
@@ -132,6 +156,10 @@ class StructuredTransaction:
             transaction_id=tx.bridge_transaction_id,
             user_id=tx.user_id,
             account_id=tx.account_id,
+            account_name=None,
+            account_type=None,
+            account_balance=None,
+            account_currency_code=None,
             searchable_text=searchable_text,
             primary_description=primary_desc,
             amount=tx.amount,
@@ -145,7 +173,13 @@ class StructuredTransaction:
             category_id=tx.category_id,
             operation_type=tx.operation_type,
             is_future=tx.future,
-            is_deleted=tx.deleted
+            is_deleted=tx.deleted,
+            account_name=tx.account_name,
+            account_type=tx.account_type,
+            account_balance=tx.account_balance,
+            account_currency=tx.account_currency,
+            account_last_sync=tx.account_last_sync,
+            category_name=tx.category_name
         )
     
     def to_elasticsearch_document(self) -> Dict[str, Any]:
@@ -155,6 +189,12 @@ class StructuredTransaction:
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
             "account_id": self.account_id,
+            "account_name": self.account_name,
+            "account_type": self.account_type,
+            "account_balance": self.account_balance,
+            "account_currency_code": self.account_currency_code,
+            "account_currency": self.account_currency,
+            "account_last_sync": self.account_last_sync.isoformat() if self.account_last_sync else None,
             
             # Contenu recherchable
             "searchable_text": self.searchable_text,
@@ -165,6 +205,7 @@ class StructuredTransaction:
             "amount_abs": self.amount_abs,
             "transaction_type": self.transaction_type,
             "currency_code": self.currency_code,
+            "quality_score": self.quality_score,
             
             # Dates (optimisées pour les requêtes Elasticsearch)
             "date": self.date.isoformat(),
@@ -176,6 +217,7 @@ class StructuredTransaction:
             # Catégorisation
             "category_id": self.category_id,
             "operation_type": self.operation_type,
+            "category_name": self.category_name,
             
             # Flags
             "is_future": self.is_future,

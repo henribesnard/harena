@@ -375,6 +375,10 @@ class SearchEngine:
                     
                     # Champs optionnels - gestion explicite des None
                     account_id=source.get('account_id'),  # Peut être None
+                    account_name=source.get('account_name'),
+                    account_type=source.get('account_type'),
+                    account_balance=source.get('account_balance'),
+                    account_currency=source.get('account_currency'),
                     month_year=source.get('month_year'),  # Peut être None
                     weekday=source.get('weekday'),        # Peut être None
                     merchant_name=source.get('merchant_name'),      # Peut être None ou ""

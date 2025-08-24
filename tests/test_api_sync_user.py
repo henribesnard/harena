@@ -11,6 +11,7 @@ from db_service.session import get_db
 from db_service.models.user import User
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 from enrichment_service.models import UserSyncResult
+from db_service.models.sync import RawTransaction, SyncAccount
 
 def create_test_app(processor_mock, db_mock, user):
     app = FastAPI()
@@ -29,6 +30,15 @@ def test_sync_user_endpoint_invokes_processor():
     dummy_user = User(id=1, email="test@example.com", password_hash="x")
     dummy_user.is_active = True
     dummy_user.is_superuser = True
+
+    account = SimpleNamespace(
+        id=123,
+        account_name="Main",
+        account_type="checking",
+        balance=1000.0,
+        currency_code="EUR",
+        last_sync_timestamp=datetime(2024, 1, 2),
+    )
 
     raw_tx = SimpleNamespace(
         bridge_transaction_id=1,
@@ -59,13 +69,18 @@ def test_sync_user_endpoint_invokes_processor():
             return self._results
 
     class DummyDB:
-        def __init__(self, results):
-            self._results = results
+        def __init__(self, transactions, accounts):
+            self.transactions = transactions
+            self.accounts = accounts
 
         def query(self, model):
-            return DummyQuery(self._results)
+            if model is RawTransaction:
+                return DummyQuery(self.transactions)
+            if model is SyncAccount:
+                return DummyQuery(self.accounts)
+            return DummyQuery([])
 
-    dummy_db = DummyDB([raw_tx])
+    dummy_db = DummyDB([raw_tx], [account])
 
     processor_mock = MagicMock(spec=ElasticsearchTransactionProcessor)
     processor_mock.sync_user_transactions = AsyncMock(
@@ -88,3 +103,4 @@ def test_sync_user_endpoint_invokes_processor():
     kwargs = processor_mock.sync_user_transactions.await_args.kwargs
     assert kwargs["user_id"] == 1
     assert len(kwargs["transactions"]) == 1
+    assert kwargs["accounts_map"][123].account_name == "Main"

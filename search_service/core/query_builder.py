@@ -46,7 +46,7 @@ class QueryBuilder:
             },
             "sort": self._build_sort_criteria(request),
             "_source": self._get_source_fields(),
-            "size": request.limit,
+            "size": request.page_size,
             "from": request.offset
         }
         

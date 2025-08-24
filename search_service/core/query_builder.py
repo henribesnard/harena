@@ -37,6 +37,11 @@ class QueryBuilder:
         additional_filters = self._build_additional_filters(request.filters)
         must_filters.extend(additional_filters)
         
+        # Pagination : calcul de l'offset basé sur page/page_size
+        page = getattr(request, "page", 1)
+        page_size = request.page_size
+        offset = (page - 1) * page_size
+
         # Construction requête finale
         query = {
             "query": {
@@ -46,10 +51,14 @@ class QueryBuilder:
             },
             "sort": self._build_sort_criteria(request),
             "_source": self._get_source_fields(),
-            "size": request.limit,
+            "size": page_size,
+            "from": offset
+
+            "size": request.page_size,
             "from": request.offset
         }
-        
+
+        logger.info(f"Pagination utilisée - page: {page}, page_size: {page_size}")
         logger.debug(f"Built query with {len(must_filters)} filters")
         return query
     
@@ -190,6 +199,11 @@ class QueryBuilder:
                 base_query["size"] = 0
                 logger.info(
                     "Aggregation-only request detected: returning only aggregations"
+                )
+            else:
+                base_query["size"] = request.page_size
+                logger.info(
+                    f"Aggregation query pagination - page: {getattr(request, 'page', 1)}, page_size: {request.page_size}"
                 )
         else:
             logger.warning("No valid aggregations generated from input")

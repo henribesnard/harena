@@ -56,8 +56,9 @@ class SearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def _compute_offset(self) -> "SearchRequest":
-        """Calcule automatiquement l'offset à partir de la page."""
-        self.offset = (self.page - 1) * self.page_size
+        """Calcule l'offset à partir de la page si non fourni."""
+        if "offset" not in self.model_fields_set:
+            self.offset = (self.page - 1) * self.page_size
         return self
 
     @property

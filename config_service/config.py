@@ -74,6 +74,7 @@ class GlobalSettings(BaseSettings):
     BONSAI_URL: str = os.environ.get("BONSAI_URL", "")
     BONSAI_ACCESS_KEY: str = os.environ.get("BONSAI_ACCESS_KEY", "")
     BONSAI_SECRET_KEY: str = os.environ.get("BONSAI_SECRET_KEY", "")
+    DISABLE_INDEX_TEMPLATE: bool = os.environ.get("DISABLE_INDEX_TEMPLATE", "False").lower() == "true"
     
     # Configuration Elasticsearch générale
     ELASTICSEARCH_HOST: str = os.environ.get("ELASTICSEARCH_HOST", "localhost")

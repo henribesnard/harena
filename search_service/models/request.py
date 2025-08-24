@@ -41,6 +41,10 @@ class SearchRequest(BaseModel):
         default=None, description="Requête d'agrégation optionnelle"
     )
 
+    highlight: Optional[Dict[str, Any]] = Field(
+        default=None, description="Paramètres de surlignage optionnels"
+    )
+
     aggregation_only: bool = Field(
         default=False,
         description="Si vrai, seuls les résultats d'agrégations sont renvoyés",
@@ -117,6 +121,7 @@ class SearchRequest(BaseModel):
                 "aggregations": {
                     "by_category": {"terms": {"field": "category_name"}}
                 },
+                "highlight": {"fields": {"primary_description": {}}},
                 "aggregation_only": False
             }
         }

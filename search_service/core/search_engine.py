@@ -220,8 +220,15 @@ class SearchEngine:
             total_pages = math.ceil(total_results / page_size) if page_size else 0
             has_more_results = (request.offset + returned_results) < total_results
 
+            serialized_results = []
+            for r in results:
+                data = r.model_dump(by_alias=True)
+                if "_score" not in data and "score" in data:
+                    data["_score"] = data.pop("score")
+                serialized_results.append(data)
+
             response = {
-                "results": [r.model_dump(by_alias=True) for r in results],
+                "results": serialized_results,
                 "aggregations": aggregations,
                 "success": True,
                 "error_message": None,

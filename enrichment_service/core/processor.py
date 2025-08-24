@@ -21,7 +21,6 @@ from enrichment_service.models import (
     BatchEnrichmentResult,
     UserSyncResult,
     StructuredTransaction,
-
 )
 from enrichment_service.core.account_enrichment_service import (
     AccountEnrichmentService,
@@ -81,9 +80,6 @@ class ElasticsearchTransactionProcessor:
             parts.append(f"Marchand: {merchant}")
         if parts:
             structured_tx.searchable_text += " | " + " | ".join(parts)
-    
-    
-
 
     async def process_single_transaction(
         self,
@@ -107,8 +103,6 @@ class ElasticsearchTransactionProcessor:
         correlation_id = f"{user_id}-{transaction_id}"
         log = logging.LoggerAdapter(logger, {"correlation_id": correlation_id})
         log.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
-        
-        logger.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
 
         try:
             # 1. Enrichir les données du compte avant structuration
@@ -117,24 +111,19 @@ class ElasticsearchTransactionProcessor:
                 try:
                     enriched = await self.account_enrichment_service.enrich_with_account_data(transaction)
                 except Exception as e:  # pragma: no cover - logging only
-                    logger.warning(f"Enrichment failed for tx {transaction_id}: {e}")
+                    log.warning(f"Enrichment failed for tx {transaction_id}: {e}")
 
             # 2. Structurer la transaction
             structured_tx = StructuredTransaction.from_transaction_input(transaction)
-            log.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
-            
-            # 2. Générer l'ID du document
             self._apply_enrichment(structured_tx, enriched)
-            logger.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
+            log.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
 
-            # 2. Valider la qualité des données
+            # 3. Valider la qualité des données
             is_valid, quality_score, flags = self.validator.evaluate(transaction)
             structured_tx.quality_score = quality_score
             if not is_valid:
-                processing_time = time.time() - start_time
-                logger.warning(
-                    f"🚫 Qualité insuffisante pour transaction {transaction_id}: {flags}"
-                )
+                processing_time = time.perf_counter() - start_time
+                log.warning(f"🚫 Qualité insuffisante pour transaction {transaction_id}: {flags}")
                 return ElasticsearchEnrichmentResult(
                     transaction_id=transaction_id,
                     user_id=user_id,
@@ -151,21 +140,18 @@ class ElasticsearchTransactionProcessor:
                     status="skipped",
                 )
 
-
-            # 3. Générer l'ID du document
+            # 4. Générer l'ID du document
             document_id = structured_tx.get_document_id()
 
-            # 4. Vérifier si le document existe déjà (si pas de force_update)
+            # 5. Vérifier si le document existe déjà (si pas de force_update)
             if not force_update:
                 exists = await self.elasticsearch_client.document_exists(document_id)
                 if exists:
                     CACHE_HITS.inc()
-                    log.debug(f"⏭️ Transaction {transaction_id} existe déjà, ignorée")
                     processing_time = time.perf_counter() - start_time
                     TRANSACTION_PROCESSING_TIME.observe(processing_time)
+                    log.debug(f"⏭️ Transaction {transaction_id} existe déjà, ignorée")
 
-                    logger.debug(f"⏭️ Transaction {transaction_id} existe déjà, ignorée")
-                    processing_time = time.time() - start_time
                     return ElasticsearchEnrichmentResult(
                         transaction_id=transaction_id,
                         user_id=user_id,
@@ -181,7 +167,7 @@ class ElasticsearchTransactionProcessor:
                         status="skipped",
                     )
 
-            # 5. Indexer dans Elasticsearch
+            # 6. Indexer dans Elasticsearch
             success = await self.elasticsearch_client.index_document(
                 document_id=document_id,
                 document=structured_tx.to_elasticsearch_document(),
@@ -192,15 +178,6 @@ class ElasticsearchTransactionProcessor:
 
             if success:
                 log.debug(f"✅ Transaction {transaction_id} indexée avec succès ({processing_time:.3f}s)")
-                
-
-            processing_time = time.time() - start_time
-
-            if success:
-                logger.debug(
-                    f"✅ Transaction {transaction_id} indexée avec succès ({processing_time:.3f}s)"
-                )
-
                 return ElasticsearchEnrichmentResult(
                     transaction_id=transaction_id,
                     user_id=user_id,
@@ -210,19 +187,15 @@ class ElasticsearchTransactionProcessor:
                     metadata={
                         "action": "created" if not force_update else "updated",
                         "elasticsearch_index": self.elasticsearch_client.index_name,
-                        "document_size": len(
-                            str(structured_tx.to_elasticsearch_document())
-                        ),
+                        "document_size": len(str(structured_tx.to_elasticsearch_document())),
                         "quality_score": quality_score,
                     },
                     processing_time=processing_time,
                     status="success",
                 )
             else:
-                log.error(f"❌ Échec indexation transaction {transaction_id}")
                 PROCESSING_ERRORS.inc()
-                logger.error(f"❌ Échec indexation transaction {transaction_id}")
-
+                log.error(f"❌ Échec indexation transaction {transaction_id}")
                 return ElasticsearchEnrichmentResult(
                     transaction_id=transaction_id,
                     user_id=user_id,
@@ -240,9 +213,6 @@ class ElasticsearchTransactionProcessor:
             TRANSACTION_PROCESSING_TIME.observe(processing_time)
             PROCESSING_ERRORS.inc()
             log.error(f"💥 Exception traitement transaction {transaction_id}: {e}")
-            
-            processing_time = time.time() - start_time
-            logger.error(f"💥 Exception traitement transaction {transaction_id}: {e}")
 
             return ElasticsearchEnrichmentResult(
                 transaction_id=transaction_id,
@@ -278,26 +248,32 @@ class ElasticsearchTransactionProcessor:
         correlation_id = f"batch-{user_id}-{uuid.uuid4()}"
         log = logging.LoggerAdapter(logger, {"correlation_id": correlation_id})
         log.info(f"🔄 Traitement en lot: {len(transactions)} transactions pour user {user_id}")
-        
-        logger.info(f"🔄 Traitement en lot: {len(transactions)} transactions pour user {user_id}")
 
         try:
+            # 1. Structurer et valider toutes les transactions
             structured_transactions = []
-
             documents_to_index = []
             results = []
             errors = []
             valid_pairs = []
+
             for tx in transactions:
+                # Enrichissement des données
                 enriched = {}
                 if self.account_enrichment_service:
                     try:
                         enriched = await self.account_enrichment_service.enrich_with_account_data(tx)
                     except Exception as e:  # pragma: no cover - logging only
-                        logger.warning(f"Enrichment failed for tx {tx.bridge_transaction_id}: {e}")
+                        log.warning(f"Enrichment failed for tx {tx.bridge_transaction_id}: {e}")
+
+                # Structuration
                 structured_tx = StructuredTransaction.from_transaction_input(tx)
+                self._apply_enrichment(structured_tx, enriched)
+                
+                # Validation qualité
                 is_valid, quality_score, flags = self.validator.evaluate(tx)
                 structured_tx.quality_score = quality_score
+                
                 if not is_valid:
                     results.append(
                         ElasticsearchEnrichmentResult(
@@ -318,16 +294,17 @@ class ElasticsearchTransactionProcessor:
                     )
                     errors.append(f"Transaction {tx.bridge_transaction_id}: data_quality")
                     continue
-                self._apply_enrichment(structured_tx, enriched)
+
+                # Ajouter à la liste des transactions valides
                 structured_transactions.append(structured_tx)
-
-            logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
-
-            # 2. Préparer les documents pour l'indexation
-            chunk_size = getattr(self.elasticsearch_client, "default_batch_size", 500) * 2
-            for tx, structured_tx in zip(transactions, structured_transactions):
-                document_id = structured_tx.get_document_id()
                 valid_pairs.append((tx, structured_tx))
+
+            log.debug(f"📋 {len(structured_transactions)} transactions structurées")
+
+            # 2. Préparer les documents pour l'indexation bulk
+            chunk_size = getattr(self.elasticsearch_client, "default_batch_size", 500) * 2
+            for tx, structured_tx in valid_pairs:
+                document_id = structured_tx.get_document_id()
                 documents_to_index.append(
                     {
                         "id": document_id,
@@ -345,6 +322,7 @@ class ElasticsearchTransactionProcessor:
             bulk_responses = []
             successful = 0
             failed = 0
+            
             for batch_docs in doc_batches:
                 bulk_result = await self.elasticsearch_client.bulk_index_documents(
                     batch_docs, force_update=force_update
@@ -353,11 +331,9 @@ class ElasticsearchTransactionProcessor:
                 failed += bulk_result.get("errors", 0)
                 bulk_responses.extend(bulk_result.get("responses", []))
 
-            # 4. Analyser les résultats
-            processing_time = time.time() - start_time
+            # 4. Analyser les résultats et créer les réponses
+            processing_time = time.perf_counter() - start_time
             total = len(transactions)
-            results = []
-            errors = []
 
             for i, (tx, structured_tx) in enumerate(valid_pairs):
                 document_id = structured_tx.get_document_id()
@@ -392,15 +368,13 @@ class ElasticsearchTransactionProcessor:
                 if not indexed and error_msg:
                     errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
 
+            # Métriques
             cache_hits = len([r for r in results if r.status == "skipped"])
             if cache_hits:
                 CACHE_HITS.inc(cache_hits)
 
             BATCH_PROCESSING_TIME.observe(processing_time)
-
-            logger.info(
-                f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s"
-            )
+            log.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
 
             return BatchEnrichmentResult(
                 user_id=user_id,
@@ -417,11 +391,8 @@ class ElasticsearchTransactionProcessor:
             BATCH_PROCESSING_TIME.observe(processing_time)
             PROCESSING_ERRORS.inc()
             log.error(f"💥 Erreur traitement en lot: {e}")
-            
-            # Créer des résultats d'erreur pour toutes les transactions
-            processing_time = time.time() - start_time
-            logger.error(f"💥 Erreur traitement en lot: {e}")
 
+            # Créer des résultats d'erreur pour toutes les transactions
             results = []
             for tx in transactions:
                 result = ElasticsearchEnrichmentResult(
@@ -446,6 +417,7 @@ class ElasticsearchTransactionProcessor:
                 results=results,
                 errors=[f"Batch processing failed: {str(e)}"],
             )
+
     async def sync_user_transactions(
         self,
         user_id: int,
@@ -456,7 +428,7 @@ class ElasticsearchTransactionProcessor:
     ) -> UserSyncResult:
         """Synchronise toutes les transactions d'un utilisateur dans Elasticsearch."""
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         logger.info(
             f"🔄 Synchronisation user {user_id}: {len(transactions)} transactions (force_refresh={force_refresh})"
         )
@@ -497,13 +469,12 @@ class ElasticsearchTransactionProcessor:
 
             # 3. Créer un batch input et traiter
             batch_input = BatchTransactionInput(user_id=user_id, transactions=transactions)
-
             batch_result = await self.process_transactions_batch(
                 batch_input, force_update=force_refresh
             )
 
             # 4. Convertir le résultat batch en résultat de sync utilisateur
-            processing_time = time.time() - start_time
+            processing_time = time.perf_counter() - start_time
             transactions_indexed = sum(
                 1 for result in batch_result.results if result.status == "success" and result.indexed
             )
@@ -516,7 +487,7 @@ class ElasticsearchTransactionProcessor:
             error_details = batch_result.errors.copy()
 
             logger.info(
-                f"{accounts_synced} accounts, {transactions_indexed} transactions indexed"
+                f"📈 Sync user {user_id} terminé: {transactions_indexed} transactions, {accounts_indexed} comptes indexés en {processing_time:.3f}s"
             )
 
             return UserSyncResult(
@@ -538,7 +509,7 @@ class ElasticsearchTransactionProcessor:
             )
 
         except Exception as e:
-            processing_time = time.time() - start_time
+            processing_time = time.perf_counter() - start_time
             logger.error(f"💥 Erreur synchronisation user {user_id}: {e}")
 
             return UserSyncResult(
@@ -555,58 +526,53 @@ class ElasticsearchTransactionProcessor:
                 error_details=[f"Sync failed: {str(e)}"],
             )
 
+    async def health_check(self) -> Dict[str, Any]:
+        """Check availability of Elasticsearch and optional database."""
+        status = "healthy"
+        es_info: Dict[str, Any] = {"available": False}
 
-async def _processor_health_check(self) -> Dict[str, Any]:
-    """Check availability of Elasticsearch and optional database."""
-    status = "healthy"
-    es_info: Dict[str, Any] = {"available": False}
-
-    try:
-        start = time.perf_counter()
-        es_ok = await self.elasticsearch_client.ping()
-        es_info["available"] = bool(es_ok)
-        es_info["response_time_ms"] = (time.perf_counter() - start) * 1000
-        if not es_ok:
-            status = "unhealthy"
-    except Exception as e:  # pragma: no cover - logging only
-        es_info = {"available": False, "error": str(e)}
-        status = "unhealthy"
-
-    db_info: Optional[Dict[str, Any]] = None
-    if getattr(self, "account_enrichment_service", None) is not None:
         try:
             start = time.perf_counter()
-
-            from db_service.session import SessionLocal
-            from sqlalchemy import text
-
-            def _db_ping():
-                with SessionLocal() as session:
-                    session.execute(text("SELECT 1"))
-
-            await asyncio.get_running_loop().run_in_executor(None, _db_ping)
-            db_info = {
-                "available": True,
-                "response_time_ms": (time.perf_counter() - start) * 1000,
-            }
+            es_ok = await self.elasticsearch_client.ping()
+            es_info["available"] = bool(es_ok)
+            es_info["response_time_ms"] = (time.perf_counter() - start) * 1000
+            if not es_ok:
+                status = "unhealthy"
         except Exception as e:  # pragma: no cover - logging only
-            db_info = {"available": False, "error": str(e)}
+            es_info = {"available": False, "error": str(e)}
             status = "unhealthy"
 
-    health: Dict[str, Any] = {
-        "status": status,
-        "timestamp": datetime.now().isoformat(),
-        "elasticsearch": es_info,
-        "capabilities": {
-            "transaction_processing": True,
-            "batch_processing": True,
-            "user_sync": True,
-        },
-    }
-    if db_info is not None:
-        health["database"] = db_info
-    return health
+        db_info: Optional[Dict[str, Any]] = None
+        if getattr(self, "account_enrichment_service", None) is not None:
+            try:
+                start = time.perf_counter()
 
+                from db_service.session import SessionLocal
+                from sqlalchemy import text
 
-ElasticsearchTransactionProcessor.health_check = _processor_health_check
-    
+                def _db_ping():
+                    with SessionLocal() as session:
+                        session.execute(text("SELECT 1"))
+
+                await asyncio.get_running_loop().run_in_executor(None, _db_ping)
+                db_info = {
+                    "available": True,
+                    "response_time_ms": (time.perf_counter() - start) * 1000,
+                }
+            except Exception as e:  # pragma: no cover - logging only
+                db_info = {"available": False, "error": str(e)}
+                status = "unhealthy"
+
+        health: Dict[str, Any] = {
+            "status": status,
+            "timestamp": datetime.now().isoformat(),
+            "elasticsearch": es_info,
+            "capabilities": {
+                "transaction_processing": True,
+                "batch_processing": True,
+                "user_sync": True,
+            },
+        }
+        if db_info is not None:
+            health["database"] = db_info
+        return health

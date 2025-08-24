@@ -64,7 +64,7 @@ class ElasticsearchClient:
         # Précharger certaines requêtes pour réchauffer les caches
         await self._warm_index()
         self._initialized = True
-        logger.info(f"🔍 Client Elasticsearch initialisé pour index '{self.index_name}'")
+        logger.info(f"📄 Client Elasticsearch initialisé pour index '{self.index_name}'")
     
     async def _setup_index(self):
         """Crée l'index s'il n'existe pas."""
@@ -89,6 +89,9 @@ class ElasticsearchClient:
         mapping = {
             "mappings": {
                 "properties": {
+                    # 🔧 NOUVEAU : Type de document pour différencier
+                    "document_type": {"type": "keyword"},  # "transaction" ou "account"
+                    
                     # Identifiants
                     "user_id": {"type": "integer"},
                     "transaction_id": {"type": "keyword"},
@@ -105,6 +108,7 @@ class ElasticsearchClient:
                     "account_type": {"type": "keyword"},
                     "account_balance": {"type": "float"},
                     "account_currency": {"type": "keyword"},
+                    "last_sync_timestamp": {"type": "date"},
 
                     # Contenu recherchable
                     "searchable_text": {
@@ -154,7 +158,9 @@ class ElasticsearchClient:
 
                     # Métadonnées
                     "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"}
+                    "updated_at": {"type": "date"},
+                    "indexed_at": {"type": "date"},
+                    "version": {"type": "keyword"}
                 }
             },
             "settings": {
@@ -246,6 +252,9 @@ class ElasticsearchClient:
         try:
             # Créer le document Elasticsearch
             doc = {
+                # 🔧 NOUVEAU : Type de document
+                "document_type": "transaction",
+                
                 # Identifiants
                 "user_id": structured_transaction.user_id,
                 "transaction_id": structured_transaction.transaction_id,
@@ -295,7 +304,7 @@ class ElasticsearchClient:
                 json=doc
             ) as response:
                 if response.status in [200, 201]:
-                    logger.debug(f"📝 Transaction {doc_id} indexée avec succès")
+                    logger.debug(f"📄 Transaction {doc_id} indexée avec succès")
                     return True
                 else:
                     error_text = await response.text()
@@ -334,47 +343,6 @@ class ElasticsearchClient:
 
         return await self.bulk_index_documents(documents_to_index)
     
-    async def delete_user_transactions(self, user_id: int) -> bool:
-        """
-        Supprime toutes les transactions d'un utilisateur de l'index.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            
-        Returns:
-            bool: True si la suppression a réussi
-        """
-        if not self._initialized:
-            raise ValueError("ElasticsearchClient not initialized")
-        
-        try:
-            # Requête de suppression par user_id
-            delete_query = {
-                "query": {
-                    "term": {
-                        "user_id": user_id
-                    }
-                }
-            }
-            
-            async with self.session.post(
-                f"{self.base_url}/{self.index_name}/_delete_by_query",
-                json=delete_query
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    deleted_count = result.get("deleted", 0)
-                    logger.info(f"🗑️ {deleted_count} transactions supprimées pour user {user_id}")
-                    return True
-                else:
-                    error_text = await response.text()
-                    logger.error(f"❌ Erreur suppression user {user_id}: {response.status} - {error_text}")
-                    return False
-                    
-        except Exception as e:
-            logger.error(f"❌ Exception suppression user {user_id}: {e}")
-            return False
-    
     async def get_user_transaction_count(self, user_id: int) -> int:
         """
         Compte les transactions d'un utilisateur dans l'index.
@@ -391,8 +359,11 @@ class ElasticsearchClient:
         try:
             count_query = {
                 "query": {
-                    "term": {
-                        "user_id": user_id
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}},
+                            {"term": {"document_type": "transaction"}}
+                        ]
                     }
                 }
             }
@@ -436,7 +407,8 @@ class ElasticsearchClient:
             return False
 
     async def index_accounts(self, accounts: List[Any], user_id: int) -> int:
-        """Indexe des documents de comptes dans l'index ``harena_accounts``.
+        """
+        🔧 CORRIGÉ : Indexe des documents de comptes dans le MÊME index que les transactions.
 
         Args:
             accounts: Liste d'objets représentant les comptes à indexer
@@ -458,19 +430,29 @@ class ElasticsearchClient:
                 continue
 
             document = {
+                # 🔧 NOUVEAU : Type de document pour différencier
+                "document_type": "account",
+                
+                # Données de compte
                 "account_id": account_id,
                 "user_id": user_id,
                 "account_name": getattr(acc, "account_name", None),
                 "account_type": getattr(acc, "account_type", None),
-                "balance": getattr(acc, "balance", None),
-                "currency_code": getattr(acc, "currency_code", None),
+                "account_balance": getattr(acc, "balance", None),
+                "account_currency": getattr(acc, "currency_code", None),
                 "last_sync_timestamp": getattr(acc, "last_sync_timestamp", None).isoformat()
                 if getattr(acc, "last_sync_timestamp", None)
                 else None,
+                
+                # Métadonnées
+                "indexed_at": datetime.now().isoformat(),
+                "version": "2.0-elasticsearch"
             }
 
             doc_id = f"user_{user_id}_acc_{account_id}"
-            bulk_body.append(json.dumps({"index": {"_index": "harena_accounts", "_id": doc_id}}))
+            
+            # 🔧 CORRIGÉ : Utiliser le même index (harena_transactions)
+            bulk_body.append(json.dumps({"index": {"_index": self.index_name, "_id": doc_id}}))
             bulk_body.append(json.dumps(document))
 
         if not bulk_body:
@@ -480,7 +462,7 @@ class ElasticsearchClient:
 
         try:
             async with self.session.post(
-                f"{self.base_url}/harena_accounts/_bulk",
+                f"{self.base_url}/{self.index_name}/_bulk",
                 data=bulk_data,
                 headers={"Content-Type": "application/x-ndjson"},
             ) as response:
@@ -491,6 +473,7 @@ class ElasticsearchClient:
                         for item in result.get("items", [])
                         if item.get("index", {}).get("status") in [200, 201]
                     )
+                    logger.info(f"✅ {indexed}/{len(accounts)} comptes indexés pour user {user_id}")
                     return indexed
                 else:
                     error_text = await response.text()
@@ -522,7 +505,7 @@ class ElasticsearchClient:
                 json=document
             ) as response:
                 if response.status in [200, 201]:
-                    logger.debug(f"📝 Document {document_id} indexé avec succès")
+                    logger.debug(f"📄 Document {document_id} indexé avec succès")
                     return True
                 else:
                     error_text = await response.text()
@@ -611,7 +594,7 @@ class ElasticsearchClient:
                         "responses": responses
                     }
                     
-                    logger.info(f"📦 Bulk indexation: {summary['indexed']}/{summary['total']} succès")
+                    logger.debug(f"📦 Bulk indexation: {summary['indexed']}/{summary['total']} succès")
                     return summary
                     
                 else:
@@ -669,11 +652,14 @@ class ElasticsearchClient:
             raise ValueError("ElasticsearchClient not initialized")
         
         try:
-            # Requête de suppression par user_id
+            # 🔧 CORRIGÉ : Supprimer seulement les transactions (pas les comptes)
             delete_query = {
                 "query": {
-                    "term": {
-                        "user_id": user_id
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}},
+                            {"term": {"document_type": "transaction"}}
+                        ]
                     }
                 }
             }
@@ -710,11 +696,14 @@ class ElasticsearchClient:
             return {"error": "Client not initialized"}
         
         try:
-            # Requête de statistiques
+            # 🔧 CORRIGÉ : Filtrer seulement les transactions
             stats_query = {
                 "query": {
-                    "term": {
-                        "user_id": user_id
+                    "bool": {
+                        "must": [
+                            {"term": {"user_id": user_id}},
+                            {"term": {"document_type": "transaction"}}
+                        ]
                     }
                 },
                 "aggs": {
@@ -782,12 +771,12 @@ class ElasticsearchClient:
             logger.error(f"❌ Exception stats user {user_id}: {e}")
             return {"error": str(e)}
     
-    async def health_check(self) -> bool:
+    async def ping(self) -> bool:
         """
-        Vérifie la santé de la connexion Elasticsearch.
+        🔧 NOUVEAU : Ping Elasticsearch pour health check.
         
         Returns:
-            bool: True si Elasticsearch est accessible
+            bool: True si Elasticsearch répond
         """
         if not self._initialized:
             return False
@@ -799,8 +788,17 @@ class ElasticsearchClient:
                 return response.status == 200
                 
         except Exception as e:
-            logger.error(f"❌ Health check failed: {e}")
+            logger.error(f"❌ Ping failed: {e}")
             return False
+    
+    async def health_check(self) -> bool:
+        """
+        Vérifie la santé de la connexion Elasticsearch.
+        
+        Returns:
+            bool: True si Elasticsearch est accessible
+        """
+        return await self.ping()
     
     async def get_cluster_info(self) -> Dict[str, Any]:
         """

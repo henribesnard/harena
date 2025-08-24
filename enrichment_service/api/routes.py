@@ -120,6 +120,7 @@ async def sync_user_transactions(
                 updated=0,
                 errors=0,
                 with_account_metadata=0,
+                accounts_synced=0,
                 processing_time=0.0,
                 status="success",
                 error_details=[]
@@ -162,7 +163,7 @@ async def sync_user_transactions(
             transaction_inputs.append(tx_input)
         
         logger.info(f"📊 Synchronisation de {len(transaction_inputs)} transactions pour l'utilisateur {user_id}")
-        
+
         # Synchroniser via le processeur Elasticsearch
         result = await processor.sync_user_transactions(
             user_id=user_id,
@@ -171,7 +172,16 @@ async def sync_user_transactions(
             accounts_map=accounts_map,
             force_refresh=force_refresh,
         )
-        
+        logger.info(
+            "📈 Résultat sync user %s: %s tx, %s indexées, %s mises à jour, %s erreurs, %s comptes",
+            user_id,
+            result.total_transactions,
+            result.indexed,
+            result.updated,
+            result.errors,
+            result.accounts_synced,
+        )
+
         return result
         
     except Exception as e:

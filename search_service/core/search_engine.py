@@ -210,13 +210,12 @@ class SearchEngine:
             # Calcul temps d'exécution
             execution_time = int((time.time() - start_time) * 1000)
 
-            total_pages = max(1, (total_hits + request.limit - 1) // request.limit)
             total_results = total_hits
-
             returned_results = len(results)
             page_size = request.limit
-            page = (request.offset // page_size) + 1
+            page = (request.offset // page_size) + 1 if page_size else 1
             total_pages = math.ceil(total_results / page_size) if page_size else 0
+            has_more_results = (request.offset + returned_results) < total_results
 
             response = {
                 "results": [r.model_dump() for r in results],
@@ -229,13 +228,10 @@ class SearchEngine:
                     "processing_time_ms": execution_time,
                     "total_results": total_results,
                     "returned_results": returned_results,
-                    "has_more_results": returned_results + request.offset < total_results,
+                    "has_more_results": has_more_results,
                     "total_pages": total_pages,
                     "page": page,
                     "page_size": page_size,
-                    "total_pages": total_pages,
-                    "has_more_results": page < total_pages,
-                    "has_more_results": (request.offset + returned_results) < total_results,
 
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"

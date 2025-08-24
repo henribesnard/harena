@@ -79,6 +79,12 @@ class StructuredTransaction:
     transaction_id: int
     user_id: int
     account_id: int
+
+    # Informations de compte
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    account_balance: Optional[float] = None
+    account_currency_code: Optional[str] = None
     
     # Contenu principal
     searchable_text: str
@@ -148,6 +154,10 @@ class StructuredTransaction:
             transaction_id=tx.bridge_transaction_id,
             user_id=tx.user_id,
             account_id=tx.account_id,
+            account_name=None,
+            account_type=None,
+            account_balance=None,
+            account_currency_code=None,
             searchable_text=searchable_text,
             primary_description=primary_desc,
             amount=tx.amount,
@@ -180,6 +190,7 @@ class StructuredTransaction:
             "account_name": self.account_name,
             "account_type": self.account_type,
             "account_balance": self.account_balance,
+            "account_currency_code": self.account_currency_code,
             "account_currency": self.account_currency,
             "account_last_sync": self.account_last_sync.isoformat() if self.account_last_sync else None,
             

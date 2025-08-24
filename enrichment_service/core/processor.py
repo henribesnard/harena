@@ -504,6 +504,7 @@ class ElasticsearchTransactionProcessor:
 
             # 4. Convertir le résultat batch en résultat de sync utilisateur
             processing_time = time.time() - start_time
+            indexed_count = sum(
 
             transactions_indexed = sum(
                 1 for result in batch_result.results if result.status == "success" and result.indexed
@@ -515,6 +516,8 @@ class ElasticsearchTransactionProcessor:
             )
             error_count = len(batch_result.errors)
             error_details = batch_result.errors.copy()
+
+            logger.info(f"{accounts_synced} accounts, {indexed_count} transactions indexed")
 
             return UserSyncResult(
                 user_id=user_id,

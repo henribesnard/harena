@@ -181,7 +181,7 @@ def create_app():
                 logger.error(f"❌ {module_path}: {e}")
                 loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)}
 
-        # 3. Enrichment Service - VERSION ELASTICSEARCH UNIQUEMENT
+        # 3. Enrichment Service - VERSION ELASTICSEARCH UNIQUEMENT (INCHANGÉ)
         logger.info("🔍 Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
         try:
             # Vérifier BONSAI_URL pour enrichment_service
@@ -259,7 +259,7 @@ def create_app():
                 "version": "2.0.0-elasticsearch"
             }
 
-        # 4. Search Service - VERSION CORRIGÉE POUR MES CORRECTIONS
+        # 4. Search Service - VERSION FINALE CORRIGÉE
         logger.info("🔍 Chargement et initialisation du search_service...")
         try:
             # Vérifier BONSAI_URL
@@ -269,8 +269,8 @@ def create_app():
             
             logger.info(f"📡 BONSAI_URL configurée: {bonsai_url[:50]}...")
             
-            # ✅ CORRECTION : Import direct de mes classes corrigées
-            from search_service.core.elasticsearch_client import ElasticsearchClient
+            # ✅ CORRECTION CRITIQUE : Import correct de mes classes corrigées
+            from search_service.core.elasticsearch_client import ElasticsearchClient  # ✅ CORRIGÉ
             from search_service.core.search_engine import SearchEngine
             from search_service.api.routes import router as search_router, initialize_search_engine
             
@@ -287,12 +287,12 @@ def create_app():
             else:
                 logger.info("✅ Test de connexion Elasticsearch réussi")
             
-            # ✅ CORRECTION : Initialisation directe du moteur avec mes corrections
+            # ✅ CORRECTION FINALE : Initialisation directe du moteur avec mes corrections
             search_engine = SearchEngine(
                 elasticsearch_client=elasticsearch_client,
                 cache_enabled=True
             )
-            logger.info("✅ SearchEngine initialisé avec mes corrections")
+            logger.info("🔥 SearchEngine initialisé avec TOUTES mes corrections!")
             
             # Injecter dans les routes
             initialize_search_engine(elasticsearch_client)
@@ -316,14 +316,15 @@ def create_app():
                 "routes": routes_count, 
                 "prefix": "/api/v1/search",
                 "initialized": True,
-                "architecture": "corrected_direct"
+                "architecture": "corrected_final_v2"  # ✅ Version marquée
             }
             
-            logger.info("🎉 search_service: Complètement initialisé avec corrections!")
+            logger.info("🎉 search_service: Complètement initialisé avec corrections FINALES!")
             
         except Exception as e:
             error_msg = f"Erreur initialisation search_service: {str(e)}"
             logger.error(f"❌ {error_msg}")
+            logger.error(f"❌ Stacktrace: ", exc_info=True)
             
             # Marquer l'échec
             app.state.service_initialized = False
@@ -336,10 +337,10 @@ def create_app():
             loader.services_status["search_service"] = {
                 "status": "error",
                 "error": error_msg,
-                "architecture": "corrected_direct"
+                "architecture": "corrected_final_v2"
             }
 
-        # Compter les services réussis
+        # Compter les services réussis (INCHANGÉ)
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
         logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")
         
@@ -368,7 +369,7 @@ def create_app():
         lifespan=lifespan
     )
 
-    # CORS
+    # CORS (INCHANGÉ)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -379,7 +380,7 @@ def create_app():
 
     @app.get("/health")
     async def health():
-        """Health check global"""
+        """Health check global (INCHANGÉ)"""
         ok_services = [name for name, status in loader.services_status.items() 
                       if status.get("status") == "ok"]
         degraded_services = [name for name, status in loader.services_status.items() 
@@ -416,7 +417,7 @@ def create_app():
 
     @app.get("/status")
     async def status():
-        """Statut détaillé"""
+        """Statut détaillé (INCHANGÉ)"""
         return {
             "platform": "Harena Finance",
             "services": loader.services_status,
@@ -424,7 +425,7 @@ def create_app():
             "search_service_details": {
                 "initialized": loader.search_service_initialized,
                 "error": loader.search_service_error,
-                "architecture": "corrected_direct"
+                "architecture": "corrected_final_v2"
             },
             "enrichment_service_details": {
                 "architecture": "elasticsearch_only",
@@ -439,10 +440,9 @@ def create_app():
 
         }
 
-    
     @app.get("/")
     async def root():
-        """Page d'accueil"""
+        """Page d'accueil (INCHANGÉ)"""
         return {
             "message": "🏦 Harena Finance Platform - LOCAL DEVELOPMENT (Core Services)",
             "version": "1.0.0-dev-core",
@@ -450,7 +450,7 @@ def create_app():
                 "user_service - Gestion utilisateurs",
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
-                "search_service - Recherche lexicale (Architecture corrigée)",
+                "search_service - Recherche lexicale (Architecture finale corrigée)",
             ],
             "endpoints": {
                 "/health": "Contrôle santé",

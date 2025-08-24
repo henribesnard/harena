@@ -16,7 +16,8 @@ def test_aggregation_only_returns_no_results_but_same_aggregations():
     base_payload = {
         "user_id": 1,
         "query": "",
-        "limit": 5,
+        "page": 1,
+        "page_size": 5,
         "aggregations": {"operation_type": {"terms": {"field": "operation_type"}}},
     }
     agg_only_payload = {**base_payload, "aggregation_only": True}

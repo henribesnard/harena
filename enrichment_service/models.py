@@ -7,7 +7,7 @@ et l'indexation des transactions financières dans Elasticsearch.
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Modèles Pydantic pour l'API
 class TransactionInput(BaseModel):
@@ -34,6 +34,8 @@ class TransactionInput(BaseModel):
     deleted: bool = False
     future: bool = False
     recent_transactions: List[float] = []
+    recent_transactions: List[float] = Field(default_factory=list)
+
 
 class BatchTransactionInput(BaseModel):
     """Modèle pour le traitement en lot de transactions."""
@@ -106,11 +108,18 @@ class StructuredTransaction:
     is_future: bool
     is_deleted: bool
 
+    # Résultats qualité et métadonnées
+    balance_check_passed: Optional[bool] = None
+    quality_score: Optional[float] = None
+
+
     # Informations de compte
     account_name: Optional[str] = None
     account_type: Optional[str] = None
     account_balance: Optional[float] = None
+    account_currency_code: Optional[str] = None
     account_currency: Optional[str] = None
+    account_currency_code: Optional[str] = None
     account_last_sync: Optional[datetime] = None
 
     # Information sur la catégorie
@@ -180,6 +189,7 @@ class StructuredTransaction:
             category_name=tx.category_name,
             balance_check_passed=balance_check_passed,
             quality_score=quality_score,
+
         )
 
     def to_elasticsearch_document(self) -> Dict[str, Any]:
@@ -199,6 +209,8 @@ class StructuredTransaction:
             "amount_abs": self.amount_abs,
             "transaction_type": self.transaction_type,
             "currency_code": self.currency_code,
+
+            # Dates (optimisées pour les requêtes Elasticsearch)
             "date": self.date.isoformat(),
             "date_str": self.date_str,
             "month_year": self.month_year,
@@ -207,6 +219,9 @@ class StructuredTransaction:
             "category_id": self.category_id,
             "operation_type": self.operation_type,
             "category_name": self.category_name,
+
+            # Flags
+
             "is_future": self.is_future,
             "is_deleted": self.is_deleted,
             "indexed_at": datetime.now().isoformat(),

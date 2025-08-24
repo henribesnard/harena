@@ -84,13 +84,19 @@ class QueryBuilder:
         offset = (page - 1) * page_size
 
         # Construction requête finale
+        sort_criteria = self._build_sort_criteria(request)
+
         query = {
             "query": {"bool": bool_query},
-            "sort": self._build_sort_criteria(request),
+            "sort": sort_criteria,
             "_source": self._get_source_fields(),
             "size": request.page_size,
             "from": request.offset
         }
+
+        # Activer le tracking des scores lorsque _score est utilisé avec au moins un autre tri
+        if any("_score" in field for field in sort_criteria) and len(sort_criteria) > 1:
+            query["track_scores"] = True
 
         # ✅ CORRECTION HIGHLIGHTING : Toujours ajouté si demandé
         if request.highlight:

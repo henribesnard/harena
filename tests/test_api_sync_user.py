@@ -112,8 +112,14 @@ def test_sync_user_endpoint_invokes_processor(caplog):
     assert len(kwargs["transactions"]) == 1
     assert kwargs["accounts_map"][123].account_name == "Main"
     assert len(kwargs["accounts"]) == 1
-    assert response.json()["with_account_metadata"] == 1
-    assert response.json()["accounts_synced"] == 1
+    payload = response.json()
+    assert payload["with_account_metadata"] == 1
+    assert payload["accounts_synced"] == 1
+    assert payload["transactions_indexed"] == 1
+    # Property alias should mirror transactions_indexed
+    result_obj = processor_mock.sync_user_transactions.return_value
+    assert result_obj.transactions_indexed == 1
+    assert result_obj.indexed == 1
     assert "1 accounts, 1 transactions indexed" in caplog.text
 
 

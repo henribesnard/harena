@@ -85,30 +85,32 @@ class StructuredTransaction:
     # Contenu principal
     searchable_text: str
     primary_description: str
-    
+
     # Données financières
     amount: float
     amount_abs: float
     transaction_type: str  # "debit" ou "credit"
     currency_code: str
-    
+
     # Dates
     date: datetime
     date_str: str
     month_year: str
     weekday: str
-    
+
     # Catégorisation
     category_id: Optional[int]
     operation_type: Optional[str]
 
-    # Métadonnées supplémentaires
+    # Flags
     is_future: bool
     is_deleted: bool
+
+    # Résultats qualité et métadonnées
     balance_check_passed: Optional[bool] = None
     quality_score: Optional[float] = None
 
-    # Informations sur le compte
+    # Informations de compte
     account_name: Optional[str] = None
     account_type: Optional[str] = None
     account_balance: Optional[float] = None
@@ -186,7 +188,7 @@ class StructuredTransaction:
             account_balance=tx.account_balance,
             account_currency=tx.account_currency,
             account_last_sync=tx.account_last_sync,
-            category_name=tx.category_name
+            category_name=tx.category_name,
         )
     
     def to_elasticsearch_document(self) -> Dict[str, Any]:
@@ -200,7 +202,6 @@ class StructuredTransaction:
             "account_name": self.account_name,
             "account_type": self.account_type,
             "account_balance": self.account_balance,
-            "account_currency_code": self.account_currency_code,
             "account_currency": self.account_currency,
             "account_last_sync": self.account_last_sync.isoformat() if self.account_last_sync else None,
 
@@ -214,9 +215,6 @@ class StructuredTransaction:
             "transaction_type": self.transaction_type,
             "currency_code": self.currency_code,
 
-            "quality_score": self.quality_score,
-            
-
             # Dates (optimisées pour les requêtes Elasticsearch)
             "date": self.date.isoformat(),
             "date_str": self.date_str,
@@ -229,7 +227,6 @@ class StructuredTransaction:
             "operation_type": self.operation_type,
 
             "category_name": self.category_name,
-            
 
             # Flags
             "is_future": self.is_future,

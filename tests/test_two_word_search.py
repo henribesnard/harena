@@ -41,6 +41,6 @@ async def test_two_word_search_returns_results():
     assert len(resp["results"]) >= 1
     es_query = mock_exec.await_args.args[0]
     assert (
-        es_query["query"]["bool"]["must"][1]["multi_match"]["minimum_should_match"]
+        es_query["query"]["bool"]["must"][0]["multi_match"]["minimum_should_match"]
         == "50%"
     )

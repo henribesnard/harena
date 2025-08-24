@@ -273,8 +273,8 @@ class HarenaRealDataTestClient:
         search_payload = {
             "user_id": self.user_id,
             "query": "netflix",
-            "limit": 25,
-            "offset": 0,
+            "page": 1,
+            "page_size": 25,
             "filters": {
                 "amount": {
                     "gte": -25,

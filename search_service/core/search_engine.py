@@ -77,7 +77,7 @@ class SearchEngine:
             query=request.query,
             filters=json.dumps(request.filters, sort_keys=True),
             offset=request.offset,
-            limit=request.limit,
+            page_size=request.page_size,
         )
 
     def _check_rate_limit(self, user_id: int) -> None:
@@ -166,15 +166,34 @@ class SearchEngine:
             # Sécurité supplémentaire : filtrer par user_id côté application
             results = [r for r in processed if r.user_id == request.user_id]
 
+            aggregations = es_response.get("aggregations")
+            total_hits = es_response.get("hits", {}).get("total", {}).get("value", len(results))
+
+            # Récupération complète des résultats si agrégations demandées
+            if request.aggregations and not request.aggregation_only:
+                next_offset = request.offset + request.limit
+                while request.offset + len(results) < total_hits:
+                    next_request = request.model_copy(update={"offset": next_offset, "aggregations": None})
+                    es_query_page = self.query_builder.build_query(next_request)
+                    es_response_page = await self._execute_search(es_query_page, next_request)
+                    processed_page = self._process_results(es_response_page)
+                    page_results = [r for r in processed_page if r.user_id == request.user_id]
+                    if not page_results:
+                        break
+                    results.extend(page_results)
+                    next_offset += request.limit
+                total_results = total_hits
+            else:
+                total_results = len(results)
+
             # Calcul temps d'exécution
             execution_time = int((time.time() - start_time) * 1000)
 
-            total_results = len(results)
             returned_results = len(results)
 
             response = {
                 "results": [r.model_dump() for r in results],
-                "aggregations": es_response.get("aggregations"),
+                "aggregations": aggregations,
                 "success": True,
                 "error_message": None,
                 "response_metadata": {
@@ -183,7 +202,7 @@ class SearchEngine:
                     "processing_time_ms": execution_time,
                     "total_results": total_results,
                     "returned_results": returned_results,
-                    "has_more_results": total_results > (returned_results + request.offset),
+                    "has_more_results": (request.offset + returned_results) < total_results,
                     "search_strategy_used": (request.metadata or {}).get(
                         "search_strategy", "standard"
                     ),
@@ -244,13 +263,13 @@ class SearchEngine:
                     response = await self.elasticsearch_client.search(
                         index=self.index_name,
                         body=es_query,
-                        size=request.limit,
+                        size=request.page_size,
                         from_=request.offset,
                     )
                 else:
                     # Fallback: requête HTTP directe
                     search_url = f"/{self.index_name}/_search"
-                    es_query["size"] = request.limit
+                    es_query["size"] = request.page_size
                     es_query["from"] = request.offset
                     async with self.elasticsearch_client.session.post(
                         f"{self.elasticsearch_client.base_url}{search_url}",
@@ -400,8 +419,9 @@ class SearchEngine:
                 "user_id": request.user_id,
                 "query": request.query,
                 "filters": request.filters,
-                "limit": request.limit,
-                "offset": request.offset
+                "page": request.page,
+                "page_size": request.page_size,
+                "offset": request.offset,
             },
             "elasticsearch_query": es_query,
             "index_used": self.index_name

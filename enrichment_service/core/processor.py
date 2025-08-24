@@ -450,6 +450,7 @@ class ElasticsearchTransactionProcessor:
         self,
         user_id: int,
         transactions: List[TransactionInput],
+        accounts: Optional[List[Any]] = None,
         accounts_map: Optional[Dict[int, Any]] = None,
         force_refresh: bool = False,
     ) -> UserSyncResult:
@@ -480,22 +481,32 @@ class ElasticsearchTransactionProcessor:
                 f"📝 {account_metadata_enriched} transactions enrichies avec des métadonnées de compte"
             )
 
-            # 1. Optionnel: Nettoyer les données existantes si force_refresh
+            # 1. Indexer les comptes associés si fournis
+            accounts_indexed = 0
+            if accounts:
+                try:
+                    accounts_indexed = await self.elasticsearch_client.index_accounts(accounts, user_id)
+                except Exception as e:  # pragma: no cover - logging only
+                    logger.error(f"Erreur indexation comptes user {user_id}: {e}")
+
+            # 2. Optionnel: Nettoyer les données existantes si force_refresh
             if force_refresh:
                 logger.info(f"🧹 Nettoyage des données existantes pour user {user_id}")
                 deleted_count = await self.elasticsearch_client.delete_user_transactions(user_id)
                 logger.info(f"🗑️ {deleted_count} documents supprimés pour user {user_id}")
 
-            # 2. Créer un batch input et traiter
+            # 3. Créer un batch input et traiter
             batch_input = BatchTransactionInput(user_id=user_id, transactions=transactions)
 
             batch_result = await self.process_transactions_batch(
                 batch_input, force_update=force_refresh
             )
 
-            # 3. Convertir le résultat batch en résultat de sync utilisateur
+            # 4. Convertir le résultat batch en résultat de sync utilisateur
             processing_time = time.time() - start_time
             indexed_count = sum(
+
+            transactions_indexed = sum(
                 1 for result in batch_result.results if result.status == "success" and result.indexed
             )
             updated_count = sum(
@@ -511,7 +522,8 @@ class ElasticsearchTransactionProcessor:
             return UserSyncResult(
                 user_id=user_id,
                 total_transactions=len(transactions),
-                indexed=indexed_count,
+                transactions_indexed=transactions_indexed,
+                accounts_indexed=accounts_indexed,
                 updated=updated_count,
                 errors=error_count,
                 with_account_metadata=account_metadata_enriched,
@@ -520,7 +532,7 @@ class ElasticsearchTransactionProcessor:
                 status="success"
                 if error_count == 0
                 else "partial_success"
-                if indexed_count > 0
+                if transactions_indexed > 0
                 else "failed",
                 error_details=error_details,
             )
@@ -532,7 +544,8 @@ class ElasticsearchTransactionProcessor:
             return UserSyncResult(
                 user_id=user_id,
                 total_transactions=len(transactions),
-                indexed=0,
+                transactions_indexed=0,
+                accounts_indexed=0,
                 updated=0,
                 errors=len(transactions),
                 with_account_metadata=account_metadata_enriched,

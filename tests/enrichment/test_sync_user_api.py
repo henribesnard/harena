@@ -22,12 +22,19 @@ async def get_current_active_user():  # type: ignore
 
 deps_stub.get_current_active_user = get_current_active_user
 sys.modules["user_service.api.deps"] = deps_stub
+import importlib
+import enrichment_service.api.routes as routes
+importlib.reload(routes)
 
 from enrichment_service.api.routes import (
     router,
     get_db,
     get_elasticsearch_processor,
+    get_current_active_user,
 )
+router = routes.router
+get_db = routes.get_db
+get_elasticsearch_processor = routes.get_elasticsearch_processor
 from enrichment_service.core.account_enrichment_service import AccountEnrichmentService
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 
@@ -35,6 +42,7 @@ from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 class DummyElasticsearchClient:
     def __init__(self):
         self.documents = []
+        self.account_documents = []
         self.default_batch_size = 500
 
     async def delete_user_transactions(self, user_id: int) -> int:
@@ -48,6 +56,21 @@ class DummyElasticsearchClient:
             "errors": 0,
             "responses": [{"success": True} for _ in docs],
         }
+
+    async def index_accounts(self, accounts, user_id: int):
+        count = 0
+        for acc in accounts:
+            acc_id = getattr(acc, "id", getattr(acc, "account_id", None))
+            if acc_id is None:
+                continue
+            doc = {
+                "account_id": acc_id,
+                "user_id": user_id,
+                "account_name": getattr(acc, "account_name", None),
+            }
+            self.account_documents.append(doc)
+            count += 1
+        return count
 
 
 def create_app_and_db():
@@ -104,6 +127,7 @@ def create_app_and_db():
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_elasticsearch_processor] = override_processor
+    app.dependency_overrides[get_current_active_user] = lambda: current_user
 
     global current_user
     current_user = types.SimpleNamespace(id=1, is_superuser=True, is_active=True)
@@ -117,12 +141,22 @@ def test_sync_user_produces_account_metadata(sample_es_account_response):
 
     response = client.post("/api/v1/enrichment/elasticsearch/sync-user/1")
     assert response.status_code == 200
+    assert response.json()["accounts_synced"] == 1
     assert es_client.documents, "No documents indexed"
     assert response.json()["accounts_synced"] == 1
 
     doc = es_client.documents[0]["document"]
     for field, value in sample_es_account_response.items():
         assert doc[field] == value
+
+    # Accounts should also be indexed separately
+    assert len(es_client.account_documents) == 1
+    account_doc = es_client.account_documents[0]
+    assert account_doc["account_id"] == 1
+
+    payload = response.json()
+    assert payload["transactions_indexed"] == 1
+    assert payload["accounts_indexed"] == 1
 
     db.close()
 

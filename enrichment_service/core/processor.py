@@ -10,12 +10,15 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from enrichment_service.models import (
-    TransactionInput, 
+    TransactionInput,
     BatchTransactionInput,
-    ElasticsearchEnrichmentResult, 
+    ElasticsearchEnrichmentResult,
     BatchEnrichmentResult,
     UserSyncResult,
-    StructuredTransaction
+    StructuredTransaction,
+)
+from enrichment_service.core.account_enrichment_service import (
+    AccountEnrichmentService,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,15 +29,32 @@ class ElasticsearchTransactionProcessor:
     Gère la structuration et l'indexation des données financières.
     """
     
-    def __init__(self, elasticsearch_client):
-        """
-        Initialise le processeur avec le client Elasticsearch.
-        
-        Args:
-            elasticsearch_client: Instance du client Elasticsearch
-        """
+    def __init__(
+        self,
+        elasticsearch_client,
+        account_enrichment_service: Optional[AccountEnrichmentService] = None,
+    ):
+        """Initialise le processeur avec le client Elasticsearch et les services externes."""
         self.elasticsearch_client = elasticsearch_client
+        self.account_enrichment_service = account_enrichment_service
         logger.info("ElasticsearchTransactionProcessor initialisé")
+
+    def _apply_enrichment(self, structured_tx: StructuredTransaction, data: Dict[str, Optional[str]]):
+        """Append enrichment information to the searchable text."""
+        if not data:
+            return
+        parts = []
+        account = data.get("account_name")
+        category = data.get("category_name")
+        merchant = data.get("merchant_name")
+        if account:
+            parts.append(f"Compte: {account}")
+        if category:
+            parts.append(f"Catégorie: {category}")
+        if merchant:
+            parts.append(f"Marchand: {merchant}")
+        if parts:
+            structured_tx.searchable_text += " | " + " | ".join(parts)
     
     async def process_single_transaction(
         self, 
@@ -54,18 +74,27 @@ class ElasticsearchTransactionProcessor:
         start_time = time.time()
         user_id = transaction.user_id
         transaction_id = transaction.bridge_transaction_id
-        
+
         logger.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
-        
+
         try:
-            # 1. Structurer la transaction
+            # 1. Enrichir les données du compte avant structuration
+            enriched = {}
+            if self.account_enrichment_service:
+                try:
+                    enriched = await self.account_enrichment_service.enrich_with_account_data(transaction)
+                except Exception as e:  # pragma: no cover - logging only
+                    logger.warning(f"Enrichment failed for tx {transaction_id}: {e}")
+
+            # 2. Structurer la transaction
             structured_tx = StructuredTransaction.from_transaction_input(transaction)
+            self._apply_enrichment(structured_tx, enriched)
             logger.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
-            
-            # 2. Générer l'ID du document
+
+            # 3. Générer l'ID du document
             document_id = structured_tx.get_document_id()
-            
-            # 3. Vérifier si le document existe déjà (si pas de force_update)
+
+            # 4. Vérifier si le document existe déjà (si pas de force_update)
             if not force_update:
                 exists = await self.elasticsearch_client.document_exists(document_id)
                 if exists:
@@ -83,7 +112,7 @@ class ElasticsearchTransactionProcessor:
                         status="skipped"
                     )
             
-            # 4. Indexer dans Elasticsearch
+            # 5. Indexer dans Elasticsearch
             success = await self.elasticsearch_client.index_document(
                 document_id=document_id,
                 document=structured_tx.to_elasticsearch_document()
@@ -164,9 +193,16 @@ class ElasticsearchTransactionProcessor:
             # 1. Structurer toutes les transactions
             structured_transactions = []
             documents_to_index = []
-            
+
             for tx in transactions:
+                enriched = {}
+                if self.account_enrichment_service:
+                    try:
+                        enriched = await self.account_enrichment_service.enrich_with_account_data(tx)
+                    except Exception as e:  # pragma: no cover - logging only
+                        logger.warning(f"Enrichment failed for tx {tx.bridge_transaction_id}: {e}")
                 structured_tx = StructuredTransaction.from_transaction_input(tx)
+                self._apply_enrichment(structured_tx, enriched)
                 structured_transactions.append(structured_tx)
                 
                 # Préparer le document pour l'indexation bulk

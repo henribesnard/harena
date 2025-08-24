@@ -150,8 +150,60 @@ def create_autogen_stub():
             self.description = description
     
     autogen_stub.AssistantAgent = _AssistantAgent
-    
+
     return autogen_stub
+
+
+def create_pydantic_settings_stub():
+    """Crée un stub minimal pour pydantic_settings."""
+    module = types.ModuleType("pydantic_settings")
+
+    class _BaseSettings:
+        def __init__(self, **values: Any):
+            for k, v in values.items():
+                setattr(self, k, v)
+
+    module.BaseSettings = _BaseSettings
+    module.SettingsConfigDict = dict
+    return module
+
+
+def create_aiohttp_stub():
+    """Crée un stub minimal pour aiohttp."""
+    aiohttp_stub = types.ModuleType("aiohttp")
+
+    class _ClientSession:
+        async def post(self, *args, **kwargs):
+            return types.SimpleNamespace(status=200, json=lambda: {}, text=lambda: "")
+
+        async def get(self, *args, **kwargs):
+            return types.SimpleNamespace(status=200, json=lambda: {}, text=lambda: "")
+
+        async def close(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            pass
+
+    class _ClientTimeout:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class _TCPConnector:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class _ClientError(Exception):
+        pass
+
+    aiohttp_stub.ClientSession = _ClientSession
+    aiohttp_stub.ClientTimeout = _ClientTimeout
+    aiohttp_stub.TCPConnector = _TCPConnector
+    aiohttp_stub.ClientError = _ClientError
+    return aiohttp_stub
 
 
 def install_stubs():
@@ -167,6 +219,12 @@ def install_stubs():
             pydantic.create_model = _create_model
     except ImportError:
         sys.modules["pydantic"] = create_pydantic_stub()
+
+    # pydantic_settings
+    try:
+        import pydantic_settings  # type: ignore
+    except ImportError:
+        sys.modules["pydantic_settings"] = create_pydantic_settings_stub()
     
     # OpenAI
     try:
@@ -179,6 +237,12 @@ def install_stubs():
         import httpx
     except ImportError:
         sys.modules["httpx"] = create_httpx_stub()
+
+    # aiohttp
+    try:
+        import aiohttp
+    except ImportError:
+        sys.modules["aiohttp"] = create_aiohttp_stub()
     
     # Autogen
     try:
@@ -196,7 +260,7 @@ def reset_stubs():
     """Réinitialise tous les stubs (utile pour les tests)."""
     modules_to_remove = [
         "pydantic", "openai", "openai.types", "openai.types.chat",
-        "httpx", "autogen"
+        "httpx", "autogen", "pydantic_settings", "aiohttp"
     ]
     for module in modules_to_remove:
         if module in sys.modules:

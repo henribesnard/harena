@@ -8,6 +8,7 @@ import aiohttp
 import json
 import ssl
 import time
+import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -24,6 +25,8 @@ class ElasticsearchClient:
         self.index_name = "harena_transactions"
         self.session = None
         self._initialized = False
+        # Batch size used as a starting point for adaptive bulk indexing
+        self.default_batch_size = 500
         
     async def initialize(self):
         """Initialise la connexion Elasticsearch."""
@@ -58,6 +61,8 @@ class ElasticsearchClient:
         
         # Créer l'index s'il n'existe pas
         await self._setup_index()
+        # Précharger certaines requêtes pour réchauffer les caches
+        await self._warm_index()
         self._initialized = True
         logger.info(f"🔍 Client Elasticsearch initialisé pour index '{self.index_name}'")
     
@@ -202,6 +207,26 @@ class ElasticsearchClient:
                 error_text = await response.text()
                 logger.error(f"❌ Erreur création index: {response.status} - {error_text}")
                 raise Exception(f"Failed to create index: {error_text}")
+
+    async def _warm_index(self):
+        """Exécute des requêtes pour réchauffer les caches Elasticsearch."""
+        warm_queries = [
+            # Statistiques sur le solde pour forcer le chargement du champ
+            {"size": 0, "aggs": {"balance_stats": {"stats": {"field": "account_balance"}}}},
+            # Requête sur merchant_name.keyword pour réchauffer l'agrégation sur ce champ
+            {"size": 0, "query": {"match_all": {}}, "aggs": {"merchants": {"terms": {"field": "merchant_name.keyword", "size": 1}}}}
+        ]
+
+        for query in warm_queries:
+            try:
+                async with self.session.post(
+                    f"{self.base_url}/{self.index_name}/_search",
+                    json=query
+                ) as response:
+                    # On lit le corps pour s'assurer que la requête est exécutée
+                    await response.text()
+            except Exception as e:
+                logger.debug(f"Warmup query failed: {e}")
     
     async def index_transaction(self, structured_transaction) -> bool:
         """
@@ -279,20 +304,74 @@ class ElasticsearchClient:
             logger.error(f"❌ Exception lors de l'indexation: {e}")
             return False
     
-    async def index_transactions_batch(self, structured_transactions: List) -> Dict[str, Any]:
-        """
-        Indexe un lot de transactions dans Elasticsearch.
-        
+    async def index_transactions_batch(
+        self,
+        structured_transactions: List,
+        initial_batch_size: int = None,
+        max_retries: int = 3,
+        target_time: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Indexe un lot de transactions avec adaptation de la taille de batch.
+
+        La méthode ajuste dynamiquement la taille des sous-batches en fonction
+        du temps d'indexation précédent et applique un retry avec backoff
+        exponentiel en cas d'échec.
+
         Args:
             structured_transactions: Liste de StructuredTransaction
-            
+            initial_batch_size: Taille initiale des lots (par défaut self.default_batch_size)
+            max_retries: Nombre maximum de tentatives par sous-batch
+            target_time: Temps visé pour une opération d'indexation (en secondes)
+
         Returns:
-            Dict: Résumé de l'indexation
+            Dict: Résumé de l'indexation avec réponses individuelles
         """
         if not self._initialized:
             raise ValueError("ElasticsearchClient not initialized")
-        
+
         if not structured_transactions:
+            return {"indexed": 0, "errors": 0, "total": 0, "responses": []}
+
+        batch_size = initial_batch_size or self.default_batch_size
+        min_batch_size = 50
+        max_batch_size = 2000
+
+        total_indexed = 0
+        total_errors = 0
+        responses: List[Dict[str, Any]] = []
+
+        idx = 0
+        while idx < len(structured_transactions):
+            current_batch = structured_transactions[idx: idx + batch_size]
+            attempt = 0
+            backoff = 1
+            while True:
+                # Préparer les données bulk pour ce sous-batch
+                bulk_body = []
+                for tx in current_batch:
+                    doc_id = f"user_{tx.user_id}_tx_{tx.transaction_id}"
+                    bulk_body.append(json.dumps({"index": {"_index": self.index_name, "_id": doc_id}}))
+                    doc = {
+                        "user_id": tx.user_id,
+                        "transaction_id": tx.transaction_id,
+                        "account_id": tx.account_id,
+                        "searchable_text": tx.searchable_text,
+                        "primary_description": tx.primary_description,
+                        "merchant_name": getattr(tx, 'merchant_name', ''),
+                        "amount": tx.amount,
+                        "amount_abs": tx.amount_abs,
+                        "transaction_type": tx.transaction_type,
+                        "currency_code": tx.currency_code,
+                        "date": tx.date_str,
+                        "transaction_date": tx.date_str,
+                        "month_year": tx.month_year,
+                        "weekday": tx.weekday,
+                        "category_id": tx.category_id,
+                        "operation_type": tx.operation_type,
+                        "is_future": tx.is_future,
+                        "is_deleted": tx.is_deleted,
+                        "created_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat(),
             return {"indexed": 0, "errors": 0, "total": 0}
         
         # Préparer le bulk request
@@ -368,18 +447,75 @@ class ElasticsearchClient:
                         "errors": error_count,
                         "total": len(structured_transactions)
                     }
-                    
-                    logger.info(f"📦 Bulk indexation: {summary}")
-                    return summary
-                    
-                else:
-                    error_text = await response.text()
-                    logger.error(f"❌ Erreur bulk request: {response.status} - {error_text}")
-                    return {"indexed": 0, "errors": len(structured_transactions), "total": len(structured_transactions)}
-                    
-        except Exception as e:
-            logger.error(f"❌ Exception bulk indexation: {e}")
-            return {"indexed": 0, "errors": len(structured_transactions), "total": len(structured_transactions)}
+                    bulk_body.append(json.dumps(doc))
+
+                bulk_data = "\n".join(bulk_body) + "\n"
+
+                start_time = time.perf_counter()
+                try:
+                    async with self.session.post(
+                        f"{self.base_url}/{self.index_name}/_bulk",
+                        data=bulk_data,
+                        headers={"Content-Type": "application/x-ndjson"},
+                    ) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            elapsed = time.perf_counter() - start_time
+
+                            indexed_count = 0
+                            error_count = 0
+                            for i, item in enumerate(result.get("items", [])):
+                                tx_id = current_batch[i].transaction_id
+                                if item.get("index", {}).get("status") in [200, 201]:
+                                    indexed_count += 1
+                                    responses.append({"transaction_id": tx_id, "success": True})
+                                else:
+                                    error_count += 1
+                                    err = item.get("index", {}).get("error", {}).get("reason", "Unknown error")
+                                    responses.append({"transaction_id": tx_id, "success": False, "error": err})
+                                    logger.error(f"❌ Erreur bulk item: {item['index']}")
+
+                            total_indexed += indexed_count
+                            total_errors += error_count
+
+                            # Adapter la taille du prochain batch en fonction du temps
+                            if elapsed > target_time and batch_size > min_batch_size:
+                                batch_size = max(min_batch_size, batch_size // 2)
+                            elif elapsed < target_time / 2 and batch_size < max_batch_size:
+                                batch_size = min(max_batch_size, batch_size * 2)
+
+                            break  # sortie de la boucle de retry
+                        else:
+                            error_text = await response.text()
+                            logger.warning(
+                                f"Bulk request failed (status {response.status}): {error_text}. Retrying..."
+                            )
+                except Exception as e:
+                    logger.warning(f"Bulk indexation exception: {e}. Retrying...")
+
+                attempt += 1
+                if attempt >= max_retries:
+                    # Considérer tout le batch en erreur
+                    total_errors += len(current_batch)
+                    for tx in current_batch:
+                        responses.append({"transaction_id": tx.transaction_id, "success": False, "error": "max_retries"})
+                    break
+                await asyncio.sleep(backoff)
+                backoff *= 2
+
+            idx += len(current_batch)
+
+        summary = {
+            "indexed": total_indexed,
+            "errors": total_errors,
+            "total": len(structured_transactions),
+            "responses": responses,
+        }
+
+        logger.info(
+            f"📦 Bulk indexation adaptative: {summary['indexed']}/{summary['total']} succès"
+        )
+        return summary
     
     async def delete_user_transactions(self, user_id: int) -> bool:
         """

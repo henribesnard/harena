@@ -6,8 +6,11 @@ dans Elasticsearch, sans vectorisation ni embeddings.
 """
 import logging
 import time
+import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
+from prometheus_client import Counter, Histogram
 
 from enrichment_service.models import (
     TransactionInput,
@@ -24,6 +27,24 @@ from enrichment_service.core.account_enrichment_service import (
 from enrichment_service.core.data_quality_validator import DataQualityValidator
 
 logger = logging.getLogger(__name__)
+
+# Métriques Prometheus
+TRANSACTION_PROCESSING_TIME = Histogram(
+    "enrichment_processing_seconds",
+    "Temps de traitement d'une transaction"
+)
+CACHE_HITS = Counter(
+    "enrichment_cache_hits_total",
+    "Nombre de transactions ignorées car déjà indexées"
+)
+PROCESSING_ERRORS = Counter(
+    "enrichment_errors_total",
+    "Nombre d'erreurs lors du traitement"
+)
+BATCH_PROCESSING_TIME = Histogram(
+    "enrichment_batch_processing_seconds",
+    "Temps de traitement d'un lot de transactions"
+)
 
 class ElasticsearchTransactionProcessor:
     """
@@ -77,10 +98,14 @@ class ElasticsearchTransactionProcessor:
         Returns:
             ElasticsearchEnrichmentResult: Résultat du traitement
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         user_id = transaction.user_id
         transaction_id = transaction.bridge_transaction_id
 
+        correlation_id = f"{user_id}-{transaction_id}"
+        log = logging.LoggerAdapter(logger, {"correlation_id": correlation_id})
+        log.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
+        
         logger.info(f"🔄 Traitement transaction {transaction_id} pour user {user_id}")
 
         try:
@@ -94,6 +119,9 @@ class ElasticsearchTransactionProcessor:
 
             # 2. Structurer la transaction
             structured_tx = StructuredTransaction.from_transaction_input(transaction)
+            log.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
+            
+            # 2. Générer l'ID du document
             self._apply_enrichment(structured_tx, enriched)
             logger.debug(f"📋 Transaction structurée: {structured_tx.searchable_text[:100]}...")
 
@@ -129,6 +157,11 @@ class ElasticsearchTransactionProcessor:
             if not force_update:
                 exists = await self.elasticsearch_client.document_exists(document_id)
                 if exists:
+                    CACHE_HITS.inc()
+                    log.debug(f"⏭️ Transaction {transaction_id} existe déjà, ignorée")
+                    processing_time = time.perf_counter() - start_time
+                    TRANSACTION_PROCESSING_TIME.observe(processing_time)
+
                     logger.debug(f"⏭️ Transaction {transaction_id} existe déjà, ignorée")
                     processing_time = time.time() - start_time
                     return ElasticsearchEnrichmentResult(
@@ -151,6 +184,13 @@ class ElasticsearchTransactionProcessor:
                 document_id=document_id,
                 document=structured_tx.to_elasticsearch_document(),
             )
+            
+            processing_time = time.perf_counter() - start_time
+            TRANSACTION_PROCESSING_TIME.observe(processing_time)
+
+            if success:
+                log.debug(f"✅ Transaction {transaction_id} indexée avec succès ({processing_time:.3f}s)")
+                
 
             processing_time = time.time() - start_time
 
@@ -177,6 +217,8 @@ class ElasticsearchTransactionProcessor:
                     status="success",
                 )
             else:
+                log.error(f"❌ Échec indexation transaction {transaction_id}")
+                PROCESSING_ERRORS.inc()
                 logger.error(f"❌ Échec indexation transaction {transaction_id}")
 
                 return ElasticsearchEnrichmentResult(
@@ -192,6 +234,11 @@ class ElasticsearchTransactionProcessor:
                 )
 
         except Exception as e:
+            processing_time = time.perf_counter() - start_time
+            TRANSACTION_PROCESSING_TIME.observe(processing_time)
+            PROCESSING_ERRORS.inc()
+            log.error(f"💥 Exception traitement transaction {transaction_id}: {e}")
+            
             processing_time = time.time() - start_time
             logger.error(f"💥 Exception traitement transaction {transaction_id}: {e}")
 
@@ -222,10 +269,14 @@ class ElasticsearchTransactionProcessor:
         Returns:
             BatchEnrichmentResult: Résultat du traitement en lot
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         user_id = batch_input.user_id
         transactions = batch_input.transactions
 
+        correlation_id = f"batch-{user_id}-{uuid.uuid4()}"
+        log = logging.LoggerAdapter(logger, {"correlation_id": correlation_id})
+        log.info(f"🔄 Traitement en lot: {len(transactions)} transactions pour user {user_id}")
+        
         logger.info(f"🔄 Traitement en lot: {len(transactions)} transactions pour user {user_id}")
 
         try:
@@ -275,6 +326,10 @@ class ElasticsearchTransactionProcessor:
                     "document": structured_tx.to_elasticsearch_document(),
                     "transaction_id": tx.bridge_transaction_id,
                 })
+            
+            log.debug(f"📋 {len(structured_transactions)} transactions structurées")
+            
+            # 2. Indexation bulk dans Elasticsearch
 
             logger.debug(f"📋 {len(structured_transactions)} transactions structurées")
 
@@ -282,6 +337,9 @@ class ElasticsearchTransactionProcessor:
                 documents_to_index,
                 force_update=force_update,
             )
+            
+            # 3. Analyser les résultats du bulk
+            processing_time = time.perf_counter() - start_time
 
             processing_time = time.time() - start_time
             successful = bulk_result.get("indexed", 0)
@@ -321,6 +379,14 @@ class ElasticsearchTransactionProcessor:
                 results.append(result)
                 if not indexed and error_msg:
                     errors.append(f"Transaction {tx.bridge_transaction_id}: {error_msg}")
+            
+            log.info(f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s")
+
+            cache_hits = len([r for r in results if r.status == "skipped"])
+            if cache_hits:
+                CACHE_HITS.inc(cache_hits)
+
+            BATCH_PROCESSING_TIME.observe(processing_time)
 
             logger.info(
                 f"🎉 Traitement en lot terminé: {successful}/{total} succès en {processing_time:.2f}s"
@@ -337,6 +403,12 @@ class ElasticsearchTransactionProcessor:
             )
 
         except Exception as e:
+            processing_time = time.perf_counter() - start_time
+            BATCH_PROCESSING_TIME.observe(processing_time)
+            PROCESSING_ERRORS.inc()
+            log.error(f"💥 Erreur traitement en lot: {e}")
+            
+            # Créer des résultats d'erreur pour toutes les transactions
             processing_time = time.time() - start_time
             logger.error(f"💥 Erreur traitement en lot: {e}")
 

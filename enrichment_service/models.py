@@ -111,22 +111,15 @@ class StructuredTransaction:
     balance_check_passed: Optional[bool] = None
     quality_score: Optional[float] = None
 
-
     # Informations de compte
     account_name: Optional[str] = None
     account_type: Optional[str] = None
     account_balance: Optional[float] = None
-    account_currency_code: Optional[str] = None
     account_currency: Optional[str] = None
-    account_currency_code: Optional[str] = None
     account_last_sync: Optional[datetime] = None
 
     # Information sur la catégorie
     category_name: Optional[str] = None
-
-    # Métadonnées supplémentaires
-    balance_check_passed: Optional[bool] = None
-    quality_score: Optional[float] = None
 
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> "StructuredTransaction":

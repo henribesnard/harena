@@ -446,57 +446,59 @@ class ElasticsearchTransactionProcessor:
                 results=results,
                 errors=[f"Batch processing failed: {str(e)}"],
             )
-async def sync_user_transactions(
-        self, 
-        user_id: int, 
+    async def sync_user_transactions(
+        self,
+        user_id: int,
         transactions: List[TransactionInput],
-        force_refresh: bool = False
+        accounts_map: Optional[Dict[int, Any]] = None,
+        force_refresh: bool = False,
     ) -> UserSyncResult:
-        """
-        Synchronise toutes les transactions d'un utilisateur dans Elasticsearch.
-        
-        Args:
-            user_id: ID de l'utilisateur
-            transactions: Liste complète des transactions de l'utilisateur
-            force_refresh: Force la suppression et recréation de tous les documents
-            
-        Returns:
-            UserSyncResult: Résultat de la synchronisation
-        """
+        """Synchronise toutes les transactions d'un utilisateur dans Elasticsearch."""
+
         start_time = time.time()
-        logger.info(f"🔄 Synchronisation user {user_id}: {len(transactions)} transactions (force_refresh={force_refresh})")
-        
+        logger.info(
+            f"🔄 Synchronisation user {user_id}: {len(transactions)} transactions (force_refresh={force_refresh})"
+        )
+
         try:
+            # Injecter les métadonnées de compte si fournies
+            if accounts_map:
+                for tx in transactions:
+                    acc = accounts_map.get(tx.account_id)
+                    if acc:
+                        tx.account_name = getattr(acc, "account_name", None)
+                        tx.account_type = getattr(acc, "account_type", None)
+                        tx.account_balance = getattr(acc, "balance", None)
+                        tx.account_currency = getattr(acc, "currency_code", None)
+                        tx.account_last_sync = getattr(acc, "last_sync_timestamp", None)
+
             # 1. Optionnel: Nettoyer les données existantes si force_refresh
             if force_refresh:
                 logger.info(f"🧹 Nettoyage des données existantes pour user {user_id}")
-                
                 deleted_count = await self.elasticsearch_client.delete_user_transactions(user_id)
                 logger.info(f"🗑️ {deleted_count} documents supprimés pour user {user_id}")
-            
+
             # 2. Créer un batch input et traiter
-            batch_input = BatchTransactionInput(
-                user_id=user_id,
-                transactions=transactions
-            )
-            
+            batch_input = BatchTransactionInput(user_id=user_id, transactions=transactions)
+
             batch_result = await self.process_transactions_batch(
-                batch_input, 
-                force_update=force_refresh
+                batch_input, force_update=force_refresh
             )
-            
+
             # 3. Convertir le résultat batch en résultat de sync utilisateur
             processing_time = time.time() - start_time
-            
-            # Compter les actions spécifiques
-            indexed_count = sum(1 for result in batch_result.results if result.status == "success" and result.indexed)
-            updated_count = sum(1 for result in batch_result.results 
-                              if result.status == "success" and result.metadata.get("action") == "updated")
+
+            indexed_count = sum(
+                1 for result in batch_result.results if result.status == "success" and result.indexed
+            )
+            updated_count = sum(
+                1
+                for result in batch_result.results
+                if result.status == "success" and result.metadata.get("action") == "updated"
+            )
             error_count = len(batch_result.errors)
-            
-            # Collecter les détails d'erreurs
             error_details = batch_result.errors.copy()
-            
+
             return UserSyncResult(
                 user_id=user_id,
                 total_transactions=len(transactions),
@@ -504,14 +506,18 @@ async def sync_user_transactions(
                 updated=updated_count,
                 errors=error_count,
                 processing_time=processing_time,
-                status="success" if error_count == 0 else "partial_success" if indexed_count > 0 else "failed",
-                error_details=error_details
+                status="success"
+                if error_count == 0
+                else "partial_success"
+                if indexed_count > 0
+                else "failed",
+                error_details=error_details,
             )
-            
+
         except Exception as e:
             processing_time = time.time() - start_time
             logger.error(f"💥 Erreur synchronisation user {user_id}: {e}")
-            
+
             return UserSyncResult(
                 user_id=user_id,
                 total_transactions=len(transactions),
@@ -520,7 +526,7 @@ async def sync_user_transactions(
                 errors=len(transactions),
                 processing_time=processing_time,
                 status="failed",
-                error_details=[f"Sync failed: {str(e)}"]
+                error_details=[f"Sync failed: {str(e)}"],
             )
 
 

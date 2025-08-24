@@ -22,7 +22,7 @@ from datetime import datetime
 from db_service.session import get_db
 from user_service.api.deps import get_current_active_user
 from db_service.models.user import User
-from db_service.models.sync import RawTransaction
+from db_service.models.sync import RawTransaction, SyncAccount
 
 from enrichment_service.models import (
     TransactionInput,
@@ -124,13 +124,24 @@ async def sync_user_transactions(
                 error_details=[]
             )
         
-        # Convertir en TransactionInput
+        # Précharger les informations de compte pour toutes les transactions
+        account_ids = {tx.account_id for tx in raw_transactions}
+        accounts = db.query(SyncAccount).filter(SyncAccount.id.in_(account_ids)).all()
+        accounts_map = {acc.id: acc for acc in accounts}
+
+        # Convertir en TransactionInput avec métadonnées de compte
         transaction_inputs = []
         for raw_tx in raw_transactions:
+            account = accounts_map.get(raw_tx.account_id)
             tx_input = TransactionInput(
                 bridge_transaction_id=raw_tx.bridge_transaction_id,
                 user_id=raw_tx.user_id,
                 account_id=raw_tx.account_id,
+                account_name=account.account_name if account else None,
+                account_type=account.account_type if account else None,
+                account_balance=account.balance if account else None,
+                account_currency=account.currency_code if account else None,
+                account_last_sync=account.last_sync_timestamp if account else None,
                 clean_description=raw_tx.clean_description,
                 provider_description=raw_tx.provider_description,
                 amount=raw_tx.amount,
@@ -142,7 +153,7 @@ async def sync_user_transactions(
                 category_id=raw_tx.category_id,
                 operation_type=raw_tx.operation_type,
                 deleted=raw_tx.deleted,
-                future=raw_tx.future
+                future=raw_tx.future,
             )
             transaction_inputs.append(tx_input)
         
@@ -152,7 +163,8 @@ async def sync_user_transactions(
         result = await processor.sync_user_transactions(
             user_id=user_id,
             transactions=transaction_inputs,
-            force_refresh=force_refresh
+            accounts_map=accounts_map,
+            force_refresh=force_refresh,
         )
         
         return result

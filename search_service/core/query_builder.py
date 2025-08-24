@@ -183,7 +183,14 @@ class QueryBuilder:
         # Ajouter les agrégations à la requête finale
         if aggregations:
             base_query["aggs"] = aggregations
-            logger.info(f"Added {len(aggregations)} aggregations to query: {list(aggregations.keys())}")
+            logger.info(
+                f"Added {len(aggregations)} aggregations to query: {list(aggregations.keys())}"
+            )
+            if getattr(request, "aggregation_only", False):
+                base_query["size"] = 0
+                logger.info(
+                    "Aggregation-only request detected: returning only aggregations"
+                )
         else:
             logger.warning("No valid aggregations generated from input")
 

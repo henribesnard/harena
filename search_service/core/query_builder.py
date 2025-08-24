@@ -76,29 +76,91 @@ class QueryBuilder:
         }
     
     def _build_additional_filters(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Construction des filtres additionnels"""
-        filter_list = []
+        """Construction des filtres additionnels.
+
+        Supporte plusieurs types de filtres courants :
+
+        - ``term`` : ``{"status": "active"}``
+        - ``terms`` : ``{"category": ["foo", "bar"]}``
+        - ``range`` : ``{"amount": {"gte": 0, "lte": 100}}``
+        - ``exists`` : ``{"merchant_name": {"exists": True}}``
+        - ``wildcard`` : ``{"merchant_name": {"wildcard": "Ama*"}}``
+        - ``prefix`` / ``regexp`` / ``match`` / ``match_phrase`` : même structure
+
+        Les filtres non reconnus lèvent une ``ValueError`` afin d'éviter
+        l'envoi de requêtes Elasticsearch invalides.
+        """
+
+        filter_list: List[Dict[str, Any]] = []
 
         for field, value in filters.items():
             if value is None:
                 continue
+
+            # --- Dictionnaire : différents types de filtres ---
             if isinstance(value, dict):
-                # Filtre range (ex: {"amount": {"gte": -100, "lte": 0}})
-                filter_list.append({"range": {field: value}})
-                logger.debug(f"Added range filter on {field}: {value}")
-                
+                # 1) Range : détection des opérateurs numériques
+                if {"gt", "gte", "lt", "lte"} & set(value.keys()):
+                    filter_list.append({"range": {field: value}})
+                    logger.debug(f"Added range filter on {field}: {value}")
+
+                # 2) Exists
+                elif value.get("exists"):
+                    filter_list.append({"exists": {"field": field}})
+                    logger.debug(f"Added exists filter on {field}")
+
+                # 3) Wildcard
+                elif "wildcard" in value:
+                    field_name = self._get_filter_field_name(field)
+                    pattern = value["wildcard"]
+                    filter_list.append({"wildcard": {field_name: {"value": pattern}}})
+                    logger.debug(f"Added wildcard filter on {field_name}: {pattern}")
+
+                # 4) Prefix
+                elif "prefix" in value:
+                    field_name = self._get_filter_field_name(field)
+                    prefix = value["prefix"]
+                    filter_list.append({"prefix": {field_name: prefix}})
+                    logger.debug(f"Added prefix filter on {field_name}: {prefix}")
+
+                # 5) Regexp
+                elif "regexp" in value:
+                    field_name = self._get_filter_field_name(field)
+                    regex = value["regexp"]
+                    filter_list.append({"regexp": {field_name: regex}})
+                    logger.debug(f"Added regexp filter on {field_name}: {regex}")
+
+                # 6) Term / Terms explicit
+                elif "term" in value:
+                    field_name = self._get_filter_field_name(field)
+                    filter_list.append({"term": {field_name: value["term"]}})
+                    logger.debug(f"Added explicit term filter on {field_name}: {value['term']}")
+
+                elif "terms" in value:
+                    field_name = self._get_filter_field_name(field)
+                    filter_list.append({"terms": {field_name: value["terms"]}})
+                    logger.debug(
+                        f"Added explicit terms filter on {field_name}: {len(value['terms'])} values"
+                    )
+
+                else:
+                    # Filtre inconnu => erreur claire
+                    msg = f"Unsupported filter type for field '{field}': {value}"
+                    logger.error(msg)
+                    raise ValueError(msg)
+
+            # --- Liste : terms ---
             elif isinstance(value, list):
-                # Filtre terms (ex: {"category_name": ["restaurant", "bar"]})
-                filter_list.append({"terms": {field: value}})
-                logger.debug(f"Added terms filter on {field}: {len(value)} values")
-                
+                field_name = self._get_filter_field_name(field)
+                filter_list.append({"terms": {field_name: value}})
+                logger.debug(f"Added terms filter on {field_name}: {len(value)} values")
+
+            # --- Valeur simple : term ---
             else:
-                # Filtre exact (ex: {"category_name": "restaurant"})
-                # Utiliser .keyword pour les champs textuels si approprié
                 field_name = self._get_filter_field_name(field)
                 filter_list.append({"term": {field_name: value}})
                 logger.debug(f"Added term filter on {field_name}: {value}")
-        
+
         return filter_list
     
     def _get_filter_field_name(self, field: str) -> str:

@@ -639,7 +639,7 @@ class SearchServiceTester:
             "SEARCH_HIGHLIGHTING",
             {
                 "user_id": TEST_USER_ID,
-                "query": "restaurant",
+                "query": "netflix",
                 "filters": {},
                 "page_size": 10,
                 "highlight": {

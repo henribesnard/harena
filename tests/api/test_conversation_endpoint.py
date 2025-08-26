@@ -181,6 +181,7 @@ def test_app(mock_service_loader):
         get_user_context,
         rate_limit_dependency,
     )
+    from conversation_service.api.middleware.auth_middleware import verify_user_id_match
 
     from fastapi import Request
 
@@ -193,13 +194,15 @@ def test_app(mock_service_loader):
     def override_get_service_status(request: Request):
         return {"status": "healthy"}
 
-    def override_validate_user(
+    async def override_validate_user(
         request: Request, path_user_id: int, token_user_id: int = 1
     ) -> int:
-        return 1
+        request.state.user_id = token_user_id
+        await verify_user_id_match(request, path_user_id)
+        return path_user_id
 
     def override_get_user_context(request: Request, user_id: int = 1):
-        return {"sub": 1}
+        return {"sub": getattr(request.state, "user_id", user_id)}
 
     def override_rate_limit(request: Request, user_id: int = 1):
         return None

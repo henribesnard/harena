@@ -17,6 +17,11 @@ conversation_service/
     message_repository.py
 ```
 
+## Configuration
+
+Définissez la variable d'environnement `SECRET_KEY`, utilisée pour la
+signature et la vérification des jetons Bearer à travers tous les services.
+
 ## Tests unitaires
 
 Avant d'exécuter les tests, installez les dépendances Web de base :

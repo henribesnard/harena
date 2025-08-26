@@ -38,6 +38,7 @@ async def test_classify_intent_success() -> None:
 
     deepseek_client.chat_completion.assert_called_once()
     cache_manager.set_semantic_cache.assert_called_once()
+    assert deepseek_client.chat_completion.call_args.kwargs.get("response_format") == {"type": "json_object"}
 
 
 @pytest.mark.asyncio

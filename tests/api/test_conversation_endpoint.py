@@ -186,6 +186,47 @@ def test_app(mock_service_loader):
     app.dependency_overrides[conversation_module.get_user_context] = lambda *args, **kwargs: {"sub": 1}
     app.dependency_overrides[conversation_module.rate_limit_dependency] = lambda: None
 
+
+    from conversation_service.api.dependencies import (
+        get_deepseek_client,
+        get_cache_manager,
+        get_conversation_service_status,
+        validate_path_user_id,
+        get_user_context,
+        rate_limit_dependency,
+    )
+
+    from fastapi import Request
+
+    def override_get_deepseek_client(request: Request):
+        return mock_service_loader.deepseek_client
+
+    def override_get_cache_manager(request: Request):
+        return mock_service_loader.cache_manager
+
+    def override_get_service_status(request: Request):
+        return {"status": "healthy"}
+
+    def override_validate_user(
+        request: Request, path_user_id: int, token_user_id: int = 1
+    ) -> int:
+        return 1
+
+    def override_get_user_context(request: Request, user_id: int = 1):
+        return {"sub": 1}
+
+    def override_rate_limit(request: Request, user_id: int = 1):
+        return None
+
+    app.dependency_overrides[get_deepseek_client] = override_get_deepseek_client
+    app.dependency_overrides[get_cache_manager] = override_get_cache_manager
+    app.dependency_overrides[get_conversation_service_status] = (
+        override_get_service_status
+    )
+    app.dependency_overrides[validate_path_user_id] = override_validate_user
+    app.dependency_overrides[get_user_context] = override_get_user_context
+    app.dependency_overrides[rate_limit_dependency] = override_rate_limit
+
     yield app
 
 
@@ -613,7 +654,7 @@ class TestConversationHealthEndpoint:
             
             assert data["service"] == "conversation_service"
             assert data["status"] == "healthy"
-            assert "metrics" in data
+            assert "health_details" in data
             assert "features" in data
 
     def test_conversation_health_error(self, client):
@@ -659,7 +700,8 @@ class TestConversationMetricsEndpoint:
         
         with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_all_metrics.side_effect = Exception("Metrics error")
-            
+
             response = client.get("/api/v1/conversation/metrics")
-            
+
             assert response.status_code == 500
+

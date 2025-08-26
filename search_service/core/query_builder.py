@@ -195,6 +195,9 @@ class QueryBuilder:
                     field_name = self._get_filter_field_name(field)
                     filter_list.append({"term": {field_name: value}})
                     
+            except ValueError as e:
+                logger.error(f"Error processing filter {field}: {e}")
+                raise
             except Exception as e:
                 logger.error(f"Error processing filter {field}: {e}")
                 # Continue avec les autres filtres plutôt que de planter

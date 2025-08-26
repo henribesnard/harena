@@ -487,6 +487,7 @@ class GlobalSettings(BaseSettings):
 
     # Secret key powering bearer token verification across services
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "")
+    # Configuration Authentification JWT (utilise SECRET_KEY global)
     JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256")
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
 
@@ -568,6 +569,7 @@ class GlobalSettings(BaseSettings):
         if len(v) < 32:
             raise ValueError("SECRET_KEY doit faire au moins 32 caractères")
         return v
+
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod

@@ -1,41 +1,94 @@
 """
-Module de stubs pour les tests unitaires.
-Fournit des implémentations minimales des dépendances externes
-pour permettre l'exécution des tests sans les vraies dépendances.
+Configuration globale des tests pour Harena - Compatible JWT user_service
 """
 import os
 import sys
 import types
 import pytest
 import json
+import asyncio
 from collections import OrderedDict
 from typing import Any
 from pathlib import Path
 
-# Configure les variables d'environnement nécessaires aux tests de vérification des jetons
-os.environ.setdefault("SECRET_KEY", "0123456789abcdef0123456789abcdef")
-# Configure les variables d'environnement nécessaires aux tests JWT
-os.environ.setdefault("SECRET_KEY", "0123456789abcdef0123456789abcdef")
+# ============================================================================
+# CONFIGURATION CRITIQUE SECRET_KEY - COMPATIBLE user_service
+# ============================================================================
 
+# Utilise la même clé que test_jwt_compatibility.py pour cohérence totale
+SECRET_KEY_TEST = "a" * 32 + "b" * 32  # 64 caractères comme dans test_jwt_compatibility.py
+
+# Configuration environment variables AVANT tous les imports
+os.environ.setdefault("SECRET_KEY", SECRET_KEY_TEST)
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 
-# Ensure local autogen_agentchat stub is importable when the real package is missing
-try:  # pragma: no cover - runtime dependency check
-    import autogen_agentchat  # type: ignore  # noqa: F401
-except ModuleNotFoundError:  # pragma: no cover - executed only when package absent
+# Configuration pour éviter les appels externes
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-deepseek-key-for-pytest")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("OPENAI_API_KEY", "test-openai-key-for-pytest")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+
+# Configuration conversation service
+os.environ.setdefault("CONVERSATION_SERVICE_ENABLED", "true")
+os.environ.setdefault("CONVERSATION_SERVICE_DEBUG", "true")
+
+# ============================================================================
+# CONFIGURATION PYTEST
+# ============================================================================
+
+def pytest_configure():
+    """Configuration exécutée avant tous les tests"""
+    # Force la cohérence de SECRET_KEY
+    if os.environ.get("SECRET_KEY") != SECRET_KEY_TEST:
+        os.environ["SECRET_KEY"] = SECRET_KEY_TEST
+        print(f"[PYTEST] SECRET_KEY forcée à: {SECRET_KEY_TEST[:10]}...")
+    
+    print(f"[PYTEST] Configuration test initialisée")
+    print(f"[PYTEST] SECRET_KEY: {os.environ['SECRET_KEY'][:10]}...{os.environ['SECRET_KEY'][-10:]}")
+    print(f"[PYTEST] JWT_ALGORITHM: {os.environ['JWT_ALGORITHM']}")
+    print(f"[PYTEST] ENVIRONMENT: {os.environ['ENVIRONMENT']}")
+
+# ============================================================================
+# GESTION AUTOMATIQUE LOOP ASYNCIO
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Event loop pour les tests asynchrones"""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest.fixture(autouse=True)
+def ensure_secret_key():
+    """S'assure que SECRET_KEY est cohérente pour chaque test"""
+    if os.environ.get("SECRET_KEY") != SECRET_KEY_TEST:
+        os.environ["SECRET_KEY"] = SECRET_KEY_TEST
+
+# ============================================================================
+# STUBS POUR DÉPENDANCES EXTERNES (améliorés)
+# ============================================================================
+
+# Assure-toi que le stub autogen_agentchat est disponible
+try:
+    import autogen_agentchat
+except ModuleNotFoundError:
     stub_dir = Path(__file__).resolve().parents[1] / "autogen_agentchat"
-    sys.path.insert(0, str(stub_dir))
-# Minimal settings stub to avoid external dependency
+    if stub_dir.exists():
+        sys.path.insert(0, str(stub_dir))
 
 class GlobalSettings:
-    OPENAI_API_KEY: str = "test-key"
-
+    """Settings stub avec configuration test"""
+    OPENAI_API_KEY: str = "test-openai-key"
+    SECRET_KEY: str = SECRET_KEY_TEST
+    JWT_ALGORITHM: str = "HS256"
+    ENVIRONMENT: str = "test"
 
 settings = GlobalSettings()
 
-
 def create_pydantic_stub():
-    """Crée un stub minimal pour pydantic."""
+    """Stub Pydantic amélioré pour les tests"""
     pydantic_stub = types.ModuleType("pydantic")
     
     class _BaseModel:
@@ -70,7 +123,6 @@ def create_pydantic_stub():
         return decorator
     
     def _create_model(name, **fields):
-        """Stub pour create_model"""
         return type(name, (_BaseModel,), fields)
 
     pydantic_stub.BaseModel = _BaseModel
@@ -83,9 +135,8 @@ def create_pydantic_stub():
     
     return pydantic_stub
 
-
 def create_openai_stub():
-    """Crée un stub minimal pour openai."""
+    """Stub OpenAI pour tests"""
     openai_stub = types.ModuleType("openai")
     
     class _AsyncOpenAI:
@@ -94,7 +145,7 @@ def create_openai_stub():
     
     openai_stub.AsyncOpenAI = _AsyncOpenAI
     
-    # Créer les sous-modules types
+    # Sous-modules types
     openai_types = types.ModuleType("openai.types")
     openai_chat = types.ModuleType("openai.types.chat")
     openai_chat.ChatCompletion = object
@@ -107,9 +158,8 @@ def create_openai_stub():
     
     return openai_stub
 
-
 def create_httpx_stub():
-    """Crée un stub minimal pour httpx."""
+    """Stub HTTPX pour tests"""
     httpx_stub = types.ModuleType("httpx")
     
     class _AsyncClient:
@@ -119,13 +169,15 @@ def create_httpx_stub():
         async def post(self, *args, **kwargs):
             return types.SimpleNamespace(
                 json=lambda: {},
-                raise_for_status=lambda: None
+                raise_for_status=lambda: None,
+                status_code=200
             )
         
         async def get(self, *args, **kwargs):
             return types.SimpleNamespace(
                 json=lambda: {},
-                raise_for_status=lambda: None
+                raise_for_status=lambda: None,
+                status_code=200
             )
         
         async def aclose(self):
@@ -143,9 +195,8 @@ def create_httpx_stub():
     
     return httpx_stub
 
-
 def create_autogen_stub():
-    """Crée un stub minimal pour autogen."""
+    """Stub AutoGen pour tests"""
     autogen_stub = types.ModuleType("autogen")
     
     class _AssistantAgent:
@@ -158,12 +209,10 @@ def create_autogen_stub():
             self.description = description
     
     autogen_stub.AssistantAgent = _AssistantAgent
-
     return autogen_stub
 
-
 def create_pydantic_settings_stub():
-    """Crée un stub minimal pour pydantic_settings."""
+    """Stub pydantic_settings pour tests"""
     module = types.ModuleType("pydantic_settings")
 
     class _BaseSettings:
@@ -175,9 +224,8 @@ def create_pydantic_settings_stub():
     module.SettingsConfigDict = dict
     return module
 
-
 def create_aiohttp_stub():
-    """Crée un stub minimal pour aiohttp."""
+    """Stub aiohttp pour tests"""
     aiohttp_stub = types.ModuleType("aiohttp")
 
     class _ClientSession:
@@ -213,15 +261,13 @@ def create_aiohttp_stub():
     aiohttp_stub.ClientError = _ClientError
     return aiohttp_stub
 
-
 def install_stubs():
-    """Installe tous les stubs nécessaires."""
+    """Installation automatique des stubs nécessaires"""
     
-    # Pydantic - utiliser la vraie bibliothèque si disponible
+    # Pydantic - utiliser la vraie si disponible
     try:
         import pydantic
         if not hasattr(pydantic, 'create_model'):
-            # Ajouter create_model si manquant
             def _create_model(name, **fields):
                 return type(name, (pydantic.BaseModel,), fields)
             pydantic.create_model = _create_model
@@ -230,7 +276,7 @@ def install_stubs():
 
     # pydantic_settings
     try:
-        import pydantic_settings  # type: ignore
+        import pydantic_settings
     except ImportError:
         sys.modules["pydantic_settings"] = create_pydantic_settings_stub()
     
@@ -258,33 +304,23 @@ def install_stubs():
     except ImportError:
         sys.modules["autogen"] = create_autogen_stub()
 
-
-# Installer les stubs au chargement du module
+# Installation automatique
 install_stubs()
 
 # Recharger la configuration pour prendre en compte les variables d'environnement
-import importlib
-import config_service.config as config
-importlib.reload(config)
+try:
+    import importlib
+    import config_service.config as config
+    importlib.reload(config)
+except ImportError:
+    pass  # config_service peut ne pas être disponible dans tous les contextes
 
+# ============================================================================
+# FIXTURES DE TEST AVANCÉES
+# ============================================================================
 
-# Pour les tests, exposer une fonction de réinitialisation
-def reset_stubs():
-    """Réinitialise tous les stubs (utile pour les tests)."""
-    modules_to_remove = [
-        "pydantic", "openai", "openai.types", "openai.types.chat",
-        "httpx", "autogen", "pydantic_settings", "aiohttp"
-    ]
-    for module in modules_to_remove:
-        if module in sys.modules:
-            del sys.modules[module]
-
-    install_stubs()
-
-
-# Fixtures for tests
 class DummyOpenAIClient:
-    """Simple OpenAI client stub returning preconfigured content."""
+    """Client OpenAI stub avec contenu préconfiguré"""
 
     def __init__(self, content: str):
         self._content = content
@@ -302,30 +338,27 @@ class DummyOpenAIClient:
 
         self.chat = _Chat()
 
-
 @pytest.fixture(scope="session")
 def openai_settings() -> GlobalSettings:
-    """Centralized OpenAI configuration for tests."""
+    """Configuration OpenAI centralisée pour les tests"""
     settings.OPENAI_API_KEY = settings.OPENAI_API_KEY or "test-key"
     return settings
 
-
 @pytest.fixture
 def openai_mock(openai_settings: GlobalSettings, monkeypatch: pytest.MonkeyPatch):
-    """Provide a mock OpenAI client with deterministic content."""
+    """Mock OpenAI client avec contenu déterministe"""
     monkeypatch.setenv("OPENAI_API_KEY", openai_settings.OPENAI_API_KEY)
     payload = {
         "intent_type": "GREETING",
-        "intent_category": "GREETING",
+        "intent_category": "GREETING", 
         "confidence": 0.9,
         "entities": [],
     }
     return DummyOpenAIClient(json.dumps(payload))
 
-
 @pytest.fixture
 def cache():
-    """Provide an in-memory LRU cache for tests."""
+    """Cache LRU en mémoire pour les tests"""
     class LRUCache:
         def __init__(self, maxsize: int = 128):
             self.maxsize = maxsize
@@ -345,3 +378,56 @@ def cache():
                 self._cache.popitem(last=False)
 
     return LRUCache(maxsize=16)
+
+# ============================================================================
+# FIXTURES JWT POUR TESTS D'AUTHENTIFICATION
+# ============================================================================
+
+@pytest.fixture
+def test_secret_key():
+    """Secret key pour les tests"""
+    return SECRET_KEY_TEST
+
+@pytest.fixture
+def jwt_algorithm():
+    """Algorithme JWT pour les tests"""
+    return "HS256"
+
+def reset_stubs():
+    """Réinitialisation des stubs (utile pour les tests)"""
+    modules_to_remove = [
+        "pydantic", "openai", "openai.types", "openai.types.chat",
+        "httpx", "autogen", "pydantic_settings", "aiohttp"
+    ]
+    for module in modules_to_remove:
+        if module in sys.modules:
+            del sys.modules[module]
+
+    install_stubs()
+
+# ============================================================================
+# UTILITAIRES DE DEBUG POUR LES TESTS
+# ============================================================================
+
+def debug_test_environment():
+    """Affiche l'environnement de test pour débugger"""
+    print("=== DEBUG TEST ENVIRONMENT ===")
+    print(f"SECRET_KEY: {os.environ.get('SECRET_KEY', 'NOT_SET')[:10]}...")
+    print(f"JWT_ALGORITHM: {os.environ.get('JWT_ALGORITHM', 'NOT_SET')}")
+    print(f"ENVIRONMENT: {os.environ.get('ENVIRONMENT', 'NOT_SET')}")
+    print(f"DEEPSEEK_API_KEY: {'SET' if os.environ.get('DEEPSEEK_API_KEY') else 'NOT_SET'}")
+    print("=" * 32)
+
+# Appel automatique du debug si PYTEST_DEBUG=true
+if os.environ.get("PYTEST_DEBUG", "").lower() == "true":
+    debug_test_environment()
+
+# ============================================================================
+# VALIDATION FINALE
+# ============================================================================
+
+# Vérification finale de cohérence
+assert os.environ["SECRET_KEY"] == SECRET_KEY_TEST, f"SECRET_KEY incohérente: {os.environ['SECRET_KEY'][:10]} != {SECRET_KEY_TEST[:10]}"
+assert len(os.environ["SECRET_KEY"]) == 64, f"SECRET_KEY doit faire 64 caractères, actuel: {len(os.environ['SECRET_KEY'])}"
+
+print(f"[CONFTEST] Configuration test validée - SECRET_KEY: {len(os.environ['SECRET_KEY'])} chars")

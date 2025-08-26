@@ -1,5 +1,5 @@
 """
-Agent de classification d'intentions financières via DeepSeek
+Agent de classification d'intentions financières via DeepSeek - JSON Output Forcé
 """
 import logging
 import json
@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 
 from conversation_service.agents.base.base_agent import BaseAgent
 from conversation_service.prompts.harena_intents import HarenaIntentType, INTENT_DESCRIPTIONS, INTENT_CATEGORIES
-from conversation_service.prompts.few_shot_examples.intent_classification import get_balanced_few_shot_examples
-from conversation_service.prompts.system_prompts import INTENT_CLASSIFICATION_SYSTEM_PROMPT
+from conversation_service.prompts.few_shot_examples.intent_classification import get_balanced_few_shot_examples, format_examples_for_prompt
+from conversation_service.prompts.system_prompts import INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT
 from conversation_service.models.responses.conversation_responses import IntentClassificationResult, IntentAlternative
 from conversation_service.utils.validation_utils import validate_intent_response, sanitize_user_input
 from config_service.config import settings
@@ -18,7 +18,7 @@ from config_service.config import settings
 logger = logging.getLogger("conversation_service.intent_classifier")
 
 class IntentClassifierAgent(BaseAgent):
-    """Agent classification intentions financières Harena via DeepSeek"""
+    """Agent classification intentions financières Harena via DeepSeek avec JSON Output forcé"""
     
     def __init__(self, deepseek_client, cache_manager):
         super().__init__(
@@ -29,6 +29,7 @@ class IntentClassifierAgent(BaseAgent):
         
         self.supported_intents = list(HarenaIntentType)
         self.few_shot_examples = get_balanced_few_shot_examples(examples_per_intent=2)
+        self.confidence_threshold = getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5)
         
         logger.info(f"IntentClassifier initialisé avec {len(self.few_shot_examples)} exemples")
     
@@ -45,7 +46,7 @@ class IntentClassifierAgent(BaseAgent):
         user_message: str,
         user_context: Optional[Dict[str, Any]] = None
     ) -> IntentClassificationResult:
-        """Classification intention principale"""
+        """Classification intention principale avec JSON Output forcé"""
         
         start_time = datetime.now(timezone.utc)
         
@@ -61,52 +62,48 @@ class IntentClassifierAgent(BaseAgent):
             
             # Vérification cache sémantique
             cache_key = self._generate_cache_key(clean_message)
-            cached_result = await self.cache_manager.get_semantic_cache(
-                cache_key, 
-                similarity_threshold=0.85
-            )
+            cached_result = await self._get_cached_classification(cache_key)
             
             if cached_result:
                 self._update_metrics("cache_hit", start_time)
-                result = IntentClassificationResult(**cached_result)
-                result.processing_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-                return result
+                cached_result.processing_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+                return cached_result
             
-            # Construction prompt avec few-shots
-            prompt = self._build_classification_prompt(clean_message, user_context)
+            # Construction prompt avec few-shots optimisés
+            prompt = self._build_json_classification_prompt(clean_message, user_context)
             
-            # Appel DeepSeek
+            # Appel DeepSeek avec JSON Output FORCÉ
             response = await self.deepseek_client.chat_completion(
                 messages=[
-                    {"role": "system", "content": INTENT_CLASSIFICATION_SYSTEM_PROMPT},
+                    {"role": "system", "content": INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=300,
-                temperature=0.1,
-                response_format={"type": "json_object"}
+                max_tokens=getattr(settings, 'DEEPSEEK_INTENT_MAX_TOKENS', 100),
+                temperature=getattr(settings, 'DEEPSEEK_INTENT_TEMPERATURE', 0.1),
+                response_format={"type": "json_object"}  # JSON FORCÉ - Plus de parsing regex
             )
             
-            # Parsing et validation réponse
-            classification_result = self._parse_deepseek_response(response, clean_message)
+            # Parsing JSON direct - Plus de regex
+            classification_result = self._parse_json_response(response, clean_message)
             
             # Validation qualité
-            validation_ok = await validate_intent_response(classification_result)
-            if not validation_ok:
-                logger.warning(f"Validation échouée pour message: {clean_message[:50]}...")
+            if not await self._validate_classification_quality(classification_result):
+                logger.warning(f"Validation qualité échouée pour: {clean_message[:50]}...")
                 return self._create_unclear_intent_result("Validation qualité échouée")
             
-            # Temps de traitement
+            # Calcul temps de traitement
             processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             classification_result.processing_time_ms = processing_time
             
-            # Cache résultat
-            await self.cache_manager.set_semantic_cache(
-                cache_key,
-                classification_result.dict(),
-                ttl=settings.REDIS_CONVERSATION_TTL
-            )
+            # Cache résultat pour améliorer performances
+            await self._cache_classification_result(cache_key, classification_result)
             
             self._update_metrics("classification_success", start_time)
+            logger.info(
+                f"Classification réussie: {classification_result.intent_type.value} "
+                f"(conf: {classification_result.confidence:.2f}, temps: {processing_time}ms)"
+            )
+            
             return classification_result
             
         except Exception as e:
@@ -114,103 +111,134 @@ class IntentClassifierAgent(BaseAgent):
             logger.error(f"Erreur classification intention: {str(e)}")
             return self._create_error_intent_result(str(e))
     
-    def _build_classification_prompt(
+    def _build_json_classification_prompt(
         self, 
         user_message: str,
         user_context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Construction prompt avec few-shots équilibrés"""
+        """Construction prompt optimisé pour JSON Output forcé"""
         
-        # Few-shot examples formatés
-        examples_text = "\n".join([
-            f"Message: \"{ex['input']}\" → Intention: {ex['intent']} (Confiance: {ex['confidence']})"
-            for ex in self.few_shot_examples[:25]  # Limiter pour tokens
-        ])
+        # Sélection dynamique des meilleurs exemples
+        relevant_examples = self._select_relevant_examples(user_message)
+        examples_text = format_examples_for_prompt(relevant_examples, format_style="concise")
         
         # Contexte utilisateur si disponible
-        context_info = ""
-        if user_context:
-            recent_intents = user_context.get("recent_intents", [])
-            if recent_intents:
-                context_info = f"\nContexte: Intentions récentes: {', '.join(recent_intents[-3:])}"
+        context_section = ""
+        if user_context and user_context.get("recent_intents"):
+            recent = user_context["recent_intents"][-3:]  # Dernières 3 intentions
+            context_section = f"\nCONTEXTE: Intentions récentes: {', '.join(recent)}"
         
-        # Intentions supportées groupées
-        intentions_text = self._format_supported_intents()
+        # Intentions supportées dynamiques
+        intentions_summary = self._get_dynamic_intents_summary()
         
-        prompt = f"""Classifiez ce message utilisateur selon les intentions financières Harena.
+        prompt = f"""Analysez ce message utilisateur et classifiez l'intention financière Harena.
 
-INTENTIONS HARENA:
-{intentions_text}
+IMPORTANT: Répondez UNIQUEMENT avec un objet JSON strict, aucun autre texte.
 
-EXEMPLES DE CLASSIFICATION:
+FORMAT JSON OBLIGATOIRE:
+{{"intent": "TYPE_INTENTION_EXACT", "confidence": 0.XX, "reasoning": "explication française"}}
+
+INTENTIONS HARENA DISPONIBLES:
+{intentions_summary}
+
+EXEMPLES DE RÉFÉRENCE:
 {examples_text}
 
-RÈGLES:
-- Retournez UNIQUEMENT un objet JSON strict: {{"intent": "TYPE_INTENTION", "confidence": 0.XX, "reasoning": "explication"}}
-- Aucun texte avant ou après l'objet JSON
-- Confidence entre 0.0 et 1.0
-- Reasoning en français, clair et concis
-- Pour intentions non supportées: utilisez le type exact (TRANSFER_REQUEST, etc.)
-- Messages ambigus: UNCLEAR_INTENT
-- Messages incompréhensibles: UNKNOWN
+RÈGLES STRICTES:
+- JSON uniquement, pas de markdown ni commentaires
+- Confidence entre 0.0 et 1.0 précise
+- Intent doit correspondre exactement aux types Harena
+- Reasoning en français, concis et informatif
+- Message ambigü → UNCLEAR_INTENT
+- Message incompréhensible → UNKNOWN
+- Action non supportée → type exact (TRANSFER_REQUEST, etc.)
 
-{context_info}
+{context_section}
 
-MESSAGE: "{user_message}"
+MESSAGE À CLASSIFIER: "{user_message}"
 
 JSON:"""
         
         return prompt
     
-    def _format_supported_intents(self) -> str:
-        """Formate intentions par catégorie pour prompt"""
-        formatted_sections = []
+    def _select_relevant_examples(self, user_message: str, max_examples: int = 15) -> List[Dict]:
+        """Sélection dynamique des exemples les plus pertinents"""
+        
+        message_lower = user_message.lower()
+        relevant_examples = []
+        
+        # Score de pertinence basique par mots-clés
+        for example in self.few_shot_examples:
+            if hasattr(example, 'keywords') and example.keywords:
+                # Score basé sur les mots-clés communs
+                common_keywords = sum(1 for keyword in example.keywords if keyword in message_lower)
+                relevance_score = common_keywords + (example.confidence * 0.5)
+            else:
+                # Fallback: score basé sur la confiance uniquement
+                relevance_score = example.confidence
+            
+            relevant_examples.append({
+                'example': example,
+                'relevance': relevance_score
+            })
+        
+        # Tri par pertinence et sélection des meilleurs
+        relevant_examples.sort(key=lambda x: x['relevance'], reverse=True)
+        
+        # Conversion au format requis
+        selected = []
+        for item in relevant_examples[:max_examples]:
+            ex = item['example']
+            selected.append({
+                'input': ex.input,
+                'intent': ex.intent,
+                'confidence': ex.confidence
+            })
+        
+        return selected
+    
+    def _get_dynamic_intents_summary(self) -> str:
+        """Génération dynamique résumé intentions par catégorie"""
+        summary_lines = []
         
         for category, intents in INTENT_CATEGORIES.items():
-            formatted_sections.append(f"\n{category}:")
-            for intent in intents[:5]:  # Limiter pour éviter prompt trop long
-                description = INTENT_DESCRIPTIONS.get(intent, "")
-                formatted_sections.append(f"  • {intent.value}: {description}")
+            if category == "UNSUPPORTED":
+                summary_lines.append(f"\n{category} (utilisez type exact):")
+            else:
+                summary_lines.append(f"\n{category}:")
             
-            if len(intents) > 5:
-                formatted_sections.append(f"  • ... et {len(intents)-5} autres")
+            # Limiter à 4 intentions par catégorie pour éviter prompt trop long
+            for intent in intents[:4]:
+                desc = INTENT_DESCRIPTIONS.get(intent, "")[:60]  # Troncature description
+                summary_lines.append(f"  • {intent.value}: {desc}")
+            
+            if len(intents) > 4:
+                summary_lines.append(f"  • ... et {len(intents)-4} autres")
         
-        return "\n".join(formatted_sections)
+        return "\n".join(summary_lines)
     
-    def _parse_deepseek_response(
+    def _parse_json_response(
         self, 
         response: Dict[str, Any], 
         original_message: str
     ) -> IntentClassificationResult:
-        """Parse et valide la réponse DeepSeek"""
+        """Parsing JSON direct - Plus de regex grâce à JSON Output forcé"""
         
         try:
             content = response["choices"][0]["message"]["content"].strip()
-            parsed = json.loads(content)
+            
+            # JSON parsing direct - Plus besoin de regex
+            parsed_data = json.loads(content)
 
-            # Validation champs obligatoires
-            intent_type = parsed.get("intent", "").strip()
-            confidence = float(parsed.get("confidence", 0.0))
-            reasoning = parsed.get("reasoning", "").strip()
+            # Extraction et validation des champs
+            intent_type = self._validate_and_extract_intent(parsed_data.get("intent", "").strip())
+            confidence = self._validate_and_extract_confidence(parsed_data.get("confidence", 0.0))
+            reasoning = parsed_data.get("reasoning", "").strip() or f"Classification: {intent_type}"
             
-            # Validation intent_type
-            if intent_type not in [intent.value for intent in HarenaIntentType]:
-                logger.warning(f"Intention inconnue '{intent_type}', fallback vers UNCLEAR_INTENT")
-                intent_type = HarenaIntentType.UNCLEAR_INTENT.value
-                confidence = 0.5
-                reasoning = f"Intention '{intent_type}' non reconnue"
-            
-            # Validation confidence
-            if not (0.0 <= confidence <= 1.0):
-                logger.warning(f"Confidence invalide {confidence}, correction vers 0.5")
-                confidence = 0.5
-            
-            if not reasoning:
-                reasoning = f"Classification automatique: {intent_type}"
-            
-            # Détermination catégorie et support
-            category = self._get_intent_category(intent_type)
-            is_supported = intent_type not in [intent.value for intent in INTENT_CATEGORIES["UNSUPPORTED"]]
+            # Détermination propriétés intention
+            category = self._determine_intent_category(intent_type)
+            is_supported = self._is_intent_supported(intent_type)
+            alternatives = self._extract_alternatives(parsed_data.get("alternatives", []))
             
             # Construction résultat
             result = IntentClassificationResult(
@@ -220,21 +248,50 @@ JSON:"""
                 original_message=original_message,
                 category=category,
                 is_supported=is_supported,
-                alternatives=self._generate_alternatives(parsed.get("alternatives", [])),
+                alternatives=alternatives,
                 processing_time_ms=None  # Sera ajouté par appelant
             )
             
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"JSON invalide DeepSeek: {str(e)}")
+            logger.error(f"JSON invalide malgré JSON Output forcé: {content[:100]}...")
             return self._create_error_intent_result(f"JSON parsing error: {str(e)}")
+        except KeyError as e:
+            logger.error(f"Champ manquant dans réponse JSON: {str(e)}")
+            return self._create_error_intent_result(f"Missing field: {str(e)}")
         except Exception as e:
             logger.error(f"Erreur parsing réponse DeepSeek: {str(e)}")
             return self._create_error_intent_result(f"Response parsing error: {str(e)}")
     
-    def _get_intent_category(self, intent_type: str) -> str:
-        """Trouve la catégorie d'une intention"""
+    def _validate_and_extract_intent(self, intent_str: str) -> str:
+        """Validation et normalisation type intention"""
+        if not intent_str:
+            logger.warning("Intent vide, fallback vers UNCLEAR_INTENT")
+            return HarenaIntentType.UNCLEAR_INTENT.value
+        
+        # Vérification existence dans enum
+        valid_intents = [intent.value for intent in HarenaIntentType]
+        if intent_str not in valid_intents:
+            logger.warning(f"Intent inconnu '{intent_str}', fallback vers UNCLEAR_INTENT")
+            return HarenaIntentType.UNCLEAR_INTENT.value
+        
+        return intent_str
+    
+    def _validate_and_extract_confidence(self, confidence_val: Any) -> float:
+        """Validation et normalisation confidence"""
+        try:
+            confidence = float(confidence_val)
+            if not (0.0 <= confidence <= 1.0):
+                logger.warning(f"Confidence hors limite {confidence}, correction vers 0.5")
+                return 0.5
+            return confidence
+        except (ValueError, TypeError):
+            logger.warning(f"Confidence invalide {confidence_val}, fallback vers 0.5")
+            return 0.5
+    
+    def _determine_intent_category(self, intent_type: str) -> str:
+        """Détermine dynamiquement la catégorie d'une intention"""
         try:
             intent_enum = HarenaIntentType(intent_type)
             for category, intents in INTENT_CATEGORIES.items():
@@ -244,20 +301,90 @@ JSON:"""
         except ValueError:
             return "UNKNOWN_CATEGORY"
     
-    def _generate_alternatives(self, alternatives_data: List[Dict]) -> List[IntentAlternative]:
-        """Génère alternatives si fournies par DeepSeek"""
+    def _is_intent_supported(self, intent_type: str) -> bool:
+        """Vérification dynamique si intention est supportée"""
+        try:
+            intent_enum = HarenaIntentType(intent_type)
+            unsupported = INTENT_CATEGORIES.get("UNSUPPORTED", [])
+            return intent_enum not in unsupported
+        except ValueError:
+            return False
+    
+    def _extract_alternatives(self, alternatives_data: List[Dict]) -> List[IntentAlternative]:
+        """Extraction alternatives avec validation robuste"""
         alternatives = []
-        for alt in alternatives_data[:3]:  # Max 3 alternatives
+        for alt_data in alternatives_data[:3]:  # Max 3 alternatives
             try:
-                alternatives.append(IntentAlternative(
-                    intent_type=HarenaIntentType(alt["intent"]),
-                    confidence=float(alt["confidence"]),
-                    reasoning=alt.get("reasoning", "")
-                ))
-            except (KeyError, ValueError, TypeError):
-                continue  # Skip alternatives invalides
+                if not isinstance(alt_data, dict):
+                    continue
+                
+                alt_intent = alt_data.get("intent", "").strip()
+                alt_confidence = float(alt_data.get("confidence", 0.0))
+                
+                # Validation alternative
+                if alt_intent in [intent.value for intent in HarenaIntentType]:
+                    if 0.0 <= alt_confidence <= 1.0:
+                        alternatives.append(IntentAlternative(
+                            intent_type=HarenaIntentType(alt_intent),
+                            confidence=alt_confidence,
+                            reasoning=alt_data.get("reasoning", "")
+                        ))
+            except (KeyError, ValueError, TypeError) as e:
+                logger.debug(f"Alternative invalide ignorée: {str(e)}")
+                continue
         
         return alternatives
+    
+    async def _get_cached_classification(self, cache_key: str) -> Optional[IntentClassificationResult]:
+        """Récupération classification depuis cache"""
+        try:
+            if not self.cache_manager:
+                return None
+            
+            cached_data = await self.cache_manager.get_semantic_cache(
+                cache_key, 
+                similarity_threshold=0.85
+            )
+            
+            if cached_data:
+                return IntentClassificationResult(**cached_data)
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Erreur cache récupération: {str(e)}")
+            return None
+    
+    async def _cache_classification_result(
+        self, 
+        cache_key: str, 
+        result: IntentClassificationResult
+    ) -> None:
+        """Mise en cache résultat classification"""
+        try:
+            if not self.cache_manager:
+                return
+            
+            cache_ttl = getattr(settings, 'CACHE_TTL_INTENT', 300)
+            await self.cache_manager.set_semantic_cache(
+                cache_key,
+                result.dict(),
+                ttl=cache_ttl
+            )
+            
+        except Exception as e:
+            logger.debug(f"Erreur cache sauvegarde: {str(e)}")
+    
+    async def _validate_classification_quality(
+        self, 
+        result: IntentClassificationResult
+    ) -> bool:
+        """Validation qualité classification"""
+        try:
+            return await validate_intent_response(result)
+        except Exception as e:
+            logger.error(f"Erreur validation qualité: {str(e)}")
+            return False
     
     def _create_unknown_intent_result(self, reason: str) -> IntentClassificationResult:
         """Résultat pour intention inconnue"""
@@ -277,7 +404,7 @@ JSON:"""
         return IntentClassificationResult(
             intent_type=HarenaIntentType.UNCLEAR_INTENT,
             confidence=0.90,
-            reasoning=f"Message ambigü: {reason}",
+            reasoning=f"Message ambigu: {reason}",
             original_message="",
             category="UNCLEAR_INTENT", 
             is_supported=False,

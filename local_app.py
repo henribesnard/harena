@@ -1,12 +1,13 @@
 """
 Application Harena pour développement local.
-Version sans conversation_service.
+Version avec conversation_service.
 
 ✅ SERVICES DISPONIBLES:
 - User Service: Gestion utilisateurs
 - Sync Service: Synchronisation Bridge API
 - Enrichment Service: Elasticsearch uniquement (v2.0)
 - Search Service: Recherche lexicale simplifiée
+- Conversation Service: IA conversationnelle (phase 1)
 """
 
 import logging
@@ -48,6 +49,8 @@ class ServiceLoader:
         self.services_status = {}
         self.search_service_initialized = False
         self.search_service_error = None
+        self.conversation_service_initialized = False
+        self.conversation_service_error = None
 
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
         """Charge et enregistre un router de service"""
@@ -137,6 +140,7 @@ def create_app():
             ("db_service", "db_service"),
             ("sync_service", "sync_service"),
             ("enrichment_service", "enrichment_service"),
+            ("conversation_service", "conversation_service"),
         ]
         
         for service_name, module_path in services_health:
@@ -333,12 +337,43 @@ def create_app():
             
             loader.search_service_initialized = False
             loader.search_service_error = error_msg
-            
+
             loader.services_status["search_service"] = {
                 "status": "error",
                 "error": error_msg,
                 "architecture": "corrected_final_v2"
             }
+
+        # 5. Conversation Service
+        logger.info("💬 Chargement et initialisation du conversation_service...")
+        try:
+            from conversation_service.main import ConversationServiceLoader
+            from conversation_service.api.routes.conversation import router as conversation_router
+
+            conversation_loader = ConversationServiceLoader()
+            conversation_initialized = await conversation_loader.initialize_conversation_service(app)
+
+            app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+            routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
+
+            loader.conversation_service_initialized = conversation_initialized
+            loader.conversation_service_error = conversation_loader.initialization_error
+
+            status = "ok" if conversation_initialized else "error"
+            loader.services_status["conversation_service"] = {
+                "status": status,
+                "routes": routes_count,
+                "prefix": "/api/v1/conversation",
+                "initialized": conversation_initialized,
+                "error": conversation_loader.initialization_error,
+            }
+
+            logger.info("✅ conversation_service: %s", "initialisé" if conversation_initialized else "non initialisé")
+        except Exception as e:
+            logger.error(f"❌ conversation_service: {e}")
+            loader.conversation_service_initialized = False
+            loader.conversation_service_error = str(e)
+            loader.services_status["conversation_service"] = {"status": "error", "error": str(e)}
 
         # Compter les services réussis (INCHANGÉ)
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
@@ -364,7 +399,7 @@ def create_app():
 
     app = FastAPI(
         title="Harena Finance Platform - Local Dev",
-        description="Plateforme de gestion financière - Version développement sans conversation_service",
+        description="Plateforme de gestion financière - Version développement avec conversation_service",
         version="1.0.0-dev",
         lifespan=lifespan
     )
@@ -386,9 +421,10 @@ def create_app():
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détails spéciaux pour search_service et enrichment_service
+        # Détails spéciaux pour search_service, enrichment_service et conversation_service
         search_status = loader.services_status.get("search_service", {})
         enrichment_status = loader.services_status.get("enrichment_service", {})
+        conversation_status = loader.services_status.get("conversation_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -412,6 +448,11 @@ def create_app():
                 "elasticsearch_available": enrichment_status.get("elasticsearch_available", False),
                 "initialized": enrichment_status.get("initialized", False),
                 "error": enrichment_status.get("error")
+            },
+            "conversation_service": {
+                "status": conversation_status.get("status"),
+                "initialized": conversation_status.get("initialized", False),
+                "error": conversation_status.get("error"),
             }
         }
 
@@ -437,6 +478,10 @@ def create_app():
                     "User sync operations"
                 ]
             },
+            "conversation_service_details": {
+                "initialized": loader.conversation_service_initialized,
+                "error": loader.conversation_service_error,
+            },
 
         }
 
@@ -451,6 +496,7 @@ def create_app():
                 "sync_service - Synchronisation Bridge API",
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
                 "search_service - Recherche lexicale (Architecture finale corrigée)",
+                "conversation_service - IA conversationnelle",
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
@@ -470,7 +516,7 @@ if __name__ == "__main__":
     logger.info("📡 Accès: http://localhost:8000")
     logger.info("📚 Docs: http://localhost:8000/docs")
     logger.info("🔍 Status: http://localhost:8000/status")
-    logger.info("🏦 Services Core: User, Sync, Enrichment, Search")
+    logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
     logger.info("✅ Architecture allégée pour développement core")
     
     uvicorn.run(

@@ -1,5 +1,5 @@
 """
-Middleware d'authentification JWT optimisé avec sécurité avancée
+Middleware d'authentification JWT compatible user_service - Version réécrite
 """
 import logging
 import time
@@ -18,7 +18,6 @@ from conversation_service.utils.metrics_collector import metrics_collector
 # Configuration du logger
 logger = logging.getLogger("conversation_service.auth")
 
-
 @dataclass
 class AuthenticationResult:
     """Résultat d'authentification avec métadonnées"""
@@ -28,7 +27,6 @@ class AuthenticationResult:
     error_message: Optional[str] = None
     token_payload: Optional[Dict[str, Any]] = None
     processing_time_ms: Optional[float] = None
-
 
 class SecurityHeaders:
     """Headers de sécurité recommandés"""
@@ -49,13 +47,11 @@ class SecurityHeaders:
         for header, value in cls.SECURITY_HEADERS.items():
             response.headers[header] = value
 
-
 class JWTValidator:
-    """Validateur JWT avec cache et sécurité avancée"""
+    """Validateur JWT compatible user_service avec tolérance accrue"""
     
     def __init__(self):
         self.algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
-        # Use the unified SECRET_KEY from settings for JWT verification
         self.secret_key = settings.SECRET_KEY
 
         self.token_cache: Dict[str, Dict[str, Any]] = {}
@@ -68,10 +64,11 @@ class JWTValidator:
         self.validation_count = 0
         
         logger.info(f"JWTValidator initialisé - Algorithme: {self.algorithm}")
+        logger.debug(f"Secret key longueur: {len(self.secret_key)} chars")
     
     def validate_token(self, token: str) -> AuthenticationResult:
         """
-        Validation JWT avec cache et vérifications de sécurité
+        Validation JWT compatible user_service.core.security.create_access_token
         
         Args:
             token: Token JWT à valider
@@ -83,6 +80,10 @@ class JWTValidator:
         self.validation_count += 1
         
         try:
+            # Log pour debugging (tronquer le token)
+            token_preview = f"{token[:20]}...{token[-10:]}" if len(token) > 30 else token
+            logger.debug(f"Validation token: {token_preview}")
+            
             # Vérification blacklist
             if token in self.blacklisted_tokens:
                 metrics_collector.increment_counter("auth.validation.blacklisted")
@@ -98,6 +99,7 @@ class JWTValidator:
             if cached_result:
                 self.cache_hits += 1
                 metrics_collector.increment_counter("auth.validation.cache_hit")
+                logger.debug(f"Cache hit pour user {cached_result['user_id']}")
                 return AuthenticationResult(
                     success=True,
                     user_id=cached_result["user_id"],
@@ -108,23 +110,29 @@ class JWTValidator:
             self.cache_misses += 1
             metrics_collector.increment_counter("auth.validation.cache_miss")
             
-            # Décodage JWT
-            payload = jwt.decode(
-                token,
-                self.secret_key,
-                algorithms=[self.algorithm],
-                options={
-                    "verify_signature": True,
-                    "verify_exp": True,
-                    "verify_iat": True,
-                    "verify_aud": False,  # Pas d'audience pour Phase 1
-                    "require": ["exp", "sub"]
-                }
-            )
+            # Décodage JWT avec options compatibles user_service
+            try:
+                payload = jwt.decode(
+                    token,
+                    self.secret_key,
+                    algorithms=[self.algorithm],
+                    options={
+                        "verify_signature": True,
+                        "verify_exp": True,
+                        "verify_iat": False,  # user_service n'impose pas iat
+                        "verify_aud": False,  # Pas d'audience
+                        "require": ["exp", "sub"]  # Seuls exp et sub requis
+                    }
+                )
+                logger.debug(f"Token décodé avec succès, payload keys: {list(payload.keys())}")
+            except Exception as decode_error:
+                logger.error(f"Erreur décodage JWT: {str(decode_error)}")
+                raise decode_error
             
-            # Validation payload
-            validation_error = self._validate_payload(payload)
+            # Validation payload compatible user_service
+            validation_error = self._validate_payload_user_service_compatible(payload)
             if validation_error:
+                logger.warning(f"Payload invalide: {validation_error}")
                 return AuthenticationResult(
                     success=False,
                     error_code="PAYLOAD_INVALID",
@@ -132,17 +140,26 @@ class JWTValidator:
                     processing_time_ms=(time.time() - start_time) * 1000
                 )
             
-            # Extract user identifier: prefer the standard "sub" claim
+            # Extract user identifier - user_service utilise str(subject)
             raw_user_id = payload.get("sub")
             if raw_user_id is None:
-                # Fallback to legacy "user_id" if provided
-                raw_user_id = payload.get("user_id")
+                raw_user_id = payload.get("user_id")  # Fallback
 
-            user_id = int(raw_user_id)
+            try:
+                user_id = int(raw_user_id)
+            except (ValueError, TypeError):
+                logger.error(f"Impossible de convertir user_id: {raw_user_id}")
+                return AuthenticationResult(
+                    success=False,
+                    error_code="INVALID_USER_ID",
+                    error_message=f"User ID invalide: {raw_user_id}",
+                    processing_time_ms=(time.time() - start_time) * 1000
+                )
             
-            # Vérifications de sécurité supplémentaires
-            security_check = self._perform_security_checks(payload, token)
+            # Vérifications de sécurité tolérantes
+            security_check = self._perform_tolerant_security_checks(payload, token)
             if not security_check["valid"]:
+                logger.warning(f"Échec vérification sécurité: {security_check['reason']}")
                 return AuthenticationResult(
                     success=False,
                     error_code="SECURITY_CHECK_FAILED",
@@ -153,6 +170,7 @@ class JWTValidator:
             # Mise en cache
             self._cache_validation_result(token, user_id, payload)
             
+            logger.debug(f"Token validé avec succès pour user_id: {user_id}")
             metrics_collector.increment_counter("auth.validation.success")
             return AuthenticationResult(
                 success=True,
@@ -162,6 +180,7 @@ class JWTValidator:
             )
             
         except ExpiredSignatureError:
+            logger.debug("Token expiré")
             metrics_collector.increment_counter("auth.validation.expired")
             return AuthenticationResult(
                 success=False,
@@ -170,6 +189,7 @@ class JWTValidator:
                 processing_time_ms=(time.time() - start_time) * 1000
             )
         except JWSSignatureError:
+            logger.error("Signature token invalide")
             metrics_collector.increment_counter("auth.validation.invalid_signature")
             return AuthenticationResult(
                 success=False,
@@ -177,8 +197,8 @@ class JWTValidator:
                 error_message="Signature token invalide",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-
         except JWSError:
+            logger.error("Format token invalide")
             metrics_collector.increment_counter("auth.validation.decode_error")
             return AuthenticationResult(
                 success=False,
@@ -186,8 +206,8 @@ class JWTValidator:
                 error_message="Format token invalide",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-
         except JWTError as e:
+            logger.error(f"Erreur JWT: {str(e)}")
             metrics_collector.increment_counter("auth.validation.invalid_token")
             return AuthenticationResult(
                 success=False,
@@ -195,10 +215,9 @@ class JWTValidator:
                 error_message=f"Token invalide: {str(e)}",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-
         except Exception as e:
-            metrics_collector.increment_counter("auth.validation.unexpected_error")
             logger.error(f"Erreur inattendue validation JWT: {str(e)}", exc_info=True)
+            metrics_collector.increment_counter("auth.validation.unexpected_error")
             return AuthenticationResult(
                 success=False,
                 error_code="VALIDATION_ERROR",
@@ -238,69 +257,96 @@ class JWTValidator:
             "cached_at": time.time()
         }
     
-    def _validate_payload(self, payload: Dict[str, Any]) -> Optional[str]:
-        """Validation contenu payload JWT"""
-        # Vérification identifiant utilisateur (claim sub obligatoire)
+    def _validate_payload_user_service_compatible(self, payload: Dict[str, Any]) -> Optional[str]:
+        """
+        Validation payload compatible avec user_service.core.security.create_access_token
+        """
+        # Vérification claim sub (obligatoire)
         if "sub" not in payload:
-            return "sub manquant dans le token"
+            return "Claim 'sub' manquant dans le token"
 
         try:
-            user_id = int(payload["sub"])
+            # user_service utilise str(subject) donc le sub peut être string
+            raw_sub = payload["sub"]
+            if isinstance(raw_sub, str):
+                user_id = int(raw_sub)
+            else:
+                user_id = int(raw_sub)
+                
             if user_id <= 0:
-                return "sub invalide (doit être > 0)"
+                return "Subject invalide (doit être > 0)"
         except (ValueError, TypeError):
-            return "sub doit être un entier valide"
+            return f"Subject invalide: {raw_sub} (doit être convertible en entier)"
         
-        # Vérification timestamps
+        # Vérification timestamps avec tolérance
         current_time = time.time()
         
-        # iat (issued at) est optionnel mais ne doit pas être dans le futur s'il est présent
+        # iat (issued at) est optionnel dans user_service
         if "iat" in payload:
-            iat = payload["iat"]
-            if iat > current_time + 300:  # 5 minutes de tolérance
-                return "Token émis dans le futur"
+            try:
+                iat = int(payload["iat"])
+                if iat > current_time + 300:  # 5 minutes de tolérance
+                    return "Token émis dans le futur"
+            except (ValueError, TypeError):
+                logger.warning("Timestamp 'iat' non parsable, ignoré")
         
-        # Vérification exp (expiration)
+        # exp (expiration) - critique
         if "exp" in payload:
-            exp = payload["exp"]
-            if exp <= current_time:
-                return "Token expiré selon payload"
+            try:
+                exp = int(payload["exp"])
+                if exp <= current_time - 60:  # 1 minute de grâce pour la synchronisation
+                    return "Token expiré"
+            except (ValueError, TypeError):
+                return "Timestamp 'exp' invalide"
         
-        # Vérification durée de vie raisonnable
+        # Vérification durée de vie raisonnable (si les deux timestamps sont présents)
         if "iat" in payload and "exp" in payload:
-            token_lifetime = payload["exp"] - payload["iat"]
-            max_lifetime = 30 * 24 * 3600  # 30 jours maximum
-            if token_lifetime > max_lifetime:
-                return f"Durée de vie token excessive: {token_lifetime/3600:.1f}h"
+            try:
+                iat = int(payload["iat"])
+                exp = int(payload["exp"])
+                token_lifetime = exp - iat
+                max_lifetime = 30 * 24 * 3600  # 30 jours maximum
+                if token_lifetime > max_lifetime:
+                    logger.warning(f"Durée de vie token longue: {token_lifetime/3600:.1f}h")
+            except (ValueError, TypeError):
+                # Ne pas échouer si les timestamps ne sont pas parsables
+                logger.debug("Impossible de parser les timestamps iat/exp pour validation durée")
         
         return None
     
-    def _perform_security_checks(self, payload: Dict[str, Any], token: str) -> Dict[str, Any]:
-        """Vérifications de sécurité avancées"""
+    def _perform_tolerant_security_checks(self, payload: Dict[str, Any], token: str) -> Dict[str, Any]:
+        """Vérifications de sécurité tolérantes pour user_service"""
         
-        # Vérification longueur token (protection contre tokens malformés)
-        if len(token) > 2048:  # JWT typique < 1KB
+        # Vérification longueur token raisonnable
+        if len(token) > 4096:  # Très généreux pour JWT
             return {"valid": False, "reason": "Token trop long"}
         
         if len(token) < 50:  # JWT minimal
             return {"valid": False, "reason": "Token trop court"}
         
-        # Vérification structure payload
-        suspicious_keys = ["admin", "root", "system", "privilege", "role", "scope"]
+        # Vérification payload avec tolérance pour user_service
+        # user_service peut inclure "permissions" qui est légitime
+        legitimate_keys = ["sub", "exp", "iat", "permissions", "user_id"]
+        suspicious_keys = ["admin", "root", "system", "superuser"]
+        
         for key in suspicious_keys:
             if key in payload and payload[key]:
-                logger.warning(f"Token avec clé suspecte: {key}")
+                logger.warning(f"Token avec clé potentiellement suspecte: {key}")
         
-        # Vérification identifiant utilisateur raisonnable
+        # Vérification user_id raisonnable
         raw_user_id = payload.get("sub")
         if raw_user_id is None:
             raw_user_id = payload.get("user_id")
         try:
             user_id = int(raw_user_id) if raw_user_id is not None else 0
         except (TypeError, ValueError):
-            user_id = 0
-        if user_id > 1000000:  # Ajustable selon la base utilisateur
-            logger.warning(f"User ID inhabituel: {user_id}")
+            return {"valid": False, "reason": "User ID invalide dans le payload"}
+            
+        if user_id <= 0:
+            return {"valid": False, "reason": "User ID doit être positif"}
+        
+        if user_id > 100000000:  # Limite très généreuse
+            logger.info(f"User ID élevé détecté: {user_id}")
         
         return {"valid": True}
     
@@ -312,7 +358,6 @@ class JWTValidator:
         
         # Limitation taille blacklist
         if len(self.blacklisted_tokens) > 5000:
-            # Garder seulement les 2500 plus récents (approximation)
             tokens_list = list(self.blacklisted_tokens)
             self.blacklisted_tokens = set(tokens_list[-2500:])
     
@@ -330,47 +375,61 @@ class JWTValidator:
             "blacklist_size": len(self.blacklisted_tokens)
         }
 
-
 class JWTAuthMiddleware(BaseHTTPMiddleware):
-    """Middleware authentification JWT optimisé avec sécurité renforcée"""
+    """Middleware authentification JWT compatible user_service"""
     
     def __init__(self, app):
         super().__init__(app)
         self.jwt_validator = JWTValidator()
         
-        # Paths exclus de l'authentification
+        # Paths exclus de l'authentification (monitoring et docs)
         self.excluded_paths = {
             "/health", "/health/live", "/health/ready",
             "/docs", "/openapi.json", "/redoc",
-            "/metrics"
+            "/metrics", "/favicon.ico", "/",
+            # Endpoints de monitoring conversation (publics)
+            "/api/v1/conversation/health",
+            "/api/v1/conversation/metrics", 
+            "/api/v1/conversation/status",
         }
         
+        # Patterns exclus (pour les paths dynamiques)
+        self.excluded_patterns = [
+            "/static/", 
+            "/.well-known/",
+        ]
+        
         # Paths nécessitant authentification
-        self.protected_patterns = ["/api/v1/conversation"]
+        self.protected_patterns = [
+            "/api/v1/conversation/",  # Mais pas health/metrics/status
+        ]
         
         # Statistiques middleware
         self.requests_processed = 0
         self.auth_successes = 0
         self.auth_failures = 0
         
-        logger.info("JWT Auth Middleware initialisé avec sécurité avancée")
+        logger.info("JWT Auth Middleware initialisé avec tolérance user_service")
+        logger.info(f"Paths exclus d'authentification: {len(self.excluded_paths)} paths")
     
     async def dispatch(self, request: Request, call_next):
         """Traitement authentification pour chaque requête"""
         
         self.requests_processed += 1
         start_time = time.time()
+        path = request.url.path
         
         try:
             # Vérification si path nécessite authentification
-            if not self._requires_authentication(request.url.path):
+            if not self._requires_authentication(path):
+                logger.debug(f"Path public: {path}")
                 response = await call_next(request)
                 SecurityHeaders.add_security_headers(response)
                 return response
             
             # Log requête protégée
             client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
-            logger.debug(f"Auth required for {request.method} {request.url.path} from {client_ip}")
+            logger.debug(f"Auth requise pour {request.method} {path} depuis {client_ip}")
             
             # Authentification
             auth_result = await self._authenticate_request(request)
@@ -379,11 +438,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 self.auth_failures += 1
                 processing_time = (time.time() - start_time) * 1000
                 
-                # Log échec authentification
+                # Log échec authentification avec détails
                 logger.warning(
-                    f"Auth failed - Code: {auth_result.error_code}, "
-                    f"IP: {client_ip}, "
-                    f"Path: {request.url.path}, "
+                    f"Auth échouée - Code: {auth_result.error_code}, "
+                    f"IP: {client_ip}, Path: {path}, "
                     f"Time: {processing_time:.1f}ms"
                 )
                 
@@ -392,7 +450,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 metrics_collector.record_histogram("auth.processing_time", processing_time)
                 
                 # Réponse d'erreur sécurisée
-                error_response = self._create_auth_error_response(auth_result)
+                error_response = self._create_user_friendly_auth_error_response(auth_result)
                 SecurityHeaders.add_security_headers(error_response)
                 return error_response
             
@@ -407,13 +465,13 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             metrics_collector.increment_counter("auth.success")
             metrics_collector.record_histogram("auth.processing_time", processing_time)
             
-            # Log succès (niveau debug)
-            logger.debug(f"Auth success - User: {auth_result.user_id}, Time: {processing_time:.1f}ms")
+            # Log succès (debug uniquement)
+            logger.debug(f"Auth réussie - User: {auth_result.user_id}, Time: {processing_time:.1f}ms")
             
             # Traitement requête authentifiée
             response = await call_next(request)
             
-            # Headers de sécurité et informations utilisateur
+            # Headers de sécurité
             SecurityHeaders.add_security_headers(response)
             response.headers["X-User-ID"] = str(auth_result.user_id)
             
@@ -438,21 +496,31 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return error_response
     
     def _requires_authentication(self, path: str) -> bool:
-        """Détermine si le path nécessite une authentification"""
-        # Vérification paths exclus
+        """
+        Détermine si un path nécessite authentification avec logique claire
+        """
+        # 1. Paths publics explicites
         if path in self.excluded_paths:
             return False
         
-        # Vérification patterns exclus (ex: paths statiques)
-        excluded_patterns = ["/static/", "/favicon.ico", "/.well-known/"]
-        if any(pattern in path for pattern in excluded_patterns):
-            return False
+        # 2. Patterns publics  
+        for pattern in self.excluded_patterns:
+            if pattern in path:
+                return False
         
-        # Vérification paths protégés
-        return any(pattern in path for pattern in self.protected_patterns)
+        # 3. Vérification patterns protégés avec exceptions
+        for pattern in self.protected_patterns:
+            if pattern in path:
+                # Exception pour les endpoints de monitoring dans les paths protégés
+                if any(monitor in path for monitor in ["health", "metrics", "status"]):
+                    return False
+                return True
+        
+        # Par défaut, pas d'authentification requise
+        return False
     
     async def _authenticate_request(self, request: Request) -> AuthenticationResult:
-        """Authentification complète de la requête"""
+        """Authentification complète de la requête avec logs détaillés"""
         
         try:
             # Extraction token depuis header Authorization
@@ -470,7 +538,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 return AuthenticationResult(
                     success=False,
                     error_code="INVALID_SCHEME",
-                    error_message="Schema d'authentification invalide. Utilisez 'Bearer <token>'"
+                    error_message="Schéma d'authentification invalide. Utilisez 'Bearer <token>'"
                 )
             
             if not token:
@@ -497,8 +565,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 error_message="Erreur lors de l'authentification"
             )
     
-    def _create_auth_error_response(self, auth_result: AuthenticationResult) -> JSONResponse:
-        """Crée une réponse d'erreur d'authentification sécurisée"""
+    def _create_user_friendly_auth_error_response(self, auth_result: AuthenticationResult) -> JSONResponse:
+        """Crée une réponse d'erreur d'authentification user-friendly"""
         
         # Mapping codes d'erreur vers codes HTTP
         status_code_mapping = {
@@ -507,43 +575,53 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             "MISSING_TOKEN": 401,
             "TOKEN_EXPIRED": 401,
             "INVALID_SIGNATURE": 401,
-            "DECODE_ERROR": 400,
+            "DECODE_ERROR": 401,  # Changé de 400 à 401 pour cohérence
             "INVALID_TOKEN": 401,
             "PAYLOAD_INVALID": 401,
             "TOKEN_BLACKLISTED": 401,
             "SECURITY_CHECK_FAILED": 401,
             "VALIDATION_ERROR": 401,
+            "INVALID_USER_ID": 401,
             "AUTHENTICATION_ERROR": 500
         }
         
-        status_code = status_code_mapping.get(auth_result.error_code, 401)
-        
-        # Message d'erreur sécurisé (évite la fuite d'information)
-        secure_messages = {
+        # Messages d'erreur français cohérents et user-friendly
+        user_friendly_messages = {
+            "MISSING_AUTHORIZATION": "Authentification requise",
+            "INVALID_SCHEME": "Schéma d'authentification invalide",
+            "MISSING_TOKEN": "Token d'authentification manquant",
             "TOKEN_EXPIRED": "Token expiré",
             "INVALID_SIGNATURE": "Token invalide",
-            "DECODE_ERROR": "Format de token invalide",
-            "MISSING_AUTHORIZATION": "Authentification requise",
-            "INVALID_SCHEME": "Type d'authentification invalide"
+            "DECODE_ERROR": "Token malformé",
+            "INVALID_TOKEN": "Token invalide",
+            "PAYLOAD_INVALID": "Token invalide",
+            "TOKEN_BLACKLISTED": "Token révoqué",
+            "SECURITY_CHECK_FAILED": "Token invalide",
+            "VALIDATION_ERROR": "Erreur d'authentification",
+            "INVALID_USER_ID": "Token invalide",
+            "AUTHENTICATION_ERROR": "Erreur interne d'authentification"
         }
         
-        public_message = secure_messages.get(
-            auth_result.error_code,
-            "Authentification échouée"
-        )
+        status_code = status_code_mapping.get(auth_result.error_code, 401)
+        error_message = user_friendly_messages.get(auth_result.error_code, "Authentification requise")
         
-        response_content = {
-            "detail": public_message,
-            "error_code": auth_result.error_code,
+        response_data = {
+            "detail": error_message,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
-        # Headers WWW-Authenticate pour conformité HTTP
+        # En mode debug, ajouter plus de détails
+        if getattr(settings, 'ENVIRONMENT', 'production') != 'production':
+            response_data["error_code"] = auth_result.error_code
+            if auth_result.processing_time_ms:
+                response_data["processing_time_ms"] = auth_result.processing_time_ms
+        
         response = JSONResponse(
             status_code=status_code,
-            content=response_content
+            content=response_data
         )
         
+        # Headers WWW-Authenticate pour conformité HTTP
         if status_code == 401:
             response.headers["WWW-Authenticate"] = 'Bearer realm="Harena API"'
         
@@ -561,8 +639,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             "jwt_validator_stats": self.jwt_validator.get_validation_stats()
         }
 
+# ============================================================================
+# FONCTIONS HELPER POUR DÉPENDANCES
+# ============================================================================
 
-# Fonctions helper pour utilisation dans les dépendances
 async def get_current_user_id(request: Request) -> int:
     """
     Fonction helper pour récupérer user_id depuis request state
@@ -585,7 +665,6 @@ async def get_current_user_id(request: Request) -> int:
     
     return request.state.user_id
 
-
 async def get_current_token_payload(request: Request) -> Dict[str, Any]:
     """Récupère le payload du token JWT depuis request state"""
     if not hasattr(request.state, 'token_payload') or not request.state.token_payload:
@@ -595,7 +674,6 @@ async def get_current_token_payload(request: Request) -> Dict[str, Any]:
         )
     
     return request.state.token_payload
-
 
 async def verify_user_id_match(request: Request, path_user_id: int) -> None:
     """
@@ -615,10 +693,8 @@ async def verify_user_id_match(request: Request, path_user_id: int) -> None:
         client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
         
         logger.warning(
-            f"User ID mismatch detected - Path: {path_user_id}, "
-            f"Token: {token_user_id}, "
-            f"IP: {client_ip}, "
-            f"URL: {request.url.path}"
+            f"User ID mismatch - Path: {path_user_id}, "
+            f"Token: {token_user_id}, IP: {client_ip}, URL: {request.url.path}"
         )
         
         metrics_collector.increment_counter("auth.user_id_mismatch")
@@ -631,12 +707,9 @@ async def verify_user_id_match(request: Request, path_user_id: int) -> None:
             }
         )
 
-
 def require_admin_role(request: Request) -> None:
     """
     Vérification rôle admin (pour futures extensions)
-    
-    Note: Non utilisé en Phase 1 mais préparé pour phases suivantes
     """
     # Récupération payload token
     if not hasattr(request.state, 'token_payload'):
@@ -654,3 +727,36 @@ def require_admin_role(request: Request) -> None:
             status_code=403,
             detail="Privilèges administrateur requis"
         )
+
+# ============================================================================
+# UTILITAIRES DEBUG
+# ============================================================================
+
+def debug_auth_requirements():
+    """
+    Fonction de debug pour tracer les requirements d'authentification
+    """
+    middleware = JWTAuthMiddleware(None)
+    
+    test_paths = [
+        "/api/v1/conversation/1",
+        "/api/v1/conversation/health", 
+        "/api/v1/conversation/metrics",
+        "/api/v1/conversation/status",
+        "/health",
+        "/health/live",
+        "/health/ready",
+        "/docs",
+        "/metrics",
+        "/static/style.css"
+    ]
+    
+    print("=== Debug Auth Requirements ===")
+    for path in test_paths:
+        requires_auth = middleware._requires_authentication(path)
+        print(f"{path:<35} -> {'AUTH REQUIRED' if requires_auth else 'PUBLIC'}")
+    print("=" * 40)
+
+if __name__ == "__main__":
+    # Test de debug
+    debug_auth_requirements()

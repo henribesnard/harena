@@ -87,10 +87,11 @@ class DeepSeekClient:
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Appel API chat completion avec retry automatique"""
-        
+
         if not self._initialized:
             await self.initialize()
         
@@ -104,6 +105,9 @@ class DeepSeekClient:
             "temperature": temperature or self.temperature,
             "stream": False
         }
+
+        if response_format is not None:
+            payload["response_format"] = response_format
         
         # Retry avec backoff exponentiel
         max_retries = 3

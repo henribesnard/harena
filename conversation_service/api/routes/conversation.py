@@ -12,6 +12,7 @@ from conversation_service.models.responses.conversation_responses import Convers
 from conversation_service.agents.financial.intent_classifier import IntentClassifierAgent
 from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
+from conversation_service.prompts.harena_intents import HarenaIntentType
 from conversation_service.api.dependencies import (
     get_deepseek_client,
     get_cache_manager,
@@ -82,7 +83,10 @@ async def analyze_conversation(
             user_message=request_data.message,
             user_context=user_context
         )
-        
+
+        if classification_result.intent_type == HarenaIntentType.ERROR:
+            raise HTTPException(status_code=500, detail="Erreur classification intention")
+
         # Calcul temps traitement total
         processing_time_ms = int((time.time() - start_time) * 1000)
         

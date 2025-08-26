@@ -182,10 +182,11 @@ async def conversation_health_detailed():
         health_metrics = metrics_collector.get_health_metrics()
         
         return {
-            "service": "conversation_service", 
+            "service": "conversation_service",
             "phase": 1,
             "status": health_metrics["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "metrics": health_metrics,
             "health_details": {
                 "total_requests": health_metrics["total_requests"],
                 "error_rate_percent": health_metrics["error_rate_percent"],

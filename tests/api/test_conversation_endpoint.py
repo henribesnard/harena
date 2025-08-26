@@ -625,13 +625,17 @@ class TestConversationHealthEndpoint:
         """Test health check réussi"""
         
         with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
+            expected_metrics = {
+
             mock_metrics.get_health_metrics.return_value = {
+
                 "status": "healthy",
                 "total_requests": 100,
                 "error_rate_percent": 2.5,
                 "latency_p95_ms": 250,
                 "uptime_seconds": 3600
             }
+            mock_metrics.get_health_metrics.return_value = expected_metrics
             
             response = client.get("/api/v1/conversation/health")
             
@@ -640,7 +644,9 @@ class TestConversationHealthEndpoint:
             
             assert data["service"] == "conversation_service"
             assert data["status"] == "healthy"
+            assert data["metrics"] == expected_metrics
             assert "health_details" in data
+
             assert "features" in data
 
     def test_conversation_health_error(self, client):

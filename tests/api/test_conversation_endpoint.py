@@ -599,14 +599,15 @@ class TestConversationHealthEndpoint:
     def test_conversation_health_success(self, client):
         """Test health check réussi"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
-            mock_metrics.get_health_metrics.return_value = {
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
+            expected_metrics = {
                 "status": "healthy",
                 "total_requests": 100,
                 "error_rate_percent": 2.5,
                 "latency_p95_ms": 250,
                 "uptime_seconds": 3600
             }
+            mock_metrics.get_health_metrics.return_value = expected_metrics
             
             response = client.get("/api/v1/conversation/health")
             
@@ -615,13 +616,13 @@ class TestConversationHealthEndpoint:
             
             assert data["service"] == "conversation_service"
             assert data["status"] == "healthy"
-            assert "metrics" in data
+            assert data["metrics"] == expected_metrics
             assert "features" in data
 
     def test_conversation_health_error(self, client):
         """Test health check avec erreur"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_health_metrics.side_effect = Exception("Metrics error")
             
             response = client.get("/api/v1/conversation/health")

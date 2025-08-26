@@ -12,6 +12,7 @@ from conversation_service.prompts.few_shot_examples.intent_classification import
 from conversation_service.prompts.system_prompts import INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT
 from conversation_service.models.responses.conversation_responses import IntentClassificationResult, IntentAlternative
 from conversation_service.utils.validation_utils import validate_intent_response, sanitize_user_input
+from conversation_service.utils.metrics_collector import metrics_collector
 from config_service.config import settings
 
 # Configuration du logger
@@ -26,6 +27,7 @@ class IntentClassifierAgent(BaseAgent):
             deepseek_client=deepseek_client,
             cache_manager=cache_manager
         )
+
         
         self.supported_intents = list(HarenaIntentType)
         self.few_shot_examples = get_balanced_few_shot_examples(examples_per_intent=2)
@@ -99,8 +101,13 @@ class IntentClassifierAgent(BaseAgent):
             await self._cache_classification_result(cache_key, classification_result)
             
             self._update_metrics("classification_success", start_time)
+            intent_display = (
+                classification_result.intent_type.value
+                if hasattr(classification_result.intent_type, "value")
+                else classification_result.intent_type
+            )
             logger.info(
-                f"Classification réussie: {classification_result.intent_type.value} "
+                f"Classification réussie: {intent_display} "
                 f"(conf: {classification_result.confidence:.2f}, temps: {processing_time}ms)"
             )
             
@@ -305,7 +312,7 @@ JSON:"""
         """Vérification dynamique si intention est supportée"""
         try:
             intent_enum = HarenaIntentType(intent_type)
-            unsupported = INTENT_CATEGORIES.get("UNSUPPORTED", [])
+            unsupported = INTENT_CATEGORIES.get("UNSUPPORTED", []) + [HarenaIntentType.UNCLEAR_INTENT]
             return intent_enum not in unsupported
         except ValueError:
             return False
@@ -376,7 +383,7 @@ JSON:"""
             logger.debug(f"Erreur cache sauvegarde: {str(e)}")
     
     async def _validate_classification_quality(
-        self, 
+        self,
         result: IntentClassificationResult
     ) -> bool:
         """Validation qualité classification"""
@@ -385,14 +392,23 @@ JSON:"""
         except Exception as e:
             logger.error(f"Erreur validation qualité: {str(e)}")
             return False
-    
+
+    def _update_metrics(self, event: str, start_time: datetime) -> None:
+        """Collecte des métriques pour l'agent de classification"""
+        try:
+            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            metrics_collector.increment_counter(f"intent_classifier.{event}")
+            metrics_collector.record_histogram(f"intent_classifier.{event}.latency", processing_time)
+        except Exception as e:
+            logger.debug(f"Échec mise à jour métriques {event}: {str(e)}")
+
     def _create_unknown_intent_result(self, reason: str) -> IntentClassificationResult:
         """Résultat pour intention inconnue"""
         return IntentClassificationResult(
             intent_type=HarenaIntentType.UNKNOWN,
             confidence=0.95,
             reasoning=f"Message non interprétable: {reason}",
-            original_message="",
+            original_message=reason,
             category="UNCLEAR_INTENT",
             is_supported=False,
             alternatives=[],
@@ -403,10 +419,10 @@ JSON:"""
         """Résultat pour intention ambiguë"""
         return IntentClassificationResult(
             intent_type=HarenaIntentType.UNCLEAR_INTENT,
-            confidence=0.90,
+            confidence=0.50,
             reasoning=f"Message ambigu: {reason}",
-            original_message="",
-            category="UNCLEAR_INTENT", 
+            original_message=reason,
+            category="UNCLEAR_INTENT",
             is_supported=False,
             alternatives=[],
             processing_time_ms=0
@@ -418,7 +434,7 @@ JSON:"""
             intent_type=HarenaIntentType.ERROR,
             confidence=0.99,
             reasoning=f"Erreur technique: {error}",
-            original_message="",
+            original_message=error,
             category="UNCLEAR_INTENT",
             is_supported=False,
             alternatives=[],

@@ -83,7 +83,8 @@ class IntentClassifierAgent(BaseAgent):
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=300,
-                temperature=0.1
+                temperature=0.1,
+                response_format={"type": "json_object"}
             )
             
             # Parsing et validation réponse

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
 from conversation_service.models.responses.conversation_responses import ConversationResponse, AgentMetrics
-from conversation_service.agents.financial.intent_classifier import IntentClassifierAgent
+from conversation_service.agents.financial import intent_classifier as intent_classifier_module
 from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.prompts.harena_intents import HarenaIntentType
@@ -86,7 +86,7 @@ async def analyze_conversation(
             )
         
         # Initialisation agent intent classifier
-        intent_classifier = IntentClassifierAgent(
+        intent_classifier = intent_classifier_module.IntentClassifierAgent(
             deepseek_client=deepseek_client,
             cache_manager=cache_manager
         )
@@ -100,9 +100,11 @@ async def analyze_conversation(
             user_context=user_context
         )
         classification_time = int((time.time() - classification_start) * 1000)
+        # Gestion flexible du type d'intention (enum ou str)
+        intent_type_value = getattr(classification_result.intent_type, 'value', classification_result.intent_type)
 
         # Validation résultat classification
-        if classification_result.intent_type == HarenaIntentType.ERROR:
+        if intent_type_value == HarenaIntentType.ERROR.value:
             logger.error(f"[{request_id}] Classification échouée - erreur technique")
             metrics_collector.increment_counter("conversation.errors.classification")
             raise HTTPException(
@@ -111,7 +113,7 @@ async def analyze_conversation(
             )
 
         # Calcul temps traitement total
-        processing_time_ms = int((time.time() - start_time) * 1000)
+        processing_time_ms = max(1, int((time.time() - start_time) * 1000))
         
         # Construction métriques agent avec données réelles
         agent_metrics = AgentMetrics(
@@ -119,12 +121,14 @@ async def analyze_conversation(
             cache_hit=classification_time < 100,  # Heuristique cache hit
             model_used=getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
             tokens_consumed=await _estimate_tokens_consumption(clean_message, classification_result),
+            processing_time_ms=classification_result.processing_time_ms or classification_time,
             confidence_threshold_met=classification_result.confidence >= getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5)
         )
         
         # Construction réponse Phase 1 avec toutes les données
         response = ConversationResponse(
             user_id=validated_user_id,
+            sub=user_context.get("sub"),
             message=clean_message,
             timestamp=datetime.now(timezone.utc),
             processing_time_ms=processing_time_ms,
@@ -139,7 +143,7 @@ async def analyze_conversation(
         
         # Log succès avec détails
         logger.info(
-            f"[{request_id}] Classification réussie: {classification_result.intent_type.value} "
+            f"[{request_id}] Classification réussie: {intent_type_value} "
             f"(confiance: {classification_result.confidence:.2f}, "
             f"temps: {processing_time_ms}ms, cache: {agent_metrics.cache_hit})"
         )
@@ -317,17 +321,20 @@ async def _collect_comprehensive_metrics(
         metrics_collector.record_rate("conversation.requests")
         
         # Métriques par intention avec détail
+        intent_type = getattr(classification_result.intent_type, "value", classification_result.intent_type)
+        metrics_collector.increment_counter(f"conversation.intent.{intent_type}")
         intent = (
             classification_result.intent_type.value
             if isinstance(classification_result.intent_type, HarenaIntentType)
             else classification_result.intent_type
         )
         metrics_collector.increment_counter(f"conversation.intent.{intent}")
+
         metrics_collector.increment_counter(f"conversation.intent.category.{classification_result.category}")
-        
+
         # Métriques qualité fine
         metrics_collector.record_gauge("conversation.intent.confidence", classification_result.confidence)
-        
+
         if not classification_result.is_supported:
             metrics_collector.increment_counter("conversation.intent.unsupported")
             metrics_collector.increment_counter(f"conversation.intent.unsupported.{intent}")

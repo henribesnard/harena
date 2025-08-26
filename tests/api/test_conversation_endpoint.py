@@ -128,10 +128,11 @@ class MockConversationServiceLoader:
         self.cache_manager = MockCacheManager()
 
     async def initialize_conversation_service(self, app):
+        app.state.deepseek_client = self.deepseek_client
+        app.state.cache_manager = self.cache_manager
+
         if self.service_healthy:
             app.state.conversation_service = self
-            app.state.deepseek_client = self.deepseek_client
-            app.state.cache_manager = self.cache_manager
             app.state.service_config = {
                 "phase": 1,
                 "version": "1.0.0",
@@ -172,23 +173,20 @@ def mock_service_loader():
 def test_app(mock_service_loader):
     """App FastAPI de test configurée"""
     app = create_test_app()
-    
-    # Mock des dépendances
-    with patch("conversation_service.api.dependencies.get_deepseek_client") as mock_get_client, \
-         patch("conversation_service.api.dependencies.get_cache_manager") as mock_get_cache, \
-         patch("conversation_service.api.dependencies.get_conversation_service_status") as mock_get_status, \
-         patch("conversation_service.api.dependencies.validate_path_user_id") as mock_validate_user, \
-         patch("conversation_service.api.dependencies.get_user_context") as mock_get_context, \
-         patch("conversation_service.api.dependencies.rate_limit_dependency") as mock_rate_limit:
-        
-        mock_get_client.return_value = mock_service_loader.deepseek_client
-        mock_get_cache.return_value = mock_service_loader.cache_manager
-        mock_get_status.return_value = {"status": "healthy"}
-        mock_validate_user.return_value = 1
-        mock_get_context.return_value = {"sub": 1}
-        mock_rate_limit.return_value = None
-        
-        yield app
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(
+        mock_service_loader.initialize_conversation_service(app)
+    )
+
+    # Overrides des dépendances pour simplifier les tests
+    from conversation_service.api.routes import conversation as conversation_module
+
+    app.dependency_overrides[conversation_module.get_conversation_service_status] = lambda: {"status": "healthy"}
+    app.dependency_overrides[conversation_module.validate_path_user_id] = lambda *args, **kwargs: 1
+    app.dependency_overrides[conversation_module.get_user_context] = lambda *args, **kwargs: {"sub": 1}
+    app.dependency_overrides[conversation_module.rate_limit_dependency] = lambda: None
+
+    yield app
 
 
 @pytest.fixture
@@ -599,7 +597,7 @@ class TestConversationHealthEndpoint:
     def test_conversation_health_success(self, client):
         """Test health check réussi"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_health_metrics.return_value = {
                 "status": "healthy",
                 "total_requests": 100,
@@ -621,7 +619,7 @@ class TestConversationHealthEndpoint:
     def test_conversation_health_error(self, client):
         """Test health check avec erreur"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_health_metrics.side_effect = Exception("Metrics error")
             
             response = client.get("/api/v1/conversation/health")
@@ -639,7 +637,7 @@ class TestConversationMetricsEndpoint:
     def test_conversation_metrics_success(self, client):
         """Test récupération métriques réussie"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_all_metrics.return_value = {
                 "timestamp": "2024-01-01T00:00:00Z",
                 "counters": {"conversation.requests.total": 100},
@@ -659,7 +657,7 @@ class TestConversationMetricsEndpoint:
     def test_conversation_metrics_error(self, client):
         """Test erreur récupération métriques"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_all_metrics.side_effect = Exception("Metrics error")
             
             response = client.get("/api/v1/conversation/metrics")

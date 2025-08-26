@@ -538,7 +538,7 @@ def get_few_shot_examples_by_intent(
 def get_balanced_few_shot_examples(
     examples_per_intent: int = 2,
     complexity_mix: bool = True
-) -> List[Dict[str, any]]:
+) -> List[IntentExample]:
     """
     Récupère des exemples équilibrés pour toutes les intentions
     """
@@ -549,15 +549,8 @@ def get_balanced_few_shot_examples(
         balance_intents=True
     )
     
-    # Conversion au format attendu
-    return [
-        {
-            'input': ex.input,
-            'intent': ex.intent,
-            'confidence': ex.confidence
-        }
-        for ex in selected_examples
-    ]
+    # Retourner directement les objets IntentExample pour conserver toutes les métadonnées
+    return selected_examples
 
 def get_contextual_examples(
     user_message: str,

@@ -101,8 +101,13 @@ class IntentClassifierAgent(BaseAgent):
             await self._cache_classification_result(cache_key, classification_result)
             
             self._update_metrics("classification_success", start_time)
+            intent_display = (
+                classification_result.intent_type.value
+                if hasattr(classification_result.intent_type, "value")
+                else classification_result.intent_type
+            )
             logger.info(
-                f"Classification réussie: {classification_result.intent_type.value} "
+                f"Classification réussie: {intent_display} "
                 f"(conf: {classification_result.confidence:.2f}, temps: {processing_time}ms)"
             )
             
@@ -307,7 +312,7 @@ JSON:"""
         """Vérification dynamique si intention est supportée"""
         try:
             intent_enum = HarenaIntentType(intent_type)
-            unsupported = INTENT_CATEGORIES.get("UNSUPPORTED", [])
+            unsupported = INTENT_CATEGORIES.get("UNSUPPORTED", []) + [HarenaIntentType.UNCLEAR_INTENT]
             return intent_enum not in unsupported
         except ValueError:
             return False
@@ -403,7 +408,7 @@ JSON:"""
             intent_type=HarenaIntentType.UNKNOWN,
             confidence=0.95,
             reasoning=f"Message non interprétable: {reason}",
-            original_message="",
+            original_message=reason,
             category="UNCLEAR_INTENT",
             is_supported=False,
             alternatives=[],
@@ -414,10 +419,10 @@ JSON:"""
         """Résultat pour intention ambiguë"""
         return IntentClassificationResult(
             intent_type=HarenaIntentType.UNCLEAR_INTENT,
-            confidence=0.90,
+            confidence=0.50,
             reasoning=f"Message ambigu: {reason}",
-            original_message="",
-            category="UNCLEAR_INTENT", 
+            original_message=reason,
+            category="UNCLEAR_INTENT",
             is_supported=False,
             alternatives=[],
             processing_time_ms=0
@@ -429,7 +434,7 @@ JSON:"""
             intent_type=HarenaIntentType.ERROR,
             confidence=0.99,
             reasoning=f"Erreur technique: {error}",
-            original_message="",
+            original_message=error,
             category="UNCLEAR_INTENT",
             is_supported=False,
             alternatives=[],

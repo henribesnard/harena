@@ -153,8 +153,8 @@ def create_test_app():
     
     app = FastAPI(title="Test Conversation Service")
     
-    # Middleware auth (simplifié pour tests)
-    # app.add_middleware(JWTAuthMiddleware)  # Désactivé pour simplifier
+    # Middleware auth (inclus pour tests d'authentification)
+    app.add_middleware(JWTAuthMiddleware)
     
     # Routes
     app.include_router(conversation_router, prefix="/api/v1")

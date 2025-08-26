@@ -12,6 +12,8 @@ from collections import OrderedDict
 from typing import Any
 from pathlib import Path
 
+# Configure les variables d'environnement nécessaires aux tests de vérification des jetons
+os.environ.setdefault("SECRET_KEY", "0123456789abcdef0123456789abcdef")
 # Configure les variables d'environnement nécessaires aux tests JWT
 os.environ.setdefault("SECRET_KEY", "0123456789abcdef0123456789abcdef")
 

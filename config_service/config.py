@@ -19,7 +19,6 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     PROJECT_NAME: str = "Harena Finance Platform"
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 8))  # 8 jours par défaut
     ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
     
@@ -486,6 +485,8 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_TEMPERATURE", "0.1"))
     DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "30"))
 
+    # Secret key powering bearer token verification across services
+    SECRET_KEY: str = os.environ.get("SECRET_KEY", "")
     # Configuration Authentification JWT (utilise SECRET_KEY global)
     JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256")
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
@@ -559,6 +560,16 @@ class GlobalSettings(BaseSettings):
         if not v and info.data.get('CONVERSATION_SERVICE_ENABLED'):
             raise ValueError("DEEPSEEK_API_KEY est requis si CONVERSATION_SERVICE_ENABLED=True")
         return v
+
+    @field_validator('SECRET_KEY')
+    @classmethod
+    def validate_secret_key(cls, v):
+        if not v:
+            raise ValueError("SECRET_KEY est requis pour l'authentification")
+        if len(v) < 32:
+            raise ValueError("SECRET_KEY doit faire au moins 32 caractères")
+        return v
+
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod
@@ -1085,8 +1096,8 @@ logger.info(f"Bridge API: {'✅ Configuré' if settings.BRIDGE_CLIENT_ID else '�
 
 # Avertissements de sécurité
 if settings.ENVIRONMENT == "production":
-    if settings.SECRET_KEY == secrets.token_urlsafe(32):
-        logger.warning("🔐 SECRET_KEY utilise une valeur par défaut - définir SECRET_KEY en production!")
+    if not settings.SECRET_KEY:
+        logger.warning("🔐 SECRET_KEY non défini - définir SECRET_KEY en production!")
     if not settings.OPENAI_API_KEY:
         logger.warning("🤖 OPENAI_API_KEY manquant - fonctionnalités IA désactivées")
     if not settings.DATABASE_URL:

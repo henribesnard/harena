@@ -55,7 +55,8 @@ class JWTValidator:
     
     def __init__(self):
         self.algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
-        self.secret_key = settings.SECRET_KEY  # Shared secret for bearer token verification
+        # Use the unified SECRET_KEY from settings for JWT verification
+        self.secret_key = settings.SECRET_KEY
 
         self.token_cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl = 300  # 5 minutes

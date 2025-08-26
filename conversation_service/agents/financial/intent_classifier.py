@@ -12,6 +12,7 @@ from conversation_service.prompts.few_shot_examples.intent_classification import
 from conversation_service.prompts.system_prompts import INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT
 from conversation_service.models.responses.conversation_responses import IntentClassificationResult, IntentAlternative
 from conversation_service.utils.validation_utils import validate_intent_response, sanitize_user_input
+from conversation_service.utils.metrics_collector import metrics_collector
 from config_service.config import settings
 
 # Configuration du logger
@@ -26,6 +27,7 @@ class IntentClassifierAgent(BaseAgent):
             deepseek_client=deepseek_client,
             cache_manager=cache_manager
         )
+
         
         self.supported_intents = list(HarenaIntentType)
         self.few_shot_examples = get_balanced_few_shot_examples(examples_per_intent=2)
@@ -376,7 +378,7 @@ JSON:"""
             logger.debug(f"Erreur cache sauvegarde: {str(e)}")
     
     async def _validate_classification_quality(
-        self, 
+        self,
         result: IntentClassificationResult
     ) -> bool:
         """Validation qualité classification"""
@@ -385,7 +387,16 @@ JSON:"""
         except Exception as e:
             logger.error(f"Erreur validation qualité: {str(e)}")
             return False
-    
+
+    def _update_metrics(self, event: str, start_time: datetime) -> None:
+        """Collecte des métriques pour l'agent de classification"""
+        try:
+            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            metrics_collector.increment_counter(f"intent_classifier.{event}")
+            metrics_collector.record_histogram(f"intent_classifier.{event}.latency", processing_time)
+        except Exception as e:
+            logger.debug(f"Échec mise à jour métriques {event}: {str(e)}")
+
     def _create_unknown_intent_result(self, reason: str) -> IntentClassificationResult:
         """Résultat pour intention inconnue"""
         return IntentClassificationResult(

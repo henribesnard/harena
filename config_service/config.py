@@ -486,8 +486,7 @@ class GlobalSettings(BaseSettings):
     DEEPSEEK_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_TEMPERATURE", "0.1"))
     DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "30"))
 
-    # Configuration Authentification JWT
-    JWT_SECRET_KEY: str = os.environ.get("JWT_SECRET_KEY", "")
+    # Configuration Authentification JWT (utilise SECRET_KEY global)
     JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256")
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
 
@@ -559,15 +558,6 @@ class GlobalSettings(BaseSettings):
     def validate_deepseek_key(cls, v, info):
         if not v and info.data.get('CONVERSATION_SERVICE_ENABLED'):
             raise ValueError("DEEPSEEK_API_KEY est requis si CONVERSATION_SERVICE_ENABLED=True")
-        return v
-
-    @field_validator('JWT_SECRET_KEY')
-    @classmethod
-    def validate_jwt_secret(cls, v):
-        if not v:
-            raise ValueError("JWT_SECRET_KEY est requis pour l'authentification")
-        if len(v) < 32:
-            raise ValueError("JWT_SECRET_KEY doit faire au moins 32 caractères")
         return v
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")

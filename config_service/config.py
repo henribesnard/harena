@@ -468,15 +468,36 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     # CONFIGURATION CONVERSATION SERVICE
     # ==========================================
-    
+
+    # Configuration Conversation Service - Phase 1
+    CONVERSATION_SERVICE_ENABLED: bool = os.environ.get("CONVERSATION_SERVICE_ENABLED", "True").lower() == "true"
+
     # Configuration service
     CONVERSATION_SERVICE_HOST: str = os.environ.get("CONVERSATION_SERVICE_HOST", "0.0.0.0")
     CONVERSATION_SERVICE_PORT: int = int(os.environ.get("CONVERSATION_SERVICE_PORT", "8001"))
     CONVERSATION_SERVICE_DEBUG: bool = os.environ.get("CONVERSATION_SERVICE_DEBUG", "false").lower() == "true"
     CONVERSATION_SERVICE_LOG_LEVEL: str = os.environ.get("CONVERSATION_SERVICE_LOG_LEVEL", "INFO")
-    
-    # Configuration Intent Classifier
+
+    # Configuration DeepSeek
+    DEEPSEEK_API_URL: str = os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com")
+    DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
+    DEEPSEEK_MODEL_CHAT: str = os.environ.get("DEEPSEEK_MODEL_CHAT", "deepseek-chat")
+    DEEPSEEK_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_MAX_TOKENS", "4000"))
+    DEEPSEEK_TEMPERATURE: float = float(os.environ.get("DEEPSEEK_TEMPERATURE", "0.1"))
+    DEEPSEEK_TIMEOUT: int = int(os.environ.get("DEEPSEEK_TIMEOUT", "30"))
+
+    # Configuration Authentification JWT
+    JWT_SECRET_KEY: str = os.environ.get("JWT_SECRET_KEY", "")
+    JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256")
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
+
+    # Configuration Cache & Performance
+    REDIS_CONVERSATION_TTL: int = int(os.environ.get("REDIS_CONVERSATION_TTL", "3600"))
     MIN_CONFIDENCE_THRESHOLD: float = float(os.environ.get("MIN_CONFIDENCE_THRESHOLD", "0.7"))
+    AGENT_TIMEOUT_SECONDS: int = int(os.environ.get("AGENT_TIMEOUT_SECONDS", "30"))
+    MAX_CACHE_SIZE: int = int(os.environ.get("MAX_CACHE_SIZE", "1000"))
+
+    # Configuration Intent Classifier
     CLASSIFICATION_CACHE_TTL: int = int(os.environ.get("CLASSIFICATION_CACHE_TTL", "300"))  # Legacy
     CACHE_SIZE: int = int(os.environ.get("CACHE_SIZE", "1000"))  # Legacy
     
@@ -530,8 +551,24 @@ class GlobalSettings(BaseSettings):
     # Variables manquantes des logs d'erreur
     LEXICAL_CACHE_SIZE: int = int(os.environ.get("LEXICAL_CACHE_SIZE", "1000"))
     QUERY_CACHE_SIZE: int = int(os.environ.get("QUERY_CACHE_SIZE", "1000"))
-    
+
     # Variables de configuration manquantes pour compatibilité
+
+    @field_validator('DEEPSEEK_API_KEY')
+    @classmethod
+    def validate_deepseek_key(cls, v, info):
+        if not v and info.data.get('CONVERSATION_SERVICE_ENABLED'):
+            raise ValueError("DEEPSEEK_API_KEY est requis si CONVERSATION_SERVICE_ENABLED=True")
+        return v
+
+    @field_validator('JWT_SECRET_KEY')
+    @classmethod
+    def validate_jwt_secret(cls, v):
+        if not v:
+            raise ValueError("JWT_SECRET_KEY est requis pour l'authentification")
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET_KEY doit faire au moins 32 caractères")
+        return v
 
     @field_validator("SQLALCHEMY_DATABASE_URI", mode="before")
     @classmethod
@@ -1048,7 +1085,10 @@ logger.info(f"Configuration Harena Finance Platform chargée - Mode: {settings.E
 logger.info(f"OpenAI API: {'✅ Configuré' if settings.OPENAI_API_KEY else '❌ Manquant'}")
 logger.info(f"Redis Cache: {'✅ Activé' if settings.REDIS_CACHE_ENABLED else '❌ Désactivé'}")
 logger.info(f"Search Service: {settings.SEARCH_SERVICE_NAME} v{settings.SEARCH_SERVICE_VERSION}")
-logger.info(f"Conversation Service: Port {settings.CONVERSATION_SERVICE_PORT}, Confidence: {settings.MIN_CONFIDENCE_THRESHOLD}")
+logger.info(
+    f"Conversation Service: {'✅ Activé' if settings.CONVERSATION_SERVICE_ENABLED else '❌ Désactivé'} - "
+    f"Port {settings.CONVERSATION_SERVICE_PORT}, Confidence: {settings.MIN_CONFIDENCE_THRESHOLD}"
+)
 logger.info(f"Elasticsearch: {'✅ Configuré' if settings.BONSAI_URL else '❌ Manquant'}")
 logger.info(f"Database: {'✅ URL Configurée' if settings.DATABASE_URL else '❌ URL Manquante'}")
 logger.info(f"Bridge API: {'✅ Configuré' if settings.BRIDGE_CLIENT_ID else '❌ Manquant'}")

@@ -624,7 +624,7 @@ class TestConversationHealthEndpoint:
     def test_conversation_health_success(self, client):
         """Test health check réussi"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_health_metrics.return_value = {
                 "status": "healthy",
                 "total_requests": 100,
@@ -640,13 +640,13 @@ class TestConversationHealthEndpoint:
             
             assert data["service"] == "conversation_service"
             assert data["status"] == "healthy"
-            assert "metrics" in data
+            assert "health_details" in data
             assert "features" in data
 
     def test_conversation_health_error(self, client):
         """Test health check avec erreur"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_health_metrics.side_effect = Exception("Metrics error")
             
             response = client.get("/api/v1/conversation/health")
@@ -664,7 +664,7 @@ class TestConversationMetricsEndpoint:
     def test_conversation_metrics_success(self, client):
         """Test récupération métriques réussie"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_all_metrics.return_value = {
                 "timestamp": "2024-01-01T00:00:00Z",
                 "counters": {"conversation.requests.total": 100},
@@ -684,9 +684,10 @@ class TestConversationMetricsEndpoint:
     def test_conversation_metrics_error(self, client):
         """Test erreur récupération métriques"""
         
-        with patch("conversation_service.utils.metrics_collector.metrics_collector") as mock_metrics:
+        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
             mock_metrics.get_all_metrics.side_effect = Exception("Metrics error")
-            
+
             response = client.get("/api/v1/conversation/metrics")
-            
+
             assert response.status_code == 500
+

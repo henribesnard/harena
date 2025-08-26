@@ -375,7 +375,7 @@ JSON:"""
             cache_ttl = getattr(settings, 'CACHE_TTL_INTENT', 300)
             await self.cache_manager.set_semantic_cache(
                 cache_key,
-                result.dict(),
+                result.model_dump(mode="json"),
                 ttl=cache_ttl
             )
             

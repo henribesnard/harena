@@ -144,14 +144,6 @@ class ConversationServiceLoader:
             if not getattr(settings, 'SECRET_KEY', None):
                 validation_errors.append("SECRET_KEY manquant")
             else:
-                jwt_secret = settings.SECRET_KEY
-                if len(jwt_secret) < 32:
-                    validation_errors.append("SECRET_KEY trop court (minimum 32 caractères)")
-                if jwt_secret in ['changeme', 'secret', 'test']:
-            # Secret Key
-            if not getattr(settings, 'SECRET_KEY', None):
-                validation_errors.append("SECRET_KEY manquant")
-            else:
                 secret = settings.SECRET_KEY
                 if len(secret) < 32:
                     validation_errors.append("SECRET_KEY trop court (minimum 32 caractères)")

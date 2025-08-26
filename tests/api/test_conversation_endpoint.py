@@ -4,7 +4,7 @@ Tests complets pour l'endpoint principal de conversation avec mocking avancé
 import os
 import sys
 import pytest
-import jwt
+from jose import jwt
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone
 import json
@@ -203,14 +203,10 @@ def generate_test_jwt(sub: int = 1, expired: bool = False) -> str:
 
     payload = {
         "sub": sub,
-        "exp": int(time.time()) + (3600 if not expired else -3600)
-    }
-
-        "sub": str(user_id),
         "iat": int(time.time()) - (3600 if expired else 0),
         "exp": int(time.time()) + (3600 if not expired else -3600)
     }
-    
+
     return jwt.encode(payload, os.environ["SECRET_KEY"], algorithm="HS256")
 
 

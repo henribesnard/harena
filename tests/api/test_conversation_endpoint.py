@@ -11,7 +11,7 @@ import json
 
 # Configuration environment pour tests
 os.environ["DEEPSEEK_API_KEY"] = "test-deepseek-key-12345"
-os.environ["JWT_SECRET_KEY"] = "super-secret-test-key-with-more-than-32-chars-123456789"
+os.environ["SECRET_KEY"] = "super-secret-test-key-with-more-than-32-chars-123456789"
 os.environ["CONVERSATION_SERVICE_ENABLED"] = "true"
 os.environ["ENVIRONMENT"] = "testing"
 
@@ -207,7 +207,7 @@ def generate_test_jwt(user_id: int = 1, expired: bool = False) -> str:
         "exp": int(time.time()) + (3600 if not expired else -3600)
     }
     
-    return jwt.encode(payload, os.environ["JWT_SECRET_KEY"], algorithm="HS256")
+    return jwt.encode(payload, os.environ["SECRET_KEY"], algorithm="HS256")
 
 
 class TestConversationEndpoint:

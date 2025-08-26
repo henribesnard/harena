@@ -88,10 +88,14 @@ class DeepSeekClient:
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         model: Optional[str] = None,
+
+        response_format: Optional[Dict[str, Any]] = None,
+
         response_format: Dict[str, Any] | None = None
+
     ) -> Dict[str, Any]:
         """Appel API chat completion avec retry automatique"""
-        
+
         if not self._initialized:
             await self.initialize()
         

@@ -16,9 +16,9 @@ from fastapi.testclient import TestClient
 from conversation_service.prompts.harena_intents import HarenaIntentType
 
 # Ensure required environment variables for app configuration
-os.environ.setdefault("DEEPSEEK_API_KEY", "test-deepseek-key")
-os.environ.setdefault("JWT_SECRET_KEY", "super-secret-key-with-more-than-32-chars-123456")
-os.environ.setdefault("CONVERSATION_SERVICE_ENABLED", "true")
+os.environ["DEEPSEEK_API_KEY"] = "test-deepseek-key"
+os.environ["JWT_SECRET_KEY"] = "super-secret-key-with-more-than-32-chars-123456"
+os.environ["CONVERSATION_SERVICE_ENABLED"] = "true"
 
 # Dynamically load conversation_service.main as module named 'main'
 module_path = Path(__file__).resolve().parents[2] / "conversation_service" / "main.py"
@@ -26,8 +26,18 @@ spec = importlib.util.spec_from_file_location("main", module_path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
+# Ensure settings values are correctly set for tests
+module.settings.DEEPSEEK_API_KEY = "test-deepseek-key"
+module.settings.JWT_SECRET_KEY = "super-secret-key-with-more-than-32-chars-123456"
+module.settings.CONVERSATION_SERVICE_ENABLED = True
+
 
 class DummyDeepSeekClient:
+    def __init__(self, *, invalid_json: bool = False):
+        self.invalid_json = invalid_json
+        self.chat_args = None
+        self.chat_kwargs = None
+
     async def initialize(self):
         pass
 
@@ -38,10 +48,15 @@ class DummyDeepSeekClient:
         pass
 
     async def chat_completion(self, *args, **kwargs):
+        self.chat_args = args
+        self.chat_kwargs = kwargs
+        content = (
+            "not a json"
+            if self.invalid_json
+            else '{"intent": "GREETING", "confidence": 0.9, "reasoning": "test"}'
+        )
         return {
-            "choices": [
-                {"message": {"content": '{"intent": "GREETING", "confidence": 0.9, "reasoning": "test"}'}}
-            ],
+            "choices": [{"message": {"content": content}}],
             "usage": {"total_tokens": 10},
         }
 
@@ -100,6 +115,25 @@ def test_conversation_endpoint_success():
     data = response.json()
     assert data["user_id"] == 1
     assert data["intent"]["intent_type"] == HarenaIntentType.GREETING.value
+
+    deepseek_client = app.state.deepseek_client
+    assert deepseek_client.chat_kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_conversation_endpoint_invalid_json_response():
+    token = generate_jwt(1)
+    original_client = app.state.deepseek_client
+    bad_client = DummyDeepSeekClient(invalid_json=True)
+    app.state.deepseek_client = bad_client
+    conversation_service_loader.deepseek_client = bad_client
+    response = client.post(
+        "/api/v1/conversation/1",
+        json={"message": "Bonjour"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 500
+    app.state.deepseek_client = original_client
+    conversation_service_loader.deepseek_client = original_client
 
 
 def test_conversation_endpoint_user_mismatch():

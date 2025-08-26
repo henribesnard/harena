@@ -99,55 +99,37 @@ class ServiceLoader:
             return False
     
     async def initialize_conversation_service(self, app: FastAPI):
-        """Initialise le conversation_service avec OpenAI."""
+        """Initialise le conversation_service."""
         logger.info("🤖 Initialisation du conversation_service...")
 
         try:
-            # Vérifier la clé API
-            api_key = settings.DEEPSEEK_API_KEY
-            if not api_key:
-                raise ValueError("Clé API non configurée")
+            from conversation_service.main import ConversationServiceLoader
 
-            logger.info(f"🔑 Clé API configurée: {api_key[:20]}...")
+            loader = ConversationServiceLoader()
+            init_success = await loader.initialize_conversation_service(app)
 
-            # Import et initialisation du conversation service
-            # Vérifier OPENAI_API_KEY
-            openai_key = settings.OPENAI_API_KEY
-            if not openai_key:
-                raise ValueError("OPENAI_API_KEY n'est pas configurée")
+            app.state.conversation_service_initialized = init_success
+            app.state.conversation_service_loader = loader
+            app.state.conversation_initialization_error = loader.initialization_error
 
-            logger.info(f"🔑 OPENAI_API_KEY configurée: {openai_key[:20]}...")
-
-            # Initialisation simplifiée du service de conversation
-            from conversation_service.teams.team_orchestrator import TeamOrchestrator
-
-            logger.info("⚙️ Initialisation du service de conversation...")
-
-            team_manager = TeamOrchestrator()
-
-            # Mettre les composants dans app.state
-            app.state.conversation_service_initialized = True
-            app.state.team_manager = team_manager
-            app.state.conversation_initialization_error = None
-
-            self.conversation_service_initialized = True
-            self.conversation_service_error = None
+            self.conversation_service_initialized = init_success
+            self.conversation_service_error = loader.initialization_error
             self.services_status["conversation_service"] = {
-                "status": "ok",
-                "dependencies_ready": True,
-                "error": None,
+                "status": "ok" if init_success else "error",
+                "dependencies_ready": init_success,
+                "error": loader.initialization_error,
             }
 
-            logger.info("🎉 Conversation Service complètement initialisé!")
-            return True
+            if init_success:
+                logger.info("🎉 Conversation Service complètement initialisé!")
+            return init_success
 
         except Exception as e:
             error_msg = f"Erreur initialisation conversation_service: {str(e)}"
             logger.error(f"❌ {error_msg}")
 
-            # Marquer l'échec dans app.state
             app.state.conversation_service_initialized = False
-            app.state.team_manager = None
+            app.state.conversation_service_loader = None
             app.state.conversation_initialization_error = error_msg
 
             self.conversation_service_initialized = False
@@ -373,7 +355,7 @@ def create_app():
             
             # Ensuite charger les routes
             try:
-                from conversation_service.api.routes import router as conversation_router
+                from conversation_service.api.routes.conversation import router as conversation_router
                 app.include_router(conversation_router, prefix="/api/v1/conversation")
                 routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
 

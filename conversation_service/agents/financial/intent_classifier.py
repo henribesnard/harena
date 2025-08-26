@@ -3,7 +3,6 @@ Agent de classification d'intentions financières via DeepSeek
 """
 import logging
 import json
-import re
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -83,7 +82,8 @@ class IntentClassifierAgent(BaseAgent):
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=300,
-                temperature=0.1
+                temperature=0.1,
+                response_format={"type": "json_object"}
             )
             
             # Parsing et validation réponse
@@ -146,7 +146,8 @@ EXEMPLES DE CLASSIFICATION:
 {examples_text}
 
 RÈGLES:
-- Retournez UNIQUEMENT un JSON: {{"intent": "TYPE_INTENTION", "confidence": 0.XX, "reasoning": "explication"}}
+- Retournez UNIQUEMENT un objet JSON strict: {{"intent": "TYPE_INTENTION", "confidence": 0.XX, "reasoning": "explication"}}
+- Aucun texte avant ou après l'objet JSON
 - Confidence entre 0.0 et 1.0
 - Reasoning en français, clair et concis
 - Pour intentions non supportées: utilisez le type exact (TRANSFER_REQUEST, etc.)
@@ -185,15 +186,8 @@ JSON:"""
         
         try:
             content = response["choices"][0]["message"]["content"].strip()
-            
-            # Extraction JSON (DeepSeek peut ajouter du texte autour)
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content)
-            if json_match:
-                json_str = json_match.group()
-                parsed = json.loads(json_str)
-            else:
-                raise ValueError(f"Pas de JSON valide trouvé: {content[:100]}")
-            
+            parsed = json.loads(content)
+
             # Validation champs obligatoires
             intent_type = parsed.get("intent", "").strip()
             confidence = float(parsed.get("confidence", 0.0))

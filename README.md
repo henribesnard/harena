@@ -56,6 +56,18 @@ Les tests peuvent ensuite être exécutés avec `pytest` :
 pytest
 ```
 
+### JWT compatibility check
+
+Verify that the token issued by the user service is accepted by the
+conversation service with:
+
+```bash
+python test_jwt_compatibility.py
+```
+
+The script prints `COMPATIBILITÉ TOTALE` when validation succeeds and exits with
+a non-zero status on failure.
+
 Pour lancer uniquement les tests du *conversation service* :
 
 ```bash

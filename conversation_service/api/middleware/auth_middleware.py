@@ -54,7 +54,7 @@ class JWTValidator:
     
     def __init__(self):
         self.algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
-        self.secret_key = settings.JWT_SECRET_KEY
+        self.secret_key = settings.SECRET_KEY
         self.token_cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl = 300  # 5 minutes
         self.blacklisted_tokens: Set[str] = set()
@@ -115,7 +115,7 @@ class JWTValidator:
                     "verify_exp": True,
                     "verify_iat": True,
                     "verify_aud": False,  # Pas d'audience pour Phase 1
-                    "require": ["exp", "iat", "user_id"]
+                    "require": ["exp", "sub"]
                 }
             )
             
@@ -129,7 +129,8 @@ class JWTValidator:
                     processing_time_ms=(time.time() - start_time) * 1000
                 )
             
-            user_id = int(payload["user_id"])
+            raw_user_id = payload.get("sub") or payload.get("user_id")
+            user_id = int(raw_user_id)
             
             # Vérifications de sécurité supplémentaires
             security_check = self._perform_security_checks(payload, token)
@@ -232,16 +233,16 @@ class JWTValidator:
     
     def _validate_payload(self, payload: Dict[str, Any]) -> Optional[str]:
         """Validation contenu payload JWT"""
-        # Vérification user_id
-        if "user_id" not in payload:
-            return "user_id manquant dans le token"
-        
+        # Vérification identifiant utilisateur (claim sub)
+        if "sub" not in payload:
+            return "sub manquant dans le token"
+
         try:
-            user_id = int(payload["user_id"])
+            user_id = int(payload["sub"])
             if user_id <= 0:
-                return "user_id invalide (doit être > 0)"
+                return "sub invalide (doit être > 0)"
         except (ValueError, TypeError):
-            return "user_id doit être un entier valide"
+            return "sub doit être un entier valide"
         
         # Vérification timestamps
         current_time = time.time()
@@ -283,8 +284,12 @@ class JWTValidator:
             if key in payload and payload[key]:
                 logger.warning(f"Token avec clé suspecte: {key}")
         
-        # Vérification user_id raisonnable
-        user_id = payload.get("user_id", 0)
+        # Vérification identifiant utilisateur raisonnable
+        raw_user_id = payload.get("sub") or payload.get("user_id", 0)
+        try:
+            user_id = int(raw_user_id)
+        except (TypeError, ValueError):
+            user_id = 0
         if user_id > 1000000:  # Ajustable selon la base utilisateur
             logger.warning(f"User ID inhabituel: {user_id}")
         

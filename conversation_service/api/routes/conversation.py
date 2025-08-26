@@ -323,6 +323,13 @@ async def _collect_comprehensive_metrics(
         # Métriques par intention avec détail
         intent_type = getattr(classification_result.intent_type, "value", classification_result.intent_type)
         metrics_collector.increment_counter(f"conversation.intent.{intent_type}")
+        intent = (
+            classification_result.intent_type.value
+            if isinstance(classification_result.intent_type, HarenaIntentType)
+            else classification_result.intent_type
+        )
+        metrics_collector.increment_counter(f"conversation.intent.{intent}")
+
         metrics_collector.increment_counter(f"conversation.intent.category.{classification_result.category}")
 
         # Métriques qualité fine
@@ -330,7 +337,7 @@ async def _collect_comprehensive_metrics(
 
         if not classification_result.is_supported:
             metrics_collector.increment_counter("conversation.intent.unsupported")
-            metrics_collector.increment_counter(f"conversation.intent.unsupported.{intent_type}")
+            metrics_collector.increment_counter(f"conversation.intent.unsupported.{intent}")
         
         # Métriques seuil confidence
         confidence_threshold = getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5)
@@ -470,7 +477,7 @@ if getattr(settings, 'ENVIRONMENT', 'production') != "production":
             
             return {
                 "input": text,
-                "result": result.dict(),
+                "result": result.model_dump(mode="json"),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             

@@ -401,9 +401,11 @@ class TestConversationEndpoint:
             json={"message": ""},
             headers={"Authorization": f"Bearer {token}"}
         )
-        
-        assert response.status_code == 400
-        assert "vide" in response.json()["detail"]["errors"][0]
+
+        assert response.status_code == 422
+        error = response.json()["detail"][0]
+        assert error["loc"] == ["body", "message"]
+        assert "vide" in error["msg"]
 
     def test_conversation_message_too_long(self, client):
         """Test avec message trop long"""
@@ -416,9 +418,11 @@ class TestConversationEndpoint:
             json={"message": long_message},
             headers={"Authorization": f"Bearer {token}"}
         )
-        
-        assert response.status_code == 400
-        assert "1000 caractères" in response.json()["detail"]["errors"][0]
+
+        assert response.status_code == 422
+        error = response.json()["detail"][0]
+        assert error["loc"] == ["body", "message"]
+        assert "1000 caractères" in error["msg"]
 
     def test_conversation_malicious_content(self, client):
         """Test avec contenu potentiellement malveillant"""
@@ -431,9 +435,11 @@ class TestConversationEndpoint:
             json={"message": malicious_message},
             headers={"Authorization": f"Bearer {token}"}
         )
-        
-        assert response.status_code == 400
-        assert "malveillant" in response.json()["detail"]["errors"][0]
+
+        assert response.status_code == 422
+        error = response.json()["detail"][0]
+        assert error["loc"] == ["body", "message"]
+        assert "malveillant" in error["msg"]
 
     def test_conversation_agent_error(self, client):
         """Test avec erreur de l'agent de classification"""

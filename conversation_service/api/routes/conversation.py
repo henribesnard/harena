@@ -466,7 +466,7 @@ if getattr(settings, 'ENVIRONMENT', 'production') != "production":
             
             return {
                 "input": text,
-                "result": result.dict(),
+                "result": result.model_dump(mode="json"),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             

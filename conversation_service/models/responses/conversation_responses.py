@@ -100,7 +100,6 @@ class IntentClassificationResult(BaseModel):
     model_config = ConfigDict(
         str_strip_whitespace=True,
         validate_assignment=True,
-        use_enum_values=True,
         arbitrary_types_allowed=True
     )
     
@@ -126,6 +125,14 @@ class IntentClassificationResult(BaseModel):
     # Qualité et fiabilité
     quality_score: Optional[float] = None
     reliability_indicators: Optional[Dict[str, Any]] = None
+
+    @field_validator('intent_type', mode='before')
+    @classmethod
+    def ensure_intent_enum(cls, v: Any) -> HarenaIntentType:
+        """S'assure que intent_type est bien une instance de HarenaIntentType."""
+        if isinstance(v, HarenaIntentType):
+            return v
+        return HarenaIntentType(v)
     
     @field_validator('confidence')
     @classmethod

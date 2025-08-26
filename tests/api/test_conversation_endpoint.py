@@ -204,7 +204,7 @@ def generate_test_jwt(sub: int = 1, expired: bool = False) -> str:
     payload = {
         "sub": sub,
         "iat": int(time.time()) - (3600 if expired else 0),
-        "exp": int(time.time()) + (3600 if not expired else -3600)
+        "exp": int(time.time()) + (3600 if not expired else -3600),
     }
 
     return jwt.encode(payload, os.environ["SECRET_KEY"], algorithm="HS256")

@@ -202,7 +202,7 @@ def generate_test_jwt(user_id: int = 1, expired: bool = False) -> str:
     import time
     
     payload = {
-        "user_id": user_id,
+        "sub": str(user_id),
         "iat": int(time.time()) - (3600 if expired else 0),
         "exp": int(time.time()) + (3600 if not expired else -3600)
     }

@@ -3,6 +3,7 @@ Module de stubs pour les tests unitaires.
 Fournit des implémentations minimales des dépendances externes
 pour permettre l'exécution des tests sans les vraies dépendances.
 """
+import os
 import sys
 import types
 import pytest
@@ -10,6 +11,10 @@ import json
 from collections import OrderedDict
 from typing import Any
 from pathlib import Path
+
+# Configure les variables d'environnement nécessaires aux tests JWT
+os.environ.setdefault("JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef")
+os.environ.setdefault("JWT_ALGORITHM", "HS256")
 
 # Ensure local autogen_agentchat stub is importable when the real package is missing
 try:  # pragma: no cover - runtime dependency check
@@ -253,6 +258,11 @@ def install_stubs():
 
 # Installer les stubs au chargement du module
 install_stubs()
+
+# Recharger la configuration pour prendre en compte les variables d'environnement
+import importlib
+import config_service.config as config
+importlib.reload(config)
 
 
 # Pour les tests, exposer une fonction de réinitialisation

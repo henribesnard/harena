@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 # Ensure required env vars for config
 os.environ.setdefault("DEEPSEEK_API_KEY", "testkey")
-os.environ.setdefault("JWT_SECRET_KEY", "x" * 33)
+os.environ.setdefault("SECRET_KEY", "x" * 33)
 
 from conversation_service.clients.deepseek_client import DeepSeekClient
 
@@ -15,7 +15,7 @@ class DummyResponse:
         self.headers = {}
 
     async def json(self):
-        return {}
+        return {"choices": [{"message": {"content": "{}"}}]}
 
     async def text(self):
         return ""

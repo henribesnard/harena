@@ -13,8 +13,7 @@ from typing import Any
 from pathlib import Path
 
 # Configure les variables d'environnement nécessaires aux tests JWT
-os.environ.setdefault("JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef")
-os.environ.setdefault("JWT_ALGORITHM", "HS256")
+os.environ.setdefault("SECRET_KEY", "0123456789abcdef0123456789abcdef")
 
 # Ensure local autogen_agentchat stub is importable when the real package is missing
 try:  # pragma: no cover - runtime dependency check

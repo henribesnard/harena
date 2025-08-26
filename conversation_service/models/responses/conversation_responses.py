@@ -361,6 +361,7 @@ class ConversationResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "user_id": 123,
+                "sub": 123,
                 "message": "Mes achats Amazon",
                 "timestamp": "2024-08-26T14:30:00+00:00",
                 "processing_time_ms": 245,
@@ -393,6 +394,7 @@ class ConversationResponse(BaseModel):
     
     # Identifiants et contexte
     user_id: int
+    sub: Optional[int] = None
     message: str
     timestamp: datetime
     request_id: Optional[str] = None
@@ -417,6 +419,17 @@ class ConversationResponse(BaseModel):
             raise ValueError("User ID doit être positif")
         if v > 1000000:  # Limite raisonnable
             raise ValueError("User ID hors limites")
+        return v
+
+    @field_validator('sub')
+    @classmethod
+    def validate_sub(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return v
+        if v <= 0:
+            raise ValueError("Sub doit être positif")
+        if v > 1000000:
+            raise ValueError("Sub hors limites")
         return v
     
     @field_validator('message')

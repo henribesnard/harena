@@ -2,9 +2,9 @@ import os
 import pytest
 from unittest.mock import AsyncMock
 
-# Ensure required env vars for config
+# Ensure required env vars for config (SECRET_KEY powers bearer token verification)
 os.environ.setdefault("DEEPSEEK_API_KEY", "testkey")
-os.environ.setdefault("JWT_SECRET_KEY", "x" * 33)
+os.environ.setdefault("SECRET_KEY", "x" * 33)
 
 from conversation_service.clients.deepseek_client import DeepSeekClient
 

@@ -140,15 +140,15 @@ class ConversationServiceLoader:
                 if not api_key.startswith(('sk-', 'test-')):
                     validation_warnings.append("DEEPSEEK_API_KEY format inhabituel")
             
-            # JWT Secret
-            if not getattr(settings, 'JWT_SECRET_KEY', None):
-                validation_errors.append("JWT_SECRET_KEY manquant")
+            # Secret key used for bearer token verification across services
+            if not getattr(settings, 'SECRET_KEY', None):
+                validation_errors.append("SECRET_KEY manquant")
             else:
-                jwt_secret = settings.JWT_SECRET_KEY
+                jwt_secret = settings.SECRET_KEY
                 if len(jwt_secret) < 32:
-                    validation_errors.append("JWT_SECRET_KEY trop court (minimum 32 caractères)")
+                    validation_errors.append("SECRET_KEY trop court (minimum 32 caractères)")
                 if jwt_secret in ['changeme', 'secret', 'test']:
-                    validation_errors.append("JWT_SECRET_KEY trop simple (sécurité faible)")
+                    validation_errors.append("SECRET_KEY trop simple (sécurité faible)")
             
             # Configuration DeepSeek
             deepseek_url = getattr(settings, 'DEEPSEEK_BASE_URL', 'https://api.deepseek.com')

@@ -2,8 +2,9 @@
 Middleware d'authentification JWT optimisé avec sécurité avancée
 """
 import logging
-import jwt
 import time
+from jose import jwt, JWTError
+from jose.exceptions import ExpiredSignatureError, JWSSignatureError, JWSError
 from typing import Optional, Dict, Any, Set
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -55,7 +56,6 @@ class JWTValidator:
     def __init__(self):
         self.algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
         self.secret_key = settings.SECRET_KEY  # Shared secret for bearer token verification
-        self.secret_key = settings.SECRET_KEY
 
         self.token_cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl = 300  # 5 minutes
@@ -155,7 +155,7 @@ class JWTValidator:
                 processing_time_ms=(time.time() - start_time) * 1000
             )
             
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             metrics_collector.increment_counter("auth.validation.expired")
             return AuthenticationResult(
                 success=False,
@@ -163,8 +163,7 @@ class JWTValidator:
                 error_message="Token expiré",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-            
-        except jwt.InvalidSignatureError:
+        except JWSSignatureError:
             metrics_collector.increment_counter("auth.validation.invalid_signature")
             return AuthenticationResult(
                 success=False,
@@ -172,8 +171,8 @@ class JWTValidator:
                 error_message="Signature token invalide",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-            
-        except jwt.DecodeError:
+
+        except JWSError:
             metrics_collector.increment_counter("auth.validation.decode_error")
             return AuthenticationResult(
                 success=False,
@@ -181,8 +180,8 @@ class JWTValidator:
                 error_message="Format token invalide",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-            
-        except jwt.InvalidTokenError as e:
+
+        except JWTError as e:
             metrics_collector.increment_counter("auth.validation.invalid_token")
             return AuthenticationResult(
                 success=False,
@@ -190,7 +189,7 @@ class JWTValidator:
                 error_message=f"Token invalide: {str(e)}",
                 processing_time_ms=(time.time() - start_time) * 1000
             )
-            
+
         except Exception as e:
             metrics_collector.increment_counter("auth.validation.unexpected_error")
             logger.error(f"Erreur inattendue validation JWT: {str(e)}", exc_info=True)

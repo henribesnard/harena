@@ -152,6 +152,8 @@ def create_test_app():
     from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
     
     app = FastAPI(title="Test Conversation Service")
+    
+    # Middleware auth (inclus pour tests d'authentification)
 
     # Middleware auth (simplifié pour tests)
     app.add_middleware(JWTAuthMiddleware)

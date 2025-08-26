@@ -15,7 +15,7 @@ class DummyResponse:
         self.headers = {}
 
     async def json(self):
-        return {}
+        return {"choices": [{"message": {"content": "{}"}}]}
 
     async def text(self):
         return ""

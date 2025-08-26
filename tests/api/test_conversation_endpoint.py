@@ -185,7 +185,7 @@ def test_app(mock_service_loader):
         mock_get_cache.return_value = mock_service_loader.cache_manager
         mock_get_status.return_value = {"status": "healthy"}
         mock_validate_user.return_value = 1
-        mock_get_context.return_value = {"user_id": 1}
+        mock_get_context.return_value = {"sub": 1}
         mock_rate_limit.return_value = None
         
         yield app
@@ -197,11 +197,15 @@ def client(test_app):
     return TestClient(test_app, raise_server_exceptions=False)
 
 
-def generate_test_jwt(user_id: int = 1, expired: bool = False) -> str:
+def generate_test_jwt(sub: int = 1, expired: bool = False) -> str:
     """Génère un JWT pour les tests"""
     import time
-    
+
     payload = {
+        "sub": sub,
+        "exp": int(time.time()) + (3600 if not expired else -3600)
+    }
+
         "sub": str(user_id),
         "iat": int(time.time()) - (3600 if expired else 0),
         "exp": int(time.time()) + (3600 if not expired else -3600)
@@ -244,7 +248,7 @@ class TestConversationEndpoint:
             assert response.status_code == 200
             data = response.json()
             
-            assert data["user_id"] == 1
+            assert data["sub"] == 1
             assert data["message"] == "Bonjour"
             assert data["intent"]["intent_type"] == "GREETING"
             assert data["intent"]["confidence"] == 0.95
@@ -353,8 +357,8 @@ class TestConversationEndpoint:
         
         assert response.status_code == 401
 
-    def test_conversation_user_id_mismatch(self, client):
-        """Test avec user_id ne correspondant pas au token"""
+    def test_conversation_sub_mismatch(self, client):
+        """Test avec sub ne correspondant pas au token"""
         
         token = generate_test_jwt(1)  # Token pour user 1
         
@@ -531,7 +535,7 @@ class TestConversationEndpoint:
             
             # Vérification structure complète
             required_fields = [
-                "user_id", "message", "timestamp", "processing_time_ms",
+                "sub", "message", "timestamp", "processing_time_ms",
                 "intent", "agent_metrics", "phase"
             ]
             

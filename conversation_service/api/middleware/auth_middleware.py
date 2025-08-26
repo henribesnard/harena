@@ -132,7 +132,12 @@ class JWTValidator:
                     processing_time_ms=(time.time() - start_time) * 1000
                 )
             
-            raw_user_id = payload.get("sub") or payload.get("user_id")
+            # Extract user identifier: prefer the standard "sub" claim
+            raw_user_id = payload.get("sub")
+            if raw_user_id is None:
+                # Fallback to legacy "user_id" if provided
+                raw_user_id = payload.get("user_id")
+
             user_id = int(raw_user_id)
             
             # Vérifications de sécurité supplémentaires
@@ -235,7 +240,7 @@ class JWTValidator:
     
     def _validate_payload(self, payload: Dict[str, Any]) -> Optional[str]:
         """Validation contenu payload JWT"""
-        # Vérification identifiant utilisateur (claim sub)
+        # Vérification identifiant utilisateur (claim sub obligatoire)
         if "sub" not in payload:
             return "sub manquant dans le token"
 
@@ -249,7 +254,7 @@ class JWTValidator:
         # Vérification timestamps
         current_time = time.time()
         
-        # iat (issued at) ne doit pas être dans le futur
+        # iat (issued at) est optionnel mais ne doit pas être dans le futur s'il est présent
         if "iat" in payload:
             iat = payload["iat"]
             if iat > current_time + 300:  # 5 minutes de tolérance
@@ -287,9 +292,11 @@ class JWTValidator:
                 logger.warning(f"Token avec clé suspecte: {key}")
         
         # Vérification identifiant utilisateur raisonnable
-        raw_user_id = payload.get("sub") or payload.get("user_id", 0)
+        raw_user_id = payload.get("sub")
+        if raw_user_id is None:
+            raw_user_id = payload.get("user_id")
         try:
-            user_id = int(raw_user_id)
+            user_id = int(raw_user_id) if raw_user_id is not None else 0
         except (TypeError, ValueError):
             user_id = 0
         if user_id > 1000000:  # Ajustable selon la base utilisateur

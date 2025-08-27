@@ -619,6 +619,23 @@ class TestDataValidation:
         
         assert response.status_code == 422
 
+
+class TestConversationRequestModel:
+    """Tests pour le modèle ConversationRequest"""
+
+    def test_request_with_optional_fields(self):
+        data = {
+            "message": "Bonjour",
+            "client_info": {"platform": "web", "version": "1.0.0"},
+            "message_type": "text",
+            "priority": "normal",
+        }
+        req = ConversationRequest.model_validate(data)
+        assert req.message == "Bonjour"
+        assert req.client_info == {"platform": "web", "version": "1.0.0"}
+        assert req.message_type == "text"
+        assert req.priority == "normal"
+
 # ============================================================================
 # TESTS ENDPOINTS MONITORING
 # ============================================================================

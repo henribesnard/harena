@@ -451,12 +451,12 @@ class AdvancedMetricsCollector:
                 health_score -= min(error_rate * 2, 40)
             
             if error_rate > 20.0 or p95_latency > 10000:  # 10s
-                health_status = "unhealthy" 
+                health_status = "unhealthy"
                 health_score = min(health_score, 30)
-            
+
             if total_requests == 0:
-                health_status = "unknown"
-                health_score = 0
+                health_status = "healthy"
+                health_score = 100.0
             
             uptime_seconds = (datetime.now(timezone.utc) - self._session_start).total_seconds()
             

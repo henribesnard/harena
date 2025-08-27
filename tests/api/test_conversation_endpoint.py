@@ -220,8 +220,6 @@ def mock_service_loader():
 def test_app(mock_runtime, mock_service_loader):
     """Create a FastAPI app with dependency overrides for tests."""
     app = create_test_app()
-
-    mock_service_loader = MockConversationServiceLoader()
     app.state.deepseek_client = mock_service_loader.deepseek_client
     app.state.cache_manager = mock_service_loader.cache_manager
 
@@ -264,8 +262,6 @@ def test_app(mock_runtime, mock_service_loader):
 
     def override_rate_limit(request: Request, user_id: int = 1):
         return None
-
-    app.dependency_overrides[get_conversation_runtime] = override_get_runtime
     app.dependency_overrides[get_conversation_service_status] = override_get_service_status
     mock_runtime = MagicMock()
     mock_runtime.run_financial_team = AsyncMock(return_value={

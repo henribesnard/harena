@@ -1,296 +1,390 @@
 """
-Test minimal pour Harena : login → chat → analyse du workflow.
-ANALYSE PURE : récupère et affiche les données internes de l'agent sans refaire de recherche.
+Test complet pour Harena : analyse des intentions sur 50+ questions
+Génère un rapport markdown détaillé des performances
 """
 
 import json
 import time
 import requests
 from datetime import datetime
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass
 
-BASE_URL = "http://localhost:8000/api/v1"
-USERNAME = "test2@example.com"
-PASSWORD = "password123"
-QUESTIONS = [
-    "Combien ai-je fait de virements en mai ?",
-    "Combien ai-je dépensé en juin ?",
-    "Combien j'ai eu d'entrée d'argent en juin ?",
-    "Compare mes entrées et sorties d'argent en juin !",
-]
 
-def run_question(
-    session: requests.Session, user_id: int, question: str, conv_id: str
-) -> tuple[dict | None, str, str, str, float]:
-    session: requests.Session, user_id: int, question: str
-) -> tuple[dict | None, str, str, float]:
+@dataclass
+class TestResult:
+    """Structure pour stocker les résultats de test"""
+    question: str
+    intent_type: str
+    confidence: float
+    category: str
+    latency_ms: float
+    success: bool
+    error_message: Optional[str] = None
+    performance_grade: Optional[str] = None
+    efficiency_score: Optional[float] = None
 
-    session: requests.Session, user_id: int, question: str, conv_id: str
-) -> tuple[dict | None, dict, float]:
 
-    """Exécute une question de chat et affiche le résultat."""
-
-    chat_payload = {
-        "message": question,
-        "client_info": {"platform": "web", "version": "1.0.0"},
-        "message_type": "text",
-        "priority": "normal",
-    }
-    start_time = time.perf_counter()
-    intent_type = "N/A"
-    confidence = "N/A"
-    category = "N/A"
-
-    intent: dict = {}
-
-    try:
-        chat_resp = session.post(
-            f"{BASE_URL}/conversation/{user_id}", json=chat_payload
-        )
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        if chat_resp.status_code // 100 != 2:
-            return None, intent_type, confidence, category, elapsed_ms
-
-        chat_data = chat_resp.json()
-        intent_result = chat_data.get("metadata", {}).get("intent_result", {})
-        intent_type = intent_result.get("intent_type", "N/A")
-        confidence = intent_result.get("confidence", "N/A")
-        category = intent_result.get("category", "N/A")
-            return None, intent, elapsed_ms
-
-        chat_data = chat_resp.json()
-        intent = chat_data.get("intent", {})
-        print("✅ Conversation réussie")
-        print(f"🗨️ Question posée : {question}")
-        print(f"💬 Réponse générée : {chat_data['message']}")
-
-        aggregations = (
-            chat_data.get("metadata", {})
-            .get("workflow_data", {})
-            .get("search_results", {})
-            .get("metadata", {})
-            .get("search_response", {})
-            .get("aggregations")
-        )
-        if aggregations:
-            print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
-        print()
-
-        return chat_data, intent_type, confidence, category, elapsed_ms
-    except requests.RequestException:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        return None, intent_type, confidence, category, elapsed_ms
-        return chat_data, intent, elapsed_ms
-    except requests.RequestException:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        return None, intent, elapsed_ms
-
-def main() -> None:
-    session = requests.Session()
-
-    # ----- AUTHENTIFICATION --------------------------------------------------
-    data = f"username={USERNAME}&password={PASSWORD}"
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    resp = session.post(f"{BASE_URL}/users/auth/login", data=data, headers=headers)
-    resp.raise_for_status()
-    token = resp.json()["access_token"]
-    print("✅ OK client authentifié")
-
-    session.headers.update({"Authorization": f"Bearer {token}"})
-
-    # Récupération de l'ID utilisateur
-    user_resp = session.get(f"{BASE_URL}/users/me")
-    user_resp.raise_for_status()
-    user_id = user_resp.json().get("id")
-    print(f"✅ ID utilisateur récupéré : {user_id}")
-
-    report = []
-    last_chat_data = None
-
-    for question in QUESTIONS:
-        chat_data, intent_type, confidence, elapsed_ms = run_question(
-            session, user_id, question
-    for i, question in enumerate(QUESTIONS):
-        conversation_id = f"test-chat-analysis-{i}"
-        chat_data, intent_type, confidence, category, elapsed_ms = run_question(
-        chat_data, intent, elapsed_ms = run_question(
-            session, user_id, question, conversation_id
-        )
-        report.append(
-            {
-                "question": question,
-                "intent_type": intent_type,
-                "confidence": confidence,
-                "category": category,
-                "intent_type": intent.get("intent_type", "N/A"),
-                "confidence": intent.get("confidence", "N/A"),
-                "category": intent.get("category", "N/A"),
-                "elapsed_ms": elapsed_ms,
-            }
-        )
-        if chat_data:
-            last_chat_data = chat_data
-
-    print("\n📄 RAPPORT :")
-    for row in report:
-        print(
-            f"- {row['question']} | Intent: {row['intent_type']} | "
-            f"Cat: {row['category']} | Conf: {row['confidence']} | "
-            f"Temps: {row['elapsed_ms']:.2f}ms"
-        )
-
-    if last_chat_data is None:
-        print("\n❌ Aucune conversation réussie, arrêt de l'analyse.")
-        return
-
-    chat_data = last_chat_data
-
-    # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------
-    intent = chat_data["intent"]
-    print("🧠 ANALYSE DE L'INTENTION :")
-    print(f"   🎯 Type : {intent['intent_type']}")
-    print(f"   🎲 Confiance : {intent.get('confidence', 'N/A')}")
-    print(f"   🏷️ Catégorie : {intent.get('category', 'N/A')}")
-    print(f"   ⚡ Méthode : {intent.get('method', 'N/A')}")
-    print()
-
-    # ----- ANALYSE DES ENTITÉS EXTRAITES -----------------------------------
-    entities = chat_data.get('entities', [])
-    print("🧩 ENTITÉS EXTRAITES :")
-    if entities:
-        for i, entity in enumerate(entities, 1):
-            print(f"   {i}. {entity['entity_type']} :")
-            print(f"      📝 Valeur brute : '{entity['raw_value']}'")
-            print(f"      🔄 Valeur normalisée : '{entity['normalized_value']}'")
-            print(f"      🎯 Confiance : {entity['confidence']}")
-            print(f"      🔍 Méthode : {entity.get('detection_method', 'N/A')}")
-            print(f"      📍 Position : {entity.get('start_position', '?')}-{entity.get('end_position', '?')}")
-    else:
-        print("   ❌ Aucune entité détectée")
-    print()
-
-    # ----- ANALYSE DU TYPE D'AGENT UTILISÉ ----------------------------------
-    metrics_resp = session.get(f"{BASE_URL}/conversation/metrics")
-    metrics_resp.raise_for_status()
-    metrics_data = metrics_resp.json()
+class HarenaTestSuite:
+    """Suite de tests pour l'API Harena"""
     
-    print("🤖 AGENTS UTILISÉS :")
-    agent_perf = metrics_data.get("agent_metrics", {}).get("agent_performance", {})
-    
-    if "intent_agent" in agent_perf:
-        intent_agent = agent_perf["intent_agent"]
-        agent_type = intent_agent.get("agent_type", "Unknown")
-        print(f"   🧠 Agent d'intention : {agent_type}")
+    def __init__(self, base_url: str = "http://localhost:8000/api/v1"):
+        self.base_url = base_url
+        self.session = requests.Session()
+        self.user_id: Optional[int] = None
+        self.results: List[TestResult] = []
         
-        if agent_type == "MockIntentAgent":
-            print("      ✅ Mock agent utilisé (mode test)")
-        else:
-            print(f"      ℹ️  Agent réel utilisé : {agent_type}")
+    def authenticate(self, username: str, password: str) -> bool:
+        """Authentifie l'utilisateur et configure la session"""
+        try:
+            data = f"username={username}&password={password}"
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            
+            resp = self.session.post(
+                f"{self.base_url}/users/auth/login", 
+                data=data, 
+                headers=headers
+            )
+            resp.raise_for_status()
+            
+            token = resp.json()["access_token"]
+            self.session.headers.update({"Authorization": f"Bearer {token}"})
+            
+            # Récupération de l'ID utilisateur
+            user_resp = self.session.get(f"{self.base_url}/users/me")
+            user_resp.raise_for_status()
+            self.user_id = user_resp.json().get("id")
+            
+            print(f"✅ Authentification réussie - User ID: {self.user_id}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur d'authentification: {e}")
+            return False
     
-    # Autres agents
-    for agent_name, agent_data in agent_perf.items():
-        if agent_name != "intent_agent":
-            print(f"   🔧 {agent_name} : {agent_data.get('agent_type', 'Unknown')}")
-    print()
+    def run_single_test(self, question: str) -> TestResult:
+        """Exécute un test sur une question donnée"""
+        if not self.user_id:
+            return TestResult(
+                question=question,
+                intent_type="ERROR",
+                confidence=0.0,
+                category="ERROR",
+                latency_ms=0.0,
+                success=False,
+                error_message="Utilisateur non authentifié"
+            )
+        
+        payload = {
+            "client_info": {
+                "platform": "web",
+                "version": "1.0.0"
+            },
+            "message": question,
+            "message_type": "text",
+            "priority": "normal"
+        }
+        
+        start_time = time.perf_counter()
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/conversation/{self.user_id}",
+                json=payload,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            
+            if response.status_code != 200:
+                return TestResult(
+                    question=question,
+                    intent_type="HTTP_ERROR",
+                    confidence=0.0,
+                    category="ERROR",
+                    latency_ms=latency_ms,
+                    success=False,
+                    error_message=f"HTTP {response.status_code}"
+                )
+            
+            data = response.json()
+            intent = data.get("intent", {})
+            agent_metrics = data.get("agent_metrics", {})
+            
+            return TestResult(
+                question=question,
+                intent_type=intent.get("intent_type", "UNKNOWN"),
+                confidence=intent.get("confidence", 0.0),
+                category=intent.get("category", "UNKNOWN"),
+                latency_ms=latency_ms,
+                success=True,
+                performance_grade=agent_metrics.get("performance_grade"),
+                efficiency_score=agent_metrics.get("efficiency_score")
+            )
+            
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            return TestResult(
+                question=question,
+                intent_type="EXCEPTION",
+                confidence=0.0,
+                category="ERROR",
+                latency_ms=latency_ms,
+                success=False,
+                error_message=str(e)
+            )
+    
+    def run_test_suite(self, questions: List[str]) -> None:
+        """Exécute la suite de tests complète"""
+        print(f"🚀 Démarrage des tests sur {len(questions)} questions...")
+        
+        for i, question in enumerate(questions, 1):
+            print(f"📝 Test {i}/{len(questions)}: {question[:50]}...")
+            result = self.run_single_test(question)
+            self.results.append(result)
+            
+            if result.success:
+                print(f"   ✅ {result.intent_type} ({result.confidence:.2f}) - {result.latency_ms:.0f}ms")
+            else:
+                print(f"   ❌ {result.error_message} - {result.latency_ms:.0f}ms")
+            
+            # Petite pause pour ne pas surcharger l'API
+            time.sleep(0.1)
+    
+    def generate_markdown_report(self, filename: str = "harena_test_report.md") -> None:
+        """Génère un rapport détaillé en markdown"""
+        if not self.results:
+            print("❌ Aucun résultat à reporter")
+            return
+        
+        # Statistiques globales
+        total_tests = len(self.results)
+        successful_tests = sum(1 for r in self.results if r.success)
+        success_rate = (successful_tests / total_tests) * 100
+        
+        avg_latency = sum(r.latency_ms for r in self.results) / total_tests
+        avg_confidence = sum(r.confidence for r in self.results if r.success) / max(successful_tests, 1)
+        
+        # Comptage par intention
+        intent_counts = {}
+        category_counts = {}
+        
+        for result in self.results:
+            if result.success:
+                intent_counts[result.intent_type] = intent_counts.get(result.intent_type, 0) + 1
+                category_counts[result.category] = category_counts.get(result.category, 0) + 1
+        
+        # Génération du rapport
+        report_content = f"""# Rapport de Test Harena Chat API
 
-    # ----- ANALYSE DE LA RECHERCHE EFFECTUÉE --------------------------------
-    print("🔍 ANALYSE DE LA RECHERCHE :")
-    
-    # Extraire les informations de recherche depuis les métadonnées
-    metadata = chat_data.get("metadata", {})
-    workflow_data = metadata.get("workflow_data", {})
+**Date de génération**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-    search_results_count = 0
-    if isinstance(workflow_data, dict):
-        search_results_count = workflow_data.get("search_results_count", 0)
+## 📊 Statistiques Globales
 
-    print(f"   📊 Résultats trouvés par l'agent : {search_results_count}")
-    
-    # Analyser les entités pour comprendre la requête générée
-    merchant = None
-    date_filter = None
-    
-    for entity in entities:
-        if entity['entity_type'] == 'MERCHANT':
-            merchant = entity['normalized_value']
-        elif entity['entity_type'] in ['RELATIVE_DATE', 'DATE']:
-            date_filter = entity['normalized_value']
-    
-    print(f"   🏪 Marchand recherché : {merchant or 'N/A'}")
-    print(f"   📅 Filtre temporel : {date_filter or 'N/A'}")
-    
-    # Déduire la requête probable de l'agent
-    if date_filter == 'current_month':
-        now = datetime.now()
-        expected_filter = f"{now.year}-{now.month:02d}-01 à {now.year}-{now.month:02d}-31"
-        print(f"   🗓️  Période déduite : {expected_filter}")
-    
-    print()
+- **Total des tests**: {total_tests}
+- **Tests réussis**: {successful_tests}
+- **Taux de réussite**: {success_rate:.1f}%
+- **Latence moyenne**: {avg_latency:.0f}ms
+- **Confiance moyenne**: {avg_confidence:.2f}
 
-    # ----- ANALYSE DES PERFORMANCES -----------------------------------------
-    processing_time = chat_data.get("processing_time_ms", 0)
-    print("⚡ PERFORMANCES :")
-    print(f"   ⏱️  Temps total : {processing_time}ms")
-    
-    if "orchestrator_performance" in metrics_data.get("agent_metrics", {}):
-        orch_perf = metrics_data["agent_metrics"]["orchestrator_performance"]
-        exec_times = orch_perf.get("execution_times", {})
-        print(f"   🎭 Temps moyen orchestrateur : {exec_times.get('average_ms', 'N/A')}ms")
-    
-    # Temps par agent
-    for agent_name, agent_data in agent_perf.items():
-        exec_times = agent_data.get("execution_times", {})
-        avg_time = exec_times.get("average_ms", 0)
-        if avg_time > 0:
-            print(f"   🔧 {agent_name} : {avg_time}ms")
-    print()
+## 🎯 Distribution des Intentions
 
-    # ----- ANALYSE DE LA QUALITÉ DE LA RÉPONSE ------------------------------
-    response_text = chat_data['message']
-    print("✨ ANALYSE DE LA RÉPONSE :")
-    print(f"   📏 Longueur : {len(response_text)} caractères")
-    print(f"   🔤 Mots : ~{len(response_text.split())} mots")
-    
-    # Indicateurs de qualité
-    quality_indicators = {
-        "Structure markdown": "**" in response_text or "#" in response_text,
-        "Actions suggérées": "Actions suggérées" in response_text or "suggestions" in response_text.lower(),
-        "Insights/Observations": "insights" in response_text.lower() or "observations" in response_text.lower(),
-        "Liens/références": "http" in response_text or "www." in response_text,
-        "Contextualisation temporelle": any(month in response_text.lower() for month in ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'])
-    }
-    
-    print("   📋 Indicateurs de qualité :")
-    for indicator, present in quality_indicators.items():
-        status = "✅" if present else "❌"
-        print(f"      {status} {indicator}")
-    print()
+| Intention | Nombre | Pourcentage |
+|-----------|--------|-------------|
+"""
+        
+        for intent_type, count in sorted(intent_counts.items(), key=lambda x: x[1], reverse=True):
+            percentage = (count / successful_tests) * 100
+            report_content += f"| {intent_type} | {count} | {percentage:.1f}% |\n"
+        
+        report_content += f"""
+## 📂 Distribution des Catégories
 
-    # ----- RÉSUMÉ EXÉCUTIF ---------------------------------------------------
-    print("📋 RÉSUMÉ EXÉCUTIF :")
-    print(f"   🎯 Intention correctement détectée : {'✅' if intent['intent_type'] == 'SEARCH_BY_AMOUNT' else '❌'}")
-    print(f"   🧩 Entités extraites : {'✅' if len(entities) > 0 else '❌'}")
-    print(f"   🔍 Recherche exécutée : {'✅' if 'search_results_count' in chat_data['metadata'] else '❌'}")
-    print(f"   💬 Réponse générée : {'✅' if len(response_text) > 50 else '❌'}")
-    print(f"   ⚡ Performance acceptable : {'✅' if processing_time < 30000 else '❌'} ({processing_time}ms)")
+| Catégorie | Nombre | Pourcentage |
+|-----------|--------|-------------|
+"""
+        
+        for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
+            percentage = (count / successful_tests) * 100
+            report_content += f"| {category} | {count} | {percentage:.1f}% |\n"
+        
+        report_content += """
+## 📋 Résultats Détaillés
+
+| Question | Intention | Confiance | Catégorie | Latence (ms) | Status |
+|----------|-----------|-----------|-----------|--------------|--------|
+"""
+        
+        for result in self.results:
+            status = "✅" if result.success else "❌"
+            question_short = result.question[:60] + "..." if len(result.question) > 60 else result.question
+            
+            report_content += f"| {question_short} | {result.intent_type} | {result.confidence:.2f} | {result.category} | {result.latency_ms:.0f} | {status} |\n"
+        
+        # Analyse des performances
+        report_content += f"""
+## ⚡ Analyse des Performances
+
+### Latence par Quintiles
+"""
+        
+        latencies = sorted([r.latency_ms for r in self.results if r.success])
+        if latencies:
+            report_content += f"""
+- **Min**: {min(latencies):.0f}ms
+- **P25**: {latencies[len(latencies)//4]:.0f}ms
+- **Médiane**: {latencies[len(latencies)//2]:.0f}ms
+- **P75**: {latencies[3*len(latencies)//4]:.0f}ms
+- **Max**: {max(latencies):.0f}ms
+"""
+        
+        # Erreurs et problèmes
+        errors = [r for r in self.results if not r.success]
+        if errors:
+            report_content += f"""
+## ❌ Erreurs Détectées ({len(errors)} erreurs)
+
+| Question | Type d'Erreur | Message |
+|----------|---------------|---------|
+"""
+            for error in errors:
+                question_short = error.question[:50] + "..." if len(error.question) > 50 else error.question
+                report_content += f"| {question_short} | {error.intent_type} | {error.error_message} |\n"
+        
+        # Recommandations
+        report_content += """
+## 💡 Recommandations
+
+"""
+        
+        if success_rate < 90:
+            report_content += "- ⚠️ Le taux de réussite est inférieur à 90%. Vérifier la stabilité de l'API.\n"
+        
+        if avg_latency > 5000:
+            report_content += "- ⚠️ Latence moyenne élevée (>5s). Optimiser les performances.\n"
+        
+        if avg_confidence < 0.8:
+            report_content += "- ⚠️ Confiance moyenne faible (<0.8). Améliorer le modèle de classification.\n"
+        
+        # Sauvegarde
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            print(f"✅ Rapport généré: {filename}")
+        except Exception as e:
+            print(f"❌ Erreur lors de la génération du rapport: {e}")
+
+
+def get_test_questions() -> List[str]:
+    """Retourne la liste des 50+ questions de test"""
+    return [
+        # Questions sur les virements et transferts
+        "Combien ai-je fait de virements en mai ?",
+        "Quels sont mes virements du mois dernier ?",
+        "Peux-tu me montrer tous mes virements de juin ?",
+        "Combien j'ai viré ce mois-ci ?",
+        "Liste de mes transferts de la semaine passée",
+        
+        # Questions sur les dépenses
+        "Combien ai-je dépensé en juin ?",
+        "Mes dépenses de mai étaient de combien ?",
+        "Peux-tu calculer mes dépenses totales ?",
+        "Combien j'ai dépensé chez Carrefour ?",
+        "Mes achats Amazon du mois dernier",
+        
+        # Questions sur les entrées d'argent
+        "Combien j'ai eu d'entrée d'argent en juin ?",
+        "Mes revenus de mai s'élevaient à combien ?",
+        "Peux-tu me dire mes entrées d'argent ?",
+        "Combien j'ai reçu ce mois-ci ?",
+        "Mes revenus de la semaine dernière",
+        
+        # Questions comparatives
+        "Compare mes entrées et sorties d'argent en juin !",
+        "Différence entre mes revenus et dépenses de mai",
+        "Est-ce que j'ai plus dépensé ou gagné ce mois ?",
+        "Balance de mes comptes ce mois",
+        "Comparaison revenus/dépenses sur 3 mois",
+        
+        # Questions sur des marchands spécifiques
+        "Combien j'ai dépensé chez McDonald's ?",
+        "Mes achats FNAC du trimestre",
+        "Dépenses Total Station service",
+        "Combien chez Leclerc ce mois ?",
+        "Mes paiements Spotify de l'année",
+        
+        # Questions temporelles variées
+        "Mes transactions d'hier",
+        "Dépenses de la semaine dernière",
+        "Revenus du trimestre passé",
+        "Transactions de ce weekend",
+        "Mes opérations de cette année",
+        
+        # Questions sur les catégories
+        "Mes dépenses en alimentation",
+        "Combien pour les transports ce mois ?",
+        "Budget loisirs du trimestre",
+        "Dépenses santé de l'année",
+        "Coût des courses alimentaires",
+        
+        # Questions sur les montants
+        "Transactions supérieures à 100€",
+        "Petites dépenses inférieures à 10€",
+        "Mes gros virements (>500€)",
+        "Dépenses entre 50 et 100€",
+        "Transactions de moins de 5€",
+        
+        # Questions sur les comptes
+        "Solde de mon compte principal",
+        "Historique compte épargne",
+        "Mouvements compte joint",
+        "Transactions carte bleue",
+        "Opérations compte courant",
+        
+        # Questions complexes
+        "Évolution de mes dépenses sur 6 mois",
+        "Tendance de mes revenus cette année",
+        "Prévision budget mois prochain",
+        "Analyse de mes habitudes de consommation",
+        "Répartition de mes dépenses par catégorie",
+        
+        # Questions inhabituelles ou edge cases
+        "Salut, comment ça va ?",
+        "Quelle heure est-il ?",
+        "Peux-tu m'aider ?",
+        "123456789",
+        "€€€ !!! ???",
+        "Transaction"
+    ]
+
+
+def main():
+    """Fonction principale"""
+    # Configuration
+    BASE_URL = "http://localhost:8000/api/v1"
+    USERNAME = "test2@example.com"
+    PASSWORD = "password123"
     
-    # Cohérence globale
-    coherence_score = sum([
-        intent['intent_type'] == 'SEARCH_BY_AMOUNT',
-        len(entities) > 0,
-        'search_results_count' in chat_data['metadata'],
-        len(response_text) > 50,
-        processing_time < 30000
-    ])
+    # Initialisation de la suite de tests
+    test_suite = HarenaTestSuite(BASE_URL)
     
-    print(f"   🏆 Score de cohérence : {coherence_score}/5")
+    # Authentification
+    if not test_suite.authenticate(USERNAME, PASSWORD):
+        print("❌ Impossible de continuer sans authentification")
+        return
     
-    if coherence_score >= 4:
-        print("   🎉 Workflow fonctionnel et cohérent !")
-    elif coherence_score >= 3:
-        print("   ⚠️  Workflow fonctionnel avec améliorations possibles")
-    else:
-        print("   ❌ Problèmes détectés dans le workflow")
+    # Récupération des questions de test
+    questions = get_test_questions()
+    
+    # Exécution des tests
+    test_suite.run_test_suite(questions)
+    
+    # Génération du rapport
+    report_filename = f"harena_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    test_suite.generate_markdown_report(report_filename)
+    
+    print(f"\n🎉 Tests terminés ! Rapport disponible: {report_filename}")
+
 
 if __name__ == "__main__":
     main()
-

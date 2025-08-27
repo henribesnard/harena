@@ -1,5 +1,6 @@
 """
 Exemples few-shot optimisés et dynamiques pour classification intentions Harena
+Version corrigée avec exemples SEARCH_BY_OPERATION_TYPE manquants
 """
 import logging
 from typing import List, Dict, Set, Optional, Tuple
@@ -42,9 +43,56 @@ class LanguagePattern(str, Enum):
     TECHNICAL = "technical"
 
 
-# Exemples few-shot optimisés avec métadonnées enrichies
+# Exemples few-shot optimisés avec métadonnées enrichies - VERSION CORRIGÉE
 HARENA_INTENT_EXAMPLES = [
-    # TRANSACTIONS - SEARCH_BY_MERCHANT (Haute priorité)
+    
+    # === SEARCH_BY_OPERATION_TYPE (CRITIQUES - MANQUAIENT AVANT) ===
+    IntentExample(
+        "Combien ai-je fait de virements en mai ?", "SEARCH_BY_OPERATION_TYPE", 0.94, "medium",
+        ("combien", "virements", "mai"), "standard", 1, ("search", "transfer_history", "critical")
+    ),
+    IntentExample(
+        "Mes virements du mois dernier", "SEARCH_BY_OPERATION_TYPE", 0.93, "simple",
+        ("virements", "mois", "dernier"), "standard", 1, ("search", "transfer_list", "critical")
+    ),
+    IntentExample(
+        "Quels sont mes prélèvements automatiques ?", "SEARCH_BY_OPERATION_TYPE", 0.92, "medium",
+        ("prélèvements", "automatiques"), "standard", 1, ("search", "direct_debits", "critical")
+    ),
+    IntentExample(
+        "Historique de mes paiements par carte", "SEARCH_BY_OPERATION_TYPE", 0.91, "medium",
+        ("historique", "paiements", "carte"), "standard", 1, ("search", "card_payments", "critical")
+    ),
+    IntentExample(
+        "Liste de mes transferts de la semaine passée", "SEARCH_BY_OPERATION_TYPE", 0.90, "medium",
+        ("liste", "transferts", "semaine"), "standard", 1, ("search", "recent_transfers")
+    ),
+    IntentExample(
+        "Mes virements reçus ce trimestre", "SEARCH_BY_OPERATION_TYPE", 0.89, "medium",
+        ("virements", "reçus", "trimestre"), "standard", 1, ("search", "incoming_transfers")
+    ),
+    IntentExample(
+        "Combien de prélèvements ce mois ?", "SEARCH_BY_OPERATION_TYPE", 0.88, "medium",
+        ("combien", "prélèvements", "mois"), "standard", 1, ("search", "count_debits")
+    ),
+    IntentExample(
+        "Mes paiements CB de juin", "SEARCH_BY_OPERATION_TYPE", 0.87, "simple",
+        ("paiements", "cb", "juin"), "colloquial", 1, ("search", "card_monthly")
+    ),
+    IntentExample(
+        "Toutes mes opérations par chèque", "SEARCH_BY_OPERATION_TYPE", 0.86, "medium",
+        ("opérations", "chèque"), "standard", 2, ("search", "check_operations")
+    ),
+    IntentExample(
+        "Mes retraits espèces cette année", "SEARCH_BY_OPERATION_TYPE", 0.85, "medium",
+        ("retraits", "espèces", "année"), "standard", 2, ("search", "cash_withdrawals")
+    ),
+    IntentExample(
+        "Virements sortants de juillet", "SEARCH_BY_OPERATION_TYPE", 0.84, "simple",
+        ("virements", "sortants", "juillet"), "standard", 2, ("search", "outgoing_monthly")
+    ),
+    
+    # === SEARCH_BY_MERCHANT (Haute priorité) ===
     IntentExample(
         "Mes achats Amazon", "SEARCH_BY_MERCHANT", 0.96, "simple",
         ("amazon", "achats"), "standard", 1, ("e-commerce", "frequent")
@@ -74,7 +122,7 @@ HARENA_INTENT_EXAMPLES = [
         ("sncf", "transactions"), "standard", 2, ("transport", "travel")
     ),
     
-    # TRANSACTIONS - SEARCH_BY_DATE (Haute priorité)
+    # === SEARCH_BY_DATE (Haute priorité) ===
     IntentExample(
         "Mes transactions d'hier", "SEARCH_BY_DATE", 0.97, "simple",
         ("hier", "transactions"), "standard", 1, ("recent", "daily")
@@ -104,7 +152,7 @@ HARENA_INTENT_EXAMPLES = [
         ("semaine", "passée"), "standard", 2, ("weekly", "past")
     ),
     
-    # TRANSACTIONS - SEARCH_BY_AMOUNT (Priorité moyenne)
+    # === SEARCH_BY_AMOUNT (Priorité moyenne) ===
     IntentExample(
         "Mes gros achats", "SEARCH_BY_AMOUNT", 0.87, "simple",
         ("gros", "achats"), "colloquial", 2, ("high_amount", "relative")
@@ -130,7 +178,7 @@ HARENA_INTENT_EXAMPLES = [
         ("achats", "chers"), "colloquial", 3, ("high_amount", "relative")
     ),
     
-    # TRANSACTIONS - SEARCH_BY_CATEGORY (Haute priorité)
+    # === SEARCH_BY_CATEGORY (Haute priorité) ===
     IntentExample(
         "Mes dépenses restaurants", "SEARCH_BY_CATEGORY", 0.95, "simple",
         ("restaurants", "dépenses"), "standard", 1, ("food", "frequent")
@@ -160,7 +208,25 @@ HARENA_INTENT_EXAMPLES = [
         ("essence", "dépenses"), "standard", 2, ("fuel", "transport")
     ),
     
-    # SPENDING_ANALYSIS (Haute priorité)
+    # === COUNT_TRANSACTIONS (Supporté - Comptage) ===
+    IntentExample(
+        "Combien de transactions Amazon ?", "COUNT_TRANSACTIONS", 0.92, "medium",
+        ("combien", "transactions", "amazon"), "standard", 1, ("search", "count")
+    ),
+    IntentExample(
+        "Nombre d'achats ce mois", "COUNT_TRANSACTIONS", 0.90, "simple",
+        ("nombre", "achats", "mois"), "standard", 1, ("search", "count")
+    ),
+    IntentExample(
+        "Combien d'opérations hier ?", "COUNT_TRANSACTIONS", 0.88, "simple",
+        ("combien", "opérations", "hier"), "standard", 2, ("search", "daily_count")
+    ),
+    IntentExample(
+        "Nombre de paiements CB ce mois", "COUNT_TRANSACTIONS", 0.87, "medium",
+        ("nombre", "paiements", "cb", "mois"), "standard", 2, ("search", "card_count")
+    ),
+    
+    # === SPENDING_ANALYSIS (Haute priorité) ===
     IntentExample(
         "Analyse de mes dépenses", "SPENDING_ANALYSIS", 0.95, "simple",
         ("analyse", "dépenses"), "technical", 1, ("analysis", "overview")
@@ -186,7 +252,39 @@ HARENA_INTENT_EXAMPLES = [
         ("où", "fric"), "colloquial", 3, ("analysis", "casual")
     ),
     
-    # BALANCE_INQUIRY (Très haute priorité - Simple)
+    # === SPENDING_COMPARISON (Analyse comparative) ===
+    IntentExample(
+        "Compare mes entrées et sorties d'argent en juin !", "SPENDING_COMPARISON", 0.92, "complex",
+        ("compare", "entrées", "sorties", "juin"), "standard", 1, ("comparison", "monthly")
+    ),
+    IntentExample(
+        "Différence entre mes revenus et dépenses de mai", "SPENDING_COMPARISON", 0.90, "medium",
+        ("différence", "revenus", "dépenses", "mai"), "standard", 1, ("comparison", "balance")
+    ),
+    IntentExample(
+        "Est-ce que j'ai plus dépensé ou gagné ce mois ?", "SPENDING_COMPARISON", 0.88, "medium",
+        ("plus", "dépensé", "gagné", "mois"), "colloquial", 2, ("comparison", "question")
+    ),
+    
+    # === SPENDING_ANALYSIS_BY_CATEGORY (Analyse par catégorie) ===
+    IntentExample(
+        "Répartition de mes dépenses par catégorie", "SPENDING_ANALYSIS_BY_CATEGORY", 0.97, "medium",
+        ("répartition", "dépenses", "catégorie"), "technical", 1, ("breakdown", "categories")
+    ),
+    IntentExample(
+        "Combien pour les transports ce mois ?", "SPENDING_ANALYSIS_BY_CATEGORY", 0.92, "medium",
+        ("combien", "transports", "mois"), "standard", 1, ("category", "transport")
+    ),
+    IntentExample(
+        "Dépenses santé de l'année", "SPENDING_ANALYSIS_BY_CATEGORY", 0.90, "simple",
+        ("dépenses", "santé", "année"), "standard", 2, ("category", "health")
+    ),
+    IntentExample(
+        "Coût des courses alimentaires", "SPENDING_ANALYSIS_BY_CATEGORY", 0.89, "simple",
+        ("coût", "courses", "alimentaires"), "standard", 2, ("category", "food")
+    ),
+    
+    # === BALANCE_INQUIRY (Très haute priorité - Simple) ===
     IntentExample(
         "Mon solde", "BALANCE_INQUIRY", 0.99, "simple",
         ("solde",), "standard", 1, ("balance", "quick")
@@ -212,7 +310,21 @@ HARENA_INTENT_EXAMPLES = [
         ("pognon", "disponible"), "colloquial", 3, ("balance", "casual")
     ),
     
-    # GREETING (Très haute priorité)
+    # === ACCOUNT_BALANCE_SPECIFIC (Solde compte spécifique) ===
+    IntentExample(
+        "Solde de mon compte principal", "ACCOUNT_BALANCE_SPECIFIC", 0.97, "medium",
+        ("solde", "compte", "principal"), "standard", 1, ("specific", "main_account")
+    ),
+    IntentExample(
+        "Historique compte épargne", "ACCOUNT_BALANCE_SPECIFIC", 0.92, "medium",
+        ("historique", "compte", "épargne"), "standard", 2, ("specific", "savings")
+    ),
+    IntentExample(
+        "Mouvements compte joint", "ACCOUNT_BALANCE_SPECIFIC", 0.90, "medium",
+        ("mouvements", "compte", "joint"), "standard", 2, ("specific", "joint_account")
+    ),
+    
+    # === GREETING (Très haute priorité) ===
     IntentExample(
         "Bonjour", "GREETING", 0.99, "simple",
         ("bonjour",), "standard", 1, ("greeting", "polite")
@@ -238,7 +350,7 @@ HARENA_INTENT_EXAMPLES = [
         ("coucou", "harena"), "colloquial", 2, ("greeting", "personal")
     ),
     
-    # CONFIRMATION (Priorité moyenne)
+    # === CONFIRMATION (Priorité moyenne) ===
     IntentExample(
         "Merci", "CONFIRMATION", 0.96, "simple",
         ("merci",), "standard", 1, ("thanks", "polite")
@@ -264,45 +376,81 @@ HARENA_INTENT_EXAMPLES = [
         ("nickel",), "colloquial", 3, ("confirmation", "slang")
     ),
     
-    # NON SUPPORTÉES (Important pour formation - Priorité élevée)
+    # === TRANSFER_REQUEST - NON SUPPORTÉES (Actions bancaires - Priorité élevée) ===
     IntentExample(
         "Faire un virement", "TRANSFER_REQUEST", 0.97, "simple",
-        ("virement",), "standard", 1, ("unsupported", "banking")
+        ("faire", "virement"), "standard", 1, ("unsupported", "banking", "action")
     ),
     IntentExample(
         "Virer 500€ à Paul", "TRANSFER_REQUEST", 0.95, "medium",
-        ("virer", "500€"), "standard", 1, ("unsupported", "specific")
+        ("virer", "500€"), "standard", 1, ("unsupported", "specific", "action")
     ),
     IntentExample(
         "Transférer de l'argent", "TRANSFER_REQUEST", 0.94, "simple",
-        ("transférer", "argent"), "standard", 2, ("unsupported", "transfer")
+        ("transférer", "argent"), "standard", 1, ("unsupported", "transfer", "action")
     ),
     IntentExample(
+        "Effectuer un virement vers Marie", "TRANSFER_REQUEST", 0.93, "medium",
+        ("effectuer", "virement"), "standard", 1, ("unsupported", "execute", "action")
+    ),
+    IntentExample(
+        "Je veux virer 200€", "TRANSFER_REQUEST", 0.91, "simple",
+        ("veux", "virer", "200€"), "standard", 2, ("unsupported", "want", "action")
+    ),
+    IntentExample(
+        "Peux-tu faire un transfert ?", "TRANSFER_REQUEST", 0.89, "medium",
+        ("faire", "transfert"), "standard", 2, ("unsupported", "request", "action")
+    ),
+    IntentExample(
+        "Envoyer 100€ sur mon livret", "TRANSFER_REQUEST", 0.88, "medium",
+        ("envoyer", "100€", "livret"), "standard", 2, ("unsupported", "internal", "action")
+    ),
+    
+    # === PAYMENT_REQUEST - NON SUPPORTÉES (Paiements - Actions) ===
+    IntentExample(
         "Payer ma facture EDF", "PAYMENT_REQUEST", 0.95, "medium",
-        ("payer", "facture"), "standard", 1, ("unsupported", "bill")
+        ("payer", "facture"), "standard", 1, ("unsupported", "bill", "action")
     ),
     IntentExample(
         "Effectuer un paiement", "PAYMENT_REQUEST", 0.93, "simple",
-        ("paiement",), "technical", 1, ("unsupported", "payment")
+        ("effectuer", "paiement"), "technical", 1, ("unsupported", "payment", "action")
     ),
     IntentExample(
+        "Régler mes factures", "PAYMENT_REQUEST", 0.92, "simple",
+        ("régler", "factures"), "standard", 1, ("unsupported", "settle", "action")
+    ),
+    IntentExample(
+        "Je dois payer le loyer", "PAYMENT_REQUEST", 0.90, "medium",
+        ("dois", "payer", "loyer"), "standard", 2, ("unsupported", "rent", "action")
+    ),
+    
+    # === AUTRES NON SUPPORTÉES ===
+    IntentExample(
         "Bloquer ma carte", "CARD_BLOCK", 0.98, "simple",
-        ("bloquer", "carte"), "standard", 1, ("unsupported", "security")
+        ("bloquer", "carte"), "standard", 1, ("unsupported", "security", "action")
     ),
     IntentExample(
         "Suspendre ma CB", "CARD_BLOCK", 0.96, "simple",
-        ("suspendre", "cb"), "colloquial", 2, ("unsupported", "security")
+        ("suspendre", "cb"), "colloquial", 2, ("unsupported", "security", "action")
     ),
     IntentExample(
         "Où en est mon budget ?", "BUDGET_INQUIRY", 0.92, "medium",
         ("budget",), "standard", 1, ("unsupported", "budgeting")
     ),
     IntentExample(
-        "Mon objectif épargne", "GOAL_TRACKING", 0.89, "medium",
-        ("objectif", "épargne"), "standard", 2, ("unsupported", "savings")
+        "Budget loisirs du trimestre", "BUDGET_INQUIRY", 0.89, "medium",
+        ("budget", "loisirs", "trimestre"), "standard", 2, ("unsupported", "category_budget")
+    ),
+    IntentExample(
+        "Prévision budget mois prochain", "BUDGET_INQUIRY", 0.87, "complex",
+        ("prévision", "budget", "prochain"), "standard", 2, ("unsupported", "forecast")
+    ),
+    IntentExample(
+        "Quelle heure est-il ?", "OUT_OF_SCOPE", 0.95, "simple",
+        ("heure",), "standard", 1, ("out_of_domain", "time")
     ),
     
-    # UNCLEAR_INTENT (Formation importante - Priorité élevée)
+    # === UNCLEAR_INTENT (Formation importante - Priorité élevée) ===
     IntentExample(
         "Euh... je sais pas", "UNCLEAR_INTENT", 0.89, "simple",
         ("euh", "sais", "pas"), "colloquial", 1, ("unclear", "hesitation")
@@ -328,7 +476,7 @@ HARENA_INTENT_EXAMPLES = [
         ("hum",), "colloquial", 3, ("unclear", "thinking")
     ),
     
-    # UNKNOWN (Messages incompréhensibles - Priorité élevée)
+    # === UNKNOWN (Messages incompréhensibles - Priorité élevée) ===
     IntentExample(
         "azerty qwerty", "UNKNOWN", 0.96, "simple",
         ("azerty", "qwerty"), "standard", 1, ("gibberish", "keyboard")
@@ -342,8 +490,8 @@ HARENA_INTENT_EXAMPLES = [
         ("jdhgkjdhgk",), "standard", 1, ("gibberish", "random")
     ),
     IntentExample(
-        "°°°°°", "UNKNOWN", 0.94, "simple",
-        ("°",), "standard", 2, ("gibberish", "symbols")
+        "€€€ !!! ???", "UNKNOWN", 0.94, "simple",
+        ("€",), "standard", 2, ("gibberish", "symbols")
     ),
 ]
 
@@ -435,6 +583,10 @@ class DynamicExampleSelector:
             keyword_score = keyword_matches / len(example.keywords)
             score += keyword_score * 10.0
         
+        # Bonus spécial pour exemples critiques de virements
+        if "critical" in example.context_tags and ("virement" in message_lower or "prélèvement" in message_lower):
+            score += 5.0
+        
         # Score confiance (facteur qualité)
         score += example.confidence * 5.0
         
@@ -464,7 +616,7 @@ class DynamicExampleSelector:
         
         selected = []
         intents_count = {}
-        max_per_intent = max(2, max_examples // 8)  # Max 2-3 par intention
+        max_per_intent = max(2, max_examples // 10)  # Max 2-3 par intention
         
         # Sélection avec équilibrage
         for example, score in scored_examples:
@@ -623,5 +775,6 @@ def get_examples_statistics() -> Dict[str, any]:
             for priority, examples in EXAMPLE_SELECTOR.by_priority.items()
         },
         "usage_stats": EXAMPLE_SELECTOR.get_usage_statistics(),
-        "most_used_examples": list(EXAMPLE_SELECTOR.get_usage_statistics().keys())[:10]
+        "most_used_examples": list(EXAMPLE_SELECTOR.get_usage_statistics().keys())[:10],
+        "critical_examples_count": len([ex for ex in HARENA_INTENT_EXAMPLES if "critical" in ex.context_tags])
     }

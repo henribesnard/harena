@@ -1,5 +1,6 @@
 """
 Taxonomie optimisée des intentions Harena avec métadonnées enrichies
+Version corrigée avec SEARCH_BY_OPERATION_TYPE amélioré
 """
 from enum import Enum
 from typing import Dict, List, Set, Optional, Tuple, Any
@@ -164,15 +165,24 @@ INTENT_METADATA: Dict[HarenaIntentType, IntentMetadata] = {
     ),
     
     HarenaIntentType.SEARCH_BY_OPERATION_TYPE: IntentMetadata(
-        description="Rechercher transactions par type d'opération",
+        description="Rechercher transactions existantes par type d'opération (virements, prélèvements, CB, etc.)",
         category="FINANCIAL_QUERY",
         is_supported=True,
         complexity="medium",
-        frequency="low",
-        keywords=("carte", "virement", "prélèvement", "chèque", "espèces", "cb"),
-        examples=("Paiements par carte", "Virements reçus", "Prélèvements automatiques"),
-        related_intents=("TRANSACTION_SEARCH",),
-        confidence_threshold=0.75
+        frequency="medium",  # Augmenté de "low" à "medium" car plus fréquent que prévu
+        keywords=("carte", "virement", "prélèvement", "chèque", "espèces", "cb", "combien", "mes", "historique", "liste", "nombre", "quels"),
+        examples=(
+            "Combien ai-je fait de virements en mai ?", 
+            "Mes virements du mois dernier",
+            "Quels sont mes prélèvements automatiques ?",
+            "Historique de mes paiements par carte",
+            "Paiements par carte", 
+            "Virements reçus", 
+            "Prélèvements automatiques"
+        ),
+        related_intents=("TRANSACTION_SEARCH", "COUNT_TRANSACTIONS"),
+        processing_hints={"requires_operation_type_filtering": True, "supports_search_only": True},
+        confidence_threshold=0.8  # Augmenté de 0.75 à 0.8 pour plus de précision
     ),
     
     HarenaIntentType.SEARCH_BY_TEXT: IntentMetadata(
@@ -193,10 +203,11 @@ INTENT_METADATA: Dict[HarenaIntentType, IntentMetadata] = {
         category="FINANCIAL_QUERY",
         is_supported=True,
         complexity="simple",
-        frequency="low",
+        frequency="medium",  # Augmenté de "low" à "medium"
         keywords=("combien", "nombre", "compteur", "total", "transactions"),
-        examples=("Combien de transactions Amazon ?", "Nombre d'achats ce mois"),
-        related_intents=("TRANSACTION_SEARCH",),
+        examples=("Combien de transactions Amazon ?", "Nombre d'achats ce mois", "Combien de virements ?"),
+        related_intents=("TRANSACTION_SEARCH", "SEARCH_BY_OPERATION_TYPE"),
+        processing_hints={"requires_counting": True},
         confidence_threshold=0.8
     ),
     
@@ -403,31 +414,33 @@ INTENT_METADATA: Dict[HarenaIntentType, IntentMetadata] = {
     
     # === NON SUPPORTÉES ===
     HarenaIntentType.TRANSFER_REQUEST: IntentMetadata(
-        description="Demande de virement (non supporté)",
+        description="Demande d'exécution de virement (non supporté - action bancaire)",
         category="UNSUPPORTED",
         is_supported=False,
         complexity="simple",
         frequency="medium",
-        keywords=("virement", "virer", "transférer", "envoyer", "argent"),
-        examples=("Faire un virement", "Virer 100€ à Paul"),
+        keywords=("faire", "effectuer", "virer", "transférer", "envoyer", "argent"),
+        examples=("Faire un virement", "Virer 100€ à Paul", "Effectuer un transfert"),
         related_intents=(),
+        processing_hints={"action_request": True, "requires_banking_operation": True},
         confidence_threshold=0.9
     ),
     
     HarenaIntentType.PAYMENT_REQUEST: IntentMetadata(
-        description="Demande de paiement (non supporté)",
+        description="Demande d'exécution de paiement (non supporté - action bancaire)",
         category="UNSUPPORTED",
         is_supported=False,
         complexity="simple",
         frequency="medium",
-        keywords=("payer", "paiement", "facture", "régler"),
+        keywords=("payer", "effectuer", "paiement", "facture", "régler"),
         examples=("Payer ma facture", "Effectuer un paiement"),
         related_intents=(),
+        processing_hints={"action_request": True, "requires_banking_operation": True},
         confidence_threshold=0.9
     ),
     
     HarenaIntentType.CARD_BLOCK: IntentMetadata(
-        description="Blocage de carte (non supporté)",
+        description="Blocage de carte (non supporté - action sécuritaire)",
         category="UNSUPPORTED",
         is_supported=False,
         complexity="simple",
@@ -435,6 +448,7 @@ INTENT_METADATA: Dict[HarenaIntentType, IntentMetadata] = {
         keywords=("bloquer", "carte", "cb", "suspendre", "annuler"),
         examples=("Bloquer ma carte", "Suspendre ma CB"),
         related_intents=(),
+        processing_hints={"action_request": True, "requires_security_operation": True},
         confidence_threshold=0.95
     ),
     

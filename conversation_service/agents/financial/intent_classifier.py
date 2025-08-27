@@ -1,8 +1,9 @@
 """
-Agent de classification d'intentions financières via DeepSeek - JSON Output Forcé
+Agent de classification d'intentions financières via DeepSeek - JSON Output Forcé avec Retry
 """
 import logging
 import json
+import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -19,7 +20,7 @@ from config_service.config import settings
 logger = logging.getLogger("conversation_service.intent_classifier")
 
 class IntentClassifierAgent(BaseAgent):
-    """Agent classification intentions financières Harena via DeepSeek avec JSON Output forcé"""
+    """Agent classification intentions financières Harena via DeepSeek avec JSON Output forcé et retry"""
     
     def __init__(self, deepseek_client, cache_manager):
         super().__init__(
@@ -27,13 +28,17 @@ class IntentClassifierAgent(BaseAgent):
             deepseek_client=deepseek_client,
             cache_manager=cache_manager
         )
-
         
         self.supported_intents = list(HarenaIntentType)
         self.few_shot_examples = get_balanced_few_shot_examples(examples_per_intent=2)
         self.confidence_threshold = getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5)
         
-        logger.info(f"IntentClassifier initialisé avec {len(self.few_shot_examples)} exemples")
+        # Configuration retry et tokens
+        self.max_retry_attempts = getattr(settings, 'INTENT_DETECTION_RETRY', 3)
+        self.max_tokens = getattr(settings, 'DEEPSEEK_INTENT_MAX_TOKENS', 150)  # Augmenté de 100 à 150
+        self.temperature = getattr(settings, 'DEEPSEEK_INTENT_TEMPERATURE', 0.1)
+        
+        logger.info(f"IntentClassifier initialisé avec {len(self.few_shot_examples)} exemples, retry: {self.max_retry_attempts}, max_tokens: {self.max_tokens}")
     
     async def execute(
         self, 
@@ -48,7 +53,7 @@ class IntentClassifierAgent(BaseAgent):
         user_message: str,
         user_context: Optional[Dict[str, Any]] = None
     ) -> IntentClassificationResult:
-        """Classification intention principale avec JSON Output forcé"""
+        """Classification intention principale avec JSON Output forcé et retry"""
         
         start_time = datetime.now(timezone.utc)
         
@@ -74,19 +79,8 @@ class IntentClassifierAgent(BaseAgent):
             # Construction prompt avec few-shots optimisés
             prompt = self._build_json_classification_prompt(clean_message, user_context)
             
-            # Appel DeepSeek avec JSON Output FORCÉ
-            response = await self.deepseek_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=getattr(settings, 'DEEPSEEK_INTENT_MAX_TOKENS', 100),
-                temperature=getattr(settings, 'DEEPSEEK_INTENT_TEMPERATURE', 0.1),
-                response_format={"type": "json_object"}  # JSON FORCÉ - Plus de parsing regex
-            )
-            
-            # Parsing JSON direct - Plus de regex
-            classification_result = self._parse_json_response(response, clean_message)
+            # Classification avec retry automatique
+            classification_result = await self._classify_with_retry(prompt, clean_message, start_time)
             
             # Validation qualité
             if not await self._validate_classification_quality(classification_result):
@@ -118,6 +112,67 @@ class IntentClassifierAgent(BaseAgent):
             logger.error(f"Erreur classification intention: {str(e)}")
             return self._create_error_intent_result(str(e))
     
+    async def _classify_with_retry(
+        self,
+        prompt: str,
+        clean_message: str,
+        start_time: datetime
+    ) -> IntentClassificationResult:
+        """Classification avec retry automatique en cas d'erreur JSON"""
+        
+        last_exception = None
+        
+        for attempt in range(1, self.max_retry_attempts + 1):
+            try:
+                # Ajustement des paramètres selon la tentative
+                current_max_tokens = self.max_tokens + (attempt - 1) * 50  # Augmente tokens à chaque retry
+                current_temperature = self.temperature + (attempt - 1) * 0.05  # Légère augmentation température
+                
+                logger.debug(f"Tentative {attempt}/{self.max_retry_attempts} - tokens: {current_max_tokens}, temp: {current_temperature:.2f}")
+                
+                # Appel DeepSeek avec JSON Output FORCÉ
+                response = await self.deepseek_client.chat_completion(
+                    messages=[
+                        {"role": "system", "content": INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=current_max_tokens,
+                    temperature=current_temperature,
+                    response_format={"type": "json_object"}  # JSON FORCÉ
+                )
+                
+                # Parsing JSON avec validation
+                classification_result = self._parse_json_response_with_validation(response, clean_message)
+                
+                if classification_result:
+                    if attempt > 1:
+                        logger.info(f"Classification réussie à la tentative {attempt}")
+                        metrics_collector.increment_counter(f"intent_classifier.retry_success.attempt_{attempt}")
+                    return classification_result
+                    
+            except json.JSONDecodeError as e:
+                last_exception = e
+                logger.warning(f"Tentative {attempt}: JSON invalide - {str(e)}")
+                metrics_collector.increment_counter(f"intent_classifier.json_error.attempt_{attempt}")
+                
+                if attempt < self.max_retry_attempts:
+                    await asyncio.sleep(0.1 * attempt)  # Backoff exponentiel
+                    continue
+                    
+            except Exception as e:
+                last_exception = e
+                logger.error(f"Tentative {attempt}: Erreur inattendue - {str(e)}")
+                metrics_collector.increment_counter(f"intent_classifier.error.attempt_{attempt}")
+                
+                if attempt < self.max_retry_attempts:
+                    await asyncio.sleep(0.2 * attempt)
+                    continue
+        
+        # Toutes les tentatives ont échoué
+        logger.error(f"Toutes les tentatives de classification ont échoué après {self.max_retry_attempts} essais")
+        metrics_collector.increment_counter("intent_classifier.retry_exhausted")
+        return self._create_error_intent_result(f"Erreur après {self.max_retry_attempts} tentatives: {str(last_exception)}")
+    
     def _build_json_classification_prompt(
         self, 
         user_message: str,
@@ -135,8 +190,8 @@ class IntentClassifierAgent(BaseAgent):
             recent = user_context["recent_intents"][-3:]  # Dernières 3 intentions
             context_section = f"\nCONTEXTE: Intentions récentes: {', '.join(recent)}"
         
-        # Intentions supportées dynamiques
-        intentions_summary = self._get_dynamic_intents_summary()
+        # Intentions supportées dynamiques (version raccourcie pour économiser tokens)
+        intentions_summary = self._get_compact_intents_summary()
         
         prompt = f"""Analysez ce message utilisateur et classifiez l'intention financière Harena.
 
@@ -145,10 +200,10 @@ IMPORTANT: Répondez UNIQUEMENT avec un objet JSON strict, aucun autre texte.
 FORMAT JSON OBLIGATOIRE:
 {{"intent": "TYPE_INTENTION_EXACT", "confidence": 0.XX, "reasoning": "explication française"}}
 
-INTENTIONS HARENA DISPONIBLES:
+INTENTIONS PRINCIPALES:
 {intentions_summary}
 
-EXEMPLES DE RÉFÉRENCE:
+EXEMPLES RÉFÉRENCE:
 {examples_text}
 
 RÈGLES STRICTES:
@@ -168,8 +223,30 @@ JSON:"""
         
         return prompt
     
-    def _select_relevant_examples(self, user_message: str, max_examples: int = 15) -> List[Dict]:
-        """Sélection dynamique des exemples les plus pertinents"""
+    def _get_compact_intents_summary(self) -> str:
+        """Génération compacte résumé intentions (économie tokens)"""
+        summary_lines = []
+        
+        # Focus sur les catégories principales
+        priority_categories = ["FINANCIAL_QUERY", "SPENDING_ANALYSIS", "ACCOUNT_BALANCE", "UNSUPPORTED"]
+        
+        for category in priority_categories:
+            intents = INTENT_CATEGORIES.get(category, [])
+            if category == "UNSUPPORTED":
+                summary_lines.append(f"{category}: TRANSFER_REQUEST, PAYMENT_REQUEST, CARD_BLOCK, BUDGET_INQUIRY")
+            else:
+                # Limiter à 3 intentions principales par catégorie
+                key_intents = [intent.value for intent in intents[:3]]
+                summary_lines.append(f"{category}: {', '.join(key_intents)}")
+        
+        # Autres intentions importantes
+        summary_lines.append("CONVERSATIONAL: GREETING, CONFIRMATION")
+        summary_lines.append("AMBIGUËS: UNCLEAR_INTENT, UNKNOWN, OUT_OF_SCOPE")
+        
+        return "\n".join(summary_lines)
+    
+    def _select_relevant_examples(self, user_message: str, max_examples: int = 12) -> List[Dict]:
+        """Sélection dynamique des exemples les plus pertinents (réduit pour économiser tokens)"""
         
         message_lower = user_message.lower()
         relevant_examples = []
@@ -194,7 +271,7 @@ JSON:"""
         
         # Conversion au format requis
         selected = []
-        for item in relevant_examples[:max_examples]:
+        for item in relevant_examples[:max_examples]:  # Réduit de 15 à 12
             ex = item['example']
             selected.append({
                 'input': ex.input,
@@ -204,38 +281,31 @@ JSON:"""
         
         return selected
     
-    def _get_dynamic_intents_summary(self) -> str:
-        """Génération dynamique résumé intentions par catégorie"""
-        summary_lines = []
-        
-        for category, intents in INTENT_CATEGORIES.items():
-            if category == "UNSUPPORTED":
-                summary_lines.append(f"\n{category} (utilisez type exact):")
-            else:
-                summary_lines.append(f"\n{category}:")
-            
-            # Limiter à 4 intentions par catégorie pour éviter prompt trop long
-            for intent in intents[:4]:
-                desc = INTENT_DESCRIPTIONS.get(intent, "")[:60]  # Troncature description
-                summary_lines.append(f"  • {intent.value}: {desc}")
-            
-            if len(intents) > 4:
-                summary_lines.append(f"  • ... et {len(intents)-4} autres")
-        
-        return "\n".join(summary_lines)
-    
-    def _parse_json_response(
+    def _parse_json_response_with_validation(
         self, 
         response: Dict[str, Any], 
         original_message: str
-    ) -> IntentClassificationResult:
-        """Parsing JSON direct - Plus de regex grâce à JSON Output forcé"""
+    ) -> Optional[IntentClassificationResult]:
+        """Parsing JSON avec validation renforcée et nettoyage"""
         
         try:
             content = response["choices"][0]["message"]["content"].strip()
             
-            # JSON parsing direct - Plus besoin de regex
+            # Nettoyage préalable du JSON (supprime markdown potentiel)
+            content = self._clean_json_content(content)
+            
+            # Validation que c'est bien du JSON valide
+            if not self._is_valid_json_format(content):
+                logger.warning(f"Format JSON invalide détecté: {content[:100]}")
+                return None
+            
+            # JSON parsing direct
             parsed_data = json.loads(content)
+            
+            # Validation structure minimale requise
+            if not self._validate_json_structure(parsed_data):
+                logger.warning("Structure JSON incomplète")
+                return None
 
             # Extraction et validation des champs
             intent_type = self._validate_and_extract_intent(parsed_data.get("intent", "").strip())
@@ -262,14 +332,44 @@ JSON:"""
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"JSON invalide malgré JSON Output forcé: {content[:100]}...")
-            return self._create_error_intent_result(f"JSON parsing error: {str(e)}")
+            logger.warning(f"JSON invalide malgré JSON Output forcé: {content[:200] if 'content' in locals() else 'N/A'}... Erreur: {str(e)}")
+            raise  # Re-raise pour retry
         except KeyError as e:
-            logger.error(f"Champ manquant dans réponse JSON: {str(e)}")
-            return self._create_error_intent_result(f"Missing field: {str(e)}")
+            logger.warning(f"Champ manquant dans réponse JSON: {str(e)}")
+            return None
         except Exception as e:
-            logger.error(f"Erreur parsing réponse DeepSeek: {str(e)}")
-            return self._create_error_intent_result(f"Response parsing error: {str(e)}")
+            logger.warning(f"Erreur parsing réponse DeepSeek: {str(e)}")
+            return None
+    
+    def _clean_json_content(self, content: str) -> str:
+        """Nettoyage du contenu JSON pour éliminer les artefacts"""
+        # Supprime les blocs markdown potentiels
+        content = content.replace("```json", "").replace("```", "")
+        
+        # Supprime les espaces en début/fin
+        content = content.strip()
+        
+        # Trouve le premier { et le dernier }
+        start_idx = content.find('{')
+        end_idx = content.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+            content = content[start_idx:end_idx + 1]
+        
+        return content
+    
+    def _is_valid_json_format(self, content: str) -> bool:
+        """Validation basique format JSON"""
+        if not content:
+            return False
+        
+        content = content.strip()
+        return content.startswith('{') and content.endswith('}')
+    
+    def _validate_json_structure(self, parsed_data: Dict) -> bool:
+        """Validation structure JSON minimale"""
+        required_fields = ["intent", "confidence"]
+        return all(field in parsed_data for field in required_fields)
     
     def _validate_and_extract_intent(self, intent_str: str) -> str:
         """Validation et normalisation type intention"""

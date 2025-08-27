@@ -356,7 +356,7 @@ def create_app():
             # Ensuite charger les routes
             try:
                 from conversation_service.api.routes.conversation import router as conversation_router
-                app.include_router(conversation_router, prefix="/api/v1/conversation")
+                app.include_router(conversation_router, prefix="/api/v1")
                 routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
 
                 if conversation_init_success:
@@ -367,7 +367,7 @@ def create_app():
                     loader.services_status["conversation_service"].update({
                         "status": "ok",
                         "routes": routes_count,
-                        "prefix": "/api/v1/conversation",
+                        "prefix": "/api/v1",
                         "initialized": True,
                         "architecture": "llm_intent_agent",
                         "model": "gpt-4o-mini",
@@ -383,7 +383,7 @@ def create_app():
                     loader.services_status["conversation_service"].update({
                         "status": "degraded",
                         "routes": routes_count,
-                        "prefix": "/api/v1/conversation",
+                        "prefix": "/api/v1",
                         "initialized": False,
                         "error": loader.conversation_service_error,
                         "architecture": "llm_intent_agent",

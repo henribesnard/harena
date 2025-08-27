@@ -197,11 +197,11 @@ la réponse standardisée. Chaque modèle inclut un exemple complet de payload v
 
 ## Authentication
 
-Most endpoints, including `/conversation/chat`, require an OAuth2 Bearer token.
-Clients must authenticate against `/users/auth/login` and include the returned
-`access_token` in an `Authorization: Bearer <token>` header on their first
-request. The test clients in this repository obtain a token during
-initialization so that every call is properly authenticated.
+Most endpoints, including `POST /api/v1/conversation/{user_id}`, require an
+OAuth2 Bearer token. Clients must authenticate against `/users/auth/login` and
+include the returned `access_token` in an `Authorization: Bearer <token>`
+header on their first request. The test clients in this repository obtain a
+token during initialization so that every call is properly authenticated.
 
 ## Environment Variables
 
@@ -227,9 +227,9 @@ setting an environment variable.
 
 ## `metadata.workflow_data`
 
-The conversation API (`/conversation/chat`) includes a `metadata` object in its
-response. A nested `workflow_data` dictionary exposes details collected during
-the multi‑agent workflow:
+The conversation API (`POST /api/v1/conversation/{user_id}`) includes a
+`metadata` object in its response. A nested `workflow_data` dictionary exposes
+details collected during the multi‑agent workflow:
 
 | Key | Type | Description |
 | --- | --- | --- |

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from fastapi import Request, HTTPException, Depends
 from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
+from conversation_service.core.runtime import ConversationServiceRuntime
 from conversation_service.api.middleware.auth_middleware import get_current_user_id, verify_user_id_match
 from conversation_service.utils.metrics_collector import metrics_collector
 
@@ -1056,15 +1057,24 @@ def get_detailed_service_health() -> Dict[str, Any]:
     """Statut de santé détaillé de tous les services"""
     return health_checker.get_overall_health()
 
+
+def get_conversation_runtime(request: Request) -> ConversationServiceRuntime:
+    """Retrieve ConversationServiceRuntime from the FastAPI application."""
+    runtime = getattr(request.app.state, "conversation_runtime", None)
+    if runtime is None:
+        raise HTTPException(status_code=503, detail="Conversation runtime not initialised")
+    return runtime
+
 # Export des principales dépendances
 __all__ = [
     'get_deepseek_client',
-    'get_cache_manager', 
+    'get_cache_manager',
     'get_conversation_service_status',
     'validate_path_user_id',
     'get_user_context',
     'rate_limit_dependency',
     'with_rate_limit',
     'get_dependency_health_status',
-    'get_detailed_service_health'
+    'get_detailed_service_health',
+    'get_conversation_runtime'
 ]

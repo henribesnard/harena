@@ -20,6 +20,7 @@ if str(current_dir) not in sys.path:
 # Imports conversation service
 from conversation_service.clients.deepseek_client import DeepSeekClient, DeepSeekError
 from conversation_service.core.cache_manager import CacheManager
+from conversation_service.core.runtime import ConversationServiceRuntime
 from conversation_service.api.routes.conversation import router as conversation_router
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 from conversation_service.utils.metrics_collector import metrics_collector
@@ -42,6 +43,7 @@ class ConversationServiceLoader:
     def __init__(self):
         self.deepseek_client: DeepSeekClient = None
         self.cache_manager: CacheManager = None
+        self.runtime: ConversationServiceRuntime = ConversationServiceRuntime()
         self.service_healthy = False
         self.initialization_error = None
         self.service_start_time = datetime.now(timezone.utc)
@@ -85,6 +87,9 @@ class ConversationServiceLoader:
             clients_success = await self._initialize_external_clients_with_retry()
             if not clients_success:
                 return False
+
+            # Initialise runtime components
+            await self.runtime.initialize()
             
             # Validation JSON Output fonctionnelle
             json_validation = await self._validate_json_output_functionality()
@@ -264,7 +269,11 @@ class ConversationServiceLoader:
             except Exception as e:
                 logger.warning(f"⚠️ Cache Redis non disponible: {str(e)}")
                 self.cache_manager = None
-            
+
+            # Inject clients into runtime for later use
+            self.runtime.deepseek_client = self.deepseek_client
+            self.runtime.cache_manager = self.cache_manager
+
             return True
             
         except Exception as e:
@@ -457,6 +466,7 @@ class ConversationServiceLoader:
         app.state.conversation_service = self
         app.state.deepseek_client = self.deepseek_client
         app.state.cache_manager = self.cache_manager
+        app.state.conversation_runtime = self.runtime
         
         # Configuration service
         app.state.service_config = self.service_config
@@ -641,14 +651,17 @@ class ConversationServiceLoader:
                 logger.info(f"📊 Requêtes totales: {final_metrics.get('counters', {}).get('conversation.requests.total', 0)}")
                 logger.info(f"📊 Taux succès: {100 - (final_metrics.get('counters', {}).get('conversation.errors.technical', 0) / max(final_metrics.get('counters', {}).get('conversation.requests.total', 1), 1) * 100):.1f}%")
             
-            # Fermeture clients
-            if self.deepseek_client:
-                await self.deepseek_client.close()
-                logger.info("🤖 DeepSeek client fermé")
-            
-            if self.cache_manager:
-                await self.cache_manager.close()
-                logger.info("💾 Cache manager fermé")
+            # Fermeture via runtime si disponible
+            if hasattr(self, "runtime") and self.runtime:
+                await self.runtime.shutdown()
+            else:
+                if self.deepseek_client:
+                    await self.deepseek_client.close()
+                    logger.info("🤖 DeepSeek client fermé")
+
+                if self.cache_manager:
+                    await self.cache_manager.close()
+                    logger.info("💾 Cache manager fermé")
             
             cleanup_time = (datetime.now(timezone.utc) - cleanup_start).total_seconds()
             logger.info(f"✅ Nettoyage terminé en {cleanup_time:.2f}s")

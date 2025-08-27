@@ -98,9 +98,26 @@ class AdvancedMetricsCollector:
         logger.info(f"AdvancedMetricsCollector initialisé - Histoire: {max_history}, Agrégation: {aggregation_interval}s")
     
     def set_global_labels(self, labels: Dict[str, str]) -> None:
-        """Définit des labels globaux pour toutes les métriques"""
+        """Définit des labels globaux pour toutes les métriques.
+
+        Ajoute automatiquement la version du service si elle n'est pas
+        fournie, en la récupérant depuis la configuration quand c'est
+        possible. Fallback sur "1.1.0" si aucune configuration disponible.
+        """
+        try:
+            if "version" not in labels:
+                from config_service.config import settings  # type: ignore
+                labels["version"] = getattr(
+                    settings,
+                    "CONVERSATION_SERVICE_VERSION",
+                    getattr(settings, "APP_VERSION", "1.1.0"),
+                )
+        except Exception:
+            labels.setdefault("version", "1.1.0")
+
         with self._lock:
             self._global_labels.update(labels)
+
         logger.info(f"Labels globaux mis à jour: {labels}")
     
     def increment_counter(
@@ -656,14 +673,28 @@ metrics_collector = AdvancedMetricsCollector(
 # Configuration labels globaux si disponible
 try:
     from config_service.config import settings
-    environment = getattr(settings, 'ENVIRONMENT', 'production')
-    metrics_collector.set_global_labels({
-        "service": "conversation_service",
-        "version": "1.0.0",
-        "phase": "1",
-        "environment": environment
-    })
-except ImportError:
+    environment = getattr(settings, "ENVIRONMENT", "production")
+    service_version = getattr(
+        settings,
+        "CONVERSATION_SERVICE_VERSION",
+        getattr(settings, "APP_VERSION", "1.1.0"),
+    )
+    metrics_collector.set_global_labels(
+        {
+            "service": "conversation_service",
+            "phase": "1",
+            "environment": environment,
+            "version": service_version,
+        }
+    )
+except Exception:
+    metrics_collector.set_global_labels(
+        {
+            "service": "conversation_service",
+            "phase": "1",
+            "version": "1.1.0",
+        }
+    )
     logger.warning("Configuration non disponible pour labels globaux")
 
 logger.info("MetricsCollector global initialisé et configuré")

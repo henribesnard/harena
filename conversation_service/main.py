@@ -491,7 +491,7 @@ class ConversationServiceLoader:
         except RuntimeError as e:
             if "Cannot add middleware after an application has started" in str(e):
                 can_add_middleware = False
-                logger.warning("⚠️ Application déjà démarrée - skip middleware (mode intégration)")
+                logger.info("ℹ️ Application déjà démarrée - middleware géré par l'app parent (mode intégration)")
             else:
                 raise e
         

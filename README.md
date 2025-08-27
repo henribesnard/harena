@@ -17,6 +17,12 @@ conversation_service/
     message_repository.py
 ```
 
+## Phase 2 - Workflow d'équipe
+
+La Phase 2 introduit un mode collaboratif AutoGen où plusieurs agents
+coordonnent leurs actions pour répondre à une requête. Les échanges et le temps
+total de collaboration sont suivis via le `metrics_collector`.
+
 ## Configuration
 
 Définissez la variable d'environnement `SECRET_KEY`, utilisée pour la
@@ -54,6 +60,14 @@ Les tests peuvent ensuite être exécutés avec `pytest` :
 
 ```bash
 pytest
+```
+
+### Tests AutoGen
+
+Les scénarios spécifiques à l'équipe AutoGen se lancent avec :
+
+```bash
+pytest tests/autogen
 ```
 
 ### JWT compatibility check

@@ -77,6 +77,9 @@ class AdvancedMetricsCollector:
         self._histograms: Dict[str, deque] = defaultdict(lambda: deque(maxlen=max_history))
         self._rates: Dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))  # Dernière heure
         self._timers: Dict[str, List[float]] = defaultdict(list)
+        self._team_collaborations: Dict[str, int] = defaultdict(int)
+        self._team_times: Dict[str, float] = defaultdict(float)
+        self._team_sessions: Dict[str, float] = {}
         
         # Cache des statistiques calculées
         self._histogram_cache: Dict[str, HistogramStats] = {}
@@ -234,8 +237,45 @@ class AdvancedMetricsCollector:
             duration = time.time() - start_time
             self.record_histogram(f"{metric_name}.duration", duration * 1000, labels)  # en ms
             return duration
-        
+
         return stop_timer
+
+    # --- Team collaboration metrics -------------------------------------------------
+    def start_team_session(self, team: str) -> None:
+        """Démarre une session de collaboration pour une équipe."""
+        with self._lock:
+            self._team_sessions[team] = time.time()
+
+    def end_team_session(self, team: str) -> float:
+        """Termine une session de collaboration et enregistre sa durée."""
+        with self._lock:
+            start = self._team_sessions.pop(team, None)
+        if start is None:
+            return 0.0
+        duration = time.time() - start
+        labels = {"team": team}
+        self.increment_counter("team.collaborations", labels=labels)
+        self.record_histogram("team.time", duration, labels=labels)
+        with self._lock:
+            self._team_collaborations[team] += 1
+            self._team_times[team] += duration
+        return duration
+
+    def get_team_metrics(self, team: Optional[str] = None) -> Dict[str, Any]:
+        """Retourne les métriques de collaboration d'équipe."""
+        with self._lock:
+            if team:
+                return {
+                    "collaborations": self._team_collaborations.get(team, 0),
+                    "total_time": self._team_times.get(team, 0.0),
+                }
+            return {
+                t: {
+                    "collaborations": self._team_collaborations.get(t, 0),
+                    "total_time": self._team_times.get(t, 0.0),
+                }
+                for t in set(self._team_collaborations) | set(self._team_times)
+            }
     
     def _create_metric_key(self, metric_name: str, labels: Optional[Dict[str, str]]) -> str:
         """Crée une clé unique pour la métrique avec labels"""
@@ -682,7 +722,7 @@ try:
     metrics_collector.set_global_labels(
         {
             "service": "conversation_service",
-            "phase": "1",
+            "phase": "2",
             "environment": environment,
             "version": service_version,
         }
@@ -691,7 +731,7 @@ except Exception:
     metrics_collector.set_global_labels(
         {
             "service": "conversation_service",
-            "phase": "1",
+            "phase": "2",
             "version": "1.1.0",
         }
     )

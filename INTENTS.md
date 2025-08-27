@@ -2,6 +2,14 @@
 
 This document lists all intents recognized by Harena's MVP and their associated categories and suggested actions.
 
+## Phase 2 - Team Workflow
+
+Phase 2 introduit une collaboration entre agents AutoGen. Les requêtes sont
+traitées par une équipe d'agents spécialisés qui partagent le contexte et
+séquencent leurs actions pour produire une réponse finale cohérente. Les
+interactions et le temps total de collaboration sont suivis via le collecteur de
+métriques afin d'améliorer en continu le workflow d'équipe.
+
 ## 1. Transactions
 
 | Intent Type | Category | Description | Suggested actions |

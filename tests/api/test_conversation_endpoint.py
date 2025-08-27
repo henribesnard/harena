@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from jose import jwt
+from conversation_service.models.responses.conversation_responses import IntentClassificationResult
+from conversation_service.prompts.harena_intents import HarenaIntentType
 
 # ---------------------------------------------------------------------------
 # Environment configuration for tests

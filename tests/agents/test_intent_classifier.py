@@ -220,7 +220,7 @@ class TestIntentClassifierAgent:
         mock_deepseek_client.chat_completion.return_value = {
             "choices": [{
                 "message": {
-                    "content": '{"intent": "BALANCE_INQUIRY", "confidence": 0.9'  # JSON invalide
+                    "content": '{"intent": "BALANCE_INQUIRY", "confidence": 0.9,}'  # JSON invalide
                 }
             }]
         }
@@ -232,6 +232,33 @@ class TestIntentClassifierAgent:
 
         assert result.intent_type == HarenaIntentType.ERROR
         assert "JSON parsing error" in result.reasoning
+
+    @pytest.mark.asyncio
+    async def test_classify_intent_json_parse_error_retry_message(self, agent, mock_deepseek_client):
+        """Le message d'erreur JSON parsing est retourné après retries"""
+
+        mock_deepseek_client.chat_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"intent": "BALANCE_INQUIRY", "confidence": 0.9,}'  # JSON invalide
+                    }
+                }
+            ]
+        }
+
+        with patch(
+            "conversation_service.agents.financial.intent_classifier.validate_intent_response",
+            AsyncMock(return_value=True),
+        ):
+            result = await agent.classify_intent("Mon solde")
+
+        assert result.intent_type == HarenaIntentType.ERROR
+        assert result.reasoning == "Erreur technique: JSON parsing error"
+        assert (
+            mock_deepseek_client.chat_completion.call_count
+            == agent.max_retry_attempts
+        )
 
     @pytest.mark.asyncio
     async def test_classify_intent_invalid_intent_type(self, agent, mock_deepseek_client):

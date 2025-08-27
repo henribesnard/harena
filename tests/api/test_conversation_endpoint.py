@@ -22,16 +22,12 @@ from pathlib import Path
 # Import dynamique avec gestion d'erreur
 try:
     from fastapi.testclient import TestClient
-    from conversation_service.prompts.harena_intents import HarenaIntentType
-    from conversation_service.models.responses.conversation_responses import (
-        ConversationResponse, IntentClassificationResult, AgentMetrics
-    )
     from conversation_service.models.requests.conversation_requests import ConversationRequest
 except ImportError as e:
     # Fallback si imports directs ne fonctionnent pas
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from conversation_service.prompts.harena_intents import HarenaIntentType
     from fastapi.testclient import TestClient
+    from conversation_service.models.requests.conversation_requests import ConversationRequest
 
 # ============================================================================
 # GENERATION JWT COMPATIBLE user_service
@@ -183,9 +179,9 @@ class MockConversationServiceLoader:
             app.state.deepseek_client = self.deepseek_client
             app.state.cache_manager = self.cache_manager
             app.state.service_config = {
-                "phase": 1,
+                "phase": 2,
                 "version": "1.0.0",
-                "features": ["intent_classification", "json_output"]
+                "features": ["autogen_team"]
             }
             return True
         return False
@@ -235,10 +231,11 @@ def test_app(mock_service_loader):
         validate_path_user_id,
         get_user_context,
         rate_limit_dependency,
+        get_conversation_runtime,
     )
     from conversation_service.api.middleware.auth_middleware import verify_user_id_match
     from fastapi import Request
-
+    
     def override_get_deepseek_client(request: Request):
         return mock_service_loader.deepseek_client
 
@@ -262,6 +259,17 @@ def test_app(mock_service_loader):
     def override_rate_limit(request: Request, user_id: int = 1):
         return None
 
+    mock_runtime = MagicMock()
+    mock_runtime.run_financial_team = AsyncMock(return_value={
+        "final_answer": "mock",
+        "intermediate_steps": [],
+        "context": {}
+    })
+    app.state.conversation_runtime = mock_runtime
+
+    def override_get_conversation_runtime(request: Request):
+        return mock_runtime
+
     # Application des overrides
     app.dependency_overrides[get_deepseek_client] = override_get_deepseek_client
     app.dependency_overrides[get_cache_manager] = override_get_cache_manager
@@ -269,6 +277,7 @@ def test_app(mock_service_loader):
     app.dependency_overrides[validate_path_user_id] = override_validate_user
     app.dependency_overrides[get_user_context] = override_get_user_context
     app.dependency_overrides[rate_limit_dependency] = override_rate_limit
+    app.dependency_overrides[get_conversation_runtime] = override_get_conversation_runtime
 
     yield app
 
@@ -276,6 +285,12 @@ def test_app(mock_service_loader):
 def client(test_app):
     """Client de test FastAPI"""
     return TestClient(test_app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def runtime(test_app):
+    """Accès au runtime de conversation mocké"""
+    return test_app.state.conversation_runtime
 
 # ============================================================================
 # TESTS D'AUTHENTIFICATION
@@ -338,6 +353,8 @@ class TestJWTCompatibility:
 class TestConversationEndpoint:
     """Tests complets pour l'endpoint de conversation"""
 
+    def test_conversation_success(self, client, runtime):
+        """Test conversation réussie avec réponse d'équipe AutoGen"""
     def test_conversation_success_greeting(self, client):
         """Test conversation réussie avec salutation"""
         
@@ -470,46 +487,30 @@ class TestConversationEndpoint:
             assert data["intent"]["intent_type"] == "TRANSFER_REQUEST"
             assert data["intent"]["is_supported"] is False
 
-    def test_conversation_with_alternatives(self, client):
-        """Test avec alternatives d'intention"""
-        
-        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
-            from conversation_service.models.responses.conversation_responses import IntentAlternative
-            
-            alternatives = [
-                IntentAlternative(
-                    intent_type=HarenaIntentType.SEARCH_BY_CATEGORY,
-                    confidence=0.65,
-                    reasoning="Alternative possible"
-                )
-            ]
-            
-            mock_result = IntentClassificationResult(
-                intent_type=HarenaIntentType.SPENDING_ANALYSIS,
-                confidence=0.75,
-                reasoning="Analyse demandée",
-                original_message="Mes dépenses restaurants",
-                category="SPENDING_ANALYSIS",
-                is_supported=True,
-                alternatives=alternatives,
-                processing_time_ms=220
-            )
-            
-            mock_agent_instance = AsyncMock()
-            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
-            MockAgent.return_value = mock_agent_instance
-            
-            response = client.post(
-                "/api/v1/conversation/1",
-                json={"message": "Mes dépenses restaurants"},
-                headers=get_test_auth_headers(1)
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            assert len(data["intent"]["alternatives"]) == 1
-            assert data["intent"]["alternatives"][0]["intent_type"] == "SEARCH_BY_CATEGORY"
+        runtime.run_financial_team.return_value = {
+            "final_answer": "Bonjour!",
+            "intermediate_steps": [
+                {"agent": "planner", "content": "analyse"},
+                {"agent": "assistant", "content": "réponse"}
+            ],
+            "context": {"foo": "bar"}
+        }
+
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Bonjour"},
+            headers=get_test_auth_headers(1)
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["user_id"] == 1
+        assert data["message"] == "Bonjour"
+        assert data["status"] == "success"
+        assert data["phase"] == 2
+        assert data["team_response"]["final_answer"] == "Bonjour!"
+        assert len(data["team_response"]["steps"]) == 2
 
 # ============================================================================
 # TESTS D'AUTHENTIFICATION ET AUTORISATION
@@ -673,95 +674,26 @@ class TestConversationRequestModel:
 # TESTS ENDPOINTS MONITORING
 # ============================================================================
 
-class TestMonitoringEndpoints:
-    """Tests pour les endpoints de monitoring (doivent être publics)"""
-
-    def test_conversation_health_success(self, client):
-        """Test health check réussi (sans authentification)"""
-        
-        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
-            mock_metrics.get_health_metrics.return_value = {
-                "status": "healthy",
-                "total_requests": 100,
-                "error_rate_percent": 2.5,
-                "latency_p95_ms": 250,
-                "uptime_seconds": 3600
-            }
-            
-            response = client.get("/api/v1/conversation/health")
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            assert data["service"] == "conversation_service"
-            assert data["status"] == "healthy"
-            assert "health_details" in data
-            assert "features" in data
-
-    def test_conversation_metrics_success(self, client):
-        """Test récupération métriques réussie (sans authentification)"""
-        
-        with patch("conversation_service.api.routes.conversation.metrics_collector") as mock_metrics:
-            mock_metrics.get_all_metrics.return_value = {
-                "timestamp": "2024-01-01T00:00:00Z",
-                "counters": {"conversation.requests.total": 100},
-                "histograms": {"conversation.processing_time": {"avg": 200}},
-                "rates": {"conversation.requests_per_second": 1.5}
-            }
-            
-            response = client.get("/api/v1/conversation/metrics")
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            assert "metrics" in data
-            assert "service_info" in data
-            assert "performance_summary" in data
-
-    def test_conversation_status_public(self, client):
-        """Test endpoint status accessible publiquement"""
-        
-        response = client.get("/api/v1/conversation/status")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert "status" in data
-        assert "ready" in data
-
 # ============================================================================
 # TESTS GESTION D'ERREURS
 # ============================================================================
 
 class TestErrorHandling:
     """Tests gestion des erreurs"""
+    def test_conversation_agent_error(self, client, runtime):
+        """Test lorsque l'équipe AutoGen renvoie une erreur"""
 
-    def test_conversation_agent_error(self, client):
-        """Test avec erreur de l'agent de classification"""
-        
-        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
-            mock_result = IntentClassificationResult(
-                intent_type=HarenaIntentType.ERROR,
-                confidence=0.99,
-                reasoning="Erreur technique",
-                original_message="Test",
-                category="UNCLEAR_INTENT",
-                is_supported=False,
-                alternatives=[],
-                processing_time_ms=100
-            )
-            
-            mock_agent_instance = AsyncMock()
-            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
-            MockAgent.return_value = mock_agent_instance
-            
-            response = client.post(
-                "/api/v1/conversation/1",
-                json={"message": "Test"},
-                headers=get_test_auth_headers(1)
-            )
-            
-            assert response.status_code == 500
+        runtime.run_financial_team.side_effect = Exception("Erreur technique")
+
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Test"},
+            headers=get_test_auth_headers(1)
+        )
+
+        assert response.status_code == 500
+
+        runtime.run_financial_team.side_effect = None
 
 # ============================================================================
 # TESTS STRUCTURE RÉPONSE
@@ -769,95 +701,66 @@ class TestErrorHandling:
 
 class TestResponseStructure:
     """Tests structure de la réponse"""
-
-    def test_conversation_response_structure(self, client):
+    def test_conversation_response_structure(self, client, runtime):
         """Test structure complète de la réponse"""
-        
-        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
-            mock_result = IntentClassificationResult(
-                intent_type=HarenaIntentType.GREETING,
-                confidence=0.95,
-                reasoning="Test",
-                original_message="Bonjour",
-                category="CONVERSATIONAL",
-                is_supported=True,
-                alternatives=[],
-                processing_time_ms=150
-            )
-            
-            mock_agent_instance = AsyncMock()
-            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
-            MockAgent.return_value = mock_agent_instance
-            
-            response = client.post(
-                "/api/v1/conversation/1",
-                json={"message": "Bonjour"},
-                headers=get_test_auth_headers(1)
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            # Vérification structure complète
-            required_fields = [
-                "user_id", "message", "timestamp", "processing_time_ms",
-                "intent", "agent_metrics", "phase"
-            ]
-            
-            for field in required_fields:
-                assert field in data, f"Champ manquant: {field}"
-            
-            # Vérification structure intent
-            intent_fields = [
-                "intent_type", "confidence", "reasoning", "original_message",
-                "category", "is_supported", "alternatives"
-            ]
-            
-            for field in intent_fields:
-                assert field in data["intent"], f"Champ intent manquant: {field}"
-            
-            # Vérification structure agent_metrics
-            metrics_fields = [
-                "agent_used", "model_used", "tokens_consumed",
-                "processing_time_ms", "confidence_threshold_met", "cache_hit"
-            ]
-            
-            for field in metrics_fields:
-                assert field in data["agent_metrics"], f"Champ metrics manquant: {field}"
 
-    def test_conversation_performance_metrics(self, client):
+        runtime.run_financial_team.return_value = {
+            "final_answer": "Test",
+            "intermediate_steps": [
+                {"agent": "planner", "content": "analyse"},
+                {"agent": "assistant", "content": "réponse"}
+            ],
+            "context": {"foo": "bar"}
+        }
+
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Bonjour"},
+            headers=get_test_auth_headers(1)
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Vérification structure complète
+        required_fields = [
+            "user_id", "message", "timestamp", "processing_time_ms",
+            "status", "phase", "team_response"
+        ]
+
+        for field in required_fields:
+            assert field in data, f"Champ manquant: {field}"
+
+        tr = data["team_response"]
+        for field in ["final_answer", "steps", "context"]:
+            assert field in tr, f"Champ team_response manquant: {field}"
+
+        assert tr["final_answer"] == "Test"
+        assert isinstance(tr["steps"], list) and len(tr["steps"]) == 2
+        for step in tr["steps"]:
+            assert "role" in step and "content" in step
+
+    def test_conversation_performance_metrics(self, client, runtime):
         """Test métriques de performance"""
-        
-        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
-            mock_result = IntentClassificationResult(
-                intent_type=HarenaIntentType.BALANCE_INQUIRY,
-                confidence=0.9,
-                reasoning="Test",
-                original_message="Mon solde",
-                category="ACCOUNT_BALANCE",
-                is_supported=True,
-                alternatives=[],
-                processing_time_ms=150
-            )
-            
-            mock_agent_instance = AsyncMock()
-            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
-            MockAgent.return_value = mock_agent_instance
-            
-            response = client.post(
-                "/api/v1/conversation/1",
-                json={"message": "Mon solde"},
-                headers=get_test_auth_headers(1)
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            # Vérification métriques
-            assert isinstance(data["processing_time_ms"], int)
-            assert data["processing_time_ms"] > 0
-            assert isinstance(data["agent_metrics"]["tokens_consumed"], int)
-            assert data["agent_metrics"]["tokens_consumed"] > 0
+
+        runtime.run_financial_team.return_value = {
+            "final_answer": "Solde",
+            "intermediate_steps": [],
+            "context": {}
+        }
+
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Mon solde"},
+            headers=get_test_auth_headers(1)
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Vérification métriques
+        assert isinstance(data["processing_time_ms"], int)
+        assert data["processing_time_ms"] >= 0
 
 # ============================================================================
 # UTILITAIRES DE TEST

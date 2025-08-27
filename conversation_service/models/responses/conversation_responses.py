@@ -533,6 +533,37 @@ class ConversationResponse(BaseModel):
             "cache_hit": self.agent_metrics.cache_hit
         }
 
+# ===========================================================================
+# AutoGen Phase 2 structures
+# ===========================================================================
+
+
+class AutoGenMessage(BaseModel):
+    """Basic message returned by an AutoGen agent."""
+    role: str
+    content: str
+    name: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class AutoGenTeamResponse(BaseModel):
+    """Container for the AutoGen team output."""
+    final_answer: str
+    steps: List[AutoGenMessage] = []
+    context: Dict[str, Any] = {}
+
+
+class ConversationResponsePhase2AutoGen(BaseModel):
+    """Response schema used for the Phase 2 AutoGen workflow."""
+    user_id: int
+    message: str
+    timestamp: datetime
+    request_id: Optional[str] = None
+    processing_time_ms: int
+    status: ProcessingStatus = ProcessingStatus.SUCCESS
+    phase: int = 2
+    team_response: AutoGenTeamResponse
+
 
 # Types d'union pour flexibilité
 ResponseData = Union[IntentClassificationResult, Dict[str, Any]]

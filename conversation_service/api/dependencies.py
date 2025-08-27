@@ -1,10 +1,12 @@
 """
 Dépendances FastAPI optimisées pour conversation service - Version compatible JWT
+Health check avec correction de l'erreur await et dégradation gracieuse
 """
 import logging
 import time
 import asyncio
-from typing import Optional, Dict, Any, Callable
+import inspect
+from typing import Optional, Dict, Any, Callable, Literal
 from functools import wraps
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,92 +21,281 @@ logger = logging.getLogger("conversation_service.dependencies")
 
 @dataclass
 class ServiceHealth:
-    """État de santé d'un service"""
+    """État de santé d'un service avec niveaux de dégradation"""
     service_name: str
-    healthy: bool
+    status: Literal["healthy", "degraded", "critical", "unknown"]
     last_check: datetime
     error_message: Optional[str] = None
     response_time_ms: Optional[float] = None
+    consecutive_failures: int = 0
+    last_success: Optional[datetime] = None
 
-class ServiceHealthChecker:
-    """Vérificateur de santé des services avec cache optimisé"""
+class AdvancedServiceHealthChecker:
+    """
+    Vérificateur de santé des services avec dégradation gracieuse
     
-    def __init__(self, cache_ttl: int = 30):
+    Évite les blocages de service complet en cas de problème d'un composant.
+    Implémente une logique de santé à plusieurs niveaux.
+    Gère correctement les fonctions synchrones ET asynchrones.
+    """
+    
+    def __init__(self, cache_ttl: int = 600):  # 10 minutes par défaut
         self.cache_ttl = cache_ttl
         self._health_cache: Dict[str, ServiceHealth] = {}
+        self._failure_thresholds = {
+            "critical": 10,  # 10 échecs consécutifs = critique
+            "degraded": 3    # 3 échecs consécutifs = dégradé
+        }
         
-    async def check_service_health(self, service_name: str, health_func: Callable) -> ServiceHealth:
-        """Vérifie la santé d'un service avec cache intelligent"""
+    async def check_service_health(
+        self, 
+        service_name: str, 
+        health_func: Callable,
+        critical_service: bool = False
+    ) -> ServiceHealth:
+        """
+        Vérifie la santé d'un service avec logique de dégradation intelligente
         
-        # Vérifier le cache
+        Gère automatiquement les fonctions synchrones et asynchrones.
+        
+        Args:
+            service_name: Nom du service
+            health_func: Fonction de vérification santé (sync ou async)
+            critical_service: Si True, échec bloque le service complet
+        """
+        
+        # Vérifier le cache avec TTL adaptatif
         cached_health = self._health_cache.get(service_name)
         if cached_health:
             age = (datetime.now(timezone.utc) - cached_health.last_check).total_seconds()
-            if age < self.cache_ttl:
+            
+            # TTL adaptatif selon le statut
+            effective_ttl = self._get_adaptive_ttl(cached_health.status)
+            if age < effective_ttl:
+                logger.debug(f"Health cache hit pour {service_name}: {cached_health.status}")
                 return cached_health
         
-        # Nouvelle vérification avec timeout
+        # Nouvelle vérification avec timeout adaptatif
         start_time = time.time()
+        consecutive_failures = cached_health.consecutive_failures if cached_health else 0
+        last_success = cached_health.last_success if cached_health else None
+        
         try:
-            # Ajout timeout pour éviter les blocages
-            if asyncio.iscoroutinefunction(health_func):
-                is_healthy = await asyncio.wait_for(health_func(), timeout=5.0)
-            else:
-                is_healthy = health_func()
+            # Timeout adaptatif selon l'historique
+            timeout = self._get_adaptive_timeout(service_name, consecutive_failures)
+            
+            # Détection automatique sync/async avec gestion d'erreur robuste
+            try:
+                if inspect.iscoroutinefunction(health_func):
+                    # Fonction asynchrone
+                    logger.debug(f"Health check async pour {service_name}")
+                    is_healthy = await asyncio.wait_for(health_func(), timeout=timeout)
+                elif asyncio.iscoroutinefunction(health_func):
+                    # Double vérification pour asyncio.iscoroutinefunction
+                    logger.debug(f"Health check async (asyncio) pour {service_name}")
+                    is_healthy = await asyncio.wait_for(health_func(), timeout=timeout)
+                else:
+                    # Fonction synchrone
+                    logger.debug(f"Health check sync pour {service_name}")
+                    # Exécution synchrone avec timeout via thread pool
+                    is_healthy = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(None, health_func),
+                        timeout=timeout
+                    )
+                    
+            except Exception as detection_error:
+                # Fallback: essayer d'abord sync, puis async
+                logger.warning(f"Erreur détection type fonction pour {service_name}: {str(detection_error)}")
+                try:
+                    # Tentative synchrone
+                    is_healthy = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(None, health_func),
+                        timeout=timeout
+                    )
+                except Exception:
+                    # Tentative asynchrone
+                    is_healthy = await asyncio.wait_for(health_func(), timeout=timeout)
                 
             response_time = (time.time() - start_time) * 1000
             
-            health = ServiceHealth(
-                service_name=service_name,
-                healthy=bool(is_healthy),
-                last_check=datetime.now(timezone.utc),
-                response_time_ms=response_time
-            )
+            if is_healthy:
+                health = ServiceHealth(
+                    service_name=service_name,
+                    status="healthy",
+                    last_check=datetime.now(timezone.utc),
+                    response_time_ms=response_time,
+                    consecutive_failures=0,
+                    last_success=datetime.now(timezone.utc)
+                )
+                logger.debug(f"Health check OK pour {service_name} ({response_time:.1f}ms)")
+            else:
+                # Échec mais on détermine le niveau de sévérité
+                consecutive_failures += 1
+                status = self._determine_health_status(consecutive_failures, last_success)
+                
+                health = ServiceHealth(
+                    service_name=service_name,
+                    status=status,
+                    last_check=datetime.now(timezone.utc),
+                    error_message="Health check failed",
+                    response_time_ms=response_time,
+                    consecutive_failures=consecutive_failures,
+                    last_success=last_success
+                )
+                logger.warning(f"Health check échec pour {service_name}: {status}")
             
         except asyncio.TimeoutError:
             response_time = (time.time() - start_time) * 1000
+            consecutive_failures += 1
+            status = self._determine_health_status(consecutive_failures, last_success)
+            
             health = ServiceHealth(
                 service_name=service_name,
-                healthy=False,
+                status=status,
                 last_check=datetime.now(timezone.utc),
-                error_message="Timeout health check",
-                response_time_ms=response_time
+                error_message=f"Timeout health check ({timeout}s)",
+                response_time_ms=response_time,
+                consecutive_failures=consecutive_failures,
+                last_success=last_success
             )
+            logger.warning(f"Health check timeout pour {service_name}: {status}")
+            
         except Exception as e:
             response_time = (time.time() - start_time) * 1000
+            consecutive_failures += 1
+            status = self._determine_health_status(consecutive_failures, last_success)
+            
             health = ServiceHealth(
                 service_name=service_name,
-                healthy=False,
+                status=status,
                 last_check=datetime.now(timezone.utc),
-                error_message=str(e),
-                response_time_ms=response_time
+                error_message=f"Health check error: {str(e)}",
+                response_time_ms=response_time,
+                consecutive_failures=consecutive_failures,
+                last_success=last_success
             )
+            logger.warning(f"Health check erreur pour {service_name}: {status} - {str(e)}")
         
         # Mise en cache avec limitation de taille
-        if len(self._health_cache) > 10:
+        self._update_cache(health)
+        return health
+    
+    def _get_adaptive_ttl(self, status: str) -> int:
+        """TTL adaptatif selon le statut de santé"""
+        ttl_map = {
+            "healthy": self.cache_ttl,      # TTL complet si sain
+            "degraded": self.cache_ttl // 3, # TTL réduit si dégradé
+            "critical": self.cache_ttl // 6, # TTL très court si critique
+            "unknown": self.cache_ttl // 2   # TTL moyen si inconnu
+        }
+        return ttl_map.get(status, self.cache_ttl // 2)
+    
+    def _get_adaptive_timeout(self, service_name: str, consecutive_failures: int) -> float:
+        """Timeout adaptatif selon l'historique d'échecs"""
+        base_timeout = 10.0  # Base 10 secondes
+        
+        if consecutive_failures == 0:
+            return base_timeout
+        elif consecutive_failures <= 2:
+            return base_timeout * 1.5  # 15 secondes
+        elif consecutive_failures <= 5:
+            return base_timeout * 2.0  # 20 secondes
+        else:
+            return base_timeout * 2.5  # 25 secondes max
+    
+    def _determine_health_status(
+        self, 
+        consecutive_failures: int, 
+        last_success: Optional[datetime]
+    ) -> Literal["degraded", "critical", "unknown"]:
+        """Détermine le statut de santé selon l'historique"""
+        
+        if consecutive_failures >= self._failure_thresholds["critical"]:
+            return "critical"
+        elif consecutive_failures >= self._failure_thresholds["degraded"]:
+            return "degraded"
+        else:
+            # Si pas encore assez d'échecs mais pas de succès récent
+            if last_success:
+                time_since_success = (datetime.now(timezone.utc) - last_success).total_seconds()
+                if time_since_success > 3600:  # 1 heure
+                    return "degraded"
+            return "unknown"
+    
+    def _update_cache(self, health: ServiceHealth) -> None:
+        """Met à jour le cache avec limitation de taille"""
+        if len(self._health_cache) > 20:
             # Nettoyer les entrées les plus anciennes
             oldest_key = min(self._health_cache.keys(), 
                            key=lambda k: self._health_cache[k].last_check)
             del self._health_cache[oldest_key]
         
-        self._health_cache[service_name] = health
-        return health
+        self._health_cache[health.service_name] = health
+    
+    def get_overall_health(self) -> Dict[str, Any]:
+        """État de santé global de tous les services"""
+        if not self._health_cache:
+            return {"status": "unknown", "services": {}}
+        
+        services_status = {}
+        critical_count = 0
+        degraded_count = 0
+        healthy_count = 0
+        
+        for service_name, health in self._health_cache.items():
+            services_status[service_name] = {
+                "status": health.status,
+                "last_check": health.last_check.isoformat(),
+                "consecutive_failures": health.consecutive_failures,
+                "response_time_ms": health.response_time_ms
+            }
+            
+            if health.status == "critical":
+                critical_count += 1
+            elif health.status == "degraded":
+                degraded_count += 1
+            elif health.status == "healthy":
+                healthy_count += 1
+        
+        # Déterminer statut global
+        if critical_count > 0:
+            overall_status = "critical"
+        elif degraded_count > 0:
+            overall_status = "degraded"
+        elif healthy_count > 0:
+            overall_status = "healthy"
+        else:
+            overall_status = "unknown"
+        
+        return {
+            "status": overall_status,
+            "services": services_status,
+            "summary": {
+                "healthy": healthy_count,
+                "degraded": degraded_count,
+                "critical": critical_count,
+                "total": len(self._health_cache)
+            }
+        }
 
-# Instance globale du vérificateur
-health_checker = ServiceHealthChecker()
+# Instance globale du vérificateur amélioré
+health_checker = AdvancedServiceHealthChecker(cache_ttl=600)  # 10 minutes
 
 async def get_deepseek_client(request: Request) -> DeepSeekClient:
     """
-    Récupération client DeepSeek depuis app state avec validation renforcée
+    Récupération client DeepSeek depuis app state avec dégradation gracieuse
+    
+    N'interrompt JAMAIS le service pour un problème de health check.
+    Utilise une logique de dégradation intelligente.
     
     Args:
         request: Requête FastAPI
         
     Returns:
-        DeepSeekClient: Client DeepSeek opérationnel
+        DeepSeekClient: Client DeepSeek (potentiellement dégradé mais fonctionnel)
         
     Raises:
-        HTTPException: Si client non disponible ou défaillant
+        HTTPException: Seulement si client complètement indisponible
     """
     try:
         # Vérification présence dans app state
@@ -134,47 +325,76 @@ async def get_deepseek_client(request: Request) -> DeepSeekClient:
                 }
             )
         
-        # Vérification santé avec cache et timeout
+        # Vérification santé avec dégradation gracieuse
         try:
+            # Utilisation de la méthode synchrone health_check() pour éviter l'erreur await
             health = await health_checker.check_service_health(
                 "deepseek", 
-                deepseek_client.health_check
+                deepseek_client.health_check,  # Méthode synchrone
+                critical_service=False  # DeepSeek n'est pas critique pour le démarrage
             )
             
-            if not health.healthy:
-                metrics_collector.increment_counter("dependencies.errors.deepseek_unhealthy")
-                logger.warning(f"DeepSeek client non opérationnel: {health.error_message}")
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "error": "Service DeepSeek en maintenance",
-                        "service": "deepseek",
-                        "health_check_failed": True,
-                        "error_details": health.error_message,
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    }
+            # Logique de dégradation au lieu de blocage complet
+            if health.status == "critical":
+                # Même en critique, on essaie de continuer avec warnings
+                logger.error(
+                    f"DeepSeek en état critique ({health.consecutive_failures} échecs) "
+                    f"mais service continue en mode dégradé"
                 )
+                metrics_collector.increment_counter("dependencies.warnings.deepseek_critical")
+                
+                # Ajouter headers d'avertissement pour le client
+                if hasattr(request, 'state'):
+                    request.state.service_degraded = True
+                    request.state.degradation_reason = "DeepSeek critical"
+                
+                return deepseek_client  # On continue quand même
+                
+            elif health.status == "degraded":
+                logger.warning(
+                    f"DeepSeek dégradé ({health.consecutive_failures} échecs récents) "
+                    f"mais service opérationnel"
+                )
+                metrics_collector.increment_counter("dependencies.warnings.deepseek_degraded")
+                
+                if hasattr(request, 'state'):
+                    request.state.service_degraded = True
+                    request.state.degradation_reason = "DeepSeek degraded"
             
-            # Métriques succès
-            metrics_collector.increment_counter("dependencies.success.deepseek")
+            elif health.status == "healthy":
+                metrics_collector.increment_counter("dependencies.success.deepseek")
+                if hasattr(request, 'state'):
+                    request.state.service_degraded = False
+            
+            # Métriques de performance si disponibles
             if health.response_time_ms:
                 metrics_collector.record_histogram("dependencies.deepseek.response_time", health.response_time_ms)
             
             return deepseek_client
             
-        except HTTPException:
-            raise  # Re-raise HTTP exceptions
         except Exception as health_error:
-            # Health check a échoué mais on peut essayer le client quand même
+            # Health check a échoué mais on peut utiliser le client directement
             logger.warning(f"Health check DeepSeek échoué, utilisation directe: {str(health_error)}")
-            metrics_collector.increment_counter("dependencies.warnings.deepseek_health_failed")
-            return deepseek_client
+            metrics_collector.increment_counter("dependencies.warnings.deepseek_health_bypass")
+            
+            if hasattr(request, 'state'):
+                request.state.service_degraded = True
+                request.state.degradation_reason = "Health check failed"
+            
+            return deepseek_client  # Fail open - on essaie quand même
         
     except HTTPException:
-        raise  # Re-raise HTTP exceptions
+        raise  # Re-raise HTTP exceptions seulement pour les cas critiques
     except Exception as e:
         metrics_collector.increment_counter("dependencies.errors.deepseek_unexpected")
         logger.error(f"Erreur inattendue récupération DeepSeek: {str(e)}", exc_info=True)
+        
+        # En cas d'erreur inattendue, essayer de continuer si client existe
+        if (hasattr(request.app.state, 'deepseek_client') and 
+            request.app.state.deepseek_client):
+            logger.warning("Utilisation DeepSeek en mode dégradé après erreur inattendue")
+            return request.app.state.deepseek_client
+        
         raise HTTPException(
             status_code=500,
             detail={
@@ -185,16 +405,15 @@ async def get_deepseek_client(request: Request) -> DeepSeekClient:
 
 async def get_cache_manager(request: Request) -> Optional[CacheManager]:
     """
-    Récupération cache manager depuis app state (toujours optionnel)
+    Récupération cache manager depuis app state avec dégradation gracieuse
+    
+    Le cache est toujours optionnel - ne bloque JAMAIS le service.
     
     Args:
         request: Requête FastAPI
         
     Returns:
         CacheManager ou None: Cache manager si disponible
-        
-    Note:
-        Ne lève jamais d'exception - retourne None si indisponible
     """
     try:
         # Vérification présence dans app state
@@ -210,31 +429,49 @@ async def get_cache_manager(request: Request) -> Optional[CacheManager]:
             logger.debug("Cache manager désactivé - mode sans cache")
             return None
         
-        # Vérification santé cache (non bloquante avec timeout court)
+        # Vérification santé cache (non bloquante avec timeout très court)
         try:
-            health = await asyncio.wait_for(
-                health_checker.check_service_health("cache", cache_manager.health_check),
-                timeout=2.0  # Timeout court pour le cache
-            )
+            # Utilisation de health_check si disponible, sinon skip
+            cache_health_func = getattr(cache_manager, 'health_check', None)
             
-            if health.healthy:
-                metrics_collector.increment_counter("dependencies.success.cache")
-                if health.response_time_ms:
-                    metrics_collector.record_histogram("dependencies.cache.response_time", health.response_time_ms)
-                return cache_manager
+            if cache_health_func:
+                health = await asyncio.wait_for(
+                    health_checker.check_service_health(
+                        "cache", 
+                        cache_health_func,
+                        critical_service=False
+                    ),
+                    timeout=3.0  # Timeout court pour le cache
+                )
+                
+                if health.status in ["healthy", "degraded"]:
+                    metrics_collector.increment_counter("dependencies.success.cache")
+                    if health.response_time_ms:
+                        metrics_collector.record_histogram("dependencies.cache.response_time", health.response_time_ms)
+                    
+                    if health.status == "degraded":
+                        logger.debug("Cache dégradé mais opérationnel")
+                        metrics_collector.increment_counter("dependencies.warnings.cache_degraded")
+                    
+                    return cache_manager
+                else:
+                    logger.debug(f"Cache en état {health.status} - désactivation temporaire")
+                    metrics_collector.increment_counter("dependencies.cache_unhealthy")
+                    return None
             else:
-                metrics_collector.increment_counter("dependencies.cache_unhealthy")
-                logger.debug(f"Cache manager non opérationnel: {health.error_message}")
-                return None
+                # Pas de health check, on assume que le cache fonctionne
+                logger.debug("Cache sans health check - utilisation directe")
+                return cache_manager
                 
         except asyncio.TimeoutError:
+            logger.debug("Health check cache timeout - utilisation directe en mode dégradé")
             metrics_collector.increment_counter("dependencies.cache_timeout")
-            logger.debug("Health check cache timeout - utilisation directe")
             # Retourner le cache manager malgré le timeout (dégradation gracieuse)
             return cache_manager
+            
         except Exception as e:
-            metrics_collector.increment_counter("dependencies.cache_check_failed")
             logger.debug(f"Vérification santé cache échouée: {str(e)}")
+            metrics_collector.increment_counter("dependencies.cache_check_failed")
             # Retourner le cache manager même si health check échoue
             return cache_manager
         
@@ -247,54 +484,46 @@ async def get_conversation_service_status(request: Request) -> Dict[str, Any]:
     """
     Vérification statut conversation service avec diagnostic détaillé
     
-    Args:
-        request: Requête FastAPI
-        
-    Returns:
-        Dict: Statut détaillé du service
-        
-    Raises:
-        HTTPException: Si service non opérationnel
+    Retourne toujours un statut, même en cas de problème.
     """
     try:
         # Vérification présence service dans app state
         if not hasattr(request.app.state, 'conversation_service'):
             metrics_collector.increment_counter("dependencies.errors.service_missing")
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "Conversation service non initialisé",
-                    "service": "conversation_service",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+            logger.warning("Conversation service absent de app state - mode minimal")
+            return {
+                "status": "degraded",
+                "service": "conversation_service",
+                "error": "Service non initialisé",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
         
         conversation_service = request.app.state.conversation_service
         
         if not conversation_service:
             metrics_collector.increment_counter("dependencies.errors.service_null")
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "Conversation service null",
-                    "service": "conversation_service",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+            logger.warning("Conversation service null - mode minimal")
+            return {
+                "status": "degraded",
+                "service": "conversation_service",
+                "error": "Service null",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
         
-        # Vérification santé du service
-        if not getattr(conversation_service, 'service_healthy', False):
-            metrics_collector.increment_counter("dependencies.errors.service_unhealthy")
+        # Vérification santé du service (non bloquante)
+        service_healthy = getattr(conversation_service, 'service_healthy', True)
+        if not service_healthy:
             initialization_error = getattr(conversation_service, 'initialization_error', 'Erreur inconnue')
-            error_details = {
-                "error": "Conversation service en maintenance",
-                "service": "conversation_service", 
+            logger.warning(f"Service unhealthy mais continuation: {initialization_error}")
+            metrics_collector.increment_counter("dependencies.warnings.service_degraded")
+            
+            return {
+                "status": "degraded",
+                "service": "conversation_service",
+                "warning": "Service en mode dégradé",
                 "initialization_error": initialization_error,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            
-            logger.warning(f"Service unhealthy: {error_details}")
-            raise HTTPException(status_code=503, detail=error_details)
         
         # Construction statut détaillé avec gestion d'erreur
         try:
@@ -302,43 +531,48 @@ async def get_conversation_service_status(request: Request) -> Dict[str, Any]:
             service_start_time = getattr(request.app.state, 'service_start_time', datetime.now(timezone.utc))
             uptime_seconds = (datetime.now(timezone.utc) - service_start_time).total_seconds()
             
+            # Intégrer l'état des sous-services
+            overall_health = health_checker.get_overall_health()
+            
             status = {
-                "status": "healthy",
+                "status": "healthy" if overall_health["status"] in ["healthy", "unknown"] else "degraded",
                 "service": "conversation_service",
                 "uptime_seconds": uptime_seconds,
                 "phase": service_config.get("phase", 1),
-                "version": service_config.get("version", "1.0.0"),
+                "version": service_config.get("version", "1.1.0"),
                 "features": service_config.get("features", []),
                 "json_output_enforced": service_config.get("json_output_enforced", True),
-                "jwt_compatible": service_config.get("jwt_compatible", False),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "jwt_compatible": service_config.get("jwt_compatible", True),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "sub_services": overall_health["summary"]
             }
             
         except Exception as status_error:
             logger.warning(f"Erreur construction statut détaillé: {str(status_error)}")
             # Statut minimal en cas d'erreur
             status = {
-                "status": "healthy",
+                "status": "degraded",
                 "service": "conversation_service",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "error": "Statut partiel disponible"
+                "warning": "Statut partiel disponible",
+                "error": str(status_error)
             }
         
         metrics_collector.increment_counter("dependencies.success.service_status")
         return status
         
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions
     except Exception as e:
         metrics_collector.increment_counter("dependencies.errors.service_unexpected")
-        logger.error(f"Erreur vérification statut service: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Erreur interne vérification statut",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+        logger.error(f"Erreur vérification statut service: {str(e)}")
+        
+        # Retourner un statut d'erreur plutôt que de lever une exception
+        return {
+            "status": "critical",
+            "service": "conversation_service",
+            "error": "Erreur interne vérification statut",
+            "details": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
 
 async def validate_path_user_id(
     request: Request,
@@ -347,6 +581,8 @@ async def validate_path_user_id(
 ) -> int:
     """
     Validation user_id du path vs token JWT avec logging sécurité renforcé
+    
+    Cette fonction reste stricte car la sécurité ne peut pas être dégradée.
     
     Args:
         request: Requête FastAPI
@@ -401,7 +637,7 @@ async def validate_path_user_id(
         
     except HTTPException:
         metrics_collector.increment_counter("dependencies.validation.failed")
-        raise  # Re-raise HTTP exceptions
+        raise  # Re-raise HTTP exceptions (sécurité stricte)
     except Exception as e:
         metrics_collector.increment_counter("dependencies.errors.validation_unexpected")
         logger.error(f"Erreur inattendue validation user ID: {str(e)}", exc_info=True)
@@ -420,12 +656,14 @@ async def get_user_context(
     """
     Récupération contexte utilisateur enrichi avec gestion d'erreur robuste
     
+    Retourne toujours un contexte, même minimal en cas de problème.
+    
     Args:
         request: Requête FastAPI
         user_id: ID utilisateur authentifié
         
     Returns:
-        Dict: Contexte utilisateur (toujours retourne quelque chose)
+        Dict: Contexte utilisateur
     """
     try:
         # Contexte de session de base (toujours disponible)
@@ -468,29 +706,38 @@ async def get_user_context(
                 "session_duration_seconds": (
                     datetime.now(timezone.utc) - 
                     datetime.fromisoformat(request.state.session_start.replace('Z', '+00:00'))
-                ).total_seconds()
+                ).total_seconds(),
+                "service_degraded": getattr(request.state, 'service_degraded', False),
+                "degradation_reason": getattr(request.state, 'degradation_reason', None)
             }
         except Exception as usage_error:
             logger.debug(f"Erreur métriques usage: {str(usage_error)}")
             usage_context = {
                 "session_start": datetime.now(timezone.utc).isoformat(),
-                "request_count": 1
+                "request_count": 1,
+                "service_degraded": False
             }
         
         # Contexte technique (avec informations de service)
         try:
             service_config = getattr(request.app.state, 'service_config', {})
+            overall_health = health_checker.get_overall_health()
+            
             technical_context = {
                 "phase": service_config.get("phase", 1),
                 "features_available": service_config.get("features", ["intent_classification"]),
                 "json_output_enforced": service_config.get("json_output_enforced", True),
-                "jwt_compatible": service_config.get("jwt_compatible", False)
+                "jwt_compatible": service_config.get("jwt_compatible", True),
+                "service_health": overall_health["status"],
+                "healthy_services": overall_health["summary"].get("healthy", 0),
+                "total_services": overall_health["summary"].get("total", 0)
             }
         except Exception as tech_error:
             logger.debug(f"Erreur contexte technique: {str(tech_error)}")
             technical_context = {
                 "phase": 1,
-                "features_available": ["intent_classification"]
+                "features_available": ["intent_classification"],
+                "service_health": "unknown"
             }
         
         # Assemblage contexte final
@@ -548,6 +795,8 @@ class AdvancedRateLimitDependency:
     ) -> None:
         """
         Vérification rate limiting avec gestion d'erreur robuste
+        
+        En cas d'erreur interne, laisse passer la requête (fail open).
         """
         try:
             current_time = time.time()
@@ -783,13 +1032,17 @@ def with_rate_limit(dependency_func: Callable = None):
         return wrapper
     return decorator
 
-# Utilitaires de debug
+# Utilitaires de debug et monitoring
 def get_dependency_health_status() -> Dict[str, Any]:
     """Retourne le statut de santé des dépendances"""
+    overall_health = health_checker.get_overall_health()
+    
     return {
         "health_checker": {
             "cache_size": len(health_checker._health_cache),
-            "cache_ttl": health_checker.cache_ttl
+            "cache_ttl": health_checker.cache_ttl,
+            "overall_status": overall_health["status"],
+            "services": overall_health["services"]
         },
         "rate_limiter": {
             "active_users": len(rate_limit_dependency.user_requests),
@@ -798,6 +1051,10 @@ def get_dependency_health_status() -> Dict[str, Any]:
         },
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+def get_detailed_service_health() -> Dict[str, Any]:
+    """Statut de santé détaillé de tous les services"""
+    return health_checker.get_overall_health()
 
 # Export des principales dépendances
 __all__ = [
@@ -808,5 +1065,6 @@ __all__ = [
     'get_user_context',
     'rate_limit_dependency',
     'with_rate_limit',
-    'get_dependency_health_status'
+    'get_dependency_health_status',
+    'get_detailed_service_health'
 ]

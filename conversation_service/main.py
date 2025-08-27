@@ -1,5 +1,6 @@
 """
 Point d'entrée principal conversation service - Version réécrite compatible JWT
+Correction des appels health_check synchrones
 """
 import logging
 import asyncio
@@ -48,11 +49,11 @@ class ConversationServiceLoader:
         # Configuration service
         self.service_config = {
             "phase": 1,
-            "version": "1.0.0",
+            "version": "1.1.0",  # Version avec corrections await
             "features": ["intent_classification", "json_output", "cache", "auth", "metrics"],
             "json_output_enforced": True,
             "deepseek_model": getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
-            "jwt_compatible": True,  # Nouvelle feature
+            "jwt_compatible": True,
         }
         
         logger.info("ConversationServiceLoader initialisé - Compatible JWT user_service")
@@ -224,8 +225,8 @@ class ConversationServiceLoader:
                         raise
                     await asyncio.sleep(2 ** attempt)
             
-            # Test connexion DeepSeek
-            deepseek_healthy = await self.deepseek_client.health_check()
+            # ✅ CORRECTION: Test connexion DeepSeek - méthode synchrone
+            deepseek_healthy = self.deepseek_client.health_check()  # Pas de await
             if not deepseek_healthy:
                 logger.error("❌ DeepSeek API non accessible")
                 return False
@@ -238,14 +239,28 @@ class ConversationServiceLoader:
                 self.cache_manager = CacheManager()
                 await self.cache_manager.initialize()
                 
-                # Test connexion Redis (non bloquant)
-                cache_healthy = await self.cache_manager.health_check()
-                if cache_healthy:
-                    logger.info("✅ Redis cache opérationnel")
-                else:
-                    logger.warning("⚠️ Redis indisponible - cache désactivé")
-                    self.cache_manager = None
-                    
+                # ✅ CORRECTION: Test connexion Redis - méthode synchrone ou gestion async
+                try:
+                    if hasattr(self.cache_manager, 'health_check'):
+                        # Vérifier si la méthode est async ou sync
+                        import inspect
+                        if inspect.iscoroutinefunction(self.cache_manager.health_check):
+                            cache_healthy = await self.cache_manager.health_check()
+                        else:
+                            cache_healthy = self.cache_manager.health_check()
+                    else:
+                        # Si pas de health_check, considérer comme sain
+                        cache_healthy = True
+                        
+                    if cache_healthy:
+                        logger.info("✅ Redis cache opérationnel")
+                    else:
+                        logger.warning("⚠️ Redis indisponible - cache désactivé")
+                        self.cache_manager = None
+                except Exception as health_error:
+                    logger.warning(f"⚠️ Erreur health check Redis: {str(health_error)}")
+                    # Garder le cache manager même si health check échoue
+                        
             except Exception as e:
                 logger.warning(f"⚠️ Cache Redis non disponible: {str(e)}")
                 self.cache_manager = None
@@ -318,19 +333,27 @@ class ConversationServiceLoader:
                 "configuration": {"status": True, "details": "OK"}
             }
             
-            # Test DeepSeek
+            # ✅ CORRECTION: Test DeepSeek - méthode synchrone
             if self.deepseek_client:
                 try:
-                    deepseek_health = await self.deepseek_client.health_check()
+                    deepseek_health = self.deepseek_client.health_check()  # Pas de await
                     health_results["deepseek"]["status"] = deepseek_health
                     health_results["deepseek"]["details"] = "Opérationnel" if deepseek_health else "Inaccessible"
                 except Exception as e:
                     health_results["deepseek"]["details"] = f"Erreur: {str(e)}"
             
-            # Test Cache (non critique)
+            # ✅ CORRECTION: Test Cache - gestion async/sync
             if self.cache_manager:
                 try:
-                    cache_health = await self.cache_manager.health_check()
+                    if hasattr(self.cache_manager, 'health_check'):
+                        import inspect
+                        if inspect.iscoroutinefunction(self.cache_manager.health_check):
+                            cache_health = await self.cache_manager.health_check()
+                        else:
+                            cache_health = self.cache_manager.health_check()
+                    else:
+                        cache_health = True
+                        
                     health_results["cache"]["status"] = cache_health
                     health_results["cache"]["details"] = "Opérationnel" if cache_health else "Indisponible"
                 except Exception as e:
@@ -446,7 +469,7 @@ class ConversationServiceLoader:
         app.state.service_metadata = {
             "initialization_time": datetime.now(timezone.utc),
             "python_version": sys.version,
-            "service_loader_version": "1.1.0",  # Version avec support JWT amélioré
+            "service_loader_version": "1.1.0",
             "jwt_compatible": True
         }
         
@@ -535,10 +558,20 @@ class ConversationServiceLoader:
         @app.get("/health/ready") 
         async def readiness_probe():
             """Probe readiness pour Kubernetes/Docker"""
+            # ✅ CORRECTION: Health check synchrone pour DeepSeek
+            try:
+                deepseek_ready = (
+                    self.deepseek_client and
+                    self.deepseek_client.health_check()  # Pas de await
+                )
+            except Exception as e:
+                logger.warning(f"Erreur readiness DeepSeek: {str(e)}")
+                deepseek_ready = False
+            
             is_ready = (
                 self.service_healthy and 
                 self.deepseek_client and
-                await self.deepseek_client.health_check()
+                deepseek_ready
             )
             
             status_code = 200 if is_ready else 503
@@ -572,9 +605,13 @@ class ConversationServiceLoader:
                 }
             ]
             
-            warmed = await self.cache_manager.warm_up_cache(warmup_data)
-            if warmed > 0:
-                logger.info(f"💾 Cache warm-up: {warmed} entrées préchargées")
+            # Vérifier si la méthode warm_up_cache existe
+            if hasattr(self.cache_manager, 'warm_up_cache'):
+                warmed = await self.cache_manager.warm_up_cache(warmup_data)
+                if warmed > 0:
+                    logger.info(f"💾 Cache warm-up: {warmed} entrées préchargées")
+            else:
+                logger.debug("Cache warm-up non supporté par ce cache manager")
                 
         except Exception as e:
             logger.debug(f"Cache warm-up optionnel échoué: {str(e)}")
@@ -660,7 +697,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Harena Conversation Service",
     description="Service IA conversationnelle financière - Compatible user_service JWT",
-    version="1.1.0",  # Version avec support JWT amélioré
+    version="1.1.0",
     lifespan=lifespan,
     docs_url="/docs" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None,
     redoc_url="/redoc" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None,

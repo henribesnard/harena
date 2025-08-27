@@ -171,7 +171,11 @@ class IntentClassifierAgent(BaseAgent):
         # Toutes les tentatives ont échoué
         logger.error(f"Toutes les tentatives de classification ont échoué après {self.max_retry_attempts} essais")
         metrics_collector.increment_counter("intent_classifier.retry_exhausted")
-        return self._create_error_intent_result(f"Erreur après {self.max_retry_attempts} tentatives: {str(last_exception)}")
+        if isinstance(last_exception, json.JSONDecodeError):
+            return self._create_error_intent_result("JSON parsing error")
+        return self._create_error_intent_result(
+            f"Erreur après {self.max_retry_attempts} tentatives: {str(last_exception)}"
+        )
     
     def _build_json_classification_prompt(
         self, 
@@ -203,7 +207,7 @@ FORMAT JSON OBLIGATOIRE:
 INTENTIONS PRINCIPALES:
 {intentions_summary}
 
-EXEMPLES RÉFÉRENCE:
+EXEMPLES DE RÉFÉRENCE:
 {examples_text}
 
 RÈGLES STRICTES:

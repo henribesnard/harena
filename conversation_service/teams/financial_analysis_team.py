@@ -13,55 +13,78 @@ from typing import Any, Dict
 import json
 import re
 
-try:  # pragma: no cover - fallback lorsque autogen est indisponible en tests
-    from autogen import AssistantAgent, GroupChat, GroupChatManager
+try:  # pragma: no cover - les classes réelles peuvent être indisponibles
+    from autogen import (
+        AssistantAgent as RealAssistantAgent,
+        GroupChat as RealGroupChat,
+        GroupChatManager as RealGroupChatManager,
+    )
 except Exception:  # pragma: no cover
-    class AssistantAgent:  # type: ignore
-        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
-            """Stub minimal d'``AssistantAgent``."""
-            pass
+    RealAssistantAgent = None
+    RealGroupChat = None
+    RealGroupChatManager = None
 
-    class GroupChat:  # type: ignore
-        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
-            """Stub minimal de ``GroupChat``."""
-            self.agents = kwargs.get("agents", [])
-            self.messages = kwargs.get("messages", [])
-            self.max_round = kwargs.get("max_round", 1)
 
-    class GroupChatManager:  # type: ignore
-        def __init__(self, *args, **kwargs) -> None:  # noqa: D401
-            """Stub minimal de ``GroupChatManager`` avec logique simple."""
-            self.groupchat = kwargs.get("groupchat")
-            self.llm_config = kwargs.get("llm_config", {})
+class StubAssistantAgent:
+    """Stub minimal d'``AssistantAgent``."""
 
-        async def run(self, message: str, *_, **__) -> Dict[str, Any]:
-            """Analyse basique du message pour générer intent et entités."""
-            intent = "unknown"
-            entities: Dict[str, Any] = {}
+    def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+        pass
 
-            # Détection très simple de tickers (suite de lettres majuscules)
-            tickers = re.findall(r"\b[A-Z]{2,5}\b", message)
-            if tickers:
-                entities["tickers"] = tickers
-                intent = "price_query"
 
-            # Détection de montants numériques
-            amounts = re.findall(r"\b\d+(?:\.\d+)?\b", message)
-            if amounts:
-                entities["amounts"] = [float(a) for a in amounts]
-                intent = "transaction_amount"
+class StubGroupChat:
+    """Stub minimal de ``GroupChat``."""
 
-            return {"intent": intent, "entities": entities}
+    def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+        self.agents = kwargs.get("agents", [])
+        self.messages = kwargs.get("messages", [])
+        self.max_round = kwargs.get("max_round", 1)
+
+
+class StubGroupChatManager:
+    """Stub minimal de ``GroupChatManager`` avec logique simple."""
+
+    def __init__(self, *args, **kwargs) -> None:  # noqa: D401
+        self.groupchat = kwargs.get("groupchat")
+        self.llm_config = kwargs.get("llm_config", {})
+
+    async def run(self, message: str, *_, **__) -> Dict[str, Any]:
+        """Analyse basique du message pour générer intent et entités."""
+        intent = "unknown"
+        entities: Dict[str, Any] = {}
+
+        # Détection très simple de tickers (suite de lettres majuscules)
+        tickers = re.findall(r"\b[A-Z]{2,5}\b", message)
+        if tickers:
+            entities["tickers"] = tickers
+            intent = "price_query"
+
+        # Détection de montants numériques
+        amounts = re.findall(r"\b\d+(?:\.\d+)?\b", message)
+        if amounts:
+            entities["amounts"] = [float(a) for a in amounts]
+            intent = "transaction_amount"
+
+        return {"intent": intent, "entities": entities}
 
 
 class FinancialAnalysisTeamPhase2:
     """Orchestration AutoGen pour la phase 2 d'analyse financière."""
 
     def __init__(self, llm_config: Dict[str, Any] | None = None) -> None:
-        self.llm_config = llm_config or {}
+        if llm_config:
+            self.llm_config = llm_config
+            AgentCls = RealAssistantAgent or StubAssistantAgent
+            ChatCls = RealGroupChat or StubGroupChat
+            ManagerCls = RealGroupChatManager or StubGroupChatManager
+        else:  # aucun llm_config fourni -> utilisation des stubs locaux
+            self.llm_config = {"model": "stub"}
+            AgentCls = StubAssistantAgent
+            ChatCls = StubGroupChat
+            ManagerCls = StubGroupChatManager
 
         # Agents spécialisés
-        self.intent_agent = AssistantAgent(
+        self.intent_agent = AgentCls(
             name="intent_classifier",
             system_message=(
                 "Tu es un assistant expert qui détecte l'intention "
@@ -71,7 +94,7 @@ class FinancialAnalysisTeamPhase2:
             description="Phase 1 - Classification d'intentions",
         )
 
-        self.entity_agent = AssistantAgent(
+        self.entity_agent = AgentCls(
             name="entity_extractor",
             system_message=(
                 "En te basant sur l'intention détectée, extrais les entités "
@@ -82,14 +105,14 @@ class FinancialAnalysisTeamPhase2:
         )
 
         # Configuration du GroupChat
-        self.groupchat = GroupChat(
+        self.groupchat = ChatCls(
             agents=[self.intent_agent, self.entity_agent],
             messages=[],
             max_round=2,
         )
 
         # Manager orchestrant les échanges entre agents
-        self.manager = GroupChatManager(
+        self.manager = ManagerCls(
             groupchat=self.groupchat,
             llm_config=self.llm_config,
         )
@@ -100,18 +123,18 @@ class FinancialAnalysisTeamPhase2:
         result = await self.manager.run(message)
 
         # Extraction des réponses si disponibles
-        intent: Any = None
-        entities: Any = None
+        intent: Any = "unknown"
+        entities: Dict[str, Any] = {}
         if isinstance(result, dict):
-            intent = result.get("intent")
-            entities = result.get("entities")
+            intent = result.get("intent", intent)
+            entities = result.get("entities", entities) or {}
         elif isinstance(result, str):
             # Si la réponse est une chaîne JSON, on tente de la parser
             try:
                 data = json.loads(result)
-                intent = data.get("intent")
-                entities = data.get("entities")
-            except Exception:
+                intent = data.get("intent", intent)
+                entities = data.get("entities", entities) or {}
+            except Exception:  # pragma: no cover - cas d'échec de parsing
                 pass
 
         return {"intent": intent, "entities": entities}

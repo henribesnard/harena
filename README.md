@@ -23,6 +23,34 @@ La Phase 2 introduit un mode collaboratif AutoGen où plusieurs agents
 coordonnent leurs actions pour répondre à une requête. Les échanges et le temps
 total de collaboration sont suivis via le `metrics_collector`.
 
+### Structure de réponse
+
+L'endpoint `/api/v1/conversation/{user_id}` renvoie désormais un
+`ConversationResponsePhase2AutoGen` structuré comme suit :
+
+```json
+{
+  "user_id": 1,
+  "message": "Bonjour",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "request_id": "1_1700000000000",
+  "processing_time_ms": 123,
+  "status": "SUCCESS",
+  "phase": 2,
+  "team_response": {
+    "final_answer": "Réponse finale",
+    "steps": [
+      {"role": "planner", "content": "analyse"},
+      {"role": "assistant", "content": "réponse"}
+    ],
+    "context": {}
+  }
+}
+```
+
+Le champ `team_response` regroupe la réponse finale de l'équipe ainsi que les
+étapes intermédiaires effectuées par les agents AutoGen.
+
 ## Configuration
 
 Définissez la variable d'environnement `SECRET_KEY`, utilisée pour la
@@ -134,6 +162,17 @@ uvicorn conversation_service.main:app --reload
 ```
 
 The FastAPI app is built by `create_app()` in `conversation_service/main.py`.
+
+
+### Monitoring endpoints
+
+Three lightweight endpoints expose the status of the conversation service:
+
+- `GET /api/v1/conversation/status` returns `{ "status": "ready" }` when the service is up
+- `GET /api/v1/conversation/health` provides basic health metrics
+- `GET /api/v1/conversation/metrics` dumps the metrics collected by the service
+
+All three routes are public and do not require authentication.
 
 
 ## Table `conversation_messages`

@@ -4,6 +4,7 @@ ANALYSE PURE : récupère et affiche les données internes de l'agent sans refai
 """
 
 import json
+import time
 import requests
 from datetime import datetime
 
@@ -18,31 +19,49 @@ QUESTIONS = [
     "Compare mes entrées et sorties d'argent en juin !",
 ]
 
-def run_question(session: requests.Session, user_id: int, question: str, conv_id: str) -> dict:
+def run_question(
+    session: requests.Session, user_id: int, question: str, conv_id: str
+) -> tuple[dict | None, str, str, float]:
     """Exécute une question de chat et affiche le résultat."""
 
     chat_payload = {"message": question, "conversation_id": conv_id}
-    chat_resp = session.post(f"{BASE_URL}/conversation/{user_id}", json=chat_payload)
-    chat_resp.raise_for_status()
-    chat_data = chat_resp.json()
+    start_time = time.perf_counter()
+    intent_type = "N/A"
+    confidence = "N/A"
 
-    print("✅ Conversation réussie")
-    print(f"🗨️ Question posée : {question}")
-    print(f"💬 Réponse générée : {chat_data['message']}")
+    try:
+        chat_resp = session.post(
+            f"{BASE_URL}/conversation/{user_id}", json=chat_payload
+        )
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        if chat_resp.status_code // 100 != 2:
+            return None, intent_type, confidence, elapsed_ms
 
-    aggregations = (
-        chat_data.get("metadata", {})
-        .get("workflow_data", {})
-        .get("search_results", {})
-        .get("metadata", {})
-        .get("search_response", {})
-        .get("aggregations")
-    )
-    if aggregations:
-        print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
-    print()
+        chat_data = chat_resp.json()
+        intent_result = chat_data.get("metadata", {}).get("intent_result", {})
+        intent_type = intent_result.get("intent_type", "N/A")
+        confidence = intent_result.get("confidence", "N/A")
 
-    return chat_data
+        print("✅ Conversation réussie")
+        print(f"🗨️ Question posée : {question}")
+        print(f"💬 Réponse générée : {chat_data['message']}")
+
+        aggregations = (
+            chat_data.get("metadata", {})
+            .get("workflow_data", {})
+            .get("search_results", {})
+            .get("metadata", {})
+            .get("search_response", {})
+            .get("aggregations")
+        )
+        if aggregations:
+            print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
+        print()
+
+        return chat_data, intent_type, confidence, elapsed_ms
+    except requests.RequestException:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        return None, intent_type, confidence, elapsed_ms
 
 def main() -> None:
     session = requests.Session()
@@ -57,9 +76,37 @@ def main() -> None:
 
     session.headers.update({"Authorization": f"Bearer {token}"})
 
+    report = []
+    last_chat_data = None
+
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
-        chat_data = run_question(session, USER_ID, question, conversation_id)
+        chat_data, intent_type, confidence, elapsed_ms = run_question(
+            session, USER_ID, question, conversation_id
+        )
+        report.append(
+            {
+                "question": question,
+                "intent_type": intent_type,
+                "confidence": confidence,
+                "elapsed_ms": elapsed_ms,
+            }
+        )
+        if chat_data:
+            last_chat_data = chat_data
+
+    print("\n📄 RAPPORT :")
+    for row in report:
+        print(
+            f"- {row['question']} | Intent: {row['intent_type']} | "
+            f"Conf: {row['confidence']} | Temps: {row['elapsed_ms']:.2f}ms"
+        )
+
+    if last_chat_data is None:
+        print("\n❌ Aucune conversation réussie, arrêt de l'analyse.")
+        return
+
+    chat_data = last_chat_data
 
     # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------
     intent_result = chat_data["metadata"]["intent_result"]

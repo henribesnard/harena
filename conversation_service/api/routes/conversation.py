@@ -31,22 +31,21 @@ logger = logging.getLogger("conversation_service.routes")
 
 @router.post("/conversation/{path_user_id}", response_model=ConversationResponsePhase2AutoGen)
 async def analyze_conversation(
-    path_user_id: int,
     request_data: ConversationRequest,
     request: Request,
     runtime = Depends(get_conversation_runtime),
-    validated_user_id: int = Depends(validate_path_user_id),
+    user_id: int = Depends(validate_path_user_id),
     user_context: Dict[str, Any] = Depends(get_user_context),
     service_status: dict = Depends(get_conversation_service_status),
     _rate_limit: None = Depends(rate_limit_dependency),
 ):
     """Endpoint Phase 2 utilisant l'équipe AutoGen."""
     start_time = time.time()
-    request_id = f"{validated_user_id}_{int(start_time * 1000)}"
+    request_id = f"{user_id}_{int(start_time * 1000)}"
 
     client_ip = getattr(request.client, "host", "unknown") if request.client else "unknown"
     logger.info(
-        f"[{request_id}] Phase2 conversation - User: {validated_user_id}, "
+        f"[{request_id}] Phase2 conversation - User: {user_id}, "
         f"IP: {client_ip}, Message: '{request_data.message[:30]}...'"
     )
 
@@ -79,7 +78,7 @@ async def analyze_conversation(
     processing_time = int((time.time() - start_time) * 1000)
 
     return ConversationResponsePhase2AutoGen(
-        user_id=validated_user_id,
+        user_id=user_id,
         message=clean_message,
         timestamp=datetime.now(timezone.utc),
         request_id=request_id,

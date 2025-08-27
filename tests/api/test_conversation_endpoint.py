@@ -324,12 +324,23 @@ class TestJWTCompatibility:
 # Conversation endpoint tests
 # ---------------------------------------------------------------------------
 class TestConversationEndpoint:
-    def test_conversation_success(self, client, mock_runtime):
-        """Tests complets pour l'endpoint de conversation"""
-        pass
-
     def test_conversation_success(self, client, runtime):
-        """Test conversation réussie avec réponse d'équipe AutoGen"""
+        """Test conversation réussie avec réponse d'équipe AutoGen."""
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Bonjour"},
+            headers=get_test_auth_headers(1),
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == 1
+        assert data["message"] == "Bonjour"
+        assert data["team_response"]["final_answer"] == "mock"
+        assert len(data["team_response"]["steps"]) == 0
+        runtime.run_financial_team.assert_awaited_once_with(
+            "Bonjour", {"sub": "1"}
+        )
 
     def test_conversation_success_greeting(self, client):
         """Test conversation réussie avec salutation"""

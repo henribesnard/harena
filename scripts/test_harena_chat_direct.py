@@ -19,11 +19,14 @@ QUESTIONS = [
 ]
 
 def run_question(
+    session: requests.Session, user_id: int, question: str, conv_id: str
+) -> tuple[dict | None, str, str, str, float]:
     session: requests.Session, user_id: int, question: str
 ) -> tuple[dict | None, str, str, float]:
 
     session: requests.Session, user_id: int, question: str, conv_id: str
 ) -> tuple[dict | None, dict, float]:
+
     """Exécute une question de chat et affiche le résultat."""
 
     chat_payload = {
@@ -33,6 +36,10 @@ def run_question(
         "priority": "normal",
     }
     start_time = time.perf_counter()
+    intent_type = "N/A"
+    confidence = "N/A"
+    category = "N/A"
+
     intent: dict = {}
 
     try:
@@ -41,11 +48,17 @@ def run_question(
         )
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         if chat_resp.status_code // 100 != 2:
+            return None, intent_type, confidence, category, elapsed_ms
+
+        chat_data = chat_resp.json()
+        intent_result = chat_data.get("metadata", {}).get("intent_result", {})
+        intent_type = intent_result.get("intent_type", "N/A")
+        confidence = intent_result.get("confidence", "N/A")
+        category = intent_result.get("category", "N/A")
             return None, intent, elapsed_ms
 
         chat_data = chat_resp.json()
         intent = chat_data.get("intent", {})
-
         print("✅ Conversation réussie")
         print(f"🗨️ Question posée : {question}")
         print(f"💬 Réponse générée : {chat_data['message']}")
@@ -62,6 +75,10 @@ def run_question(
             print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
         print()
 
+        return chat_data, intent_type, confidence, category, elapsed_ms
+    except requests.RequestException:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        return None, intent_type, confidence, category, elapsed_ms
         return chat_data, intent, elapsed_ms
     except requests.RequestException:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -94,12 +111,16 @@ def main() -> None:
             session, user_id, question
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
+        chat_data, intent_type, confidence, category, elapsed_ms = run_question(
         chat_data, intent, elapsed_ms = run_question(
             session, user_id, question, conversation_id
         )
         report.append(
             {
                 "question": question,
+                "intent_type": intent_type,
+                "confidence": confidence,
+                "category": category,
                 "intent_type": intent.get("intent_type", "N/A"),
                 "confidence": intent.get("confidence", "N/A"),
                 "category": intent.get("category", "N/A"),

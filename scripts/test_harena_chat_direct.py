@@ -19,11 +19,19 @@ QUESTIONS = [
 ]
 
 def run_question(
+    session: requests.Session, user_id: int, question: str
+) -> tuple[dict | None, str, str, float]:
+
     session: requests.Session, user_id: int, question: str, conv_id: str
 ) -> tuple[dict | None, dict, float]:
     """Exécute une question de chat et affiche le résultat."""
 
-    chat_payload = {"message": question, "conversation_id": conv_id}
+    chat_payload = {
+        "message": question,
+        "client_info": {"platform": "web", "version": "1.0.0"},
+        "message_type": "text",
+        "priority": "normal",
+    }
     start_time = time.perf_counter()
     intent: dict = {}
 
@@ -81,6 +89,9 @@ def main() -> None:
     report = []
     last_chat_data = None
 
+    for question in QUESTIONS:
+        chat_data, intent_type, confidence, elapsed_ms = run_question(
+            session, user_id, question
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
         chat_data, intent, elapsed_ms = run_question(

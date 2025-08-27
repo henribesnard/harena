@@ -21,13 +21,26 @@ QUESTIONS = [
 def run_question(
     session: requests.Session, user_id: int, question: str, conv_id: str
 ) -> tuple[dict | None, str, str, str, float]:
+    session: requests.Session, user_id: int, question: str
+) -> tuple[dict | None, str, str, float]:
+
+    session: requests.Session, user_id: int, question: str, conv_id: str
+) -> tuple[dict | None, dict, float]:
+
     """Exécute une question de chat et affiche le résultat."""
 
-    chat_payload = {"message": question, "conversation_id": conv_id}
+    chat_payload = {
+        "message": question,
+        "client_info": {"platform": "web", "version": "1.0.0"},
+        "message_type": "text",
+        "priority": "normal",
+    }
     start_time = time.perf_counter()
     intent_type = "N/A"
     confidence = "N/A"
     category = "N/A"
+
+    intent: dict = {}
 
     try:
         chat_resp = session.post(
@@ -42,7 +55,10 @@ def run_question(
         intent_type = intent_result.get("intent_type", "N/A")
         confidence = intent_result.get("confidence", "N/A")
         category = intent_result.get("category", "N/A")
+            return None, intent, elapsed_ms
 
+        chat_data = chat_resp.json()
+        intent = chat_data.get("intent", {})
         print("✅ Conversation réussie")
         print(f"🗨️ Question posée : {question}")
         print(f"💬 Réponse générée : {chat_data['message']}")
@@ -63,6 +79,10 @@ def run_question(
     except requests.RequestException:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         return None, intent_type, confidence, category, elapsed_ms
+        return chat_data, intent, elapsed_ms
+    except requests.RequestException:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        return None, intent, elapsed_ms
 
 def main() -> None:
     session = requests.Session()
@@ -86,9 +106,13 @@ def main() -> None:
     report = []
     last_chat_data = None
 
+    for question in QUESTIONS:
+        chat_data, intent_type, confidence, elapsed_ms = run_question(
+            session, user_id, question
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
         chat_data, intent_type, confidence, category, elapsed_ms = run_question(
+        chat_data, intent, elapsed_ms = run_question(
             session, user_id, question, conversation_id
         )
         report.append(
@@ -97,6 +121,9 @@ def main() -> None:
                 "intent_type": intent_type,
                 "confidence": confidence,
                 "category": category,
+                "intent_type": intent.get("intent_type", "N/A"),
+                "confidence": intent.get("confidence", "N/A"),
+                "category": intent.get("category", "N/A"),
                 "elapsed_ms": elapsed_ms,
             }
         )
@@ -118,15 +145,16 @@ def main() -> None:
     chat_data = last_chat_data
 
     # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------
-    intent_result = chat_data["metadata"]["intent_result"]
+    intent = chat_data["intent"]
     print("🧠 ANALYSE DE L'INTENTION :")
-    print(f"   🎯 Type : {intent_result['intent_type']}")
-    print(f"   🎲 Confiance : {intent_result.get('confidence', 'N/A')}")
-    print(f"   ⚡ Méthode : {intent_result.get('method', 'N/A')}")
+    print(f"   🎯 Type : {intent['intent_type']}")
+    print(f"   🎲 Confiance : {intent.get('confidence', 'N/A')}")
+    print(f"   🏷️ Catégorie : {intent.get('category', 'N/A')}")
+    print(f"   ⚡ Méthode : {intent.get('method', 'N/A')}")
     print()
 
     # ----- ANALYSE DES ENTITÉS EXTRAITES -----------------------------------
-    entities = intent_result.get('entities', [])
+    entities = chat_data.get('entities', [])
     print("🧩 ENTITÉS EXTRAITES :")
     if entities:
         for i, entity in enumerate(entities, 1):
@@ -239,7 +267,7 @@ def main() -> None:
 
     # ----- RÉSUMÉ EXÉCUTIF ---------------------------------------------------
     print("📋 RÉSUMÉ EXÉCUTIF :")
-    print(f"   🎯 Intention correctement détectée : {'✅' if intent_result['intent_type'] == 'SEARCH_BY_AMOUNT' else '❌'}")
+    print(f"   🎯 Intention correctement détectée : {'✅' if intent['intent_type'] == 'SEARCH_BY_AMOUNT' else '❌'}")
     print(f"   🧩 Entités extraites : {'✅' if len(entities) > 0 else '❌'}")
     print(f"   🔍 Recherche exécutée : {'✅' if 'search_results_count' in chat_data['metadata'] else '❌'}")
     print(f"   💬 Réponse générée : {'✅' if len(response_text) > 50 else '❌'}")
@@ -247,7 +275,7 @@ def main() -> None:
     
     # Cohérence globale
     coherence_score = sum([
-        intent_result['intent_type'] == 'SEARCH_BY_AMOUNT',
+        intent['intent_type'] == 'SEARCH_BY_AMOUNT',
         len(entities) > 0,
         'search_results_count' in chat_data['metadata'],
         len(response_text) > 50,

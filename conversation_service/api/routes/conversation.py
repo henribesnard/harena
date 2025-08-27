@@ -86,3 +86,39 @@ async def analyze_conversation(
         team_response=team_response,
         status=ProcessingStatus.SUCCESS,
     )
+
+
+@router.get("/conversation/status")
+async def conversation_status():
+    """Simple endpoint de disponibilité."""
+    return {
+        "service": "conversation_service",
+        "status": "ready",
+        "ready": True,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/conversation/health")
+async def conversation_health():
+    """Retourne un aperçu de l'état du service."""
+    health_metrics = metrics_collector.get_health_metrics()
+    return {
+        "service": "conversation_service",
+        "status": health_metrics.get("status", "unknown"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "health_details": health_metrics,
+        "features": [],
+    }
+
+
+@router.get("/conversation/metrics")
+async def conversation_metrics():
+    """Expose les métriques collectées."""
+    metrics_data = metrics_collector.get_all_metrics()
+    return {
+        "timestamp": metrics_data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+        "metrics": metrics_data,
+        "service_info": {"name": "conversation_service", "version": "1.0.0", "phase": 1},
+        "performance_summary": {},
+    }

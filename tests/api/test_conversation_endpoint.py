@@ -6,10 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import json
-
 import pytest
-from fastapi.testclient import TestClient
 from jose import jwt
 
 # ---------------------------------------------------------------------------
@@ -27,15 +24,8 @@ if str(current_dir) not in sys.path:
 
 from conversation_service.api.routes.conversation import router as conversation_router
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
-# Import dynamique avec gestion d'erreur
-try:
-    from fastapi.testclient import TestClient
-    from conversation_service.models.requests.conversation_requests import ConversationRequest
-except ImportError as e:
-    # Fallback si imports directs ne fonctionnent pas
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from fastapi.testclient import TestClient
-    from conversation_service.models.requests.conversation_requests import ConversationRequest
+from fastapi.testclient import TestClient
+from conversation_service.models.requests.conversation_requests import ConversationRequest
 
 
 # ---------------------------------------------------------------------------
@@ -220,34 +210,22 @@ def mock_service_loader():
 def test_app(mock_runtime, mock_service_loader):
     """Create a FastAPI app with dependency overrides for tests."""
     app = create_test_app()
-
-    mock_service_loader = MockConversationServiceLoader()
     app.state.deepseek_client = mock_service_loader.deepseek_client
     app.state.cache_manager = mock_service_loader.cache_manager
 
     from conversation_service.api.dependencies import (
-        get_cache_manager,
         get_conversation_runtime,
         get_conversation_service_status,
         get_deepseek_client,
         get_user_context,
         rate_limit_dependency,
         validate_path_user_id,
-        get_cache_manager,
-        validate_path_user_id,
-        get_user_context,
-        rate_limit_dependency,
-        get_deepseek_client,
-
     )
     from conversation_service.api.middleware.auth_middleware import verify_user_id_match
     from fastapi import Request
 
     def override_get_deepseek_client(request: Request):
         return mock_service_loader.deepseek_client
-
-    def override_get_cache_manager(request: Request):
-        return mock_service_loader.cache_manager
 
     def override_get_service_status(request: Request):
         return {"status": "healthy"}
@@ -264,7 +242,9 @@ def test_app(mock_runtime, mock_service_loader):
 
     def override_rate_limit(request: Request, user_id: int = 1):
         return None
+
     app.dependency_overrides[get_conversation_service_status] = override_get_service_status
+
     mock_runtime = MagicMock()
     mock_runtime.run_financial_team = AsyncMock(return_value={
         "final_answer": "mock",
@@ -272,10 +252,10 @@ def test_app(mock_runtime, mock_service_loader):
         "context": {}
     })
 
-    app.state.conversation_runtime = mock_runtime
-
     def override_get_conversation_runtime(request: Request):
         return mock_runtime
+
+    app.state.conversation_runtime = mock_runtime
 
     # Application des overrides
     app.dependency_overrides[get_deepseek_client] = override_get_deepseek_client
@@ -283,6 +263,7 @@ def test_app(mock_runtime, mock_service_loader):
     app.dependency_overrides[get_user_context] = override_get_user_context
     app.dependency_overrides[rate_limit_dependency] = override_rate_limit
     app.dependency_overrides[get_conversation_runtime] = override_get_conversation_runtime
+    app.dependency_overrides[get_conversation_service_status] = override_get_service_status
 
     return app
 

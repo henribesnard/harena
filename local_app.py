@@ -353,7 +353,7 @@ def create_app():
             conversation_loader = ConversationServiceLoader()
             conversation_initialized = await conversation_loader.initialize_conversation_service(app)
 
-            app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+            app.include_router(conversation_router, prefix="/api/v1", tags=["conversation"])
             routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
 
             loader.conversation_service_initialized = conversation_initialized
@@ -363,7 +363,7 @@ def create_app():
             loader.services_status["conversation_service"] = {
                 "status": status,
                 "routes": routes_count,
-                "prefix": "/api/v1/conversation",
+                "prefix": "/api/v1",
                 "initialized": conversation_initialized,
                 "error": conversation_loader.initialization_error,
             }

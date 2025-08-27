@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from jose import jwt
+from conversation_service.models.responses.conversation_responses import IntentClassificationResult
+from conversation_service.prompts.harena_intents import HarenaIntentType
 
 # ---------------------------------------------------------------------------
 # Environment configuration for tests
@@ -30,6 +32,8 @@ from conversation_service.prompts.harena_intents import HarenaIntentType
 from conversation_service.models.responses.conversation_responses import (
     IntentClassificationResult,
 )
+from conversation_service.models.responses.conversation_responses import IntentClassificationResult
+from conversation_service.prompts.harena_intents import HarenaIntentType
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +215,7 @@ def mock_service_loader():
 
 
 @pytest.fixture
-def test_app(mock_runtime, mock_service_loader):
+def test_app(mock_service_loader):
     """Create a FastAPI app with dependency overrides for tests."""
     app = create_test_app()
     app.state.deepseek_client = mock_service_loader.deepseek_client
@@ -260,12 +264,12 @@ def test_app(mock_runtime, mock_service_loader):
 
     app.state.conversation_runtime = mock_runtime
 
+
     # Application des overrides
     app.dependency_overrides[get_deepseek_client] = override_get_deepseek_client
     app.dependency_overrides[validate_path_user_id] = override_validate_user
     app.dependency_overrides[get_user_context] = override_get_user_context
     app.dependency_overrides[rate_limit_dependency] = override_rate_limit
-    app.dependency_overrides[get_conversation_runtime] = override_get_conversation_runtime
     app.dependency_overrides[get_conversation_service_status] = override_get_service_status
 
     return app
@@ -277,10 +281,6 @@ def client(test_app):
 
 
 
-@pytest.fixture
-def runtime(test_app):
-    """Accès au runtime de conversation mocké"""
-    return test_app.state.conversation_runtime
 
 # ============================================================================
 # TESTS D'AUTHENTIFICATION
@@ -327,8 +327,12 @@ class TestJWTCompatibility:
 # Conversation endpoint tests
 # ---------------------------------------------------------------------------
 class TestConversationEndpoint:
-    def test_conversation_success(self, client, runtime):
+    def test_conversation_success(self, client, mock_runtime):
         """Test conversation réussie avec réponse d'équipe AutoGen."""
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
         response = client.post(
             "/api/v1/conversation/1",
             json={"message": "Bonjour"},
@@ -341,13 +345,17 @@ class TestConversationEndpoint:
         assert data["message"] == "Bonjour"
         assert data["team_response"]["final_answer"] == "mock"
         assert len(data["team_response"]["steps"]) == 0
-        runtime.run_financial_team.assert_awaited_once_with(
+        mock_runtime.run_financial_team.assert_awaited_once_with(
             "Bonjour", {"sub": "1"}
         )
 
-    def test_conversation_success_greeting(self, client):
+    def test_conversation_success_greeting(self, client, mock_runtime):
         """Test conversation réussie avec salutation"""
-        
+
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
         with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
             # Configuration du mock agent
             mock_result = IntentClassificationResult(
@@ -381,9 +389,13 @@ class TestConversationEndpoint:
             assert data["processing_time_ms"] > 0
             assert "agent_metrics" in data
 
-    def test_conversation_success_balance_inquiry(self, client):
+    def test_conversation_success_balance_inquiry(self, client, mock_runtime):
         """Test conversation réussie pour demande de solde"""
-        
+
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
         with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
             mock_result = IntentClassificationResult(
                 intent_type=HarenaIntentType.BALANCE_INQUIRY,
@@ -436,19 +448,27 @@ class TestConversationEndpoint:
             mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
             MockAgent.return_value = mock_agent_instance
 
-            response = client.post(
-                "/api/v1/conversation/1",
-                json={"message": "Bonjour"},
-                headers=get_test_auth_headers(1),
-            )
+            with patch(
+                "conversation_service.core.runtime.ConversationServiceRuntime.run_financial_team",
+                new=AsyncMock(return_value={"final_answer": "ok", "intermediate_steps": [], "context": {}}),
+            ):
+                response = client.post(
+                    "/api/v1/conversation/1",
+                    json={"message": "Bonjour"},
+                    headers=get_test_auth_headers(1),
+                )
 
-            assert response.status_code == 200
+                assert response.status_code == 200
 
         assert getattr(test_app.state, "conversation_runtime", None) is runtime
 
-    def test_conversation_unsupported_transfer(self, client):
+    def test_conversation_unsupported_transfer(self, client, mock_runtime):
         """Test avec intention non supportée"""
-        
+
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
         with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
             mock_result = IntentClassificationResult(
                 intent_type=HarenaIntentType.TRANSFER_REQUEST,
@@ -477,7 +497,7 @@ class TestConversationEndpoint:
             assert data["intent"]["intent_type"] == "TRANSFER_REQUEST"
             assert data["intent"]["is_supported"] is False
 
-        runtime.run_financial_team.return_value = {
+        mock_runtime.run_financial_team.return_value = {
             "final_answer": "Bonjour!",
             "intermediate_steps": [
                 {"agent": "planner", "content": "analyse"},
@@ -509,9 +529,13 @@ class TestConversationEndpoint:
 class TestAuthenticationAndAuthorization:
     """Tests d'authentification et autorisation"""
 
-    def test_conversation_missing_authorization(self, client):
+    def test_conversation_missing_authorization(self, client, mock_runtime):
         """Test sans header Authorization"""
-        
+
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
         response = client.post(
             "/api/v1/conversation/1",
             json={"message": "Bonjour"},
@@ -525,6 +549,10 @@ class TestAuthenticationAndAuthorization:
         mock_runtime.run_financial_team.assert_awaited_once()
 
     def test_conversation_runtime_error(self, client, mock_runtime):
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
         mock_runtime.run_financial_team.side_effect = Exception("boom")
         response = client.post(
             "/api/v1/conversation/1",
@@ -622,10 +650,14 @@ class TestConversationRequestModel:
 
 class TestErrorHandling:
     """Tests gestion des erreurs"""
-    def test_conversation_agent_error(self, client, runtime):
+    def test_conversation_agent_error(self, client, mock_runtime):
         """Test lorsque l'équipe AutoGen renvoie une erreur"""
 
-        runtime.run_financial_team.side_effect = Exception("Erreur technique")
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
+        mock_runtime.run_financial_team.side_effect = Exception("Erreur technique")
 
         response = client.post(
             "/api/v1/conversation/1",
@@ -635,7 +667,7 @@ class TestErrorHandling:
 
         assert response.status_code == 500
 
-        runtime.run_financial_team.side_effect = None
+        mock_runtime.run_financial_team.side_effect = None
 
 # ============================================================================
 # TESTS STRUCTURE RÉPONSE
@@ -643,10 +675,14 @@ class TestErrorHandling:
 
 class TestResponseStructure:
     """Tests structure de la réponse"""
-    def test_conversation_response_structure(self, client, runtime):
+    def test_conversation_response_structure(self, client, mock_runtime):
         """Test structure complète de la réponse"""
 
-        runtime.run_financial_team.return_value = {
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
+        mock_runtime.run_financial_team.return_value = {
             "final_answer": "Test",
             "intermediate_steps": [
                 {"agent": "planner", "content": "analyse"},
@@ -682,10 +718,14 @@ class TestResponseStructure:
         for step in tr["steps"]:
             assert "role" in step and "content" in step
 
-    def test_conversation_performance_metrics(self, client, runtime):
+    def test_conversation_performance_metrics(self, client, mock_runtime):
         """Test métriques de performance"""
 
-        runtime.run_financial_team.return_value = {
+        from conversation_service.api.dependencies import get_conversation_runtime
+
+        client.app.dependency_overrides[get_conversation_runtime] = lambda request: mock_runtime
+
+        mock_runtime.run_financial_team.return_value = {
             "final_answer": "Solde",
             "intermediate_steps": [],
             "context": {}

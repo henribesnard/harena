@@ -263,6 +263,7 @@ def test_app(mock_runtime, mock_service_loader):
     def override_rate_limit(request: Request, user_id: int = 1):
         return None
     app.dependency_overrides[get_conversation_service_status] = override_get_service_status
+
     mock_runtime = MagicMock()
     mock_runtime.run_financial_team = AsyncMock(return_value={
         "final_answer": "mock",
@@ -270,10 +271,10 @@ def test_app(mock_runtime, mock_service_loader):
         "context": {}
     })
 
-    app.state.conversation_runtime = mock_runtime
-
     def override_get_conversation_runtime(request: Request):
         return mock_runtime
+
+    app.state.conversation_runtime = mock_runtime
 
     # Application des overrides
     app.dependency_overrides[get_deepseek_client] = override_get_deepseek_client
@@ -281,6 +282,7 @@ def test_app(mock_runtime, mock_service_loader):
     app.dependency_overrides[get_user_context] = override_get_user_context
     app.dependency_overrides[rate_limit_dependency] = override_rate_limit
     app.dependency_overrides[get_conversation_runtime] = override_get_conversation_runtime
+    app.dependency_overrides[get_conversation_service_status] = override_get_service_status
 
     return app
 

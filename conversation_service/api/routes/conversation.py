@@ -393,12 +393,14 @@ async def conversation_status():
     try:
         health_metrics = metrics_collector.get_health_metrics()
         
+        health_status = health_metrics["status"]
+
         return {
-            "status": health_metrics["status"],
+            "status": health_status,
             "uptime_seconds": health_metrics["uptime_seconds"],
             "version": "1.1.0",
             "phase": 1,
-            "ready": health_metrics["status"] == "healthy",
+            "ready": health_status == "healthy",
             "jwt_compatible": True,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
@@ -558,7 +560,7 @@ def _safe_get_metric(metrics: Dict[str, Any], path: list, default: Any = None) -
 def _get_health_status_description(status: str) -> str:
     """Description détaillée du statut de santé avec gestion d'erreur"""
     descriptions = {
-        "healthy": "Service opérationnel, performances normales",
+        "healthy": "Service opérationnel, aucune requête traitée ou performances normales",
         "degraded": "Service opérationnel mais performances réduites",
         "unhealthy": "Service en difficulté, performances critiques",
         "unknown": "Statut indéterminable"

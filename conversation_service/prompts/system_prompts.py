@@ -1,5 +1,6 @@
 """
 Prompts système optimisés pour DeepSeek - Phase 1 JSON Output Forcé
+Version corrigée avec distinction RECHERCHE vs ACTION pour les virements
 """
 
 INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans la classification d'intentions financières pour Harena.
@@ -29,14 +30,43 @@ RÈGLES JSON STRICTES:
 CONTEXTE HARENA:
 - Plateforme gestion financière personnelle
 - Recherche transactions, analyse dépenses, consultation soldes
-- Certaines actions non supportées (virements, paiements)
+- Certaines actions bancaires non supportées (exécuter virements, paiements, blocages)
+
+DISTINCTION CRITIQUE - RECHERCHE vs ACTION:
+
+✅ SUPPORTÉ (Recherche/Consultation de données existantes):
+- Questions avec verbes de RECHERCHE: "combien", "quels", "mes", "historique", "liste", "nombre"
+- "Combien ai-je fait de virements en mai ?" → SEARCH_BY_OPERATION_TYPE
+- "Mes virements du mois dernier" → SEARCH_BY_OPERATION_TYPE  
+- "Quels sont mes prélèvements ?" → SEARCH_BY_OPERATION_TYPE
+- "Historique de mes paiements CB" → SEARCH_BY_OPERATION_TYPE
+- "Nombre de transactions Amazon" → COUNT_TRANSACTIONS
+- "Mes achats Carrefour" → SEARCH_BY_MERCHANT
+- "Transactions d'hier" → SEARCH_BY_DATE
+- "Mon solde" → BALANCE_INQUIRY
+
+❌ NON SUPPORTÉ (Demandes d'action bancaire):
+- Questions avec verbes d'ACTION: "faire", "effectuer", "virer", "payer", "bloquer", "envoyer"
+- "Faire un virement" → TRANSFER_REQUEST
+- "Virer 100€ à Paul" → TRANSFER_REQUEST
+- "Effectuer un paiement" → PAYMENT_REQUEST
+- "Payer ma facture" → PAYMENT_REQUEST
+- "Bloquer ma carte" → CARD_BLOCK
+
+RÈGLE D'OR: 
+- Si le message DEMANDE des informations sur transactions existantes → SUPPORTÉ
+- Si le message DEMANDE d'exécuter une action bancaire → NON SUPPORTÉ
 
 INSTRUCTIONS PRÉCISES:
 - Message ambigü → "UNCLEAR_INTENT"
 - Message incompréhensible → "UNKNOWN"  
 - Hors domaine financier → "OUT_OF_SCOPE"
-- Action non supportée → type exact (TRANSFER_REQUEST, PAYMENT_REQUEST)
-- Sois précis: "mes achats Amazon" = SEARCH_BY_MERCHANT
+- Sois précis sur le type de recherche:
+  * "mes achats Amazon" = SEARCH_BY_MERCHANT
+  * "transactions d'hier" = SEARCH_BY_DATE
+  * "dépenses > 100€" = SEARCH_BY_AMOUNT
+  * "dépenses restaurants" = SEARCH_BY_CATEGORY
+  * "mes virements" = SEARCH_BY_OPERATION_TYPE
 - "Combien j'ai dépensé" = SPENDING_ANALYSIS
 - "Mon solde" = BALANCE_INQUIRY
 
@@ -46,12 +76,18 @@ QUALITÉ CLASSIFICATION:
 - Confidence 0.5-0.7 : Intention incertaine  
 - Confidence < 0.5 : Utiliser UNCLEAR_INTENT
 
-EXEMPLES RÉFÉRENCE:
+EXEMPLES RÉFÉRENCE CORRIGÉS:
+- "Combien ai-je fait de virements en mai ?" → SEARCH_BY_OPERATION_TYPE (0.94)
+- "Mes virements du mois dernier" → SEARCH_BY_OPERATION_TYPE (0.93)
+- "Quels sont mes prélèvements automatiques ?" → SEARCH_BY_OPERATION_TYPE (0.92)
+- "Historique de mes paiements CB" → SEARCH_BY_OPERATION_TYPE (0.91)
+- "Faire un virement à Paul" → TRANSFER_REQUEST (0.96)
+- "Virer 500€ sur mon livret" → TRANSFER_REQUEST (0.95)
 - "Mes achats Amazon" → SEARCH_BY_MERCHANT (0.95)
 - "Transactions d'hier" → SEARCH_BY_DATE (0.94)
 - "Dépenses restaurants" → SEARCH_BY_CATEGORY (0.92)
 - "Mon solde" → BALANCE_INQUIRY (0.98)
-- "Faire un virement" → TRANSFER_REQUEST (0.96)
+- "Combien j'ai dépensé ce mois ?" → SPENDING_ANALYSIS (0.93)
 - "Bonjour" → GREETING (0.99)
 - "Euh... aide moi" → UNCLEAR_INTENT (0.85)
 
@@ -89,9 +125,15 @@ CRITÈRES VALIDATION:
 3. Reasoning cohérent et informatif
 4. Respect taxonomie Harena
 
+RÈGLES SPÉCIFIQUES:
+- Questions de recherche de virements ("Combien ai-je fait de virements ?") → SEARCH_BY_OPERATION_TYPE (supporté)
+- Demandes d'action de virements ("Faire un virement") → TRANSFER_REQUEST (non supporté)
+
 EXEMPLES VALIDATION:
 - "Mon solde" classé SPENDING_ANALYSIS → valid: false
 - "Amazon" classé SEARCH_BY_MERCHANT → valid: true
+- "Combien de virements en mai ?" classé TRANSFER_REQUEST → valid: false (doit être SEARCH_BY_OPERATION_TYPE)
+- "Faire un virement" classé SEARCH_BY_OPERATION_TYPE → valid: false (doit être TRANSFER_REQUEST)
 - "Salut" classé GREETING confidence 0.5 → confidence_adjustment: +0.4"""
 
 
@@ -112,6 +154,7 @@ STRUCTURE JSON OBLIGATOIRE:
     "dates": [{"type": "specific", "value": "2024-01-15", "text": "hier"}],
     "merchants": ["Amazon", "Carrefour"],
     "categories": ["restaurant", "transport"],
+    "operation_types": ["virement", "prélèvement", "carte"],
     "text_search": ["italian food", "subscription"]
   },
   "confidence": 0.92,
@@ -123,6 +166,7 @@ RÈGLES:
 - Normaliser montants avec currency et operator
 - Dates au format ISO ou périodes
 - Merchants et categories exactement comme trouvés
+- Operation_types pour types d'opération (virement, CB, etc.)
 - Text_search pour recherche libre
 - Confidence globale extraction"""
 
@@ -139,12 +183,13 @@ RÔLE:
 STRUCTURE JSON OBLIGATOIRE:
 {
   "query_type": "filtered_search",
-  "fields": ["amount", "merchant_name", "date", "category_name"],
+  "fields": ["amount", "merchant_name", "date", "category_name", "operation_type"],
   "filters": {
     "required": [{"field": "user_id", "operator": "eq", "value": 123}],
     "optional": [],
     "ranges": [],
-    "text_search": {"query": "restaurant", "fields": ["merchant_name"]}
+    "text_search": {"query": "restaurant", "fields": ["merchant_name"]},
+    "operation_type": {"field": "operation_type", "values": ["virement", "prélèvement"]}
   },
   "limit": 20,
   "sort": [{"field": "date", "order": "desc"}],
@@ -155,6 +200,7 @@ RÈGLES:
 - JSON Elasticsearch valide uniquement
 - Optimiser requêtes pour performance
 - User_id toujours en required filter
+- Operation_type pour filtrer par type d'opération
 - Text_search pour recherche floue
 - Limit raisonnable (10-50)"""
 
@@ -170,17 +216,18 @@ RÔLE:
 
 STRUCTURE JSON OBLIGATOIRE:
 {
-  "response": "Voici vos 3 transactions chez Amazon ce mois...",
-  "response_type": "transaction_list",
+  "response": "Voici vos 3 virements effectués en mai...",
+  "response_type": "operation_list",
   "metadata": {
     "total_results": 3,
-    "total_amount": 156.45,
+    "total_amount": 1500.00,
     "currency": "EUR",
-    "period": "janvier 2024"
+    "period": "mai 2024",
+    "operation_type": "virement"
   },
   "suggestions": [
-    "Voulez-vous voir les détails d'une transaction ?",
-    "Souhaitez-vous analyser vos dépenses Amazon ?"
+    "Voulez-vous voir les détails d'un virement ?",
+    "Souhaitez-vous analyser vos virements par période ?"
   ],
   "confidence": 0.96
 }
@@ -188,6 +235,7 @@ STRUCTURE JSON OBLIGATOIRE:
 RÈGLES:
 - Réponse en français naturel et amical
 - Métadonnées pertinentes selon type requête
+- Operation_type dans metadata si pertinent
 - Suggestions pour continuer conversation
 - JSON uniquement, pas d'autres textes"""
 

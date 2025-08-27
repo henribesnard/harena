@@ -10,6 +10,8 @@ Le tout est géré par un ``GroupChat`` et son ``GroupChatManager``.
 from __future__ import annotations
 
 from typing import Any, Dict
+import json
+import re
 
 try:  # pragma: no cover - fallback lorsque autogen est indisponible en tests
     from autogen import AssistantAgent, GroupChat, GroupChatManager
@@ -28,13 +30,28 @@ except Exception:  # pragma: no cover
 
     class GroupChatManager:  # type: ignore
         def __init__(self, *args, **kwargs) -> None:  # noqa: D401
-            """Stub minimal de ``GroupChatManager``."""
+            """Stub minimal de ``GroupChatManager`` avec logique simple."""
             self.groupchat = kwargs.get("groupchat")
             self.llm_config = kwargs.get("llm_config", {})
 
-        async def run(self, *_, **__) -> Dict[str, Any]:
-            """Retourne un dictionnaire vide pour compatibilité."""
-            return {}
+        async def run(self, message: str, *_, **__) -> Dict[str, Any]:
+            """Analyse basique du message pour générer intent et entités."""
+            intent = "unknown"
+            entities: Dict[str, Any] = {}
+
+            # Détection très simple de tickers (suite de lettres majuscules)
+            tickers = re.findall(r"\b[A-Z]{2,5}\b", message)
+            if tickers:
+                entities["tickers"] = tickers
+                intent = "price_query"
+
+            # Détection de montants numériques
+            amounts = re.findall(r"\b\d+(?:\.\d+)?\b", message)
+            if amounts:
+                entities["amounts"] = [float(a) for a in amounts]
+                intent = "transaction_amount"
+
+            return {"intent": intent, "entities": entities}
 
 
 class FinancialAnalysisTeamPhase2:
@@ -83,10 +100,18 @@ class FinancialAnalysisTeamPhase2:
         result = await self.manager.run(message)
 
         # Extraction des réponses si disponibles
-        intent = None
-        entities = None
+        intent: Any = None
+        entities: Any = None
         if isinstance(result, dict):
             intent = result.get("intent")
             entities = result.get("entities")
+        elif isinstance(result, str):
+            # Si la réponse est une chaîne JSON, on tente de la parser
+            try:
+                data = json.loads(result)
+                intent = data.get("intent")
+                entities = data.get("entities")
+            except Exception:
+                pass
 
         return {"intent": intent, "entities": entities}

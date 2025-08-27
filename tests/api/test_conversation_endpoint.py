@@ -4,7 +4,7 @@ import sys
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from jose import jwt
@@ -26,6 +26,10 @@ from conversation_service.api.routes.conversation import router as conversation_
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 from fastapi.testclient import TestClient
 from conversation_service.models.requests.conversation_requests import ConversationRequest
+from conversation_service.prompts.harena_intents import HarenaIntentType
+from conversation_service.models.responses.conversation_responses import (
+    IntentClassificationResult,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +249,6 @@ def test_app(mock_runtime, mock_service_loader):
 
     app.dependency_overrides[get_conversation_service_status] = override_get_service_status
 
-    mock_runtime = MagicMock()
     mock_runtime.run_financial_team = AsyncMock(return_value={
         "final_answer": "mock",
         "intermediate_steps": [],
@@ -410,12 +413,14 @@ class TestConversationEndpoint:
             assert data["intent"]["category"] == "ACCOUNT_BALANCE"
             assert data["intent"]["is_supported"] is True
 
-    def test_conversation_runtime_injected(self, client, test_app):
-        """Verify that a default runtime is injected when missing"""
+    def test_conversation_runtime_injected(self, client, test_app, runtime):
+        """Verify that the mocked runtime is available in the app state"""
 
-        assert getattr(test_app.state, "conversation_runtime", None) is None
+        assert getattr(test_app.state, "conversation_runtime", None) is runtime
 
-        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
+        with patch(
+            "conversation_service.agents.financial.intent_classifier.IntentClassifierAgent"
+        ) as MockAgent:
             mock_result = IntentClassificationResult(
                 intent_type=HarenaIntentType.GREETING,
                 confidence=0.95,
@@ -439,9 +444,7 @@ class TestConversationEndpoint:
 
             assert response.status_code == 200
 
-        from conversation_service.core.runtime import ConversationServiceRuntime
-
-        assert isinstance(test_app.state.conversation_runtime, ConversationServiceRuntime)
+        assert getattr(test_app.state, "conversation_runtime", None) is runtime
 
     def test_conversation_unsupported_transfer(self, client):
         """Test avec intention non supportée"""

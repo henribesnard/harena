@@ -479,15 +479,26 @@ class ConversationServiceLoader:
         """Configuration middleware et routes avec gestion intégration"""
         
         # Vérifier si l'app a déjà démarré (intégration dans local_app)
-        try:
-            # Test si on peut ajouter du middleware
-            test_middleware_class = type("TestMiddleware", (), {"__call__": lambda self, scope, receive, send: None})
+        def _probe_middleware(app: FastAPI) -> None:
+            """Ajoute puis retire un middleware pour tester si l'opération est possible.
+
+            L'ajout de middleware met à jour ``app.user_middleware`` et non
+            ``middleware_stack``; nous utilisons donc ``user_middleware.pop``
+            pour nettoyer après le test.
+            """
+
+            test_middleware_class = type(
+                "TestMiddleware", (), {"__call__": lambda self, scope, receive, send: None}
+            )
             app.add_middleware(test_middleware_class)
+            app.user_middleware.pop()
+            # Rebuild the stack so the dummy middleware is completely discarded
+            app.middleware_stack = app.build_middleware_stack()
+
+        try:
+            _probe_middleware(app)
             # Si on arrive ici, on peut ajouter des middlewares
             can_add_middleware = True
-            # Retirer le middleware de test
-            if hasattr(app, 'middleware_stack') and app.middleware_stack:
-                app.middleware_stack = app.middleware_stack[:-1]
         except RuntimeError as e:
             if "Cannot add middleware after an application has started" in str(e):
                 can_add_middleware = False

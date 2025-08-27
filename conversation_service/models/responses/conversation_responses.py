@@ -1,7 +1,7 @@
 """
 Modèles Pydantic V2 optimisés pour les réponses conversation service
 """
-from pydantic import BaseModel, field_validator, ConfigDict, computed_field
+from pydantic import BaseModel, field_validator, ConfigDict, computed_field, Field
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timezone
 from enum import Enum
@@ -549,8 +549,8 @@ class AutoGenMessage(BaseModel):
 class AutoGenTeamResponse(BaseModel):
     """Container for the AutoGen team output."""
     final_answer: str
-    steps: List[AutoGenMessage] = []
-    context: Dict[str, Any] = {}
+    steps: List[AutoGenMessage] = Field(default_factory=list)
+    context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ConversationResponsePhase2AutoGen(BaseModel):

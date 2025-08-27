@@ -11,7 +11,6 @@ from datetime import datetime
 BASE_URL = "http://localhost:8000/api/v1"
 USERNAME = "test2@example.com"
 PASSWORD = "password123"
-USER_ID = 1
 QUESTIONS = [
     "Combien ai-je fait de virements en mai ?",
     "Combien ai-je dépensé en juin ?",
@@ -76,13 +75,19 @@ def main() -> None:
 
     session.headers.update({"Authorization": f"Bearer {token}"})
 
+    # Récupération de l'ID utilisateur
+    user_resp = session.get(f"{BASE_URL}/users/me")
+    user_resp.raise_for_status()
+    user_id = user_resp.json().get("id")
+    print(f"✅ ID utilisateur récupéré : {user_id}")
+
     report = []
     last_chat_data = None
 
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
         chat_data, intent_type, confidence, elapsed_ms = run_question(
-            session, USER_ID, question, conversation_id
+            session, user_id, question, conversation_id
         )
         report.append(
             {

@@ -1,9 +1,10 @@
 """Tests for conversation endpoint using AutoGen runtime."""
 import os
 import sys
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import json
 
@@ -210,28 +211,45 @@ def mock_runtime():
 
 
 @pytest.fixture
-def test_app(mock_runtime):
+def mock_service_loader():
+    """Fixture providing a mock conversation service loader."""
+    return MockConversationServiceLoader()
+
+
+@pytest.fixture
+def test_app(mock_runtime, mock_service_loader):
     """Create a FastAPI app with dependency overrides for tests."""
     app = create_test_app()
 
+    mock_service_loader = MockConversationServiceLoader()
+    app.state.deepseek_client = mock_service_loader.deepseek_client
+    app.state.cache_manager = mock_service_loader.cache_manager
+
     from conversation_service.api.dependencies import (
+        get_cache_manager,
         get_conversation_runtime,
         get_conversation_service_status,
+        get_deepseek_client,
+        get_user_context,
+        rate_limit_dependency,
+        validate_path_user_id,
+        get_cache_manager,
         validate_path_user_id,
         get_user_context,
         rate_limit_dependency,
         get_deepseek_client,
+
     )
     from conversation_service.api.middleware.auth_middleware import verify_user_id_match
     from fastapi import Request
 
-    def override_get_runtime(request: Request):
-        return mock_runtime
-    
     def override_get_deepseek_client(request: Request):
         return mock_service_loader.deepseek_client
 
-    def override_get_status(request: Request):
+    def override_get_cache_manager(request: Request):
+        return mock_service_loader.cache_manager
+
+    def override_get_service_status(request: Request):
         return {"status": "healthy"}
 
     async def override_validate_user(
@@ -248,13 +266,14 @@ def test_app(mock_runtime):
         return None
 
     app.dependency_overrides[get_conversation_runtime] = override_get_runtime
-    app.dependency_overrides[get_conversation_service_status] = override_get_status
+    app.dependency_overrides[get_conversation_service_status] = override_get_service_status
     mock_runtime = MagicMock()
     mock_runtime.run_financial_team = AsyncMock(return_value={
         "final_answer": "mock",
         "intermediate_steps": [],
         "context": {}
     })
+
     app.state.conversation_runtime = mock_runtime
 
     def override_get_conversation_runtime(request: Request):

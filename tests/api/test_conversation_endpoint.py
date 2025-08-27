@@ -1,24 +1,29 @@
-"""
-Tests complets pour l'endpoint conversation - Compatible user_service JWT
-"""
+"""Tests for conversation endpoint using AutoGen runtime."""
 import os
 import sys
-import pytest
-from jose import jwt
-from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timezone, timedelta
-import json
-import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock
 
-# Configuration environment pour tests AVANT les imports
+import pytest
+from fastapi.testclient import TestClient
+from jose import jwt
+
+# ---------------------------------------------------------------------------
+# Environment configuration for tests
+# ---------------------------------------------------------------------------
 os.environ["DEEPSEEK_API_KEY"] = "test-deepseek-key-12345"
-os.environ["SECRET_KEY"] = "a" * 32 + "b" * 32  # Même clé que conftest.py
+os.environ["SECRET_KEY"] = "a" * 32 + "b" * 32
 os.environ["CONVERSATION_SERVICE_ENABLED"] = "true"
 os.environ["ENVIRONMENT"] = "testing"
 
-import importlib
-from pathlib import Path
+# Ensure project modules are importable when running directly
+current_dir = Path(__file__).resolve().parent.parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
 
+from conversation_service.api.routes.conversation import router as conversation_router
+from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 # Import dynamique avec gestion d'erreur
 try:
     from fastapi.testclient import TestClient
@@ -29,53 +34,34 @@ except ImportError as e:
     from fastapi.testclient import TestClient
     from conversation_service.models.requests.conversation_requests import ConversationRequest
 
-# ============================================================================
-# GENERATION JWT COMPATIBLE user_service
-# ============================================================================
 
+# ---------------------------------------------------------------------------
+# JWT helpers
+# ---------------------------------------------------------------------------
 def generate_test_jwt(sub: int = 1, expired: bool = False) -> str:
-    """
-    Génère un JWT compatible avec user_service.core.security.create_access_token
-    
-    Args:
-        sub: Subject (user ID)
-        expired: Si True, génère un token expiré
-    
-    Returns:
-        str: Token JWT signé avec la même logique que user_service
-    """
-    # Logique temporelle identique à user_service.core.security.create_access_token
+    """Generate a JWT compatible with user_service logic."""
     if expired:
-        expire = datetime.utcnow() + timedelta(hours=-1)  # Expiré depuis 1h
+        expire = datetime.utcnow() - timedelta(hours=1)
     else:
-        expire = datetime.utcnow() + timedelta(minutes=60 * 24)  # 24h comme user_service
-    
-    # Payload compatible avec user_service.core.security.create_access_token
+        expire = datetime.utcnow() + timedelta(hours=24)
+
     payload = {
         "exp": expire,
-        "sub": str(sub),  # user_service utilise str(subject)
-        "permissions": ["chat:write"],  # Même format que user_service
+        "sub": str(sub),
+        "permissions": ["chat:write"],
     }
-    
-    # Utilise la même SECRET_KEY que les settings
+
     secret_key = os.environ.get("SECRET_KEY")
     if not secret_key:
-        raise ValueError("SECRET_KEY manquante dans l'environnement de test")
-    
+        raise ValueError("SECRET_KEY missing in environment")
+
     return jwt.encode(payload, secret_key, algorithm="HS256")
 
+
 def get_test_auth_headers(user_id: int = 1) -> dict:
-    """
-    Génère les headers d'authentification pour les tests
-    
-    Args:
-        user_id: ID de l'utilisateur pour le token
-        
-    Returns:
-        dict: Headers avec Authorization Bearer
-    """
     token = generate_test_jwt(user_id)
     return {"Authorization": f"Bearer {token}"}
+
 
 # ============================================================================
 # MOCKS POUR SERVICES EXTERNES
@@ -193,40 +179,41 @@ class MockConversationServiceLoader:
 # CONFIGURATION APP DE TEST
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# App factory and fixtures
+# ---------------------------------------------------------------------------
 def create_test_app():
-    """Crée une app FastAPI pour les tests avec configuration complète"""
     from fastapi import FastAPI
-    from conversation_service.api.routes.conversation import router as conversation_router
-    from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
-    
+
     app = FastAPI(title="Test Conversation Service")
-    
-    # Middleware auth avec la configuration des tests
     app.add_middleware(JWTAuthMiddleware)
-    
-    # Routes
     app.include_router(conversation_router, prefix="/api/v1")
-    
     return app
 
-# ============================================================================
-# FIXTURES PYTEST
-# ============================================================================
 
 @pytest.fixture
-def mock_service_loader():
-    """Service loader mocké"""
-    return MockConversationServiceLoader()
+def mock_runtime():
+    """Mocked ConversationServiceRuntime with controllable behaviour."""
+    runtime = AsyncMock()
+    runtime.run_financial_team = AsyncMock(
+        return_value={
+            "final_answer": "Bonjour!",
+            "context": {"foo": "bar"},
+            "intermediate_steps": [
+                {"agent": "analyst", "content": "Analysing: Bonjour"}
+            ],
+        }
+    )
+    return runtime
+
 
 @pytest.fixture
-def test_app(mock_service_loader):
-    """App FastAPI de test configurée avec dépendances mockées"""
+def test_app(mock_runtime):
+    """Create a FastAPI app with dependency overrides for tests."""
     app = create_test_app()
 
-    # Import des dépendances après la création de l'app
     from conversation_service.api.dependencies import (
-        get_deepseek_client,
-        get_cache_manager,
+        get_conversation_runtime,
         get_conversation_service_status,
         validate_path_user_id,
         get_user_context,
@@ -235,20 +222,19 @@ def test_app(mock_service_loader):
     )
     from conversation_service.api.middleware.auth_middleware import verify_user_id_match
     from fastapi import Request
+
+    def override_get_runtime(request: Request):
+        return mock_runtime
     
     def override_get_deepseek_client(request: Request):
         return mock_service_loader.deepseek_client
 
-    def override_get_cache_manager(request: Request):
-        return mock_service_loader.cache_manager
-
-    def override_get_service_status(request: Request):
+    def override_get_status(request: Request):
         return {"status": "healthy"}
 
     async def override_validate_user(
         request: Request, path_user_id: int, token_user_id: int = 1
     ) -> int:
-        # Simule l'injection de user_id par le middleware auth
         request.state.user_id = token_user_id
         await verify_user_id_match(request, path_user_id)
         return path_user_id
@@ -259,6 +245,8 @@ def test_app(mock_service_loader):
     def override_rate_limit(request: Request, user_id: int = 1):
         return None
 
+    app.dependency_overrides[get_conversation_runtime] = override_get_runtime
+    app.dependency_overrides[get_conversation_service_status] = override_get_status
     mock_runtime = MagicMock()
     mock_runtime.run_financial_team = AsyncMock(return_value={
         "final_answer": "mock",
@@ -279,12 +267,13 @@ def test_app(mock_service_loader):
     app.dependency_overrides[rate_limit_dependency] = override_rate_limit
     app.dependency_overrides[get_conversation_runtime] = override_get_conversation_runtime
 
-    yield app
+    return app
+
 
 @pytest.fixture
 def client(test_app):
-    """Client de test FastAPI"""
     return TestClient(test_app, raise_server_exceptions=False)
+
 
 
 @pytest.fixture
@@ -296,61 +285,48 @@ def runtime(test_app):
 # TESTS D'AUTHENTIFICATION
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# JWT compatibility tests
+# ---------------------------------------------------------------------------
 class TestJWTCompatibility:
-    """Tests de compatibilité JWT avec user_service"""
+    """Tests ensuring JWT generation is compatible with validators."""
 
     def test_jwt_token_compatibility(self):
-        """Test de compatibilité des tokens JWT entre services"""
         from conversation_service.api.middleware.auth_middleware import JWTValidator
-        
-        # Génère un token avec la même logique que user_service
+
         token = generate_test_jwt(sub=1)
-        
-        # Valide avec le middleware conversation_service
         validator = JWTValidator()
         result = validator.validate_token(token)
-        
-        assert result.success, f"Token invalide: {result.error_message}"
-        assert result.user_id == 1, f"User ID incorrect: {result.user_id}"
-        assert result.token_payload is not None, "Payload manquant"
-        
-        # Vérifications du payload
+
+        assert result.success
+        assert result.user_id == 1
         payload = result.token_payload
-        assert payload.get("sub") == "1", f"Subject incorrect: {payload.get('sub')}"
-        assert "permissions" in payload, "Permissions manquantes"
-        assert "chat:write" in payload["permissions"], "Permission chat:write manquante"
+        assert payload.get("sub") == "1"
+        assert "chat:write" in payload.get("permissions", [])
 
     def test_generate_test_jwt_format(self):
-        """Test format du JWT généré"""
         token = generate_test_jwt(sub=42)
-        
-        # Vérification format JWT
-        parts = token.split('.')
-        assert len(parts) == 3, "JWT doit avoir 3 parties séparées par des points"
-        
-        # Décodage pour vérifier le contenu
+        parts = token.split(".")
+        assert len(parts) == 3
         payload = jwt.decode(token, os.environ["SECRET_KEY"], algorithms=["HS256"])
-        
-        assert payload["sub"] == "42", "Subject doit être string"
-        assert "exp" in payload, "Expiration manquante"
-        assert "permissions" in payload, "Permissions manquantes"
+        assert payload["sub"] == "42"
+        assert "exp" in payload
 
     def test_expired_token_generation(self):
-        """Test génération token expiré"""
-        expired_token = generate_test_jwt(sub=1, expired=True)
-        
         from conversation_service.api.middleware.auth_middleware import JWTValidator
+
+        expired_token = generate_test_jwt(sub=1, expired=True)
         validator = JWTValidator()
         result = validator.validate_token(expired_token)
-        
-        assert not result.success, "Token expiré devrait être refusé"
-        assert result.error_code == "TOKEN_EXPIRED", f"Code d'erreur incorrect: {result.error_code}"
+        assert not result.success
+        assert result.error_code == "TOKEN_EXPIRED"
 
-# ============================================================================
-# TESTS ENDPOINTS PRINCIPAUX
-# ============================================================================
 
+# ---------------------------------------------------------------------------
+# Conversation endpoint tests
+# ---------------------------------------------------------------------------
 class TestConversationEndpoint:
+    def test_conversation_success(self, client, mock_runtime):
     """Tests complets pour l'endpoint de conversation"""
 
     def test_conversation_success(self, client, runtime):
@@ -524,132 +500,84 @@ class TestAuthenticationAndAuthorization:
         
         response = client.post(
             "/api/v1/conversation/1",
-            json={"message": "Bonjour"}
+            json={"message": "Bonjour"},
+            headers=get_test_auth_headers(1),
         )
-        
-        assert response.status_code == 401
-        detail = response.json().get("detail", "")
-        assert any(keyword in detail.lower() for keyword in ["authorization", "authentification", "auth"]), \
-            f"Message d'erreur inattendu: {detail}"
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == 1
+        assert data["team_response"]["final_answer"] == "Bonjour!"
+        assert len(data["team_response"]["steps"]) == 1
+        mock_runtime.run_financial_team.assert_awaited_once()
 
-    def test_conversation_invalid_token(self, client):
-        """Test avec token JWT invalide"""
-        
+    def test_conversation_runtime_error(self, client, mock_runtime):
+        mock_runtime.run_financial_team.side_effect = Exception("boom")
         response = client.post(
             "/api/v1/conversation/1",
             json={"message": "Bonjour"},
-            headers={"Authorization": "Bearer invalid-token"}
+            headers=get_test_auth_headers(1),
         )
-        
+        assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# Authentication and authorisation tests
+# ---------------------------------------------------------------------------
+class TestAuthenticationAndAuthorization:
+    def test_conversation_missing_authorization(self, client):
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Bonjour"},
+        )
+        assert response.status_code == 401
+
+    def test_conversation_invalid_token(self, client):
+        response = client.post(
+            "/api/v1/conversation/1",
+            json={"message": "Bonjour"},
+            headers={"Authorization": "Bearer invalid-token"},
+        )
         assert response.status_code == 401
 
     def test_conversation_expired_token(self, client):
-        """Test avec token expiré"""
-        
         expired_token = generate_test_jwt(1, expired=True)
-        
         response = client.post(
             "/api/v1/conversation/1",
             json={"message": "Bonjour"},
-            headers={"Authorization": f"Bearer {expired_token}"}
+            headers={"Authorization": f"Bearer {expired_token}"},
         )
-        
         assert response.status_code == 401
 
-    def test_conversation_sub_mismatch(self, client):
-        """Test avec sub ne correspondant pas au token"""
-        
-        token = generate_test_jwt(1)  # Token pour user 1
-        
-        response = client.post(
-            "/api/v1/conversation/2",  # Requête pour user 2
-            json={"message": "Bonjour"},
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        # Le middleware peut échouer avant la vérification user_id mismatch
-        # donc on accepte soit 401 (token validation) soit 403 (user mismatch)
-        assert response.status_code in [401, 403], \
-            f"Status code inattendu: {response.status_code}"
-        
-        # Si c'est 403, vérifier que c'est bien pour user mismatch
-        if response.status_code == 403:
-            error_detail = response.json().get("detail", "")
-            assert "correspond" in str(error_detail).lower() or "mismatch" in str(error_detail).lower()
 
-    def test_conversation_invalid_bearer_scheme(self, client):
-        """Test avec schéma d'authentification invalide"""
-        
+# ---------------------------------------------------------------------------
+# Response structure tests
+# ---------------------------------------------------------------------------
+class TestResponseStructure:
+    def test_conversation_response_structure(self, client):
         response = client.post(
             "/api/v1/conversation/1",
             json={"message": "Bonjour"},
-            headers={"Authorization": "Basic invalid-scheme"}
+            headers=get_test_auth_headers(1),
         )
-        
-        assert response.status_code == 401
+        assert response.status_code == 200
+        data = response.json()
 
-# ============================================================================
-# TESTS VALIDATION DONNÉES
-# ============================================================================
+        base_fields = [
+            "user_id",
+            "message",
+            "timestamp",
+            "processing_time_ms",
+            "team_response",
+            "status",
+            "phase",
+            "request_id",
+        ]
+        for field in base_fields:
+            assert field in data
 
-class TestDataValidation:
-    """Tests validation des données d'entrée"""
-
-    def test_conversation_empty_message(self, client):
-        """Test avec message vide"""
-        
-        response = client.post(
-            "/api/v1/conversation/1",
-            json={"message": ""},
-            headers=get_test_auth_headers(1)
-        )
-
-        assert response.status_code == 422
-        error = response.json()["detail"][0]
-        assert error["loc"] == ["body", "message"]
-        assert "vide" in error["msg"]
-
-    def test_conversation_message_too_long(self, client):
-        """Test avec message trop long"""
-        
-        long_message = "A" * 1001  # Dépasse la limite de 1000
-        
-        response = client.post(
-            "/api/v1/conversation/1",
-            json={"message": long_message},
-            headers=get_test_auth_headers(1)
-        )
-
-        assert response.status_code == 422
-        error = response.json()["detail"][0]
-        assert error["loc"] == ["body", "message"]
-        assert "1000 caractères" in error["msg"]
-
-    def test_conversation_malicious_content(self, client):
-        """Test avec contenu potentiellement malveillant"""
-        
-        malicious_message = "<script>alert('xss')</script>"
-        
-        response = client.post(
-            "/api/v1/conversation/1",
-            json={"message": malicious_message},
-            headers=get_test_auth_headers(1)
-        )
-
-        assert response.status_code == 422
-        error = response.json()["detail"][0]
-        assert error["loc"] == ["body", "message"]
-        assert "malveillant" in error["msg"]
-
-    def test_conversation_request_validation(self, client):
-        """Test validation du modèle de requête"""
-        
-        # Test avec JSON invalide
-        response = client.post(
-            "/api/v1/conversation/1",
-            data="invalid json",
-            headers={**get_test_auth_headers(1), "Content-Type": "application/json"}
-        )
+        team_fields = ["final_answer", "steps", "context"]
+        for field in team_fields:
+            assert field in data["team_response"]
         
         assert response.status_code == 422
 

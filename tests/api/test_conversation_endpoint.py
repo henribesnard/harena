@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
@@ -235,6 +237,7 @@ def test_app(mock_runtime, mock_service_loader):
         validate_path_user_id,
         get_user_context,
         rate_limit_dependency,
+        get_deepseek_client,
 
     )
     from conversation_service.api.middleware.auth_middleware import verify_user_id_match
@@ -278,8 +281,6 @@ def test_app(mock_runtime, mock_service_loader):
 
     # Application des overrides
     app.dependency_overrides[get_deepseek_client] = override_get_deepseek_client
-    app.dependency_overrides[get_cache_manager] = override_get_cache_manager
-    app.dependency_overrides[get_conversation_service_status] = override_get_service_status
     app.dependency_overrides[validate_path_user_id] = override_validate_user
     app.dependency_overrides[get_user_context] = override_get_user_context
     app.dependency_overrides[rate_limit_dependency] = override_rate_limit

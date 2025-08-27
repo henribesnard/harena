@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
 from config_service.config import settings
+from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 
 # Charger le fichier .env en priorité
 load_dotenv()
@@ -412,6 +413,8 @@ def create_app():
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.add_middleware(JWTAuthMiddleware)
 
     @app.get("/health")
     async def health():

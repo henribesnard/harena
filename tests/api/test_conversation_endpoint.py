@@ -406,6 +406,39 @@ class TestConversationEndpoint:
             assert data["intent"]["category"] == "ACCOUNT_BALANCE"
             assert data["intent"]["is_supported"] is True
 
+    def test_conversation_runtime_injected(self, client, test_app):
+        """Verify that a default runtime is injected when missing"""
+
+        assert getattr(test_app.state, "conversation_runtime", None) is None
+
+        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
+            mock_result = IntentClassificationResult(
+                intent_type=HarenaIntentType.GREETING,
+                confidence=0.95,
+                reasoning="Salutation détectée",
+                original_message="Bonjour",
+                category="CONVERSATIONAL",
+                is_supported=True,
+                alternatives=[],
+                processing_time_ms=150,
+            )
+
+            mock_agent_instance = AsyncMock()
+            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
+            MockAgent.return_value = mock_agent_instance
+
+            response = client.post(
+                "/api/v1/conversation/1",
+                json={"message": "Bonjour"},
+                headers=get_test_auth_headers(1),
+            )
+
+            assert response.status_code == 200
+
+        from conversation_service.core.runtime import ConversationServiceRuntime
+
+        assert isinstance(test_app.state.conversation_runtime, ConversationServiceRuntime)
+
     def test_conversation_unsupported_transfer(self, client):
         """Test avec intention non supportée"""
         

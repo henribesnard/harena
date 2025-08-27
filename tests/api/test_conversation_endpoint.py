@@ -355,6 +355,137 @@ class TestConversationEndpoint:
 
     def test_conversation_success(self, client, runtime):
         """Test conversation réussie avec réponse d'équipe AutoGen"""
+    def test_conversation_success_greeting(self, client):
+        """Test conversation réussie avec salutation"""
+        
+        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
+            # Configuration du mock agent
+            mock_result = IntentClassificationResult(
+                intent_type=HarenaIntentType.GREETING,
+                confidence=0.95,
+                reasoning="Salutation détectée",
+                original_message="Bonjour",
+                category="CONVERSATIONAL",
+                is_supported=True,
+                alternatives=[],
+                processing_time_ms=150
+            )
+            
+            mock_agent_instance = AsyncMock()
+            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
+            MockAgent.return_value = mock_agent_instance
+            
+            response = client.post(
+                "/api/v1/conversation/1",
+                json={"message": "Bonjour"},
+                headers=get_test_auth_headers(1)
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            assert data["user_id"] == 1
+            assert data["message"] == "Bonjour"
+            assert data["intent"]["intent_type"] == "GREETING"
+            assert data["intent"]["confidence"] == 0.95
+            assert data["processing_time_ms"] > 0
+            assert "agent_metrics" in data
+
+    def test_conversation_success_balance_inquiry(self, client):
+        """Test conversation réussie pour demande de solde"""
+        
+        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
+            mock_result = IntentClassificationResult(
+                intent_type=HarenaIntentType.BALANCE_INQUIRY,
+                confidence=0.98,
+                reasoning="Demande de solde claire",
+                original_message="Mon solde",
+                category="ACCOUNT_BALANCE",
+                is_supported=True,
+                alternatives=[],
+                processing_time_ms=200
+            )
+            
+            mock_agent_instance = AsyncMock()
+            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
+            MockAgent.return_value = mock_agent_instance
+            
+            response = client.post(
+                "/api/v1/conversation/1",
+                json={"message": "Mon solde"},
+                headers=get_test_auth_headers(1)
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            assert data["intent"]["intent_type"] == "BALANCE_INQUIRY"
+            assert data["intent"]["category"] == "ACCOUNT_BALANCE"
+            assert data["intent"]["is_supported"] is True
+
+    def test_conversation_runtime_injected(self, client, test_app):
+        """Verify that a default runtime is injected when missing"""
+
+        assert getattr(test_app.state, "conversation_runtime", None) is None
+
+        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
+            mock_result = IntentClassificationResult(
+                intent_type=HarenaIntentType.GREETING,
+                confidence=0.95,
+                reasoning="Salutation détectée",
+                original_message="Bonjour",
+                category="CONVERSATIONAL",
+                is_supported=True,
+                alternatives=[],
+                processing_time_ms=150,
+            )
+
+            mock_agent_instance = AsyncMock()
+            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
+            MockAgent.return_value = mock_agent_instance
+
+            response = client.post(
+                "/api/v1/conversation/1",
+                json={"message": "Bonjour"},
+                headers=get_test_auth_headers(1),
+            )
+
+            assert response.status_code == 200
+
+        from conversation_service.core.runtime import ConversationServiceRuntime
+
+        assert isinstance(test_app.state.conversation_runtime, ConversationServiceRuntime)
+
+    def test_conversation_unsupported_transfer(self, client):
+        """Test avec intention non supportée"""
+        
+        with patch("conversation_service.agents.financial.intent_classifier.IntentClassifierAgent") as MockAgent:
+            mock_result = IntentClassificationResult(
+                intent_type=HarenaIntentType.TRANSFER_REQUEST,
+                confidence=0.96,
+                reasoning="Demande de virement détectée",
+                original_message="Faire un virement",
+                category="UNSUPPORTED",
+                is_supported=False,
+                alternatives=[],
+                processing_time_ms=180
+            )
+            
+            mock_agent_instance = AsyncMock()
+            mock_agent_instance.classify_intent = AsyncMock(return_value=mock_result)
+            MockAgent.return_value = mock_agent_instance
+            
+            response = client.post(
+                "/api/v1/conversation/1",
+                json={"message": "Faire un virement"},
+                headers=get_test_auth_headers(1)
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            assert data["intent"]["intent_type"] == "TRANSFER_REQUEST"
+            assert data["intent"]["is_supported"] is False
 
         runtime.run_financial_team.return_value = {
             "final_answer": "Bonjour!",

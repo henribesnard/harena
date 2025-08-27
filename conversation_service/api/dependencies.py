@@ -1062,7 +1062,8 @@ def get_conversation_runtime(request: Request) -> ConversationServiceRuntime:
     """Retrieve ConversationServiceRuntime from the FastAPI application."""
     runtime = getattr(request.app.state, "conversation_runtime", None)
     if runtime is None:
-        raise HTTPException(status_code=503, detail="Conversation runtime not initialised")
+        runtime = ConversationServiceRuntime()
+        request.app.state.conversation_runtime = runtime
     return runtime
 
 # Export des principales dépendances

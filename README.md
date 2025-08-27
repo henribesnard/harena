@@ -164,6 +164,17 @@ uvicorn conversation_service.main:app --reload
 The FastAPI app is built by `create_app()` in `conversation_service/main.py`.
 
 
+### Monitoring endpoints
+
+Three lightweight endpoints expose the status of the conversation service:
+
+- `GET /api/v1/conversation/status` returns `{ "status": "ready" }` when the service is up
+- `GET /api/v1/conversation/health` provides basic health metrics
+- `GET /api/v1/conversation/metrics` dumps the metrics collected by the service
+
+All three routes are public and do not require authentication.
+
+
 ## Table `conversation_messages`
 
 La table `conversation_messages` enregistre chaque message individuel échangé dans une conversation.

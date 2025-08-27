@@ -327,10 +327,12 @@ class TestJWTCompatibility:
 # ---------------------------------------------------------------------------
 class TestConversationEndpoint:
     def test_conversation_success(self, client, mock_runtime):
-    """Tests complets pour l'endpoint de conversation"""
+        """Tests complets pour l'endpoint de conversation"""
+        pass
 
     def test_conversation_success(self, client, runtime):
         """Test conversation réussie avec réponse d'équipe AutoGen"""
+
     def test_conversation_success_greeting(self, client):
         """Test conversation réussie avec salutation"""
         

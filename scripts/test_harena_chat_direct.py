@@ -20,13 +20,14 @@ QUESTIONS = [
 
 def run_question(
     session: requests.Session, user_id: int, question: str, conv_id: str
-) -> tuple[dict | None, str, str, float]:
+) -> tuple[dict | None, str, str, str, float]:
     """Exécute une question de chat et affiche le résultat."""
 
     chat_payload = {"message": question, "conversation_id": conv_id}
     start_time = time.perf_counter()
     intent_type = "N/A"
     confidence = "N/A"
+    category = "N/A"
 
     try:
         chat_resp = session.post(
@@ -34,12 +35,13 @@ def run_question(
         )
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         if chat_resp.status_code // 100 != 2:
-            return None, intent_type, confidence, elapsed_ms
+            return None, intent_type, confidence, category, elapsed_ms
 
         chat_data = chat_resp.json()
         intent_result = chat_data.get("metadata", {}).get("intent_result", {})
         intent_type = intent_result.get("intent_type", "N/A")
         confidence = intent_result.get("confidence", "N/A")
+        category = intent_result.get("category", "N/A")
 
         print("✅ Conversation réussie")
         print(f"🗨️ Question posée : {question}")
@@ -57,10 +59,10 @@ def run_question(
             print("📊 Agrégats :", json.dumps(aggregations, indent=2, ensure_ascii=False))
         print()
 
-        return chat_data, intent_type, confidence, elapsed_ms
+        return chat_data, intent_type, confidence, category, elapsed_ms
     except requests.RequestException:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        return None, intent_type, confidence, elapsed_ms
+        return None, intent_type, confidence, category, elapsed_ms
 
 def main() -> None:
     session = requests.Session()
@@ -86,7 +88,7 @@ def main() -> None:
 
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
-        chat_data, intent_type, confidence, elapsed_ms = run_question(
+        chat_data, intent_type, confidence, category, elapsed_ms = run_question(
             session, user_id, question, conversation_id
         )
         report.append(
@@ -94,6 +96,7 @@ def main() -> None:
                 "question": question,
                 "intent_type": intent_type,
                 "confidence": confidence,
+                "category": category,
                 "elapsed_ms": elapsed_ms,
             }
         )
@@ -104,7 +107,8 @@ def main() -> None:
     for row in report:
         print(
             f"- {row['question']} | Intent: {row['intent_type']} | "
-            f"Conf: {row['confidence']} | Temps: {row['elapsed_ms']:.2f}ms"
+            f"Cat: {row['category']} | Conf: {row['confidence']} | "
+            f"Temps: {row['elapsed_ms']:.2f}ms"
         )
 
     if last_chat_data is None:

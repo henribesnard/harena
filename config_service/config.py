@@ -13,6 +13,12 @@ class GlobalSettings(BaseSettings):
     """
     Configuration globale pour tous les services Harena.
     Cette classe centralise toutes les variables d'environnement utilisées par les différents services.
+
+    Nouvelles variables:
+        - ``DEEPSEEK_API_KEY``: Clé d'API pour accéder au modèle DeepSeek.
+        - ``AUTOGEN_RUNTIME``: Mode d'exécution pour AutoGen (ex. ``local`` ou ``redis``).
+        - ``AUTOGEN_CACHE_ENABLED``: Active ou désactive le cache AutoGen.
+        - ``AUTOGEN_CACHE_DIR``: Répertoire de stockage du cache AutoGen.
     """
     # ==========================================
     # CONFIGURATION GÉNÉRALE DE L'APPLICATION
@@ -125,6 +131,28 @@ class GlobalSettings(BaseSettings):
     OPENAI_RESPONSE_TOP_P: float = float(os.environ.get("OPENAI_RESPONSE_TOP_P", "0.95"))
 
     OPENAI_EXPECTED_LATENCY_MS: int = int(os.environ.get("OPENAI_EXPECTED_LATENCY_MS", "1500"))
+
+    # ==========================================
+    # CONFIGURATION AUTOGEN
+    # ==========================================
+    AUTOGEN_RUNTIME: str = os.environ.get("AUTOGEN_RUNTIME", "local")
+    AUTOGEN_CACHE_ENABLED: bool = os.environ.get("AUTOGEN_CACHE_ENABLED", "true").lower() == "true"
+    AUTOGEN_CACHE_DIR: str = os.environ.get("AUTOGEN_CACHE_DIR", "./autogen_cache")
+
+    @field_validator("AUTOGEN_RUNTIME")
+    @classmethod
+    def validate_autogen_runtime(cls, v: str) -> str:
+        allowed = {"local", "redis"}
+        if v not in allowed:
+            raise ValueError(f"AUTOGEN_RUNTIME must be one of {allowed}")
+        return v
+
+    @field_validator("AUTOGEN_CACHE_DIR")
+    @classmethod
+    def validate_autogen_cache_dir(cls, v: str) -> str:
+        if not v:
+            raise ValueError("AUTOGEN_CACHE_DIR environment variable is required")
+        return v
 
     # ==========================================
     # CONFIGURATION LLM-ONLY

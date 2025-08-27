@@ -10,6 +10,7 @@ from datetime import datetime
 BASE_URL = "http://localhost:8000/api/v1"
 USERNAME = "test2@example.com"
 PASSWORD = "password123"
+USER_ID = 1
 QUESTIONS = [
     "Combien ai-je fait de virements en mai ?",
     "Combien ai-je dépensé en juin ?",
@@ -17,11 +18,11 @@ QUESTIONS = [
     "Compare mes entrées et sorties d'argent en juin !",
 ]
 
-def run_question(session: requests.Session, question: str, conv_id: str) -> dict:
+def run_question(session: requests.Session, user_id: int, question: str, conv_id: str) -> dict:
     """Exécute une question de chat et affiche le résultat."""
 
     chat_payload = {"message": question, "conversation_id": conv_id}
-    chat_resp = session.post(f"{BASE_URL}/conversation/chat", json=chat_payload)
+    chat_resp = session.post(f"{BASE_URL}/conversation/{user_id}", json=chat_payload)
     chat_resp.raise_for_status()
     chat_data = chat_resp.json()
 
@@ -58,7 +59,7 @@ def main() -> None:
 
     for i, question in enumerate(QUESTIONS):
         conversation_id = f"test-chat-analysis-{i}"
-        chat_data = run_question(session, question, conversation_id)
+        chat_data = run_question(session, USER_ID, question, conversation_id)
 
     # ----- ANALYSE DE L'INTENTION DÉTECTÉE ----------------------------------
     intent_result = chat_data["metadata"]["intent_result"]

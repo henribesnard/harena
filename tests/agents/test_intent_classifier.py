@@ -1,6 +1,5 @@
-"""Tests for the Autogen-based IntentClassifierAgent."""
-
 import asyncio
+import logging
 
 import pytest
 
@@ -35,13 +34,13 @@ async def test_classify_for_team_success(monkeypatch):
     agent = IntentClassifierAgent()
 
     async def fake_reply(message):
-        return '{"intent_type": "TRANSACTION_SEARCH", "confidence": 0.9}'
+        return '{"intent": "TRANSACTION_SEARCH", "confidence": 0.9}'
 
     monkeypatch.setattr(agent, "a_generate_reply", fake_reply, raising=False)
 
     result = await agent.classify_for_team("list my transactions", 42)
 
-    assert result["intent_type"] == "TRANSACTION_SEARCH"
+    assert result["intent"] == "TRANSACTION_SEARCH"
     assert result["team_context"]["original_message"] == "list my transactions"
     assert result["team_context"]["user_id"] == 42
     assert result["team_context"]["ready_for_entity_extraction"] is True
@@ -64,13 +63,32 @@ async def test_classify_for_team_timeout(monkeypatch):
 
     async def fake_reply(message):  # simulate long processing
         await asyncio.sleep(35)
-        return '{"intent_type": "TRANSACTION_SEARCH", "confidence": 0.9}'
+        return '{"intent": "TRANSACTION_SEARCH", "confidence": 0.9}'
 
     monkeypatch.setattr(agent, "a_generate_reply", fake_reply, raising=False)
 
     result = await agent.classify_for_team("slow request", 1)
-    assert result["intent_type"] == "UNKNOWN"
+    assert result["intent"] == "GENERAL_INQUIRY"
+    assert result["confidence"] == 0.3
     assert result["team_context"]["ready_for_entity_extraction"] is False
+    assert agent.error_count == 1
+
+
+@pytest.mark.asyncio
+async def test_classify_for_team_malformed_json(monkeypatch, caplog):
+    agent = IntentClassifierAgent()
+
+    async def fake_reply(message):
+        return "not a json"
+
+    monkeypatch.setattr(agent, "a_generate_reply", fake_reply, raising=False)
+
+    with caplog.at_level(logging.ERROR):
+        result = await agent.classify_for_team("bad json", 99)
+        assert "not a json" in caplog.text
+
+    assert result["intent"] == "GENERAL_INQUIRY"
+    assert result["confidence"] == 0.3
     assert agent.error_count == 1
 
 

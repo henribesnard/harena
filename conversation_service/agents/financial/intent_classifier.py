@@ -78,7 +78,7 @@ class IntentClassifierAgent(AssistantAgent):
             )
             content = raw_reply if isinstance(raw_reply, str) else str(raw_reply)
             parsed = json.loads(content)
-            intent_type = parsed.get("intent_type", "UNKNOWN")
+            intent = parsed.get("intent", "GENERAL_INQUIRY")
             confidence = float(parsed.get("confidence", 0.0))
 
             team_context = {
@@ -86,13 +86,13 @@ class IntentClassifierAgent(AssistantAgent):
                 "user_id": user_id,
                 "ready_for_entity_extraction": confidence >= 0.5,
                 "suggested_entities_focus": self.suggest_entities_focus(
-                    intent_type, confidence
+                    intent, confidence
                 ),
             }
 
             result = {**parsed, "team_context": team_context}
             self.intent_cache[user_message] = result
-            self.intent_frequency[intent_type] += 1
+            self.intent_frequency[intent] += 1
             self.success_count += 1
 
             elapsed = time.monotonic() - start_time
@@ -100,6 +100,9 @@ class IntentClassifierAgent(AssistantAgent):
                 "Intent classified in %.2fs for user %s", elapsed, user_id
             )
             return result
+        except json.JSONDecodeError:
+            self.error_count += 1
+            self.logger.error("Malformed JSON from intent classifier: %s", content)
         except asyncio.TimeoutError:
             self.error_count += 1
             self.logger.error("Intent classification timeout for user %s", user_id)
@@ -111,14 +114,14 @@ class IntentClassifierAgent(AssistantAgent):
 
         # Fallback response on error
         fallback = {
-            "intent_type": "UNKNOWN",
-            "confidence": 0.0,
+            "intent": "GENERAL_INQUIRY",
+            "confidence": 0.3,
             "team_context": {
                 "original_message": user_message,
                 "user_id": user_id,
                 "ready_for_entity_extraction": False,
                 "suggested_entities_focus": self.suggest_entities_focus(
-                    "UNKNOWN", 0.0
+                    "GENERAL_INQUIRY", 0.3
                 ),
             },
         }

@@ -114,10 +114,7 @@ async def analyze_conversation(
         # ====================================================================
         
         try:
-            intent_classifier = intent_classifier_module.IntentClassifierAgent(
-                deepseek_client=deepseek_client,
-                cache_manager=cache_manager  # Peut être None
-            )
+            intent_classifier = intent_classifier_module.IntentClassifierAgent()
         except Exception as agent_init_error:
             logger.error(f"[{request_id}] Erreur initialisation agent: {str(agent_init_error)}")
             metrics_collector.increment_counter("conversation.errors.agent_initialization")
@@ -702,10 +699,7 @@ if environment != "production":
         request_id = f"debug_{int(time.time() * 1000)}"
         
         try:
-            intent_classifier = intent_classifier_module.IntentClassifierAgent(
-                deepseek_client=deepseek_client,
-                cache_manager=cache_manager
-            )
+            intent_classifier = intent_classifier_module.IntentClassifierAgent()
             
             result = await intent_classifier.classify_intent(text)
             

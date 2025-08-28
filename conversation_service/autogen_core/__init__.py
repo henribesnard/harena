@@ -7,12 +7,7 @@ Ce package expose les composants principaux :
 from __future__ import annotations
 
 from .agent_runtime import ConversationServiceRuntime
-
-
-class AutoGenAgentFactory:
-    """Fabrique d'agents AutoGen."""
-
-    pass
+from .agent_factory import AutoGenAgentFactory
 
 
 __all__ = ["ConversationServiceRuntime", "AutoGenAgentFactory"]

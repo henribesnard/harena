@@ -7,7 +7,7 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
@@ -23,6 +23,7 @@ from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.routes.conversation import router as conversation_router
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 from conversation_service.utils.metrics_collector import metrics_collector
+from conversation_service.autogen_core import ConversationServiceRuntime
 from config_service.config import settings
 
 # Configuration logging optimisée
@@ -659,6 +660,12 @@ class ConversationServiceLoader:
 # Instance globale service loader
 conversation_service_loader = ConversationServiceLoader()
 
+# Runtime Autogen global
+runtime = ConversationServiceRuntime()
+
+async def get_runtime() -> ConversationServiceRuntime:
+    return runtime
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestionnaire cycle de vie application avec validation JWT"""
@@ -714,6 +721,15 @@ app = FastAPI(
     redoc_url="/redoc" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None,
     openapi_url="/openapi.json" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None
 )
+
+
+@app.on_event("startup")
+async def init_autogen_runtime() -> None:
+    """Initialise le runtime AutoGen au démarrage de l'application."""
+    try:
+        await runtime.initialize()
+    except Exception as exc:  # pragma: no cover - init error path
+        logger.error(f"❌ Échec initialisation runtime AutoGen: {exc}")
 
 # Health check global principal (compatible pattern Harena)
 @app.get("/health")
@@ -775,12 +791,18 @@ async def global_health():
             status_code=500,
             content={
                 "status": "error",
-                "service": "conversation_service", 
+                "service": "conversation_service",
                 "error": str(e),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "jwt_compatible": False
             }
         )
+
+
+@app.get("/health/autogen")
+async def autogen_health(runtime: ConversationServiceRuntime = Depends(get_runtime)):
+    """Health check dédié au runtime AutoGen."""
+    return runtime.health_check()
 
 # Endpoint métriques compatible Prometheus
 @app.get("/metrics")

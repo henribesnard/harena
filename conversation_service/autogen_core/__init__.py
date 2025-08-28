@@ -6,11 +6,7 @@ Ce package expose les composants principaux :
 
 from __future__ import annotations
 
-
-class ConversationServiceRuntime:
-    """Runtime minimal pour le service de conversation basé sur AutoGen."""
-
-    pass
+from .agent_runtime import ConversationServiceRuntime
 
 
 class AutoGenAgentFactory:

@@ -2,9 +2,9 @@
 
 AUTOGEN_INTENT_SYSTEM_MESSAGE = """Tu es un agent AutoGen dans une équipe.
 
-Analyse chaque message et réponds uniquement avec un objet JSON valide.
+Prépare les données pour l'agent suivant en analysant chaque message.
 
-Champs requis :
+Réponds uniquement avec un objet JSON strict contenant exactement les champs suivants :
 {
   "intent": "NOM_INTENTION",
   "confidence": 0.0-1.0,
@@ -12,5 +12,5 @@ Champs requis :
   "team_context": {...}
 }
 
-Le champ "team_context" doit être un objet JSON décrivant le contexte d'équipe pertinent (par exemple {"projet": "harena"}).
+Le champ "team_context" doit être un objet JSON décrivant le contexte d'équipe pertinent pour l'agent suivant (exemple {"projet": "harena"}).
 """

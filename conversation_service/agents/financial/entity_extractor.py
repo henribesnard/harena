@@ -10,11 +10,11 @@ from typing import Any, Dict, Tuple
 from autogen import AssistantAgent
 
 from conversation_service.models.conversation import (
-    AmountEntity,
     CategoryEntity,
-    DateEntity,
-    EntitiesExtractionResult,
-    MerchantEntity,
+    EntityExtractionResult,
+    ExtractedAmount,
+    ExtractedDate,
+    ExtractedMerchant,
     TransactionTypeEntity,
 )
 from conversation_service.prompts.autogen.collaboration_prompts import (
@@ -105,7 +105,7 @@ class EntityExtractorAgent(AssistantAgent):
 
         return {
             "extraction_success": False,
-            "entities": EntitiesExtractionResult(
+            "entities": EntityExtractionResult(
                 extraction_metadata=extraction_metadata
             ),
             "team_context": team_context,
@@ -120,7 +120,7 @@ class EntityExtractorAgent(AssistantAgent):
         except Exception as exc:
             return {
                 "extraction_success": False,
-                "entities": EntitiesExtractionResult(
+                "entities": EntityExtractionResult(
                     extraction_metadata={"error": f"invalid_json: {exc}"}
                 ),
                 "team_context": {},
@@ -130,7 +130,7 @@ class EntityExtractorAgent(AssistantAgent):
         if not valid:
             return {
                 "extraction_success": False,
-                "entities": EntitiesExtractionResult(
+                "entities": EntityExtractionResult(
                     extraction_metadata=validation_metadata
                 ),
                 "team_context": parsed.get("team_context", {}),
@@ -138,7 +138,7 @@ class EntityExtractorAgent(AssistantAgent):
 
         entities_list = parsed.get("entities", [])
         extraction_metadata = parsed.get("extraction_metadata", {})
-        result = EntitiesExtractionResult(extraction_metadata=extraction_metadata)
+        result = EntityExtractionResult(extraction_metadata=extraction_metadata)
 
         for entity in entities_list:
             etype = entity.get("type")
@@ -146,7 +146,7 @@ class EntityExtractorAgent(AssistantAgent):
             if etype == "amount":
                 try:
                     result.amounts.append(
-                        AmountEntity(
+                        ExtractedAmount(
                             value=float(value),
                             currency=entity.get("currency", ""),
                         )
@@ -154,11 +154,11 @@ class EntityExtractorAgent(AssistantAgent):
                 except Exception:  # pragma: no cover - skip malformed amounts
                     continue
             elif etype == "merchant":
-                result.merchants.append(MerchantEntity(name=str(value)))
+                result.merchants.append(ExtractedMerchant(name=str(value)))
             elif etype == "date":
                 try:
                     result.dates.append(
-                        DateEntity(date=date.fromisoformat(str(value)))
+                        ExtractedDate(date=date.fromisoformat(str(value)))
                     )
                 except Exception:  # pragma: no cover - skip malformed dates
                     continue

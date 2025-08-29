@@ -121,6 +121,11 @@ def create_pydantic_stub():
         def decorator(func):
             return func
         return decorator
+
+    def _computed_field(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
     
     def _create_model(name, **fields):
         return type(name, (_BaseModel,), fields)
@@ -129,6 +134,7 @@ def create_pydantic_stub():
     pydantic_stub.Field = _Field
     pydantic_stub.field_validator = _field_validator
     pydantic_stub.model_validator = _model_validator
+    pydantic_stub.computed_field = _computed_field
     pydantic_stub.create_model = _create_model
     pydantic_stub.ConfigDict = dict
     pydantic_stub.ValidationError = type("ValidationError", (Exception,), {})

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 from datetime import date
 from typing import Any, Dict, Tuple
 
@@ -76,22 +77,33 @@ class EntityExtractorAgent(AssistantAgent):
 
         prompt = self._build_extraction_prompt(user_message, intent_type)
         try:
-            raw_reply = await self.a_generate_reply(prompt)
+            raw_reply = await asyncio.wait_for(
+                self.a_generate_reply(prompt), timeout=5
+            )
             parsed = self._parse_extraction_response(raw_reply)
             parsed["team_context"] = {
                 **team_context,
                 **parsed.get("team_context", {}),
             }
-            self.extraction_cache[cache_key] = parsed
-            self.success_count += 1
+            if parsed.get("extraction_success"):
+                self.extraction_cache[cache_key] = parsed
+                self.success_count += 1
+            else:
+                self.error_count += 1
             return parsed
+        except asyncio.TimeoutError:
+            self.error_count += 1
+            extraction_metadata = {"error": "timeout"}
         except Exception as exc:  # pragma: no cover - unexpected runtime issues
             self.error_count += 1
             self.logger.exception("Entity extraction failed: %s", exc)
+            extraction_metadata = {"error": str(exc)}
 
         return {
             "extraction_success": False,
-            "entities": EntitiesExtractionResult(),
+            "entities": EntitiesExtractionResult(
+                extraction_metadata=extraction_metadata
+            ),
             "team_context": team_context,
         }
 
@@ -99,7 +111,26 @@ class EntityExtractorAgent(AssistantAgent):
         """Parse the raw LLM response into structured entities."""
 
         content = raw_response if isinstance(raw_response, str) else str(raw_response)
-        parsed = json.loads(content)
+        try:
+            parsed = json.loads(content)
+        except Exception as exc:
+            return {
+                "extraction_success": False,
+                "entities": EntitiesExtractionResult(
+                    extraction_metadata={"error": f"invalid_json: {exc}"}
+                ),
+                "team_context": {},
+            }
+
+        valid, validation_metadata = self._validate_extracted_entities(parsed)
+        if not valid:
+            return {
+                "extraction_success": False,
+                "entities": EntitiesExtractionResult(
+                    extraction_metadata=validation_metadata
+                ),
+                "team_context": parsed.get("team_context", {}),
+            }
 
         entities_list = parsed.get("entities", [])
         extraction_metadata = parsed.get("extraction_metadata", {})
@@ -139,3 +170,29 @@ class EntityExtractorAgent(AssistantAgent):
             "entities": result,
             "team_context": parsed.get("team_context", {}),
         }
+
+    def _validate_extracted_entities(self, entities_data: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+        """Validate extracted entities structure and values."""
+
+        try:
+            entities = entities_data.get("entities")
+            if not isinstance(entities, list):
+                raise ValueError("entities must be a list")
+
+            for item in entities:
+                if not isinstance(item, dict):
+                    raise ValueError("each entity must be an object")
+                etype = item.get("type")
+                value = item.get("value")
+                if etype is None or value is None:
+                    raise ValueError("entity missing type or value")
+                if etype == "amount":
+                    amount_value = float(value)
+                    if amount_value <= 0:
+                        raise ValueError("amount must be positive")
+                elif etype == "date":
+                    date.fromisoformat(str(value))
+        except Exception as exc:
+            return False, {"error": str(exc)}
+
+        return True, {}

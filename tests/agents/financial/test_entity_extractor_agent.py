@@ -17,15 +17,15 @@ from conversation_service.agents.financial.intent_classifier import (
 def patch_entity_models(monkeypatch):
     """Provide lightweight stand-ins for Pydantic models used in extraction."""
 
-    class AmountEntity(SimpleNamespace):
+    class ExtractedAmount(SimpleNamespace):
         def __init__(self, value: float, currency: str):
             super().__init__(value=float(value), currency=currency)
 
-    class MerchantEntity(SimpleNamespace):
+    class ExtractedMerchant(SimpleNamespace):
         def __init__(self, name: str):
             super().__init__(name=name)
 
-    class DateEntity(SimpleNamespace):
+    class ExtractedDate(SimpleNamespace):
         def __init__(self, date):
             super().__init__(date=date)
 
@@ -37,21 +37,25 @@ def patch_entity_models(monkeypatch):
         def __init__(self, transaction_type: str):
             super().__init__(transaction_type=transaction_type)
 
-    class EntitiesExtractionResult:
-        def __init__(self, extraction_metadata=None):
+    class EntityExtractionResult:
+        def __init__(
+            self, extraction_metadata=None, team_context=None, global_confidence=0.0
+        ):
             self.amounts = []
             self.merchants = []
             self.dates = []
             self.categories = []
             self.transaction_types = []
             self.extraction_metadata = extraction_metadata or {}
+            self.team_context = team_context or {}
+            self.global_confidence = global_confidence
 
-    monkeypatch.setattr(ee, "AmountEntity", AmountEntity)
-    monkeypatch.setattr(ee, "MerchantEntity", MerchantEntity)
-    monkeypatch.setattr(ee, "DateEntity", DateEntity)
+    monkeypatch.setattr(ee, "ExtractedAmount", ExtractedAmount)
+    monkeypatch.setattr(ee, "ExtractedMerchant", ExtractedMerchant)
+    monkeypatch.setattr(ee, "ExtractedDate", ExtractedDate)
     monkeypatch.setattr(ee, "CategoryEntity", CategoryEntity)
     monkeypatch.setattr(ee, "TransactionTypeEntity", TransactionTypeEntity)
-    monkeypatch.setattr(ee, "EntitiesExtractionResult", EntitiesExtractionResult)
+    monkeypatch.setattr(ee, "EntityExtractionResult", EntityExtractionResult)
 
 
 @pytest.mark.asyncio

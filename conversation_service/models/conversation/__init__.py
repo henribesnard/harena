@@ -1,18 +1,18 @@
 """Conversation-related data models."""
 from .entities import (
-    AmountEntity,
-    MerchantEntity,
-    DateEntity,
+    ExtractedAmount,
+    ExtractedMerchant,
+    ExtractedDate,
     CategoryEntity,
     TransactionTypeEntity,
-    EntitiesExtractionResult,
+    EntityExtractionResult,
 )
 
 __all__ = [
-    "AmountEntity",
-    "MerchantEntity",
-    "DateEntity",
+    "ExtractedAmount",
+    "ExtractedMerchant",
+    "ExtractedDate",
     "CategoryEntity",
     "TransactionTypeEntity",
-    "EntitiesExtractionResult",
+    "EntityExtractionResult",
 ]

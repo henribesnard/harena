@@ -1,7 +1,62 @@
+import os
+import sys
+from pathlib import Path
+
 import pytest
 
-from conversation_service.agents.financial.intent_classifier import IntentClassifierAgent
-from conversation_service.agents.financial.entity_extractor import EntityExtractorAgent
+# Ensure the project root is on sys.path so that the `conversation_service`
+# package can be imported when tests are executed directly from this
+# subdirectory.
+sys.path.append(str(Path(__file__).resolve().parents[3]))
+
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("DEEPSEEK_API_KEY", "test")
+os.environ.setdefault("SECRET_KEY", "x" * 64)
+
+try:  # pragma: no cover - executed during test setup
+    from conversation_service.agents.financial.intent_classifier import (  # type: ignore
+        IntentClassifierAgent,
+    )
+    from conversation_service.agents.financial.entity_extractor import (  # type: ignore
+        EntityExtractorAgent,
+    )
+except Exception:  # pragma: no cover - autogen library missing
+    import types
+
+    class _DummyAssistantAgent:
+        def __init__(self, name="agent", **_):
+            self.name = name
+
+        def add_capability(self, *_args, **_kwargs):
+            pass
+
+        async def a_initiate_chat(self, *_args, **_kwargs):
+            pass
+
+        async def a_generate_reply(self, *_args, **_kwargs):
+            return ""
+
+    class _DummyGroupChat:
+        def __init__(self, *_, **__):
+            self.messages = []
+            self.agents = []
+
+    class _DummyGroupChatManager:
+        def __init__(self, *_, **__):
+            self.groupchat = _DummyGroupChat()
+
+    autogen_stub = types.ModuleType("autogen")
+    autogen_stub.AssistantAgent = _DummyAssistantAgent
+    autogen_stub.GroupChat = _DummyGroupChat
+    autogen_stub.GroupChatManager = _DummyGroupChatManager
+    sys.modules["autogen"] = autogen_stub
+
+    from conversation_service.agents.financial.intent_classifier import (  # type: ignore
+        IntentClassifierAgent,
+    )
+    from conversation_service.agents.financial.entity_extractor import (  # type: ignore
+        EntityExtractorAgent,
+    )
 
 
 @pytest.fixture

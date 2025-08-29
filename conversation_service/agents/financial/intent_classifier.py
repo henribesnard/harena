@@ -51,11 +51,11 @@ class IntentClassifierAgent(AssistantAgent):
                 {
                     "model": "deepseek-chat",
                     "response_format": {"type": "json_object"},
-                    "temperature": 0.1,
-                    "max_tokens": 800,
-                    "cache_seed": 42,
                 }
-            ]
+            ],
+            "temperature": 0.1,
+            "max_tokens": 800,
+            "cache_seed": 42,
         }
 
     async def classify_for_team(self, user_message: str, user_id: int) -> Dict[str, Any]:

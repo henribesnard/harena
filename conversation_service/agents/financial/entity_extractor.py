@@ -54,11 +54,11 @@ class EntityExtractorAgent(AssistantAgent):
                 {
                     "model": "deepseek-chat",
                     "response_format": {"type": "json_object"},
-                    "temperature": 0.05,
-                    "max_tokens": 1500,
-                    "cache_seed": 42,
                 }
-            ]
+            ],
+            "temperature": 0.05,
+            "max_tokens": 1500,
+            "cache_seed": 42,
         }
 
     def _build_extraction_prompt(self, user_message: str, intent_type: str) -> str:

@@ -659,11 +659,14 @@ class TestMonitoringEndpoints:
             
             assert response.status_code == 200
             data = response.json()
-            
+
             assert data["service"] == "conversation_service"
             assert data["status"] == "healthy"
             assert "health_details" in data
-            assert "features" in data
+            assert data["features"] == {
+                "intent_classification": True,
+                "entity_extraction": True,
+            }
 
     def test_conversation_metrics_success(self, client):
         """Test récupération métriques réussie (sans authentification)"""

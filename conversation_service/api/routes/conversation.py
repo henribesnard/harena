@@ -182,6 +182,10 @@ async def conversation_health_detailed(request: Request) -> Dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "jwt_compatible": True,
         "modes": {"legacy": True, "autogen": autogen_available},
+        "features": {
+            "intent_classification": True,
+            "entity_extraction": True,
+        },
         "health_details": {
             "total_requests": metrics.get("total_requests", 0),
             "error_rate_percent": metrics.get("error_rate_percent", 0.0),

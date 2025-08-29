@@ -122,7 +122,7 @@ class ConversationServiceLoader:
             logger.info(f"📊 Configuration: {len(self.service_config['features'])} fonctionnalités actives")
             logger.info(f"🤖 DeepSeek: {self.service_config['deepseek_model']} avec JSON Output forcé")
             logger.info(f"🔐 JWT: Compatible user_service")
-            logger.info(f"💾 Cache: Redis sémantique {"activé" if self.cache_manager else "désactivé"}")
+            logger.info(f"💾 Cache: Redis sémantique {'activé' if self.cache_manager else 'désactivé'}")
             logger.info(f"⏱️ Temps initialisation: {uptime:.2f}s")
             
             return True
@@ -660,11 +660,11 @@ class ConversationServiceLoader:
 # Instance globale service loader
 conversation_service_loader = ConversationServiceLoader()
 
-# Runtime Autogen global
-runtime = ConversationServiceRuntime()
+# Instance globale runtime AutoGen
+autogen_runtime = ConversationServiceRuntime()
 
 async def get_runtime() -> ConversationServiceRuntime:
-    return runtime
+    return autogen_runtime
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -675,20 +675,35 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Démarrage application conversation service - JWT compatible")
     
     try:
-        # Initialisation service avec timeout
+        # Initialisation ServiceLoader avec timeout
         initialization_success = await asyncio.wait_for(
             conversation_service_loader.initialize_conversation_service(app),
             timeout=90.0  # 90s timeout pour permettre les tests JWT
         )
-        
+
+        # Stockage du service loader dans l'état de l'application
+        app.state.service_loader = conversation_service_loader
+        logger.info("ServiceLoader enregistré dans app.state")
+
+        # Initialisation du runtime AutoGen
+        try:
+            logger.info("🤖 Initialisation du runtime AutoGen")
+            await autogen_runtime.initialize()
+            logger.info("✅ Runtime AutoGen initialisé")
+        except Exception as exc:
+            logger.error(f"❌ Échec initialisation runtime AutoGen: {exc}")
+        finally:
+            app.state.autogen_runtime = autogen_runtime
+            logger.info("Runtime AutoGen enregistré dans app.state")
+
         startup_time = (datetime.now(timezone.utc) - startup_start).total_seconds()
-        
+
         if initialization_success:
             logger.info(f"🎉 Service démarré avec succès en {startup_time:.2f}s")
         else:
             logger.error(f"❌ Échec initialisation en {startup_time:.2f}s - service dégradé")
             # App démarre quand même pour exposer health checks
-        
+
         yield  # Application running
         
     except asyncio.TimeoutError:
@@ -722,14 +737,6 @@ app = FastAPI(
     openapi_url="/openapi.json" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None
 )
 
-
-@app.on_event("startup")
-async def init_autogen_runtime() -> None:
-    """Initialise le runtime AutoGen au démarrage de l'application."""
-    try:
-        await runtime.initialize()
-    except Exception as exc:  # pragma: no cover - init error path
-        logger.error(f"❌ Échec initialisation runtime AutoGen: {exc}")
 
 # Health check global principal (compatible pattern Harena)
 @app.get("/health")

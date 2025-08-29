@@ -2,13 +2,19 @@
 Routes API pour conversation service - Version réécrite compatible JWT
 """
 import logging
+import os
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
 from conversation_service.models.responses.conversation_responses import ConversationResponse, AgentMetrics
+from conversation_service.models.responses.autogen_conversation_response import (
+    AutogenConversationResponse,
+)
 from conversation_service.agents.financial import intent_classifier as intent_classifier_module
 from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
@@ -29,7 +35,7 @@ from config_service.config import settings
 router = APIRouter(tags=["conversation"])
 logger = logging.getLogger("conversation_service.routes")
 
-@router.post("/conversation/{path_user_id}", response_model=ConversationResponse)
+@router.post("/conversation/{path_user_id}")
 async def analyze_conversation(
     path_user_id: int,
     request_data: ConversationRequest,
@@ -221,30 +227,58 @@ async def analyze_conversation(
                 confidence_threshold_met=True
             )
         
-        # Construction réponse finale avec validation
-        try:
-            response = ConversationResponse(
-                user_id=validated_user_id,
-                sub=user_context.get("user_id", validated_user_id),  # Fallback sécurisé
-                message=clean_message,
-                timestamp=datetime.now(timezone.utc),
-                processing_time_ms=processing_time_ms,
-                intent=classification_result,
-                agent_metrics=agent_metrics,
-                phase=1,  # Phase 1 explicite
-                version="1.1.0"  # Version avec support JWT
-            )
-        except Exception as response_error:
-            logger.error(f"[{request_id}] Erreur construction réponse: {str(response_error)}")
-            metrics_collector.increment_counter("conversation.errors.response_construction")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Erreur construction réponse",
-                    "request_id": request_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        runtime = getattr(request.app.state, "autogen_runtime", None)
+        autogen_enabled = (
+            os.getenv("CONVERSATION_AUTOGEN_ENABLED", "true").lower() == "true"
+        )
+        response_payload: Dict[str, Any] | None = None
+        if runtime and autogen_enabled:
+            try:
+                autogen_result = await runtime.process_message(
+                    clean_message, user_context
+                )
+                response_payload = AutogenConversationResponse(
+                    user_id=validated_user_id,
+                    sub=user_context.get("user_id", validated_user_id),
+                    message=clean_message,
+                    timestamp=datetime.now(timezone.utc),
+                    processing_time_ms=processing_time_ms,
+                    intent=classification_result,
+                    agent_metrics=agent_metrics,
+                    entities=autogen_result.get("entities", {}),
+                    autogen_metadata=autogen_result.get("metadata", {}),
+                    phase=2,
+                    version="2.0.0",
+                ).model_dump()
+            except Exception as autogen_error:
+                logger.warning(
+                    f"[{request_id}] Échec runtime AutoGen: {autogen_error}. Retour flux historique."
+                )
+
+        if response_payload is None:
+            try:
+                response_payload = ConversationResponse(
+                    user_id=validated_user_id,
+                    sub=user_context.get("user_id", validated_user_id),  # Fallback sécurisé
+                    message=clean_message,
+                    timestamp=datetime.now(timezone.utc),
+                    processing_time_ms=processing_time_ms,
+                    intent=classification_result,
+                    agent_metrics=agent_metrics,
+                    phase=1,  # Phase 1 explicite
+                    version="1.1.0"  # Version avec support JWT
+                ).model_dump()
+            except Exception as response_error:
+                logger.error(f"[{request_id}] Erreur construction réponse: {str(response_error)}")
+                metrics_collector.increment_counter("conversation.errors.response_construction")
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "error": "Erreur construction réponse",
+                        "request_id": request_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                )
         
         # ====================================================================
         # COLLECTE MÉTRIQUES ET LOGGING FINAL
@@ -263,8 +297,8 @@ async def analyze_conversation(
             f"(confiance: {classification_result.confidence:.2f}, "
             f"temps: {processing_time_ms}ms, cache: {agent_metrics.cache_hit})"
         )
-        
-        return response
+
+        return JSONResponse(content=jsonable_encoder(response_payload))
         
     except HTTPException:
         # Re-raise HTTP exceptions (validation, auth, etc.) sans modification
@@ -299,18 +333,20 @@ async def analyze_conversation(
 # ============================================================================
 
 @router.get("/conversation/health")
-async def conversation_health_detailed():
+async def conversation_health_detailed(request: Request):
     """Health check spécifique conversation service - ENDPOINT PUBLIC"""
     try:
         health_metrics = metrics_collector.get_health_metrics()
-        
+        autogen_available = bool(getattr(request.app.state, "autogen_runtime", None))
+
         return {
-            "service": "conversation_service", 
+            "service": "conversation_service",
             "phase": 1,
             "version": "1.1.0",
             "status": health_metrics["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "jwt_compatible": True,
+            "modes": {"legacy": True, "autogen": autogen_available},
             "health_details": {
                 "total_requests": health_metrics["total_requests"],
                 "error_rate_percent": health_metrics["error_rate_percent"],
@@ -335,7 +371,7 @@ async def conversation_health_detailed():
                 "environment": getattr(settings, 'ENVIRONMENT', 'production')
             }
         }
-        
+
     except Exception as e:
         logger.error(f"❌ Erreur health check: {str(e)}")
         return {

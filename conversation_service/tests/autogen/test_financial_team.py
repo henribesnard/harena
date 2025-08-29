@@ -2,6 +2,7 @@ import sys
 import types
 import json
 import pytest
+from tests.utils import AsyncMock, SyncMock
 
 
 class DummyAssistantAgent:
@@ -43,6 +44,7 @@ from conversation_service.teams.financial_analysis_team import FinancialAnalysis
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_workflow_complete_success(monkeypatch):
     team = FinancialAnalysisTeam()
 
@@ -57,40 +59,37 @@ async def test_workflow_complete_success(monkeypatch):
     monkeypatch.setattr(team.cache_manager, "get_semantic_cache", fake_get)
     monkeypatch.setattr(team.cache_manager, "set_semantic_cache", fake_set)
 
-    metrics_calls = {"increment": [], "histogram": []}
+    metrics_increment = SyncMock()
+    metrics_histogram = SyncMock()
+    monkeypatch.setattr(team.metrics_collector, "increment_counter", metrics_increment)
+    monkeypatch.setattr(team.metrics_collector, "record_histogram", metrics_histogram)
 
-    def fake_increment(name):
-        metrics_calls["increment"].append(name)
-
-    def fake_histogram(name, value):
-        metrics_calls["histogram"].append((name, value))
-
-    monkeypatch.setattr(team.metrics_collector, "increment_counter", fake_increment)
-    monkeypatch.setattr(team.metrics_collector, "record_histogram", fake_histogram)
-
-    async def fake_intent_reply(message):
-        return json.dumps({"intent": "BALANCE_INQUIRY", "confidence": 0.9})
-
-    async def fake_entity_reply(message):
-        return json.dumps(
+    intent_reply = AsyncMock(
+        return_value=json.dumps({"intent": "BALANCE_INQUIRY", "confidence": 0.9})
+    )
+    entity_reply = AsyncMock(
+        return_value=json.dumps(
             {
                 "extraction_success": True,
                 "entities": [{"type": "account", "value": "123"}],
                 "errors": [],
             }
         )
+    )
 
     async def fake_initiate_chat(self, manager, message):
-        intent_msg = await fake_intent_reply(message)
+        intent_msg = await intent_reply(message)
         manager.groupchat.messages.append({"name": self.name, "content": intent_msg})
-        entity_msg = await fake_entity_reply(message)
+        entity_msg = await entity_reply(message)
         manager.groupchat.messages.append(
             {"name": team.entity_extractor.name, "content": entity_msg}
         )
 
-    monkeypatch.setattr(team.intent_classifier, "a_generate_reply", fake_intent_reply)
-    monkeypatch.setattr(team.entity_extractor, "a_generate_reply", fake_entity_reply)
-    monkeypatch.setattr(team.intent_classifier, "a_initiate_chat", types.MethodType(fake_initiate_chat, team.intent_classifier))
+    team.intent_classifier.a_generate_reply = intent_reply
+    team.entity_extractor.a_generate_reply = entity_reply
+    team.intent_classifier.a_initiate_chat = types.MethodType(
+        fake_initiate_chat, team.intent_classifier
+    )
 
     result = await team.process_user_message("What is my balance?", user_id=1)
 
@@ -98,13 +97,14 @@ async def test_workflow_complete_success(monkeypatch):
     assert result["entities"] == [{"type": "account", "value": "123"}]
     assert result["errors"] == []
 
-    assert "financial_team.success" in metrics_calls["increment"]
-    assert metrics_calls["histogram"]
+    assert metrics_increment.calls
+    assert metrics_histogram.calls
     assert team.team_metrics["total_requests"] == 1
     assert team.team_metrics["failures"] == 0
     assert team.team_metrics["avg_processing_time_ms"] > 0
 
 
+@pytest.mark.unit
 def test_intent_entity_coherence():
     team = FinancialAnalysisTeam()
 
@@ -117,6 +117,7 @@ def test_intent_entity_coherence():
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_shared_cache_usage(monkeypatch):
     team = FinancialAnalysisTeam()
 
@@ -131,35 +132,35 @@ async def test_shared_cache_usage(monkeypatch):
     monkeypatch.setattr(team.cache_manager, "get_semantic_cache", fake_get)
     monkeypatch.setattr(team.cache_manager, "set_semantic_cache", fake_set)
 
-    call_counts = {"intent": 0, "entities": 0}
-
-    async def fake_intent_reply(message):
-        call_counts["intent"] += 1
-        return json.dumps({"intent": "BALANCE_INQUIRY", "confidence": 0.9})
-
-    async def fake_entity_reply(message):
-        call_counts["entities"] += 1
-        return json.dumps({"extraction_success": True, "entities": []})
+    intent_reply = AsyncMock(
+        return_value=json.dumps({"intent": "BALANCE_INQUIRY", "confidence": 0.9})
+    )
+    entity_reply = AsyncMock(
+        return_value=json.dumps({"extraction_success": True, "entities": []})
+    )
 
     async def fake_initiate_chat(self, manager, message):
-        intent_msg = await fake_intent_reply(message)
+        intent_msg = await intent_reply(message)
         manager.groupchat.messages.append({"name": self.name, "content": intent_msg})
-        entity_msg = await fake_entity_reply(message)
+        entity_msg = await entity_reply(message)
         manager.groupchat.messages.append(
             {"name": team.entity_extractor.name, "content": entity_msg}
         )
 
-    monkeypatch.setattr(team.intent_classifier, "a_generate_reply", fake_intent_reply)
-    monkeypatch.setattr(team.entity_extractor, "a_generate_reply", fake_entity_reply)
-    monkeypatch.setattr(team.intent_classifier, "a_initiate_chat", types.MethodType(fake_initiate_chat, team.intent_classifier))
+    team.intent_classifier.a_generate_reply = intent_reply
+    team.entity_extractor.a_generate_reply = entity_reply
+    team.intent_classifier.a_initiate_chat = types.MethodType(
+        fake_initiate_chat, team.intent_classifier
+    )
 
     await team.process_user_message("Show my balance", user_id=2)
     await team.process_user_message("Show my balance", user_id=2)
 
-    assert call_counts["intent"] == 1
-    assert call_counts["entities"] == 1
+    assert len(intent_reply.calls) == 1
+    assert len(entity_reply.calls) == 1
 
 
+@pytest.mark.unit
 def test_internal_metrics_update():
     team = FinancialAnalysisTeam()
 
@@ -175,6 +176,7 @@ def test_internal_metrics_update():
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_agent_failure_fallback(monkeypatch):
     team = FinancialAnalysisTeam()
 
@@ -186,8 +188,8 @@ async def test_agent_failure_fallback(monkeypatch):
 
     monkeypatch.setattr(team.cache_manager, "get_semantic_cache", fake_get)
     monkeypatch.setattr(team.cache_manager, "set_semantic_cache", fake_set)
-    monkeypatch.setattr(team.metrics_collector, "increment_counter", lambda *a, **k: None)
-    monkeypatch.setattr(team.metrics_collector, "record_histogram", lambda *a, **k: None)
+    monkeypatch.setattr(team.metrics_collector, "increment_counter", SyncMock())
+    monkeypatch.setattr(team.metrics_collector, "record_histogram", SyncMock())
 
     async def failing_intent_reply(message):
         raise RuntimeError("intent failure")
@@ -196,8 +198,10 @@ async def test_agent_failure_fallback(monkeypatch):
         intent_msg = await self.a_generate_reply(message)
         manager.groupchat.messages.append({"name": self.name, "content": intent_msg})
 
-    monkeypatch.setattr(team.intent_classifier, "a_generate_reply", failing_intent_reply)
-    monkeypatch.setattr(team.intent_classifier, "a_initiate_chat", types.MethodType(fake_initiate_chat, team.intent_classifier))
+    team.intent_classifier.a_generate_reply = failing_intent_reply
+    team.intent_classifier.a_initiate_chat = types.MethodType(
+        fake_initiate_chat, team.intent_classifier
+    )
 
     result = await team.process_user_message("Hello", user_id=3)
 

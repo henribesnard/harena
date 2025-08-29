@@ -4,7 +4,7 @@ Ce module rassemble les différents messages système et fonctions d'aide
 nécessaires aux agents AutoGen.
 """
 
-from .entity_extraction_prompts import (
+from .collaboration_prompts import (
     AUTOGEN_ENTITY_EXTRACTION_SYSTEM_MESSAGE,
     get_entity_extraction_prompt_for_autogen,
 )

@@ -1,6 +1,7 @@
 """Prompts système pour l'agent d'extraction d'entités financières AutoGen."""
 
-ENTITY_EXTRACTION_SYSTEM_MESSAGE = """Tu es un agent AutoGen spécialisé en extraction d'entités financières.
+# Message système utilisé par l'agent d'extraction.
+AUTOGEN_ENTITY_EXTRACTION_SYSTEM_MESSAGE = """Tu es un agent AutoGen spécialisé en extraction d'entités financières.
 
 Analyse chaque message utilisateur et identifie les montants, dates, marchands, catégories et types de transactions.
 
@@ -70,3 +71,28 @@ Exemples :
   \"team_context\": {}
 }
 """
+
+
+def get_entity_extraction_prompt_for_autogen(
+    user_message: str, intent_type: str
+) -> str:
+    """Construit le prompt d'extraction pour l'agent AutoGen.
+
+    Parameters
+    ----------
+    user_message:
+        Message fourni par l'utilisateur.
+    intent_type:
+        Intention détectée par l'agent de classification.
+
+    Returns
+    -------
+    str
+        Prompt formaté à transmettre à l'agent d'extraction.
+    """
+
+    return f"INTENT: {intent_type}\nUSER_MESSAGE: {user_message}"
+
+
+# Alias conservé pour compatibilité rétroactive
+ENTITY_EXTRACTION_SYSTEM_MESSAGE = AUTOGEN_ENTITY_EXTRACTION_SYSTEM_MESSAGE

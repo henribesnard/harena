@@ -17,23 +17,27 @@ from conversation_service.models.conversation import (
     MerchantEntity,
     TransactionTypeEntity,
 )
-from conversation_service.prompts.autogen.entity_extraction_prompts import (
-    ENTITY_EXTRACTION_SYSTEM_MESSAGE,
+from conversation_service.prompts.autogen.collaboration_prompts import (
+    AUTOGEN_ENTITY_EXTRACTION_SYSTEM_MESSAGE,
+    get_entity_extraction_prompt_for_autogen,
 )
 
 
 class EntityExtractorAgent(AssistantAgent):
     """Assistant agent configured for financial entity extraction."""
 
-    def __init__(self, *_, **__):
+    def __init__(self, *_, intent_context: dict | None = None, **__):
+        system_message = get_entity_extraction_prompt_for_autogen(intent_context)
         super().__init__(
             name="entity_extractor",
-            system_message=ENTITY_EXTRACTION_SYSTEM_MESSAGE,
+            system_message=system_message,
             llm_config=self._create_llm_config(),
             human_input_mode="NEVER",
             code_execution_config=False,
             max_consecutive_auto_reply=1,
         )
+
+        self.base_system_message = AUTOGEN_ENTITY_EXTRACTION_SYSTEM_MESSAGE
 
         # Metrics and caching
         self.success_count = 0

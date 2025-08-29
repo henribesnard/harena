@@ -178,10 +178,11 @@ class MockConversationServiceLoader:
         self.cache_manager = MockCacheManager()
 
     async def initialize_conversation_service(self, app):
+        app.state.deepseek_client = self.deepseek_client
+        app.state.cache_manager = self.cache_manager
+
         if self.service_healthy:
             app.state.conversation_service = self
-            app.state.deepseek_client = self.deepseek_client
-            app.state.cache_manager = self.cache_manager
             app.state.service_config = {
                 "phase": 1,
                 "version": "1.0.0",
@@ -226,6 +227,19 @@ def mock_service_loader():
 def test_app(mock_service_loader):
     """App FastAPI de test configurée avec dépendances mockées"""
     app = create_test_app()
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(
+        mock_service_loader.initialize_conversation_service(app)
+    )
+
+    # Overrides des dépendances pour simplifier les tests
+    from conversation_service.api.routes import conversation as conversation_module
+
+    app.dependency_overrides[conversation_module.get_conversation_service_status] = lambda: {"status": "healthy"}
+    app.dependency_overrides[conversation_module.validate_path_user_id] = lambda *args, **kwargs: 1
+    app.dependency_overrides[conversation_module.get_user_context] = lambda *args, **kwargs: {"sub": 1}
+    app.dependency_overrides[conversation_module.rate_limit_dependency] = lambda: None
+
 
     # Import des dépendances après la création de l'app
     from conversation_service.api.dependencies import (

@@ -15,6 +15,8 @@ from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.middleware.auth_middleware import get_current_user_id, verify_user_id_match
 from conversation_service.utils.metrics_collector import metrics_collector
+from conversation_service.autogen_core.agent_runtime import ConversationServiceRuntime
+from conversation_service.agents.financial.intent_classifier import IntentClassifierAgent
 
 # Configuration du logger
 logger = logging.getLogger("conversation_service.dependencies")
@@ -574,6 +576,29 @@ async def get_conversation_service_status(request: Request) -> Dict[str, Any]:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
+
+
+def get_autogen_runtime(request: Request) -> Optional[ConversationServiceRuntime]:
+    """Récupère le runtime AutoGen initialisé depuis l'état de l'application."""
+    runtime = getattr(request.app.state, "autogen_runtime", None)
+    if runtime and getattr(runtime, "is_initialized", False):
+        return runtime
+    return None
+
+
+def get_conversation_engine(
+    request: Request,
+    intent_agent: IntentClassifierAgent = Depends(IntentClassifierAgent),
+) -> Dict[str, Any]:
+    """Retourne l'engin de conversation en fonction du runtime AutoGen."""
+    runtime = get_autogen_runtime(request)
+    mode = "autogen" if runtime else "legacy"
+    return {
+        "runtime": runtime,
+        "legacy_agent": intent_agent,
+        "mode": mode,
+    }
+
 async def validate_path_user_id(
     request: Request,
     path_user_id: int,
@@ -1059,8 +1084,10 @@ def get_detailed_service_health() -> Dict[str, Any]:
 # Export des principales dépendances
 __all__ = [
     'get_deepseek_client',
-    'get_cache_manager', 
+    'get_cache_manager',
     'get_conversation_service_status',
+    'get_autogen_runtime',
+    'get_conversation_engine',
     'validate_path_user_id',
     'get_user_context',
     'rate_limit_dependency',

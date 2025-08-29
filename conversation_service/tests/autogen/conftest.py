@@ -9,9 +9,11 @@ import pytest
 # subdirectory.
 sys.path.append(str(Path(__file__).resolve().parents[3]))
 
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("DEEPSEEK_API_KEY", "test")
-os.environ.setdefault("SECRET_KEY", "x" * 64)
+# Import shared fixtures from the top-level tests package
+TESTS_DIR = Path(__file__).resolve().parents[3] / "tests"
+if str(TESTS_DIR) not in sys.path:
+    sys.path.append(str(TESTS_DIR))
+from tests.conftest import *  # noqa: F401,F403
 
 try:  # pragma: no cover - executed during test setup
     from conversation_service.agents.financial.intent_classifier import (  # type: ignore

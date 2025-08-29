@@ -1,14 +1,10 @@
-import os
 import time
 from unittest.mock import patch
-
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("DEEPSEEK_API_KEY", "test")
-os.environ.setdefault("SECRET_KEY", "x" * 64)
 
 import pytest
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.testclient import TestClient
+from tests.utils import assert_status
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
 from conversation_service.api.dependencies import (
@@ -134,6 +130,8 @@ def _make_request(client: TestClient):
     return client.post("/api/v1/conversation/1", json={"message": "Bonjour"})
 
 
+@pytest.mark.integration
+@pytest.mark.api
 def test_autogen_runtime_produces_enriched_response(client):
     runtime = DummyRuntime()
     legacy = DummyLegacyAgent()
@@ -144,12 +142,14 @@ def test_autogen_runtime_produces_enriched_response(client):
     client.app.dependency_overrides[get_conversation_engine] = engine_override
     resp = _make_request(client)
     data = resp.json()
-    assert resp.status_code == 200
+    assert_status(resp)
     assert data["agent_metrics"]["agent_used"] == "autogen"
     assert "autogen_metadata" in data and "entities" in data
 
 
 @pytest.mark.parametrize("runtime", [None, DummyRuntime(should_fail=True)])
+@pytest.mark.integration
+@pytest.mark.api
 def test_fallback_to_legacy_when_runtime_missing_or_failing(client, runtime):
     legacy = DummyLegacyAgent()
     mode = "autogen" if runtime else "legacy"
@@ -160,11 +160,13 @@ def test_fallback_to_legacy_when_runtime_missing_or_failing(client, runtime):
     client.app.dependency_overrides[get_conversation_engine] = engine_override
     resp = _make_request(client)
     data = resp.json()
-    assert resp.status_code == 200
+    assert_status(resp)
     assert data["agent_metrics"]["agent_used"] == "legacy_intent_classifier"
     assert "autogen_metadata" not in data
 
 
+@pytest.mark.integration
+@pytest.mark.api
 def test_cascade_errors_return_http_500(client):
     runtime = DummyRuntime(should_fail=True)
     legacy = DummyLegacyAgent(should_fail=True)
@@ -174,9 +176,11 @@ def test_cascade_errors_return_http_500(client):
 
     client.app.dependency_overrides[get_conversation_engine] = engine_override
     resp = _make_request(client)
-    assert resp.status_code == 500
+    assert_status(resp, 500)
 
 
+@pytest.mark.integration
+@pytest.mark.api
 def test_health_endpoint_reports_mode_availability(client, monkeypatch):
     with patch("conversation_service.api.routes.conversation.metrics_collector") as metrics:
         metrics.get_health_metrics.return_value = {
@@ -188,11 +192,11 @@ def test_health_endpoint_reports_mode_availability(client, monkeypatch):
         }
 
         resp = client.get("/api/v1/conversation/health")
-        assert resp.status_code == 200
+        assert_status(resp)
         assert resp.json()["modes"]["autogen"] is False
 
         client.app.state.autogen_runtime = DummyRuntime()
         resp = client.get("/api/v1/conversation/health")
-        assert resp.status_code == 200
+        assert_status(resp)
         assert resp.json()["modes"]["autogen"] is True
 

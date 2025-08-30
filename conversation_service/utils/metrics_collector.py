@@ -664,6 +664,9 @@ class AdvancedMetricsCollector:
             self._executor.shutdown(wait=False)
 
 
+# Alias pour compatibilité
+MetricsCollector = AdvancedMetricsCollector
+
 # Instance globale optimisée
 metrics_collector = AdvancedMetricsCollector(
     max_history=10000,

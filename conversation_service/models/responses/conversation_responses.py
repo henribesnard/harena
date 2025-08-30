@@ -125,6 +125,9 @@ class IntentClassificationResult(BaseModel):
     # Qualité et fiabilité
     quality_score: Optional[float] = None
     reliability_indicators: Optional[Dict[str, Any]] = None
+    
+    # Extension AutoGen collaboration équipe
+    team_context: Optional[Dict[str, Any]] = None
 
     @field_validator('intent_type', mode='before')
     @classmethod
@@ -184,7 +187,7 @@ class IntentClassificationResult(BaseModel):
             return v
         if v < 0:
             raise ValueError("Processing time ne peut pas être négatif")
-        if v > 60000:  # 60 secondes maximum
+        if v > 120000:  # 2 minutes maximum
             raise ValueError("Processing time trop élevé")
         return v
     
@@ -418,6 +421,9 @@ class ConversationResponse(BaseModel):
     # Informations additionnelles
     warnings: List[str] = []
     debug_info: Optional[Dict[str, Any]] = None
+    
+    # Entités extraites (Phase 2)
+    entities: Optional[Dict[str, Any]] = None
     
     @field_validator('user_id')
     @classmethod

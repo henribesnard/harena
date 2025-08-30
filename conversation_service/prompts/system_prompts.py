@@ -155,6 +155,7 @@ STRUCTURE JSON OBLIGATOIRE:
     "merchants": ["Amazon", "Carrefour"],
     "categories": ["restaurant", "transport"],
     "operation_types": ["virement", "prélèvement", "carte"],
+    "transaction_types": ["credit", "debit"],
     "text_search": ["italian food", "subscription"]
   },
   "confidence": 0.92,
@@ -167,8 +168,43 @@ RÈGLES:
 - Dates au format ISO ou périodes
 - Merchants et categories exactement comme trouvés
 - Operation_types pour types d'opération (virement, CB, etc.)
-- Text_search pour recherche libre
-- Confidence globale extraction"""
+- Transaction_types pour direction flux: ["credit"] pour entrées, ["debit"] pour sorties
+- Text_search pour recherche libre SPÉCIFIQUE uniquement
+- Confidence globale extraction
+
+RÈGLES TEXT_SEARCH CRITIQUES:
+UTILISER text_search UNIQUEMENT pour termes discriminants spécifiques:
+✅ À inclure dans text_search:
+- Noms de personnes: "Paul", "Marie", "Henri"
+- Descriptions précises: "facture EDF", "remboursement mutuelle"
+- Références spécifiques: "commande 12345", "abonnement Netflix"
+- Termes techniques précis: "frais de change", "commission bancaire"
+
+❌ NE JAMAIS inclure dans text_search (utiliser les champs appropriés):
+- Termes généralistes: "rentrées d'argent", "sorties", "dépenses", "revenus"
+- Types d'opération: "virement", "prélèvement", "carte" → operation_types
+- Directions de flux: "credit", "debit" → transaction_types
+- Catégories génériques: "transport", "restaurant" → categories
+- Montants ou dates → champs dédiés
+
+RÈGLE D'OR TEXT_SEARCH: Si c'est un terme généraliste qui peut être couvert par transaction_types, operation_types ou categories → NE PAS utiliser text_search
+
+RÈGLES TRANSACTION_TYPES CRITIQUES:
+- "entrées d'argent", "revenus", "reçu", "crédité", "rentrées" → ["credit"]
+- "sorties d'argent", "dépenses", "payé", "débité" → ["debit"]
+- "virements reçus" → ["credit"] + operation_types: ["virement"]
+- "virements effectués" → ["debit"] + operation_types: ["virement"]
+- "mes entrées" → ["credit"]
+- "mes sorties" → ["debit"]
+- Ambigü ou non spécifié → []
+
+EXEMPLES CORRECTS:
+- "Mes entrées d'argent en juin" → transaction_types: ["credit"], text_search: []
+- "Mes rentrées d'argent en mai" → transaction_types: ["credit"], text_search: []
+- "Mes virements en provenance de Paul" → transaction_types: ["credit"], operation_types: ["virement"], text_search: ["Paul"]
+- "Dépenses restaurants ce mois" → transaction_types: ["debit"], categories: ["restaurant"], text_search: []
+- "Mes achats Amazon" → merchants: ["Amazon"], text_search: []
+- "Remboursement mutuelle" → transaction_types: ["credit"], text_search: ["remboursement mutuelle"]"""
 
 
 QUERY_GENERATION_JSON_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans la génération de requêtes Elasticsearch pour Harena.

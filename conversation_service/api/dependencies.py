@@ -15,6 +15,7 @@ from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.middleware.auth_middleware import get_current_user_id, verify_user_id_match
 from conversation_service.utils.metrics_collector import metrics_collector
+from conversation_service.teams import MultiAgentFinancialTeam
 
 # Configuration du logger
 logger = logging.getLogger("conversation_service.dependencies")
@@ -970,6 +971,168 @@ class AdvancedRateLimitDependency:
         except Exception as log_error:
             logger.debug(f"Erreur logging violation rate limit: {str(log_error)}")
 
+
+async def get_multi_agent_team(request: Request) -> Optional[MultiAgentFinancialTeam]:
+    """
+    Récupération équipe multi-agents depuis app state avec fallback gracieux
+    
+    L'équipe est optionnelle - ne bloque JAMAIS le service.
+    
+    Args:
+        request: Requête FastAPI
+        
+    Returns:
+        MultiAgentFinancialTeam ou None: Équipe si disponible
+    """
+    try:
+        import os
+        
+        # Vérification feature flag
+        team_enabled = os.getenv("MULTI_AGENT_TEAM_ENABLED", "true").lower() == "true"
+        if not team_enabled:
+            logger.debug("Équipe multi-agents désactivée par configuration")
+            return None
+        
+        # Vérification présence dans app state
+        if not hasattr(request.app.state, 'multi_agent_team'):
+            metrics_collector.increment_counter("dependencies.team_not_configured")
+            logger.debug("Équipe multi-agents non configurée dans app state")
+            return None
+        
+        multi_agent_team = request.app.state.multi_agent_team
+        
+        if not multi_agent_team:
+            metrics_collector.increment_counter("dependencies.team_disabled")
+            logger.debug("Équipe multi-agents désactivée - mode agents individuels")
+            return None
+        
+        # Vérification santé équipe (non bloquante avec timeout court)
+        try:
+            team_health = await asyncio.wait_for(
+                multi_agent_team.health_check(),
+                timeout=2.0  # Timeout court pour l'équipe
+            )
+            
+            if team_health["overall_status"] in ["healthy", "degraded"]:
+                metrics_collector.increment_counter("dependencies.success.team")
+                
+                if team_health["overall_status"] == "degraded":
+                    logger.debug("Équipe multi-agents dégradée mais opérationnelle")
+                    metrics_collector.increment_counter("dependencies.warnings.team_degraded")
+                
+                return multi_agent_team
+            else:
+                logger.debug(f"Équipe multi-agents en état {team_health['overall_status']} - fallback agents individuels")
+                metrics_collector.increment_counter("dependencies.team_unhealthy")
+                return None
+                
+        except asyncio.TimeoutError:
+            logger.debug("Health check équipe timeout - utilisation en mode dégradé")
+            metrics_collector.increment_counter("dependencies.team_timeout")
+            # Retourner l'équipe malgré le timeout (dégradation gracieuse)
+            return multi_agent_team
+            
+        except Exception as e:
+            logger.debug(f"Vérification santé équipe échouée: {str(e)}")
+            metrics_collector.increment_counter("dependencies.team_check_failed")
+            # Retourner l'équipe même si health check échoue (dégradation gracieuse)
+            return multi_agent_team
+        
+    except Exception as e:
+        metrics_collector.increment_counter("dependencies.errors.team_unexpected")
+        logger.debug(f"Erreur récupération équipe multi-agents: {str(e)}")
+        return None  # Toujours retourner None en cas d'erreur (non critique)
+
+
+async def get_conversation_processor(
+    request: Request,
+    deepseek_client: DeepSeekClient = Depends(get_deepseek_client),
+    multi_agent_team: Optional[MultiAgentFinancialTeam] = Depends(get_multi_agent_team)
+) -> Dict[str, Any]:
+    """
+    Processeur conversation avec choix automatique entre modes
+    
+    Détermine automatiquement le meilleur mode de traitement:
+    - multi_agent_team: Si équipe AutoGen disponible et saine
+    - single_agent: Fallback sur agents individuels
+    
+    Args:
+        request: Requête FastAPI
+        deepseek_client: Client DeepSeek (toujours requis)
+        multi_agent_team: Équipe multi-agents (optionnelle)
+        
+    Returns:
+        Dict contenant le processeur et métadonnées de mode
+    """
+    try:
+        # Déterminer mode de traitement optimal
+        if multi_agent_team:
+            processing_mode = "multi_agent_team"
+            metrics_collector.increment_counter("dependencies.mode_selection.multi_agent")
+            logger.debug("Mode multi-agent sélectionné pour traitement")
+        else:
+            processing_mode = "single_agent"
+            metrics_collector.increment_counter("dependencies.mode_selection.single_agent")
+            logger.debug("Mode agent unique sélectionné (fallback ou préférence)")
+        
+        # Enrichir request.state avec informations mode
+        if hasattr(request, 'state'):
+            request.state.processing_mode = processing_mode
+            request.state.multi_agent_available = multi_agent_team is not None
+            request.state.fallback_available = deepseek_client is not None
+        
+        # Contexte processeur avec toutes les options disponibles
+        processor_context = {
+            "processing_mode": processing_mode,
+            "multi_agent_team": multi_agent_team,
+            "deepseek_client": deepseek_client,
+            "fallback_chain": [
+                "multi_agent_team" if multi_agent_team else None,
+                "single_agent" if deepseek_client else None,
+                "error"
+            ],
+            "capabilities": {
+                "intent_classification": True,
+                "entity_extraction": multi_agent_team is not None,
+                "coherence_validation": multi_agent_team is not None,
+                "team_context": multi_agent_team is not None,
+                "caching": hasattr(request.app.state, 'cache_manager') and request.app.state.cache_manager is not None
+            },
+            "performance_expectations": {
+                "multi_agent_team": {"target_ms": 2000, "features": "full"},
+                "single_agent": {"target_ms": 800, "features": "intent_only"}
+            }
+        }
+        
+        metrics_collector.increment_counter("dependencies.processor_context_generated")
+        return processor_context
+        
+    except Exception as e:
+        metrics_collector.increment_counter("dependencies.errors.processor_selection")
+        logger.error(f"Erreur sélection processeur conversation: {str(e)}")
+        
+        # Fallback critique: au minimum le client DeepSeek
+        if deepseek_client:
+            logger.warning("Fallback sur mode single_agent après erreur sélection processeur")
+            return {
+                "processing_mode": "single_agent",
+                "multi_agent_team": None,
+                "deepseek_client": deepseek_client,
+                "fallback_chain": ["single_agent", "error"],
+                "capabilities": {"intent_classification": True},
+                "error": "Mode dégradé après erreur sélection"
+            }
+        else:
+            logger.error("Aucun processeur disponible - service critique")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Service conversation temporairement indisponible",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
+
+
 # Instances configurables selon l'environnement
 def create_rate_limit_dependency():
     """Crée une dépendance rate limiting selon l'environnement"""
@@ -1066,5 +1229,7 @@ __all__ = [
     'rate_limit_dependency',
     'with_rate_limit',
     'get_dependency_health_status',
-    'get_detailed_service_health'
+    'get_detailed_service_health',
+    'get_multi_agent_team',
+    'get_conversation_processor'
 ]

@@ -1,16 +1,37 @@
 """
 Agent de classification d'intentions financières via DeepSeek - JSON Output Forcé avec Retry
+Compatible AutoGen AssistantAgent pour collaboration multi-agents
 """
 import logging
 import json
 import asyncio
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+
+# Imports AutoGen avec fallback
+try:
+    from autogen import AssistantAgent
+    AUTOGEN_AVAILABLE = True
+    # Import optionnel Teachability
+    try:
+        from autogen.agentchat.contrib.capabilities import Teachability
+    except ImportError:
+        Teachability = None
+except ImportError:
+    AUTOGEN_AVAILABLE = False
+    AssistantAgent = object
+    Teachability = None
 
 from conversation_service.agents.base.base_agent import BaseAgent
 from conversation_service.prompts.harena_intents import HarenaIntentType, INTENT_DESCRIPTIONS, INTENT_CATEGORIES
 from conversation_service.prompts.few_shot_examples.intent_classification import get_balanced_few_shot_examples, format_examples_for_prompt
 from conversation_service.prompts.system_prompts import INTENT_CLASSIFICATION_JSON_SYSTEM_PROMPT
+from conversation_service.prompts.autogen.collaboration_extensions import (
+    get_intent_classification_with_team_collaboration,
+    get_entity_focus_mapping,
+    get_entity_hints_for_intent
+)
 from conversation_service.models.responses.conversation_responses import IntentClassificationResult, IntentAlternative
 from conversation_service.utils.validation_utils import validate_intent_response, sanitize_user_input
 from conversation_service.utils.metrics_collector import metrics_collector
@@ -19,34 +40,139 @@ from config_service.config import settings
 # Configuration du logger
 logger = logging.getLogger("conversation_service.intent_classifier")
 
+# Définition des classes base selon disponibilité AutoGen
+if AUTOGEN_AVAILABLE:
+    class AutoGenIntentClassifierBase(AssistantAgent):
+        """Base AutoGen pour IntentClassifierAgent"""
+        def __init__(self, name: str = "intent_classifier", **kwargs):
+            # Configuration LLM pour AutoGen
+            api_key = getattr(settings, 'DEEPSEEK_API_KEY', None)
+            base_url = getattr(settings, 'DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1')
+            
+            # Vérification configuration DeepSeek
+            if not api_key:
+                raise ValueError("DEEPSEEK_API_KEY requis pour mode AutoGen")
+            
+            llm_config = {
+                "config_list": [{
+                    "model": getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
+                    "api_key": api_key,
+                    "base_url": base_url,
+                    "response_format": {"type": "json_object"}
+                }],
+                "temperature": getattr(settings, 'DEEPSEEK_INTENT_TEMPERATURE', 0.1),
+                "max_tokens": getattr(settings, 'DEEPSEEK_INTENT_MAX_TOKENS', 150),
+                "cache_seed": 42
+            }
+            
+            super().__init__(
+                name=name,
+                llm_config=llm_config,
+                system_message=get_intent_classification_with_team_collaboration(),
+                human_input_mode="NEVER",
+                max_consecutive_auto_reply=1,
+                **kwargs
+            )
+            
+            # Ajout capacité Teachability pour amélioration continue
+            if Teachability:
+                try:
+                    self.add_capability(Teachability(verbosity=0))
+                    logger.debug("Capacité Teachability ajoutée à l'agent AutoGen")
+                except Exception as e:
+                    logger.warning(f"Impossible d'ajouter Teachability: {e}")
+else:
+    class AutoGenIntentClassifierBase:
+        """Fallback si AutoGen non disponible"""
+        def __init__(self, name: str = "intent_classifier", **kwargs):
+            self.name = name
+
+
 class IntentClassifierAgent(BaseAgent):
-    """Agent classification intentions financières Harena via DeepSeek avec JSON Output forcé et retry"""
+    """
+    Agent classification intentions financières Harena via DeepSeek avec JSON Output forcé et retry
+    Compatible AutoGen AssistantAgent pour collaboration multi-agents
     
-    def __init__(self, deepseek_client, cache_manager):
-        super().__init__(
-            name="intent_classifier",
-            deepseek_client=deepseek_client,
-            cache_manager=cache_manager
-        )
+    Modes de fonctionnement:
+    - Mode Classique: Agent standalone basé sur BaseAgent
+    - Mode AutoGen: Collaboration multi-agents avec AssistantAgent
+    """
+    
+    def __init__(self, deepseek_client=None, cache_manager=None, name: str = "intent_classifier", autogen_mode: bool = False, **kwargs):
+        # Mode AutoGen ou classique selon paramètres
+        self._autogen_mode = autogen_mode and AUTOGEN_AVAILABLE
+        self._team_collaboration_active = False
         
+        if not self._autogen_mode:
+            # Mode classique - BaseAgent
+            super().__init__(
+                name=name,
+                deepseek_client=deepseek_client,
+                cache_manager=cache_manager
+            )
+        else:
+            # Mode AutoGen - Conservation compatibilité pour les composants existants
+            BaseAgent.__init__(self, name=name, deepseek_client=deepseek_client, cache_manager=cache_manager)
+            
+            # Initialisation composant AutoGen
+            self._autogen_agent = AutoGenIntentClassifierBase(name=name, **kwargs)
+            logger.info(f"IntentClassifier initialisé en mode AutoGen: {self._autogen_agent.name}")
+        
+        # Configuration commune (existante)
         self.supported_intents = list(HarenaIntentType)
         self.few_shot_examples = get_balanced_few_shot_examples(examples_per_intent=2)
         self.confidence_threshold = getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5)
         
         # Configuration retry et tokens
         self.max_retry_attempts = getattr(settings, 'INTENT_DETECTION_RETRY', 3)
-        self.max_tokens = getattr(settings, 'DEEPSEEK_INTENT_MAX_TOKENS', 150)  # Augmenté de 100 à 150
+        self.max_tokens = getattr(settings, 'DEEPSEEK_INTENT_MAX_TOKENS', 150)
         self.temperature = getattr(settings, 'DEEPSEEK_INTENT_TEMPERATURE', 0.1)
         
-        logger.info(f"IntentClassifier initialisé avec {len(self.few_shot_examples)} exemples, retry: {self.max_retry_attempts}, max_tokens: {self.max_tokens}")
+        # Métriques équipe AutoGen
+        self._team_metrics = {
+            'team_classifications': 0,
+            'team_collaborations_successful': 0,
+            'team_collaborations_failed': 0
+        }
+        
+        # Mapping entités pour collaboration
+        self._entity_focus_mapping = get_entity_focus_mapping()
+        
+        mode_text = "AutoGen" if self._autogen_mode else "Classique"
+        logger.info(f"IntentClassifier initialisé en mode {mode_text} avec {len(self.few_shot_examples)} exemples, retry: {self.max_retry_attempts}, max_tokens: {self.max_tokens}")
+    
+    def activate_team_collaboration(self) -> None:
+        """Active le mode collaboration équipe AutoGen"""
+        self._team_collaboration_active = True
+        logger.debug("Mode collaboration équipe activé")
+    
+    def deactivate_team_collaboration(self) -> None:
+        """Désactive le mode collaboration équipe"""
+        self._team_collaboration_active = False
+        logger.debug("Mode collaboration équipe désactivé")
+    
+    def is_autogen_mode(self) -> bool:
+        """Vérifie si l'agent est en mode AutoGen"""
+        return self._autogen_mode
+        
+    def is_team_collaboration_active(self) -> bool:
+        """Vérifie si la collaboration équipe est active"""
+        return self._team_collaboration_active
+        
+    def get_autogen_agent(self):
+        """Retourne l'agent AutoGen sous-jacent si disponible"""
+        return getattr(self, '_autogen_agent', None)
     
     async def execute(
         self, 
         input_data: str, 
         context: Optional[Dict[str, Any]] = None
     ) -> IntentClassificationResult:
-        """Exécution classification intention"""
-        return await self.classify_intent(input_data, context)
+        """Exécution classification intention avec routage automatique"""
+        if self.is_team_collaboration_active():
+            return await self.classify_for_team_collaboration(input_data, context)
+        else:
+            return await self.classify_intent(input_data, context)
     
     async def classify_intent(
         self,
@@ -112,6 +238,163 @@ class IntentClassifierAgent(BaseAgent):
             logger.error(f"Erreur classification intention: {str(e)}")
             return self._create_error_intent_result(str(e))
     
+    async def classify_for_team_collaboration(
+        self,
+        user_message: str,
+        user_context: Optional[Dict[str, Any]] = None
+    ) -> IntentClassificationResult:
+        """
+        Classification avec enrichissement pour collaboration équipe AutoGen
+        Réutilise la logique existante et ajoute contexte équipe
+        """
+        start_time = datetime.now(timezone.utc)
+        
+        try:
+            # Métrique équipe
+            self._team_metrics['team_classifications'] += 1
+            
+            # Réutilisation classification de base (existante)
+            base_classification = await self.classify_intent(user_message, user_context)
+            
+            # Enrichissement pour équipe AutoGen
+            team_enhanced_result = self._enrich_classification_for_team(
+                base_classification, 
+                user_message, 
+                user_context
+            )
+            
+            # Métriques collaboration
+            self._update_team_metrics("team_collaboration_success", start_time)
+            
+            logger.info(f"Classification équipe réussie: {team_enhanced_result.intent_type.value} avec contexte équipe")
+            
+            return team_enhanced_result
+            
+        except Exception as e:
+            self._update_team_metrics("team_collaboration_error", start_time)
+            logger.error(f"Erreur classification équipe: {str(e)}")
+            
+            # Fallback: classification standard sans enrichissement
+            try:
+                fallback_result = await self.classify_intent(user_message, user_context)
+                logger.warning("Utilisation classification standard comme fallback")
+                return fallback_result
+            except Exception as fallback_error:
+                logger.error(f"Fallback échoué: {str(fallback_error)}")
+                return self._create_error_intent_result(f"Erreur équipe et fallback: {str(e)} | {str(fallback_error)}")
+    
+    def _enrich_classification_for_team(
+        self, 
+        base_classification: IntentClassificationResult,
+        user_message: str,
+        user_context: Optional[Dict[str, Any]] = None
+    ) -> IntentClassificationResult:
+        """
+        Enrichissement classification existante avec contexte équipe AutoGen
+        """
+        try:
+            intent_value = base_classification.intent_type.value
+            
+            # Préparation contexte équipe
+            team_context = self._prepare_team_context(
+                intent_value,
+                base_classification.confidence,
+                user_message,
+                user_context
+            )
+            
+            # Création version enrichie (conserve tout existant + ajoute team_context)
+            enriched_result = IntentClassificationResult(
+                intent_type=base_classification.intent_type,
+                confidence=base_classification.confidence,
+                reasoning=base_classification.reasoning,
+                original_message=base_classification.original_message,
+                category=base_classification.category,
+                is_supported=base_classification.is_supported,
+                alternatives=base_classification.alternatives,
+                processing_time_ms=base_classification.processing_time_ms,
+                
+                # Extension AutoGen
+                team_context=team_context
+            )
+            
+            return enriched_result
+            
+        except Exception as e:
+            logger.warning(f"Erreur enrichissement équipe, retour classification de base: {str(e)}")
+            return base_classification
+    
+    def _prepare_team_context(
+        self, 
+        intent_type: str,
+        confidence: float,
+        user_message: str,
+        user_context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Préparation contexte pour Entity Extractor (agent suivant)
+        """
+        # Récupération mapping pour cette intention
+        entity_config = self._entity_focus_mapping.get(intent_type, {
+            "priority": ["all_entities"],
+            "strategy": "comprehensive", 
+            "complexity": "medium"
+        })
+        
+        # Suggestions entités spécifiques
+        entity_hints = get_entity_hints_for_intent(intent_type)
+        
+        # Détermination niveau de confiance pour l'agent suivant
+        confidence_level = "high" if confidence > 0.8 else "medium" if confidence > 0.5 else "low"
+        
+        team_context = {
+            "user_message": user_message,
+            "user_id": user_context.get("user_id") if user_context else None,
+            "suggested_entities_focus": {
+                "priority_entities": entity_config["priority"],
+                "extraction_strategy": entity_config["strategy"],
+                "entity_hints": entity_hints
+            },
+            "processing_metadata": {
+                "confidence_level": confidence_level,
+                "complexity_assessment": entity_config["complexity"],
+                "ready_for_entity_extraction": True,
+                "intent_classification_agent": self.name
+            }
+        }
+        
+        # Ajout contexte utilisateur si disponible
+        if user_context:
+            team_context["user_context"] = {
+                "recent_intents": user_context.get("recent_intents", []),
+                "session_info": user_context.get("session_info", {}),
+                "preferences": user_context.get("preferences", {})
+            }
+        
+        return team_context
+    
+    def _update_team_metrics(self, event: str, start_time: datetime) -> None:
+        """Mise à jour métriques spécifiques équipe AutoGen"""
+        try:
+            processing_time = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            
+            # Métriques équipe
+            if event == "team_collaboration_success":
+                self._team_metrics['team_collaborations_successful'] += 1
+            elif event == "team_collaboration_error":
+                self._team_metrics['team_collaborations_failed'] += 1
+            
+            # Métriques globales (existantes)
+            metrics_collector.increment_counter(f"intent_classifier.{event}")
+            metrics_collector.record_histogram(f"intent_classifier.{event}.latency", processing_time)
+            
+        except Exception as e:
+            logger.debug(f"Échec mise à jour métriques équipe {event}: {str(e)}")
+    
+    def get_team_metrics(self) -> Dict[str, Any]:
+        """Retourne métriques collaboration équipe"""
+        return self._team_metrics.copy()
+    
     async def _classify_with_retry(
         self,
         prompt: str,
@@ -171,7 +454,7 @@ class IntentClassifierAgent(BaseAgent):
         # Toutes les tentatives ont échoué
         logger.error(f"Toutes les tentatives de classification ont échoué après {self.max_retry_attempts} essais")
         metrics_collector.increment_counter("intent_classifier.retry_exhausted")
-        return self._create_error_intent_result(f"Erreur après {self.max_retry_attempts} tentatives: {str(last_exception)}")
+        return self._create_error_intent_result(f"JSON parsing error après {self.max_retry_attempts} tentatives: {str(last_exception)}")
     
     def _build_json_classification_prompt(
         self, 
@@ -203,7 +486,7 @@ FORMAT JSON OBLIGATOIRE:
 INTENTIONS PRINCIPALES:
 {intentions_summary}
 
-EXEMPLES RÉFÉRENCE:
+EXEMPLES DE RÉFÉRENCE:
 {examples_text}
 
 RÈGLES STRICTES:

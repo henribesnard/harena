@@ -60,7 +60,7 @@ class SearchServiceTester:
                           payload: Dict[str, Any], expected_fields: List[str]) -> TestResult:
         """Teste un endpoint spécifique et retourne le résultat."""
         
-        print(f"🧪 Testing {test_name}...")
+        print(f"[TEST] Testing {test_name}...")
         start_time = time.perf_counter()
         
         try:
@@ -148,9 +148,9 @@ class SearchServiceTester:
 
     async def run_all_tests(self):
         """Lance tous les tests de recherche."""
-        print("🚀 Démarrage des tests complets search_service")
-        print(f"🎯 URL: {SEARCH_SERVICE_URL}")
-        print(f"👤 User ID: {TEST_USER_ID}")
+        print("=> Démarrage des tests complets search_service")
+        print(f"=> URL: {SEARCH_SERVICE_URL}")
+        print(f"=> User ID: {TEST_USER_ID}")
         print("=" * 60)
         
         # 1. Tests Recherches Transactionnelles (11 types)
@@ -170,7 +170,7 @@ class SearchServiceTester:
 
     async def _test_transactional_searches(self):
         """Tests des 11 types de recherches transactionnelles."""
-        print("\n📄 === RECHERCHES TRANSACTIONNELLES ===")
+        print("\n=== RECHERCHES TRANSACTIONNELLES ===")
         
         # 1.1 Recherche générale de transactions
         result = await self.test_endpoint(
@@ -338,7 +338,7 @@ class SearchServiceTester:
 
     async def _test_financial_analysis(self):
         """Tests des 7 types d'analyses financières."""
-        print("\n💰 === ANALYSES FINANCIÈRES ===")
+        print("\n=== ANALYSES FINANCIÈRES ===")
         
         # 2.1 Analyse globale des dépenses
         result = await self.test_endpoint(
@@ -432,7 +432,7 @@ class SearchServiceTester:
 
     async def _test_balance_analysis(self):
         """Tests des 3 types d'analyses de soldes."""
-        print("\n🏦 === ANALYSES DE SOLDES ===")
+        print("\n=== ANALYSES DE SOLDES ===")
         
         # 3.1 Solde général actuel
         result = await self.test_endpoint(
@@ -496,7 +496,7 @@ class SearchServiceTester:
 
     async def _test_specialized_searches(self):
         """Tests des 6 types de recherches spécialisées."""
-        print("\n🔍 === RECHERCHES SPÉCIALISÉES ===")
+        print("\n=== RECHERCHES SPÉCIALISÉES ===")
         
         # 4.1 Recherche multi-marchands
         result = await self.test_endpoint(
@@ -575,7 +575,7 @@ class SearchServiceTester:
 
     async def _test_edge_cases(self):
         """Tests de cas limites et de stress."""
-        print("\n⚡ === CAS LIMITES ET STRESS ===")
+        print("\n=== CAS LIMITES ET STRESS ===")
         
         # 5.1 Requête avec tri personnalisé
         result = await self.test_endpoint(
@@ -685,7 +685,7 @@ class SearchServiceTester:
 
     def generate_report(self):
         """Génère le rapport markdown avec les résultats."""
-        print(f"\n📊 Génération du rapport: {OUTPUT_FILE}")
+        print(f"\n=> Génération du rapport: {OUTPUT_FILE}")
         
         # Statistiques globales
         total_tests = len(self.results)
@@ -708,47 +708,47 @@ class SearchServiceTester:
         
         # Génération du markdown
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-            f.write("# 📊 Rapport de Test Search Service\n\n")
+            f.write("# Rapport de Test Search Service\n\n")
             f.write(f"**Date du test** : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             f.write(f"**URL testée** : {SEARCH_SERVICE_URL}\n\n")
             f.write(f"**Utilisateur test** : {TEST_USER_ID}\n\n")
             
             # Résumé exécutif
-            f.write("## 🎯 Résumé Exécutif\n\n")
+            f.write("## Résumé Exécutif\n\n")
             f.write(f"- **Total des tests** : {total_tests}\n")
-            f.write(f"- **Tests réussis** : {successful_tests} ✅\n")
-            f.write(f"- **Tests échoués** : {failed_tests} ❌\n")
+            f.write(f"- **Tests réussis** : {successful_tests} [OK]\n")
+            f.write(f"- **Tests échoués** : {failed_tests} [FAILED]\n")
             f.write(f"- **Taux de succès** : {success_rate:.1f}%\n")
             f.write(f"- **Temps de réponse moyen** : {avg_response_time:.1f}ms\n\n")
             
             # Status par catégorie
-            f.write("## 📋 Statut par Catégorie\n\n")
+            f.write("## Statut par Catégorie\n\n")
             f.write("| Catégorie | Total | Réussis | Taux | Temps Moyen |\n")
             f.write("|-----------|-------|---------|------|-------------|\n")
             
             for category, stats in categories.items():
                 cat_success_rate = (stats["success"] / stats["total"] * 100) if stats["total"] > 0 else 0
                 cat_avg_time = sum(r.response_time_ms for r in stats["results"]) / stats["total"] if stats["total"] > 0 else 0
-                status_emoji = "✅" if cat_success_rate == 100 else "⚠️" if cat_success_rate > 50 else "❌"
+                status_emoji = "[OK]" if cat_success_rate == 100 else "[WARN]" if cat_success_rate > 50 else "[FAIL]"
                 f.write(f"| {category} | {stats['total']} | {stats['success']} | {cat_success_rate:.1f}% {status_emoji} | {cat_avg_time:.1f}ms |\n")
             
             f.write("\n")
             
             # Détails par catégorie
-            f.write("## 🔍 Détails par Catégorie\n\n")
+            f.write("## Détails par Catégorie\n\n")
             
             for category, stats in categories.items():
                 f.write(f"### {category}\n\n")
                 
                 for result in stats["results"]:
-                    status_emoji = "✅" if result.success else "❌"
+                    status_emoji = "[OK]" if result.success else "[FAIL]"
                     f.write(f"#### {status_emoji} {result.name}\n")
                     f.write(f"- **Intention** : `{result.intention}`\n")
                     f.write(f"- **Temps de réponse** : {result.response_time_ms:.1f}ms\n")
                     f.write(f"- **Code de statut** : {result.status_code or 'N/A'}\n")
                     
                     if not result.success:
-                        f.write(f"- **❌ Erreur** : {result.error_message or 'Erreur inconnue'}\n")
+                        f.write(f"- **[FAIL] Erreur** : {result.error_message or 'Erreur inconnue'}\n")
                         if result.missing_fields:
                             f.write(f"- **Champs manquants** : {', '.join(result.missing_fields)}\n")
                     
@@ -773,7 +773,7 @@ class SearchServiceTester:
             # Problèmes identifiés
             failed_results = [r for r in self.results if not r.success]
             if failed_results:
-                f.write("## 🚨 Problèmes Identifiés\n\n")
+                f.write("## Problèmes Identifiés\n\n")
                 
                 # Grouper par type d'erreur
                 error_types = {}
@@ -790,10 +790,10 @@ class SearchServiceTester:
                     f.write("\n")
             
             # Recommandations
-            f.write("## 💡 Recommandations\n\n")
+            f.write("## Recommandations\n\n")
             
             if failed_tests == 0:
-                f.write("🎉 **Excellent !** Tous les tests passent. Le search_service est prêt pour la production.\n\n")
+                f.write("**Excellent !** Tous les tests passent. Le search_service est prêt pour la production.\n\n")
             else:
                 f.write("### Corrections Prioritaires\n\n")
                 
@@ -826,7 +826,7 @@ class SearchServiceTester:
                 f.write("### Actions Recommandées\n\n")
                 
                 if success_rate < 50:
-                    f.write("🔴 **Critique** : Moins de 50% des tests passent. Révision architecturale nécessaire.\n\n")
+                    f.write("**Critique** : Moins de 50% des tests passent. Révision architecturale nécessaire.\n\n")
                 elif success_rate < 80:
                     f.write("🟠 **Important** : Plusieurs fonctionnalités manquantes. Implémentation prioritaire nécessaire.\n\n")
                 else:
@@ -834,7 +834,7 @@ class SearchServiceTester:
             
             # Payload des tests échoués pour debug
             if failed_results:
-                f.write("## 🔧 Payloads pour Debug\n\n")
+                f.write("## Payloads pour Debug\n\n")
                 f.write("Utilisez ces payloads pour reproduire les erreurs :\n\n")
                 
                 for result in failed_results[:5]:  # Limiter à 5 pour ne pas surcharger
@@ -843,11 +843,11 @@ class SearchServiceTester:
                     f.write(json.dumps(result.payload, indent=2, ensure_ascii=False))
                     f.write("\n```\n\n")
 
-        print(f"✅ Rapport généré : {OUTPUT_FILE}")
+        print(f"[OK] Rapport généré : {OUTPUT_FILE}")
 
 async def main():
     """Fonction principale du script."""
-    print("🚀 Search Service Comprehensive Test Suite")
+    print("=> Search Service Comprehensive Test Suite")
     print("=========================================")
     
     try:
@@ -859,22 +859,22 @@ async def main():
         total = len(tester.results)
         success = len([r for r in tester.results if r.success])
         
-        print(f"\n📊 RÉSUMÉ FINAL")
+        print(f"\n=> RÉSUMÉ FINAL")
         print(f"Tests réussis : {success}/{total} ({success/total*100:.1f}%)")
         print(f"Rapport détaillé : {OUTPUT_FILE}")
         
         if success == total:
-            print("🎉 Tous les tests passent ! Search service est prêt.")
+            print("[OK] Tous les tests passent ! Search service est prêt.")
             sys.exit(0)
         else:
-            print("⚠️ Certains tests échouent. Consultez le rapport pour les détails.")
+            print("[WARN] Certains tests échouent. Consultez le rapport pour les détails.")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n🛑 Tests interrompus par l'utilisateur")
+        print("\n[STOP] Tests interrompus par l'utilisateur")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Erreur critique : {e}")
+        print(f"\n[ERROR] Erreur critique : {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

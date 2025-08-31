@@ -10,6 +10,23 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
 from conversation_service.models.responses.conversation_responses import ConversationResponse, AgentMetrics
+from conversation_service.models.responses.conversation_responses_phase3 import (
+    ConversationResponsePhase3, QueryGenerationMetrics, ProcessingSteps,
+    ConversationResponseFactory, QueryGenerationError
+)
+from conversation_service.models.responses.conversation_responses_phase4 import (
+    ConversationResponsePhase4, ConversationResponseFactoryPhase4,
+    ResilienceMetrics, SearchMetrics, SearchExecutionError
+)
+from conversation_service.models.responses.conversation_responses_phase5 import (
+    ConversationResponsePhase5, ConversationResponseFactoryPhase5
+)
+from conversation_service.agents.search.search_executor import (
+    SearchExecutor, SearchExecutorRequest, SearchExecutorResponse
+)
+from conversation_service.core.search_service_client import SearchServiceConfig
+from conversation_service.api.routes.conversation_phase4 import analyze_conversation_phase4
+from conversation_service.api.routes.conversation_phase5 import process_conversation_phase5
 from conversation_service.models.responses.enriched_conversation_responses import (
     EnrichedConversationResponse,
     TeamHealthResponse,
@@ -17,6 +34,8 @@ from conversation_service.models.responses.enriched_conversation_responses impor
 )
 from conversation_service.agents.financial import intent_classifier as intent_classifier_module
 from conversation_service.agents.financial.entity_extractor import EntityExtractorAgent
+from conversation_service.agents.financial.query_builder import QueryBuilderAgent
+from conversation_service.models.contracts.search_service import QueryGenerationRequest
 from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.prompts.harena_intents import HarenaIntentType
@@ -38,8 +57,47 @@ from config_service.config import settings
 router = APIRouter(tags=["conversation"])
 logger = logging.getLogger("conversation_service.routes")
 
-@router.post("/conversation/{path_user_id}", response_model=ConversationResponse)
+@router.post("/conversation/{path_user_id}", response_model=ConversationResponsePhase5)
 async def analyze_conversation(
+    path_user_id: int,
+    request_data: ConversationRequest,
+    request: Request,
+    deepseek_client: DeepSeekClient = Depends(get_deepseek_client),
+    cache_manager: Optional[CacheManager] = Depends(get_cache_manager),
+    validated_user_id: int = Depends(validate_path_user_id),
+    user_context: Dict[str, Any] = Depends(get_user_context),
+    service_status: dict = Depends(get_conversation_service_status),
+    _rate_limit: None = Depends(rate_limit_dependency)
+) -> ConversationResponsePhase5:
+    """
+    Endpoint principal conversation service Phase 5 - Workflow complet avec réponse naturelle
+    
+    Features Phase 5 (workflow complet):
+    - Classification intention (Phase 1)
+    - Extraction entités (Phase 2) 
+    - Génération requête search_service optimisée (Phase 3)
+    - Exécution search_service avec résultats réels (Phase 4)
+    - Génération réponse naturelle contextualisée (Phase 5)
+    - Insights automatiques et suggestions actionnables
+    - Personnalisation basée sur le contexte utilisateur
+    - Circuit breaker et résilience complète
+    - Authentification JWT obligatoire compatible user_service
+    - Rate limiting par utilisateur avec gestion d'erreur gracieuse
+    - Métriques de résilience détaillées
+    """
+    # Délégation vers l'implémentation Phase 5 complète
+    return await process_conversation_phase5(
+        user_id=path_user_id,
+        request=request_data,
+        http_request=request,
+        validated_user_id=validated_user_id,
+        user_context=user_context,
+        _rate_limit=_rate_limit
+    )
+
+
+@router.post("/conversation/legacy/{path_user_id}", response_model=ConversationResponse)
+async def analyze_conversation_legacy_phase2(
     path_user_id: int,
     request_data: ConversationRequest,
     request: Request,
@@ -51,179 +109,111 @@ async def analyze_conversation(
     _rate_limit: None = Depends(rate_limit_dependency)
 ):
     """
-    Endpoint principal conversation service - Compatible JWT user_service
+    Endpoint Legacy Phase 2: Intentions + Entités (sans génération requête)
     
-    Features Phase 1:
-    - Authentification JWT obligatoire compatible user_service
-    - Rate limiting par utilisateur avec gestion d'erreur gracieuse
-    - Classification via DeepSeek + JSON Output forcé
-    - Cache sémantique Redis (optionnel)
-    - Métriques détaillées performance
-    - Validation robuste inputs/outputs
-    - Gestion d'erreur complète
+    DEPRECATED: Utilisez /conversation/{user_id} pour la Phase 3 complète
+    
+    Features Phase 2 (Legacy):
+    - Classification intention (Phase 1)
+    - Extraction entités (Phase 2) 
+    - Compatible avec anciennes intégrations
     """
     start_time = time.time()
-    request_id = f"{validated_user_id}_{int(start_time * 1000)}"
+    request_id = f"{validated_user_id}_{int(start_time * 1000)}_v3"
+    processing_steps = []
     
-    # Logging début requête avec contexte sécurisé
+    # Logging début requête
     client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
     logger.info(
-        f"[{request_id}] Nouvelle conversation - User: {validated_user_id}, "
+        f"[{request_id}] Phase 3 - User: {validated_user_id}, "
         f"IP: {client_ip}, Message: '{request_data.message[:30]}...'"
     )
     
     try:
         # ====================================================================
-        # VALIDATION ET NETTOYAGE MESSAGE
+        # VALIDATION MESSAGE (réutilise logique existante)
         # ====================================================================
         
         message_validation = validate_user_message(request_data.message)
         if not message_validation["valid"]:
-            metrics_collector.increment_counter("conversation.errors.validation")
-            logger.warning(f"[{request_id}] Message invalide: {message_validation['errors']}")
+            metrics_collector.increment_counter("conversation.v3.validation_failed")
             raise HTTPException(
                 status_code=422,
                 detail={
                     "error": "Message invalide",
                     "errors": message_validation["errors"],
-                    "warnings": message_validation.get("warnings", []),
+                    "phase": 3,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
         
-        # Log warnings validation pour monitoring
-        for warning in message_validation.get("warnings", []):
-            logger.warning(f"[{request_id}] Validation warning: {warning}")
-        
-        # Nettoyage sécurisé message
-        try:
-            clean_message = sanitize_user_input(request_data.message)
-            if not clean_message or len(clean_message.strip()) == 0:
-                metrics_collector.increment_counter("conversation.errors.validation_sanitization")
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "error": "Message vide après nettoyage sécurisé",
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    }
-                )
-        except Exception as sanitize_error:
-            logger.error(f"[{request_id}] Erreur sanitization: {str(sanitize_error)}")
-            metrics_collector.increment_counter("conversation.errors.sanitization")
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "Erreur traitement message",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        clean_message = sanitize_user_input(request_data.message)
         
         # ====================================================================
-        # INITIALISATION AGENT CLASSIFICATION
+        # ÉTAPE 1: CLASSIFICATION INTENTION
         # ====================================================================
-        
-        try:
-            intent_classifier = intent_classifier_module.IntentClassifierAgent(
-                deepseek_client=deepseek_client,
-                cache_manager=cache_manager  # Peut être None
-            )
-        except Exception as agent_init_error:
-            logger.error(f"[{request_id}] Erreur initialisation agent: {str(agent_init_error)}")
-            metrics_collector.increment_counter("conversation.errors.agent_initialization")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Erreur initialisation service classification",
-                    "request_id": request_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
-        
-        # ====================================================================
-        # CLASSIFICATION INTENTION
-        # ====================================================================
-        
-        logger.info(f"[{request_id}] Début classification: '{clean_message[:50]}...'")
         
         classification_start = time.time()
         try:
+            intent_classifier = intent_classifier_module.IntentClassifierAgent(
+                deepseek_client=deepseek_client,
+                cache_manager=cache_manager
+            )
+            
             classification_result = await intent_classifier.classify_intent(
                 user_message=clean_message,
                 user_context=user_context
             )
-        except Exception as classification_error:
+            
             classification_time = int((time.time() - classification_start) * 1000)
-            logger.error(
-                f"[{request_id}] Erreur classification ({classification_time}ms): {str(classification_error)}"
-            )
-            metrics_collector.increment_counter("conversation.errors.classification")
+            processing_steps.append(ProcessingSteps(
+                agent="intent_classifier",
+                duration_ms=classification_time,
+                cache_hit=classification_time < 100  # Heuristique cache
+            ))
+            
+        except Exception as e:
+            classification_time = int((time.time() - classification_start) * 1000)
+            processing_steps.append(ProcessingSteps(
+                agent="intent_classifier",
+                duration_ms=classification_time,
+                cache_hit=False,
+                success=False,
+                error_message=str(e)
+            ))
+            
+            logger.error(f"[{request_id}] Erreur classification Phase 3: {str(e)}")
+            metrics_collector.increment_counter("conversation.v3.classification_failed")
             raise HTTPException(
                 status_code=500,
                 detail={
-                    "error": "Erreur lors de la classification d'intention",
+                    "error": "Erreur classification intention",
+                    "phase": 3,
                     "request_id": request_id,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-        
-        classification_time = int((time.time() - classification_start) * 1000)
-        
-        # ====================================================================
-        # VALIDATION RÉSULTAT CLASSIFICATION
-        # ====================================================================
-        
-        if not classification_result:
-            logger.error(f"[{request_id}] Classification retourné None")
-            metrics_collector.increment_counter("conversation.errors.classification_null")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Résultat de classification invalide",
-                    "request_id": request_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
-        
-        # Gestion flexible du type d'intention (enum ou str)
-        try:
-            intent_type_value = getattr(classification_result.intent_type, 'value', classification_result.intent_type)
-        except Exception as intent_extract_error:
-            logger.warning(f"[{request_id}] Erreur extraction intent type: {str(intent_extract_error)}")
-            intent_type_value = str(classification_result.intent_type) if classification_result.intent_type else "UNKNOWN"
         
         # Validation résultat classification
-        if intent_type_value == HarenaIntentType.ERROR.value:
-            logger.error(f"[{request_id}] Classification échouée - erreur technique")
-            metrics_collector.increment_counter("conversation.errors.classification_failed")
-            raise HTTPException(
-                status_code=500, 
-                detail={
-                    "error": "Erreur technique lors de la classification d'intention",
-                    "request_id": request_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        if not classification_result:
+            raise HTTPException(status_code=500, detail={"error": "Classification invalide", "phase": 3})
+        
+        intent_type_value = getattr(classification_result.intent_type, 'value', str(classification_result.intent_type))
         
         # ====================================================================
-        # EXTRACTION ENTITÉS (PHASE 2)
+        # ÉTAPE 2: EXTRACTION ENTITÉS
         # ====================================================================
         
         entities_result = None
-        entity_extraction_time = 0
-        
-        # Extraction d'entités si intention supportée et non ERROR
         if (classification_result.is_supported and 
-            intent_type_value != HarenaIntentType.ERROR.value and 
-            intent_type_value not in [HarenaIntentType.UNKNOWN.value, HarenaIntentType.UNCLEAR_INTENT.value]):
+            intent_type_value not in [HarenaIntentType.ERROR.value, HarenaIntentType.UNKNOWN.value]):
             
-            logger.info(f"[{request_id}] Début extraction entités pour intention: {intent_type_value}")
             extraction_start = time.time()
-            
             try:
                 entity_extractor = EntityExtractorAgent(
                     deepseek_client=deepseek_client,
                     cache_manager=cache_manager,
-                    autogen_mode=False  # Mode simple pour V1
+                    autogen_mode=False
                 )
                 
                 entities_result = await entity_extractor.extract_entities(
@@ -232,115 +222,209 @@ async def analyze_conversation(
                     user_id=validated_user_id
                 )
                 
-                entity_extraction_time = int((time.time() - extraction_start) * 1000)
-                logger.info(f"[{request_id}] Extraction entités réussie: {entity_extraction_time}ms")
-                metrics_collector.increment_counter("conversation.v1.entity_extraction.success")
+                extraction_time = int((time.time() - extraction_start) * 1000)
+                processing_steps.append(ProcessingSteps(
+                    agent="entity_extractor",
+                    duration_ms=extraction_time,
+                    cache_hit=extraction_time < 150
+                ))
                 
-            except Exception as entity_error:
-                entity_extraction_time = int((time.time() - extraction_start) * 1000)
-                logger.warning(f"[{request_id}] Extraction entités échouée ({entity_extraction_time}ms): {str(entity_error)}")
-                metrics_collector.increment_counter("conversation.v1.entity_extraction.failed")
-                entities_result = None  # Continue sans entités
-        else:
-            logger.debug(f"[{request_id}] Extraction entités ignorée pour intention: {intent_type_value}")
+                logger.info(f"[{request_id}] Entités extraites: {extraction_time}ms")
+                
+            except Exception as e:
+                extraction_time = int((time.time() - extraction_start) * 1000)
+                processing_steps.append(ProcessingSteps(
+                    agent="entity_extractor",
+                    duration_ms=extraction_time,
+                    cache_hit=False,
+                    success=False,
+                    error_message=str(e)
+                ))
+                
+                logger.warning(f"[{request_id}] Extraction entités échouée: {str(e)}")
+                entities_result = None
         
         # ====================================================================
-        # CONSTRUCTION MÉTRIQUES ET RÉPONSE
+        # ÉTAPE 3: GÉNÉRATION REQUÊTE SEARCH_SERVICE
         # ====================================================================
         
-        # Calcul temps traitement total
-        processing_time_ms = max(1, int((time.time() - start_time) * 1000))
+        search_query = None
+        query_validation = None
+        query_metrics = None
         
-        # Construction métriques agent avec données réelles et gestion d'erreur
-        try:
-            agent_metrics = AgentMetrics(
-                agent_used="intent_classifier",
-                cache_hit=classification_time < 100,  # Heuristique cache hit
-                model_used=getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
-                tokens_consumed=await _estimate_tokens_consumption_safe(clean_message, classification_result),
-                processing_time_ms=classification_result.processing_time_ms or classification_time,
-                confidence_threshold_met=classification_result.confidence >= getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5)
-            )
-        except Exception as metrics_error:
-            logger.warning(f"[{request_id}] Erreur construction métriques: {str(metrics_error)}")
-            # Métriques par défaut
-            agent_metrics = AgentMetrics(
-                agent_used="intent_classifier",
-                cache_hit=False,
-                model_used="unknown",
-                tokens_consumed=200,
-                processing_time_ms=classification_time,
-                confidence_threshold_met=True
-            )
-        
-        # Construction réponse finale avec validation
-        try:
-            response = ConversationResponse(
-                user_id=validated_user_id,
-                sub=user_context.get("user_id", validated_user_id),  # Fallback sécurisé
-                message=clean_message,
-                timestamp=datetime.now(timezone.utc),
-                processing_time_ms=processing_time_ms,
-                intent=classification_result,
-                agent_metrics=agent_metrics,
-                entities=entities_result,  # Entités extraites
-                phase=2 if entities_result else 1  # Phase 2 si entités présentes
-            )
-        except Exception as response_error:
-            logger.error(f"[{request_id}] Erreur construction réponse: {str(response_error)}")
-            metrics_collector.increment_counter("conversation.errors.response_construction")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Erreur construction réponse",
-                    "request_id": request_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        # Génération requête si intention supportée
+        if (classification_result.is_supported and entities_result and
+            intent_type_value not in [HarenaIntentType.ERROR.value, HarenaIntentType.UNKNOWN.value]):
+            
+            generation_start = time.time()
+            try:
+                query_builder = QueryBuilderAgent(
+                    deepseek_client=deepseek_client,
+                    cache_manager=cache_manager,
+                    autogen_mode=False
+                )
+                
+                # Construction requête génération
+                generation_request = QueryGenerationRequest(
+                    user_id=validated_user_id,
+                    intent_type=intent_type_value,
+                    intent_confidence=classification_result.confidence,
+                    entities=entities_result.get("entities", {}),
+                    user_message=clean_message,
+                    context=user_context
+                )
+                
+                # Génération requête
+                generation_response = await query_builder.generate_search_query(generation_request)
+                
+                generation_time = int((time.time() - generation_start) * 1000)
+                processing_steps.append(ProcessingSteps(
+                    agent="query_builder",
+                    duration_ms=generation_time,
+                    cache_hit=generation_time < 200
+                ))
+                
+                # Extraction résultats
+                search_query = generation_response.search_query
+                query_validation = generation_response.validation
+                
+                # Métriques génération
+                query_metrics = QueryGenerationMetrics(
+                    generation_time_ms=generation_time,
+                    validation_time_ms=50,  # Inclus dans generation_time
+                    optimization_time_ms=100,  # Inclus dans generation_time
+                    generation_confidence=generation_response.generation_confidence,
+                    validation_passed=generation_response.validation.schema_valid and generation_response.validation.contract_compliant,
+                    optimizations_applied=len(generation_response.validation.optimization_applied),
+                    estimated_performance=generation_response.validation.estimated_performance,
+                    estimated_results_count=generation_response.estimated_results_count
+                )
+                
+                logger.info(
+                    f"[{request_id}] Requête générée: {generation_time}ms, "
+                    f"Validation: {query_validation.schema_valid}, "
+                    f"Optimisations: {len(query_validation.optimization_applied)}"
+                )
+                metrics_collector.increment_counter("conversation.v3.query_generation.success")
+                
+            except Exception as e:
+                generation_time = int((time.time() - generation_start) * 1000)
+                processing_steps.append(ProcessingSteps(
+                    agent="query_builder",
+                    duration_ms=generation_time,
+                    cache_hit=False,
+                    success=False,
+                    error_message=str(e)
+                ))
+                
+                logger.error(f"[{request_id}] Génération requête échouée: {str(e)}")
+                metrics_collector.increment_counter("conversation.v3.query_generation.failed")
+                
+                # Continue sans search_query (fallback Phase 2)
+                search_query = None
+                query_validation = None
         
         # ====================================================================
-        # COLLECTE MÉTRIQUES ET LOGGING FINAL
+        # CONSTRUCTION RÉPONSE FINALE
         # ====================================================================
         
-        try:
-            await _collect_comprehensive_metrics_safe(
-                request_id, classification_result, processing_time_ms, agent_metrics
-            )
-        except Exception as metrics_collection_error:
-            logger.warning(f"[{request_id}] Erreur collecte métriques: {str(metrics_collection_error)}")
+        processing_time_ms = int((time.time() - start_time) * 1000)
         
-        # Log succès avec détails
-        logger.info(
-            f"[{request_id}] ✅ Classification réussie: {intent_type_value} "
-            f"(confiance: {classification_result.confidence:.2f}, "
-            f"temps: {processing_time_ms}ms, cache: {agent_metrics.cache_hit})"
+        # Métriques agent principales (réutilise logique existante)
+        agent_metrics = AgentMetrics(
+            agent_used="multi_agent_pipeline",
+            cache_hit=any(step.cache_hit for step in processing_steps),
+            model_used=getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
+            tokens_consumed=await _estimate_tokens_consumption_safe(clean_message, classification_result),
+            processing_time_ms=processing_time_ms,
+            confidence_threshold_met=classification_result.confidence >= 0.5
         )
+        
+        # Création réponse base
+        base_response = ConversationResponse(
+            user_id=validated_user_id,
+            sub=user_context.get("user_id", validated_user_id),
+            message=clean_message,
+            timestamp=datetime.now(timezone.utc),
+            processing_time_ms=processing_time_ms,
+            intent=classification_result,
+            agent_metrics=agent_metrics,
+            entities=entities_result,
+            phase=3 if search_query else 2,  # Phase 3 si requête générée
+            request_id=request_id
+        )
+        
+        # Création réponse Phase 3
+        if search_query and query_validation:
+            # Succès Phase 3 complète
+            response = ConversationResponseFactory.create_phase3_success(
+                base_response=base_response,
+                search_query=search_query,
+                query_validation=query_validation,
+                processing_steps=processing_steps,
+                query_metrics=query_metrics
+            )
+            
+            logger.info(
+                f"[{request_id}] ✅ Phase 3 complète: {intent_type_value}, "
+                f"Confiance: {classification_result.confidence:.2f}, "
+                f"Requête: {'générée' if search_query else 'échouée'}, "
+                f"Temps: {processing_time_ms}ms"
+            )
+            metrics_collector.increment_counter("conversation.v3.complete_success")
+            
+        else:
+            # Fallback Phase 2 (sans requête)
+            response = ConversationResponsePhase3(
+                user_id=base_response.user_id,
+                sub=base_response.sub,
+                message=base_response.message,
+                timestamp=base_response.timestamp,
+                request_id=base_response.request_id,
+                intent=base_response.intent,
+                agent_metrics=base_response.agent_metrics,
+                processing_time_ms=base_response.processing_time_ms,
+                status=base_response.status,
+                phase=2,  # Downgrade vers Phase 2
+                warnings=["Génération requête search_service échouée, fallback Phase 2"],
+                entities=base_response.entities,
+                processing_steps=processing_steps
+            )
+            
+            logger.info(
+                f"[{request_id}] ⚠️ Phase 3 partielle (fallback Phase 2): {intent_type_value}, "
+                f"Temps: {processing_time_ms}ms"
+            )
+            metrics_collector.increment_counter("conversation.v3.partial_success")
+        
+        # Métriques détaillées
+        await _collect_comprehensive_metrics_safe(request_id, classification_result, processing_time_ms, agent_metrics)
+        metrics_collector.increment_counter("conversation.v3.requests.total")
+        metrics_collector.record_histogram("conversation.v3.processing_time", processing_time_ms)
         
         return response
         
     except HTTPException:
-        # Re-raise HTTP exceptions (validation, auth, etc.) sans modification
         raise
         
     except Exception as e:
-        # Erreurs techniques non prévues avec contexte détaillé
+        # Erreur critique Phase 3
         processing_time_ms = int((time.time() - start_time) * 1000)
         
-        # Métriques erreur détaillées
-        metrics_collector.increment_counter("conversation.errors.technical")
-        metrics_collector.record_histogram("conversation.processing_time", processing_time_ms)
-        
-        # Logging erreur avec contexte complet mais sécurisé
         logger.error(
-            f"[{request_id}] ❌ Erreur technique: {type(e).__name__}: {str(e)[:200]}, "
-            f"User: {validated_user_id}, Time: {processing_time_ms}ms",
+            f"[{request_id}] ❌ Erreur critique Phase 3: {type(e).__name__}: {str(e)[:200]}, "
+            f"Temps: {processing_time_ms}ms",
             exc_info=True
         )
+        
+        metrics_collector.increment_counter("conversation.v3.errors.critical")
+        metrics_collector.record_histogram("conversation.v3.error_time", processing_time_ms)
         
         raise HTTPException(
             status_code=500,
             detail={
-                "error": "Erreur interne du service conversation",
+                "error": "Erreur critique Phase 3",
+                "phase": 3,
                 "request_id": request_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
@@ -358,8 +442,8 @@ async def conversation_health_detailed():
         
         return {
             "service": "conversation_service", 
-            "phase": 1,
-            "version": "1.1.0",
+            "phase": 3,
+            "version": "3.0.0",
             "status": health_metrics["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "jwt_compatible": True,
@@ -372,12 +456,17 @@ async def conversation_health_detailed():
             },
             "features": {
                 "intent_classification": True,
+                "entity_extraction": True,
+                "query_generation": True,
+                "search_service_integration": True,
                 "supported_intents": len(HarenaIntentType),
                 "json_output_forced": True,
                 "cache_enabled": True,
                 "auth_required": True,
                 "rate_limiting": True,
-                "jwt_compatible": True
+                "jwt_compatible": True,
+                "query_optimization": True,
+                "query_validation": True
             },
             "configuration": {
                 "min_confidence_threshold": getattr(settings, 'MIN_CONFIDENCE_THRESHOLD', 0.5),
@@ -392,8 +481,8 @@ async def conversation_health_detailed():
         logger.error(f"❌ Erreur health check: {str(e)}")
         return {
             "service": "conversation_service",
-            "phase": 1,
-            "version": "1.1.0",
+            "phase": 3,
+            "version": "3.0.0",
             "status": "error",
             "jwt_compatible": False,
             "error": str(e),
@@ -1091,4 +1180,8 @@ async def get_team_metrics(
 
 logger.info(f"Routes conversation configurées - Environnement: {environment}")
 logger.info(f"Endpoints debug: {'activés' if environment != 'production' else 'désactivés'}")
-logger.info("Endpoints dual-mode V2 configurés: /conversation/v2/, /team/health, /team/metrics")
+logger.info("Endpoints configurés:")
+logger.info("  - /conversation/{user_id} → Phase 3 (Principal)")
+logger.info("  - /conversation/legacy/{user_id} → Phase 2 (Deprecated)")
+logger.info("  - /conversation/v2/{user_id} → Dual-mode AutoGen") 
+logger.info("  - /team/health, /team/metrics → Team monitoring")

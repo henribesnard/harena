@@ -282,8 +282,8 @@ class EntityExtractorAgent:
                 elif isinstance(response, dict) and "content" in response:
                     return self._parse_and_validate_response(response["content"])
                 else:
-                    logger.warning(f"Réponse AutoGen inattendue: {type(response)}")
-                    return self._create_fallback_extraction(user_message, "Format réponse AutoGen inattendu")
+                    logger.warning(f"Réponse AutoGen inattendue: {type(response)}, fallback DeepSeek")
+                    return await self._fallback_deepseek_extraction(extraction_prompt, user_message)
                     
             except Exception as e:
                 logger.warning(f"Erreur AutoGen, fallback DeepSeek: {str(e)}")

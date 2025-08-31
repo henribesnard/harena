@@ -22,6 +22,8 @@ if str(current_dir) not in sys.path:
 from conversation_service.clients.deepseek_client import DeepSeekClient, DeepSeekError
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.routes.conversation import router as conversation_router
+from conversation_service.api.routes.conversation_phase4 import router as conversation_phase4_router
+from conversation_service.api.routes.conversation_phase5 import router as conversation_phase5_router
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 from conversation_service.utils.metrics_collector import metrics_collector
 from conversation_service.autogen_core import ConversationServiceRuntime
@@ -53,9 +55,9 @@ class ConversationServiceLoader:
         
         # Configuration service
         self.service_config = {
-            "phase": 2,  # Phase 2 avec AutoGen runtime
-            "version": "1.1.0",  # Version avec corrections await
-            "features": ["intent_classification", "json_output", "cache", "auth", "metrics", "autogen_runtime"],
+            "phase": 5,  # Phase 5 avec génération de réponses complètes
+            "version": "2.0.0",  # Version Phase 5 avec workflow complet
+            "features": ["intent_classification", "entity_extraction", "query_generation", "search_execution", "response_generation", "json_output", "cache", "auth", "metrics", "autogen_runtime", "contextual_responses", "insights_generation"],
             "json_output_enforced": True,
             "deepseek_model": getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
             "jwt_compatible": True,
@@ -624,7 +626,9 @@ class ConversationServiceLoader:
             
             # Routes conversation avec préfixe API
             app.include_router(conversation_router, prefix="/api/v1")
-            logger.info("🔗 Routes conversation configurées")
+            app.include_router(conversation_phase4_router, prefix="/api/v1/phase4", tags=["Phase 4"])
+            app.include_router(conversation_phase5_router, prefix="/api/v1/phase5", tags=["Phase 5"])
+            logger.info("🔗 Routes conversation configurées (Phase 1-5)")
             
             # Routes de santé globales
             self._add_global_health_routes(app)

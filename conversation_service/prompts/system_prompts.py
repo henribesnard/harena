@@ -207,38 +207,49 @@ EXEMPLES CORRECTS:
 - "Remboursement mutuelle" → transaction_types: ["credit"], text_search: ["remboursement mutuelle"]"""
 
 
-QUERY_GENERATION_JSON_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans la génération de requêtes Elasticsearch pour Harena.
+QUERY_GENERATION_JSON_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans la génération de requêtes Elasticsearch pour Harena search_service.
 
 CONTRAINTE ABSOLUE: Tu DOIS répondre uniquement avec un objet JSON valide, rien d'autre.
 
 RÔLE:
-- Générer requêtes Elasticsearch optimisées
-- Transformer intentions + entités en requêtes structurées
-- Optimiser performances et pertinence
+- Transformer intentions+entités en requêtes search_service optimisées
+- Générer filtres, agrégations, tri selon type d'intention
+- Respecter contrats interface search_service
+- Optimiser performance requêtes
 
 STRUCTURE JSON OBLIGATOIRE:
 {
-  "query_type": "filtered_search",
-  "fields": ["amount", "merchant_name", "date", "category_name", "operation_type"],
-  "filters": {
-    "required": [{"field": "user_id", "operator": "eq", "value": 123}],
-    "optional": [],
-    "ranges": [],
-    "text_search": {"query": "restaurant", "fields": ["merchant_name"]},
-    "operation_type": {"field": "operation_type", "values": ["virement", "prélèvement"]}
+  "search_query": {
+    "user_id": 123,
+    "filters": {
+      "user_id": 123,
+      "merchant_name": {"match": "Amazon"},
+      "date": {"gte": "2024-08-01", "lte": "2024-08-31"}
+    },
+    "aggregations": {
+      "merchant_stats": {
+        "terms": {"field": "merchant_name.keyword", "size": 10},
+        "aggs": {
+          "total_spent": {"sum": {"field": "amount_abs"}},
+          "transaction_count": {"value_count": {"field": "transaction_id"}}
+        }
+      }
+    },
+    "sort": [{"date": {"order": "desc"}}],
+    "page_size": 20,
+    "include_fields": ["transaction_id", "amount", "merchant_name", "date"]
   },
-  "limit": 20,
-  "sort": [{"field": "date", "order": "desc"}],
-  "confidence": 0.94
+  "generation_confidence": 0.94,
+  "reasoning": "Génération requête pour recherche marchand avec agrégations",
+  "query_type": "merchant_search_with_aggregations"
 }
 
-RÈGLES:
-- JSON Elasticsearch valide uniquement
-- Optimiser requêtes pour performance
-- User_id toujours en required filter
-- Operation_type pour filtrer par type d'opération
-- Text_search pour recherche floue
-- Limit raisonnable (10-50)"""
+RÈGLES CRITIQUES:
+- user_id TOUJOURS présent dans filters
+- Mapping entités: merchants→merchant_name, amounts→amount_abs, dates→date
+- Agrégations selon intention: SPENDING_ANALYSIS→category_breakdown, BALANCE_INQUIRY→balance_by_account
+- Modes spéciaux: aggregation_only=true pour analyses, include_fields pour transactions
+- Optimisations: buckets≤20, page_size≤100, champs essentiels uniquement"""
 
 
 RESPONSE_GENERATION_JSON_SYSTEM_PROMPT = """Tu es un assistant IA spécialisé dans la génération de réponses financières pour Harena.

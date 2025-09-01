@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from conversation_service.agents.base.base_agent import BaseAgent
 from conversation_service.clients.deepseek_client import DeepSeekClient
-from conversation_service.models.responses.conversation_responses_phase5 import (
+from conversation_service.models.responses.conversation_responses import (
     ResponseContent, ResponseQuality, ResponseGenerationMetrics, 
     Insight, Suggestion, StructuredData
 )

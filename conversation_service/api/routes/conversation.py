@@ -9,17 +9,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
-from conversation_service.models.responses.conversation_responses import ConversationResponse, AgentMetrics
-from conversation_service.models.responses.conversation_responses_phase3 import (
-    ConversationResponsePhase3, QueryGenerationMetrics, ProcessingSteps,
-    ConversationResponseFactory, QueryGenerationError
-)
-from conversation_service.models.responses.conversation_responses_phase4 import (
-    ConversationResponsePhase4, ConversationResponseFactoryPhase4,
-    ResilienceMetrics, SearchMetrics, SearchExecutionError
-)
-from conversation_service.models.responses.conversation_responses_phase5 import (
-    ConversationResponsePhase5, ConversationResponseFactoryPhase5
+from conversation_service.models.responses.conversation_responses import (
+    ConversationResponse, AgentMetrics, ConversationResponseError,
+    QueryGenerationMetrics, ProcessingSteps, ConversationResponseFactory, QueryGenerationError,
+    ResilienceMetrics, SearchMetrics, SearchExecutionError,
+    ResponseContent, ResponseQuality, ResponseGenerationMetrics,
+    Insight, Suggestion, StructuredData
 )
 from conversation_service.agents.search.search_executor import (
     SearchExecutor, SearchExecutorRequest, SearchExecutorResponse
@@ -57,7 +52,7 @@ from config_service.config import settings
 router = APIRouter(tags=["conversation"])
 logger = logging.getLogger("conversation_service.routes")
 
-@router.post("/conversation/{path_user_id}", response_model=ConversationResponsePhase5)
+@router.post("/conversation/{path_user_id}")
 async def analyze_conversation(
     path_user_id: int,
     request_data: ConversationRequest,
@@ -68,7 +63,7 @@ async def analyze_conversation(
     user_context: Dict[str, Any] = Depends(get_user_context),
     service_status: dict = Depends(get_conversation_service_status),
     _rate_limit: None = Depends(rate_limit_dependency)
-) -> ConversationResponsePhase5:
+):
     """
     Endpoint principal conversation service Phase 5 - Workflow complet avec réponse naturelle
     
@@ -96,7 +91,7 @@ async def analyze_conversation(
     )
 
 
-@router.post("/conversation/legacy/{path_user_id}", response_model=ConversationResponse)
+@router.post("/conversation/legacy/{path_user_id}")
 async def analyze_conversation_legacy_phase2(
     path_user_id: int,
     request_data: ConversationRequest,
@@ -375,7 +370,7 @@ async def analyze_conversation_legacy_phase2(
             
         else:
             # Fallback Phase 2 (sans requête)
-            response = ConversationResponsePhase3(
+            response = ConversationResponse(
                 user_id=base_response.user_id,
                 sub=base_response.sub,
                 message=base_response.message,

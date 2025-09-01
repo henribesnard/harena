@@ -229,6 +229,7 @@ class ResponseGeneratorAgent(BaseAgent):
         amounts = []
         merchants = set()
         dates = []
+        transactions_detail = []  # Pour passer les détails des transactions
         
         for hit in hits:
             # SearchHit has a .source attribute, not a .get() method
@@ -237,23 +238,38 @@ class ResponseGeneratorAgent(BaseAgent):
             if "amount" in source:
                 amounts.append(abs(source["amount"]))
             
-            if "merchant_name" in source:
+            if "merchant_name" in source and source["merchant_name"] is not None:
                 merchants.add(source["merchant_name"])
             
             if "date" in source:
                 dates.append(source["date"])
+            
+            # Ajouter les détails de la transaction pour la réponse
+            transaction_detail = {
+                "amount": abs(source.get("amount", 0)),
+                "merchant": source.get("merchant_name", "N/A"),
+                "date": source.get("date", "N/A"),
+                "description": source.get("primary_description", ""),
+                "category": source.get("category_name", "")
+            }
+            transactions_detail.append(transaction_detail)
         
         analysis = {}
         
         if amounts:
             analysis["transaction_count"] = len(amounts)
-            analysis["average_amount"] = sum(amounts) / len(amounts)
+            analysis["total_amount"] = sum(amounts)  # AJOUT DU MONTANT TOTAL MANQUANT
+            analysis["average_amount"] = analysis["total_amount"] / len(amounts)
             analysis["min_amount"] = min(amounts)
             analysis["max_amount"] = max(amounts)
         
         if merchants:
             analysis["unique_merchants"] = len(merchants)
             analysis["merchant_list"] = list(merchants)
+        
+        # Ajouter les détails des transactions (limité aux 10 premières pour éviter la surcharge)
+        if transactions_detail:
+            analysis["transactions_detail"] = transactions_detail[:10]  
         
         return analysis
     

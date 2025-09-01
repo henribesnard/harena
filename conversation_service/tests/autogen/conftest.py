@@ -27,7 +27,7 @@ from conversation_service.models.conversation.entities import (
     ExtractedDateRange,
     ExtractedCategory
 )
-from conversation_service.models.responses.conversation_responses_phase2 import (
+from conversation_service.models.responses.conversation_responses import (
     ConversationResponsePhase2,
     EntityValidationResult,
     MultiAgentProcessingInsights

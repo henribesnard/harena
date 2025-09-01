@@ -309,21 +309,80 @@ Réponse:"""
         
         has_results = analysis_data.get("has_results", False)
         
+        # Formater les données d'analyse pour le template
+        analysis_text = ""
+        if has_results:
+            total_hits = analysis_data.get("total_hits", 0)
+            returned_hits = analysis_data.get("returned_hits", 0)
+            analysis_text = f"Nombre de transactions trouvées: {total_hits} (affichées: {returned_hits})\n"
+            
+            if analysis_data.get("transaction_count"):
+                analysis_text += f"Nombre d'opérations analysées: {analysis_data['transaction_count']}\n"
+            
+            if analysis_data.get("average_amount"):
+                analysis_text += f"Montant moyen: {analysis_data['average_amount']:.2f}€\n"
+            
+            if analysis_data.get("min_amount"):
+                analysis_text += f"Montant minimum: {analysis_data['min_amount']:.2f}€\n"
+            
+            if analysis_data.get("max_amount"):
+                analysis_text += f"Montant maximum: {analysis_data['max_amount']:.2f}€\n"
+            
+            if analysis_data.get("unique_merchants"):
+                analysis_text += f"Nombre de marchands différents: {analysis_data['unique_merchants']}\n"
+            
+            if analysis_data.get("merchant_list"):
+                merchants = analysis_data["merchant_list"]
+                if merchants and len(merchants) <= 5:
+                    # Filtrer les valeurs None et convertir en string
+                    safe_merchants = [str(m) for m in merchants if m is not None]
+                    if safe_merchants:
+                        analysis_text += f"Marchands: {', '.join(safe_merchants)}\n"
+            
+            if analysis_data.get("total_amount"):
+                analysis_text += f"Montant total: {analysis_data['total_amount']:.2f}€\n"
+            
+            # Ajouter les détails des transactions si disponibles
+            if analysis_data.get("transactions_detail"):
+                transactions = analysis_data["transactions_detail"]
+                analysis_text += f"\nDÉTAILS DES TRANSACTIONS (premières {len(transactions)}):\n"
+                for i, txn in enumerate(transactions, 1):
+                    # Sécuriser les valeurs qui peuvent être None
+                    date_str = txn.get('date') or 'Date inconnue'
+                    merchant_str = txn.get('merchant') or 'Marchand inconnu'
+                    amount_val = txn.get('amount', 0)
+                    description_str = txn.get('description', '')
+                    
+                    analysis_text += f"{i}. {date_str} - {merchant_str} : {amount_val:.2f}€"
+                    if description_str:
+                        analysis_text += f" ({description_str})"
+                    analysis_text += "\n"
+        
+        # Préparer le texte des données
+        data_section = ""
+        if has_results:
+            data_section = f"DONNÉES D'ANALYSE RÉELLES À UTILISER OBLIGATOIREMENT:\n{analysis_text}"
+        else:
+            data_section = "Aucune donnée disponible."
+        
         return f"""{self.base_instructions}
 
 L'utilisateur demande: "{user_message}"
 
 Intention détectée: {intent_type}
+Entités extraites: {entities}
 Données disponibles: {"Oui" if has_results else "Non"}
-Contexte: {entities}
 
-Génère une réponse appropriée qui:
-1. Répond du mieux possible à la demande
-2. Utilise les données disponibles
-3. Reste utile même avec des informations limitées
-4. Guide vers des alternatives si nécessaire
+{data_section}
 
-Réponse:"""
+INSTRUCTIONS IMPORTANTES:
+1. Utilise EXCLUSIVEMENT les données d'analyse réelles ci-dessus
+2. Ne pas inventer ou supposer des montants
+3. Présente les chiffres de manière claire et structurée
+4. Sois précis avec les montants et les nombres
+5. Si des données manquent, indique-le clairement
+
+Génère une réponse appropriée:"""
     
     # Méthodes utilitaires
     

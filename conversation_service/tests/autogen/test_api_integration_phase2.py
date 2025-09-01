@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 # Imports cohérents Phase 1
 from conversation_service.models.responses.conversation_responses import IntentClassification
-from conversation_service.models.responses.conversation_responses_phase2 import ConversationResponsePhase2
+from conversation_service.models.responses.conversation_responses import ConversationResponsePhase2
 from conversation_service.models.conversation.entities import ComprehensiveEntityExtraction
 
 

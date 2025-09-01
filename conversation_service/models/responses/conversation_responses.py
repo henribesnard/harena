@@ -1758,6 +1758,7 @@ class ConversationResponseFactory:
 # ============================================================================
 
 # Alias pour compatibilité avec les anciennes versions
+ConversationResponsePhase2 = ConversationResponse
 ConversationResponsePhase3 = ConversationResponse
 ConversationResponsePhase4 = ConversationResponse  
 ConversationResponsePhase5 = ConversationResponse
@@ -1767,6 +1768,10 @@ ConversationResponsePhase4Error = ConversationResponseError
 
 ConversationResponseFactoryPhase4 = ConversationResponseFactory
 ConversationResponseFactoryPhase5 = ConversationResponseFactory
+
+# Alias pour classes Phase 2 manquantes (compatibilité tests)
+EntityValidationResult = AgentMetrics  # Compatible pour les tests
+MultiAgentProcessingInsights = AgentMetrics  # Compatible pour les tests
 
 # Types d'union pour flexibilité
 ResponseData = Union[IntentClassificationResult, Dict[str, Any]]

@@ -12,7 +12,7 @@ from unittest.mock import patch, AsyncMock, Mock
 # Imports cohérents Phase 1
 from conversation_service.models.responses.conversation_responses import IntentClassification
 from conversation_service.models.conversation.entities import ComprehensiveEntityExtraction
-from conversation_service.models.responses.conversation_responses_phase2 import (
+from conversation_service.models.responses.conversation_responses import (
     ConversationResponsePhase2,
     EntityValidationResult,
     MultiAgentProcessingInsights

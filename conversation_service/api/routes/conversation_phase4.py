@@ -9,13 +9,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
-from conversation_service.models.responses.conversation_responses import ConversationResponse, AgentMetrics
-from conversation_service.models.responses.conversation_responses_phase3 import (
-    ConversationResponsePhase3, QueryGenerationMetrics, ProcessingSteps,
-    ConversationResponseFactory, QueryGenerationError
-)
-from conversation_service.models.responses.conversation_responses_phase4 import (
-    ConversationResponsePhase4, ConversationResponseFactoryPhase4,
+from conversation_service.models.responses.conversation_responses import (
+    ConversationResponse, AgentMetrics, ConversationResponseError,
+    QueryGenerationMetrics, ProcessingSteps, ConversationResponseFactory, QueryGenerationError,
     ResilienceMetrics, SearchMetrics, SearchExecutionError
 )
 from conversation_service.agents.search.search_executor import (
@@ -45,7 +41,7 @@ logger = logging.getLogger("conversation_service.routes.phase4")
 
 router = APIRouter()
 
-@router.post("/{path_user_id}", response_model=ConversationResponsePhase4)
+@router.post("/{path_user_id}", response_model=ConversationResponse)
 async def analyze_conversation_phase4(
     path_user_id: int,
     request_data: ConversationRequest,
@@ -56,7 +52,7 @@ async def analyze_conversation_phase4(
     user_context: Dict[str, Any] = Depends(get_user_context),
     service_status: dict = Depends(get_conversation_service_status),
     _rate_limit: None = Depends(rate_limit_dependency)
-) -> ConversationResponsePhase4:
+) -> ConversationResponse:
     """
     Endpoint principal conversation service Phase 4 - Exécution search_service avec résilience
     
@@ -348,7 +344,7 @@ async def analyze_conversation_phase4(
                         search_service_took_ms=search_results.took_ms,
                         network_latency_ms=max(0, executor_response.execution_time_ms - search_results.took_ms),
                         parsing_time_ms=10,
-                        results_relevance=ConversationResponseFactoryPhase4._map_performance_to_relevance(executor_response.estimated_performance)
+                        results_relevance=ConversationResponseFactory._map_performance_to_relevance(executor_response.estimated_performance)
                     )
                     
                     logger.info(
@@ -420,7 +416,7 @@ async def analyze_conversation_phase4(
         )
         
         # Créer réponse base Phase 3
-        phase3_response = ConversationResponsePhase3(
+        phase3_response = ConversationResponse(
             user_id=validated_user_id,
             sub=user_context.get("user_id", validated_user_id),
             message=clean_message,
@@ -440,7 +436,7 @@ async def analyze_conversation_phase4(
         # Création réponse Phase 4 selon résultats
         if search_results and resilience_metrics and not search_execution_error:
             # Succès Phase 4 complète avec résultats
-            response = ConversationResponseFactoryPhase4.create_phase4_success(
+            response = ConversationResponseFactory.create_phase4_success(
                 base_response=phase3_response,
                 search_results=search_results,
                 resilience_metrics=resilience_metrics,
@@ -457,7 +453,7 @@ async def analyze_conversation_phase4(
             
         elif search_execution_error:
             # Phase 4 avec erreur search mais données Phase 3 disponibles
-            response = ConversationResponseFactoryPhase4.create_phase4_error(
+            response = ConversationResponseFactory.create_phase4_error(
                 base_response=phase3_response,
                 error=search_execution_error,
                 resilience_metrics=resilience_metrics,
@@ -473,7 +469,7 @@ async def analyze_conversation_phase4(
             
         elif search_query and query_validation:
             # Fallback Phase 3 (requête générée mais pas exécutée)
-            response = ConversationResponsePhase4(
+            response = ConversationResponse(
                 user_id=phase3_response.user_id,
                 sub=phase3_response.sub,
                 message=phase3_response.message,
@@ -501,7 +497,7 @@ async def analyze_conversation_phase4(
             
         else:
             # Fallback Phase 2 (pas de requête générée)
-            response = ConversationResponsePhase4(
+            response = ConversationResponse(
                 user_id=phase3_response.user_id,
                 sub=phase3_response.sub,
                 message=phase3_response.message,

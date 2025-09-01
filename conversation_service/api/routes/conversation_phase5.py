@@ -10,16 +10,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
-from conversation_service.models.responses.conversation_responses import ConversationResponse, AgentMetrics
-from conversation_service.models.responses.conversation_responses_phase4 import (
-    ConversationResponsePhase4, ProcessingSteps
+from conversation_service.models.responses.conversation_responses import (
+    ConversationResponse, AgentMetrics, ProcessingSteps, QueryGenerationMetrics,
+    ConversationResponseFactory, ResponseContent, ResponseQuality, ResponseGenerationMetrics
 )
-from conversation_service.models.responses.conversation_responses_phase3 import (
-    QueryGenerationMetrics
-)
-from conversation_service.models.responses.conversation_responses_phase5 import (
-    ConversationResponsePhase5, ConversationResponseFactoryPhase5,
-    ResponseContent, ResponseQuality, ResponseGenerationMetrics
+from conversation_service.models.responses.conversation_responses_clean import (
+    CleanConversationResponse, CleanErrorResponse, create_enhanced_structured_data
 )
 
 # Agents
@@ -99,7 +95,7 @@ def get_dependencies():
     }
 
 
-@router.post("/{user_id}", response_model=ConversationResponsePhase5)
+@router.post("/{user_id}")
 async def process_conversation_phase5(
     user_id: int,
     request: ConversationRequest,
@@ -453,12 +449,12 @@ async def process_conversation_phase5(
         total_processing_time = int((time.time() - start_time) * 1000)
         
         # Construire la réponse Phase 4 d'abord
-        from conversation_service.models.responses.conversation_responses_phase4 import ConversationResponseFactoryPhase4
+        # ConversationResponseFactoryPhase4 est maintenant un alias vers ConversationResponseFactory
         
         # Créer une base Phase 3 temporaire
-        from conversation_service.models.responses.conversation_responses_phase3 import ConversationResponsePhase3
+        # ConversationResponsePhase3 est maintenant un alias vers ConversationResponse
         
-        phase3_base = ConversationResponsePhase3(
+        phase3_base = ConversationResponse(
             user_id=user_id,
             sub=str(validated_user_id),
             message=request.message,
@@ -510,15 +506,15 @@ async def process_conversation_phase5(
         
         # Convertir en Phase 4 avec résultats de recherche
         if executor_response.success and executor_response.search_results:
-            phase4_response = ConversationResponseFactoryPhase4.create_from_search_executor_response(
+            phase4_response = ConversationResponseFactory.create_from_search_executor_response(
                 phase3_base, executor_response, step4
             )
         else:
             # Phase 4 sans résultats
-            phase4_response = ConversationResponseFactoryPhase5.create_phase5_from_phase4(phase3_base)
+            phase4_response = ConversationResponseFactory.create_phase5_from_phase4(phase3_base)
         
         # Convertir en Phase 5 avec réponse générée
-        phase5_response = ConversationResponseFactoryPhase5.create_phase5_success(
+        phase5_response = ConversationResponseFactory.create_phase5_success(
             phase4_response,
             response_content,
             response_quality,
@@ -540,9 +536,48 @@ async def process_conversation_phase5(
             f"Total time: {total_processing_time}ms, "
             f"Final response: {len(response_content.message)} chars"
         )
-        logger.info(f"[{request_id}] 🚀 RETURNING FINAL RESPONSE TO CLIENT")
         
-        return phase5_response
+        # ============================================================================
+        # LOG COMPLET DES DONNÉES TECHNIQUES (pour debugging/analytics)
+        # ============================================================================
+        logger.info(f"[{request_id}] 📊 COMPLETE RESPONSE DATA (for analytics):")
+        logger.info(f"[{request_id}] Intent: {phase5_response.intent.intent_type} (confidence: {phase5_response.intent.confidence})")
+        logger.info(f"[{request_id}] Agent metrics: {phase5_response.agent_metrics.performance_grade} grade, {phase5_response.agent_metrics.efficiency_score:.2f} efficiency")
+        logger.info(f"[{request_id}] Entities found: {len(phase5_response.entities.get('entities', {}).keys()) if phase5_response.entities else 0} types")
+        logger.info(f"[{request_id}] Search results: {phase5_response.search_results.total_hits if phase5_response.search_results else 0} hits")
+        logger.info(f"[{request_id}] Response quality: {phase5_response.response_quality.relevance_score:.2f} relevance, {phase5_response.response_quality.completeness} completeness")
+        logger.info(f"[{request_id}] Processing steps: {len(phase5_response.processing_steps)} agents in {phase5_response.total_agent_time_ms}ms")
+        
+        # ============================================================================
+        # CRÉATION DE LA RÉPONSE API ÉPURÉE POUR L'UTILISATEUR FINAL
+        # ============================================================================
+        
+        # Créer des données structurées enrichies pour l'utilisateur
+        enhanced_structured_data = create_enhanced_structured_data(
+            search_results=executor_response.search_results if executor_response.success else None,
+            entities_result=entities_result,
+            intent_type=intent_result.intent_type
+        )
+        
+        # Remplacer les données structurées dans response_content si elles existent
+        if enhanced_structured_data.total_amount is not None:
+            response_content.structured_data = enhanced_structured_data
+            logger.info(f"[{request_id}] 📈 Enhanced structured data: {enhanced_structured_data.total_amount}€, {enhanced_structured_data.transaction_count} transactions, analysis: {enhanced_structured_data.analysis_type}")
+        else:
+            logger.info(f"[{request_id}] ⚪ No enhanced structured data - keeping original response data")
+        
+        clean_response = CleanConversationResponse(
+            request_id=request_id,
+            processing_time_ms=total_processing_time,
+            response=response_content,
+            quality=response_quality,
+            status="success"
+        )
+        
+        logger.info(f"[{request_id}] 🚀 RETURNING CLEAN RESPONSE TO CLIENT")
+        logger.info(f"[{request_id}] Clean response size: {len(response_content.message)} chars message, {len(response_content.insights)} insights, {len(response_content.suggestions)} suggestions")
+        
+        return clean_response.model_dump()
         
     except HTTPException:
         raise
@@ -551,14 +586,28 @@ async def process_conversation_phase5(
         error_msg = f"Erreur inattendue Phase 5: {str(e)}"
         logger.error(f"[{request_id}] 💥 {error_msg}")
         
+        # Log complet de l'erreur pour debugging
+        import traceback
+        logger.error(f"[{request_id}] 🔍 FULL ERROR TRACEBACK:")
+        logger.error(traceback.format_exc())
+        
+        # Retourner une réponse d'erreur épurée
+        error_response = CleanErrorResponse(
+            request_id=request_id,
+            status="error",
+            error="Une erreur s'est produite lors du traitement de votre demande. Notre équipe a été notifiée.",
+            processing_time_ms=total_processing_time,
+            timestamp=datetime.now(timezone.utc),
+            suggestions=[
+                "Veuillez réessayer dans quelques instants",
+                "Reformulez votre question si le problème persiste",
+                "Contactez le support si l'erreur se répète"
+            ]
+        )
+        
         raise HTTPException(
             status_code=500,
-            detail={
-                "error": "internal_server_error",
-                "message": error_msg,
-                "request_id": request_id,
-                "processing_time_ms": total_processing_time
-            }
+            detail=error_response.model_dump()
         )
 
 

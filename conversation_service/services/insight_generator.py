@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
-from conversation_service.models.responses.conversation_responses_phase5 import Insight
+from conversation_service.models.responses.conversation_responses import Insight
 from conversation_service.models.contracts.search_service import SearchResponse
 
 logger = logging.getLogger(__name__)

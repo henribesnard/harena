@@ -16,7 +16,7 @@ from conversation_service.core.circuit_breaker import CircuitBreakerError
 from conversation_service.models.contracts.search_service import (
     SearchQuery, SearchResponse, QueryValidationResult
 )
-from conversation_service.models.responses.conversation_responses_phase3 import (
+from conversation_service.models.responses.conversation_responses import (
     ProcessingSteps
 )
 

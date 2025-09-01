@@ -19,8 +19,8 @@ from conversation_service.agents.financial.response_generator import ResponseGen
 # Services Phase 5
 from conversation_service.services.insight_generator import InsightGenerator
 from conversation_service.core.context_manager import TemporaryContextManager, PersonalizationEngine
-from conversation_service.models.responses.conversation_responses_phase5 import (
-    ConversationResponsePhase5, ConversationResponseFactoryPhase5
+from conversation_service.models.responses.conversation_responses import (
+    ConversationResponse, ConversationResponseFactory
 )
 
 # Templates

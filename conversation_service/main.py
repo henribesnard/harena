@@ -22,8 +22,6 @@ if str(current_dir) not in sys.path:
 from conversation_service.clients.deepseek_client import DeepSeekClient, DeepSeekError
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.routes.conversation import router as conversation_router
-from conversation_service.api.routes.conversation_phase4 import router as conversation_phase4_router
-from conversation_service.api.routes.conversation_phase5 import router as conversation_phase5_router
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 from conversation_service.utils.metrics_collector import metrics_collector
 from conversation_service.autogen_core import ConversationServiceRuntime
@@ -144,7 +142,8 @@ class ConversationServiceLoader:
             logger.info(f"📊 Configuration: {len(self.service_config['features'])} fonctionnalités actives")
             logger.info(f"🤖 DeepSeek: {self.service_config['deepseek_model']} avec JSON Output forcé")
             logger.info(f"🔐 JWT: Compatible user_service")
-            logger.info(f"💾 Cache: Redis sémantique {"activé" if self.cache_manager else "désactivé"}")
+            cache_status = "activé" if self.cache_manager else "désactivé"
+            logger.info(f"💾 Cache: Redis sémantique {cache_status}")
             logger.info(f"⏱️ Temps initialisation: {uptime:.2f}s")
             
             return True
@@ -626,9 +625,7 @@ class ConversationServiceLoader:
             
             # Routes conversation avec préfixe API
             app.include_router(conversation_router, prefix="/api/v1")
-            app.include_router(conversation_phase4_router, prefix="/api/v1/phase4", tags=["Phase 4"])
-            app.include_router(conversation_phase5_router, prefix="/api/v1/phase5", tags=["Phase 5"])
-            logger.info("🔗 Routes conversation configurées (Phase 1-5)")
+            logger.info("🔗 Routes conversation configurées (Phase 5 intégrée)")
             
             # Routes de santé globales
             self._add_global_health_routes(app)

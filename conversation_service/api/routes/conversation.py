@@ -20,9 +20,7 @@ from conversation_service.agents.search.search_executor import (
     SearchExecutor, SearchExecutorRequest, SearchExecutorResponse
 )
 from conversation_service.core.search_service_client import SearchServiceConfig
-from conversation_service.api.routes.conversation_phase4 import analyze_conversation_phase4
-from conversation_service.api.routes.conversation_phase5 import process_conversation_phase5
-from conversation_service.models.responses.enriched_conversation_responses import (
+from conversation_service.models.responses.conversation_responses import (
     EnrichedConversationResponse,
     TeamHealthResponse,
     TeamMetricsResponse
@@ -85,8 +83,8 @@ async def analyze_conversation(
     - Rate limiting par utilisateur avec gestion d'erreur gracieuse
     - Métriques de résilience détaillées
     """
-    # Délégation vers l'implémentation Phase 5 complète
-    return await process_conversation_phase5(
+    # Traitement Phase 5 complet intégré
+    return await _process_conversation_phase5_integrated(
         user_id=path_user_id,
         request=request_data,
         http_request=request,
@@ -1181,8 +1179,458 @@ async def get_team_metrics(
 
 logger.info(f"Routes conversation configurées - Environnement: {environment}")
 logger.info(f"Endpoints debug: {'activés' if environment != 'production' else 'désactivés'}")
+# ============================================================================
+# INTÉGRATION FONCTIONS PHASE 5 - WORKFLOW COMPLET
+# ============================================================================
+
+async def _process_conversation_phase5_integrated(
+    user_id: int,
+    request: ConversationRequest,
+    http_request: Request,
+    validated_user_id: int,
+    user_context: Dict[str, Any],
+    persistence_service: Optional[ConversationPersistenceService] = None,
+    _rate_limit: None = None
+) -> ConversationResponse:
+    """
+    Phase 5: Workflow complet avec génération de réponse naturelle - Intégré
+    """
+    start_time = time.time()
+    request_id = f"phase5_{int(time.time() * 1000)}_{user_id}"
+    
+    logger.info(f"[{request_id}] 🚀 Phase 5 intégrée - Début workflow pour user {user_id}")
+    
+    try:
+        # Validation message
+        message_validation = validate_user_message(request.message)
+        if not message_validation["valid"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "Message invalide",
+                    "errors": message_validation["errors"],
+                    "phase": 5,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
+        
+        clean_message = sanitize_user_input(request.message)
+        
+        # ====================================================================
+        # ÉTAPE 1: Classification intention
+        # ====================================================================
+        step1_start = time.time()
+        
+        # Obtenir les dépendances depuis app state
+        deepseek_client = http_request.app.state.deepseek_client
+        cache_manager = http_request.app.state.cache_manager
+        
+        intent_classifier = intent_classifier_module.IntentClassifierAgent(
+            deepseek_client=deepseek_client,
+            cache_manager=cache_manager
+        )
+        
+        classification_result = await intent_classifier.classify_intent(
+            user_message=clean_message,
+            user_context=user_context
+        )
+        
+        step1_duration = int((time.time() - step1_start) * 1000)
+        step1 = ProcessingSteps(
+            agent="intent_classifier",
+            duration_ms=step1_duration,
+            cache_hit=step1_duration < 100,
+            success=True
+        )
+        
+        intent_type_value = getattr(classification_result.intent_type, 'value', str(classification_result.intent_type))
+        
+        # ====================================================================
+        # ÉTAPE 2: Extraction entités
+        # ====================================================================
+        entities_result = None
+        step2 = None
+        
+        if classification_result.is_supported:
+            step2_start = time.time()
+            
+            entity_extractor = EntityExtractorAgent(
+                deepseek_client=deepseek_client,
+                cache_manager=cache_manager,
+                autogen_mode=False
+            )
+            
+            entities_result = await entity_extractor.extract_entities(
+                user_message=clean_message,
+                intent_result=classification_result,
+                user_id=validated_user_id
+            )
+            
+            step2_duration = int((time.time() - step2_start) * 1000)
+            step2 = ProcessingSteps(
+                agent="entity_extractor",
+                duration_ms=step2_duration,
+                cache_hit=step2_duration < 150,
+                success=True
+            )
+        
+        # ====================================================================
+        # ÉTAPE 3: Génération de requête search (si intention supportée)
+        # ====================================================================
+        search_query = None
+        step3 = None
+        
+        if classification_result.is_supported and entities_result:
+            step3_start = time.time()
+            
+            query_builder = QueryBuilderAgent(
+                deepseek_client=deepseek_client,
+                cache_manager=cache_manager
+            )
+            
+            query_request = QueryGenerationRequest(
+                user_message=clean_message,
+                intent_type=str(classification_result.intent_type.value),
+                intent_confidence=classification_result.confidence,
+                entities=entities_result.get("entities", {}) if entities_result else {},
+                user_id=validated_user_id
+            )
+            
+            try:
+                query_result = await query_builder.generate_search_query(query_request)
+                
+                # Vérification robuste de la réponse du query_builder
+                generation_success = False
+                search_query = None
+                
+                if query_result is not None:
+                    # Vérifier le type de réponse retournée
+                    if hasattr(query_result, 'search_query') and hasattr(query_result, 'validation'):
+                        # QueryGenerationResponse standard
+                        generation_success = (
+                            query_result.search_query is not None and
+                            query_result.validation is not None and
+                            query_result.validation.schema_valid
+                        )
+                        search_query = query_result.search_query if generation_success else None
+                        logger.info(f"[{request_id}] QueryBuilder standard response: success={generation_success}")
+                    elif hasattr(query_result, 'success') and hasattr(query_result, 'search_query'):
+                        # Réponse avec attribut success (ancien format)
+                        generation_success = query_result.success and query_result.search_query is not None
+                        search_query = query_result.search_query if generation_success else None
+                        logger.info(f"[{request_id}] QueryBuilder legacy response: success={generation_success}")
+                    else:
+                        logger.warning(f"[{request_id}] QueryBuilder réponse inattendue: {type(query_result)}")
+                
+                step3_duration = int((time.time() - step3_start) * 1000)
+                step3 = ProcessingSteps(
+                    agent="query_builder",
+                    duration_ms=step3_duration,
+                    cache_hit=step3_duration < 200,
+                    success=generation_success
+                )
+            except Exception as e:
+                logger.warning(f"[{request_id}] ⚠️ Génération requête échouée: {str(e)}")
+                step3_duration = int((time.time() - step3_start) * 1000)
+                step3 = ProcessingSteps(
+                    agent="query_builder",
+                    duration_ms=step3_duration,
+                    cache_hit=False,
+                    success=False,
+                    error_message=str(e)
+                )
+        
+        # ====================================================================
+        # ÉTAPE 4: Exécution recherche (si requête générée)
+        # ====================================================================
+        search_results = None
+        step4 = None
+        
+        if search_query:
+            step4_start = time.time()
+            
+            try:
+                search_executor = SearchExecutor()
+                executor_request = SearchExecutorRequest(
+                    search_query=search_query,
+                    user_id=validated_user_id,
+                    request_id=request_id
+                )
+                
+                executor_response = await search_executor.handle_search_request(executor_request)
+                search_results = executor_response.search_results if executor_response.success else None
+                
+                step4_duration = int((time.time() - step4_start) * 1000)
+                step4 = ProcessingSteps(
+                    agent="search_executor", 
+                    duration_ms=step4_duration,
+                    cache_hit=executor_response.fallback_used if hasattr(executor_response, 'fallback_used') else False,
+                    success=executor_response.success
+                )
+            except Exception as e:
+                logger.warning(f"[{request_id}] ⚠️ Exécution search échouée: {str(e)}")
+                step4_duration = int((time.time() - step4_start) * 1000)
+                step4 = ProcessingSteps(
+                    agent="search_executor",
+                    duration_ms=step4_duration,
+                    cache_hit=False,
+                    success=False,
+                    error_message=str(e)
+                )
+        
+        # ====================================================================
+        # ÉTAPE 5: Génération réponse finale pour l'utilisateur
+        # ====================================================================
+        response_content = None
+        step5 = None
+        
+        # Toujours générer une réponse, même sans résultats de recherche
+        step5_start = time.time()
+        
+        try:
+            from conversation_service.models.responses.conversation_responses import ResponseContent, StructuredData
+            from conversation_service.prompts.templates.response_templates import get_response_template
+            
+            # Génération de réponse contextualisée avec LLM (version simplifiée)
+            logger.info(f"[{request_id}] 🤖 Génération réponse LLM directe...")
+            
+            # Préparation du prompt contextualisé
+            intent_type = str(classification_result.intent_type.value if hasattr(classification_result.intent_type, 'value') else classification_result.intent_type)
+            entities = entities_result.get("entities", {}) if entities_result else {}
+            
+            # Analyse des résultats de recherche
+            analysis_data = {}
+            if search_results and search_results.hits:
+                amounts = [abs(hit.source.get("amount", 0)) for hit in search_results.hits]
+                analysis_data = {
+                    "has_results": True,
+                    "total_hits": search_results.total_hits,
+                    "returned_hits": len(search_results.hits),
+                    "total_amount": sum(amounts),
+                    "average_amount": sum(amounts) / len(amounts) if amounts else 0,
+                    "transaction_count": len(amounts),
+                    "analysis_type": intent_type
+                }
+            else:
+                analysis_data = {
+                    "has_results": False,
+                    "total_hits": 0,
+                    "analysis_type": intent_type
+                }
+            
+            # Génération du prompt
+            prompt = get_response_template(
+                intent_type=intent_type,
+                user_message=clean_message,
+                entities=entities,
+                analysis_data=analysis_data,
+                user_context=user_context,
+                use_personalization=user_context is not None
+            )
+            
+            # Appel LLM
+            chat_response = await deepseek_client.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0.3
+            )
+            
+            llm_message = chat_response["choices"][0]["message"]["content"].strip()
+            
+            # Création des données structurées
+            structured_data = StructuredData(
+                total_amount=analysis_data.get("total_amount"),
+                transaction_count=analysis_data.get("transaction_count"),
+                average_amount=analysis_data.get("average_amount"),
+                currency="EUR" if analysis_data.get("total_amount") else None,
+                analysis_type=intent_type
+            ) if analysis_data.get("has_results") else None
+            
+            response_content = ResponseContent(
+                message=llm_message,
+                structured_data=structured_data
+            )
+            
+            logger.info(f"[{request_id}] ✅ Réponse LLM générée: {len(llm_message)} caractères")
+            
+            step5_duration = int((time.time() - step5_start) * 1000)
+            step5 = ProcessingSteps(
+                agent="response_generator",
+                duration_ms=step5_duration,
+                cache_hit=False,
+                success=True
+            )
+            
+        except Exception as e:
+            logger.error(f"[{request_id}] ❌ Génération réponse LLM échouée: {str(e)}")
+            
+            # Réponse de fallback (sans LLM)
+            from conversation_service.models.responses.conversation_responses import ResponseContent, StructuredData
+            
+            if search_results and search_results.hits:
+                total_amount = sum(hit.source.get("amount", 0) for hit in search_results.hits)
+                transaction_count = len(search_results.hits)
+                fallback_message = f"J'ai trouvé {transaction_count} transactions pour un montant de {abs(total_amount):.2f}€."
+                
+                structured_data = StructuredData(
+                    total_amount=abs(total_amount),
+                    transaction_count=transaction_count,
+                    average_amount=abs(total_amount) / transaction_count if transaction_count > 0 else 0,
+                    currency="EUR"
+                )
+            else:
+                fallback_message = "Je n'ai pas trouvé de transactions correspondant à votre demande."
+                structured_data = None
+            
+            response_content = ResponseContent(
+                message=fallback_message,
+                structured_data=structured_data
+            )
+            
+            step5_duration = int((time.time() - step5_start) * 1000)
+            step5 = ProcessingSteps(
+                agent="response_generator",
+                duration_ms=step5_duration,
+                cache_hit=False,
+                success=False,
+                error_message=str(e)
+            )
+        
+        # ====================================================================
+        # Construction réponse complète Phase 5
+        # ====================================================================
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        
+        agent_metrics = AgentMetrics(
+            agent_used="phase5_integrated",
+            cache_hit=step1.cache_hit,
+            model_used=getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
+            tokens_consumed=await _estimate_tokens_consumption_safe(clean_message, classification_result),
+            processing_time_ms=processing_time_ms,
+            confidence_threshold_met=classification_result.confidence >= 0.5
+        )
+        
+        # Construction de la réponse complète avec toutes les étapes
+        processing_steps = [step1]
+        if step2:
+            processing_steps.append(step2)
+        if step3:
+            processing_steps.append(step3)
+        if step4:
+            processing_steps.append(step4)
+        if step5:
+            processing_steps.append(step5)
+        
+        response = ConversationResponse(
+            user_id=validated_user_id,
+            sub=user_context.get("user_id", validated_user_id),
+            message=clean_message,
+            timestamp=datetime.now(timezone.utc),
+            processing_time_ms=processing_time_ms,
+            intent=classification_result,
+            agent_metrics=agent_metrics,
+            entities=entities_result,
+            search_query=search_query,
+            search_results=search_results,
+            response=response_content,
+            phase=5,
+            request_id=request_id,
+            processing_steps=processing_steps,
+            status="success"
+        )
+        
+        logger.info(
+            f"[{request_id}] ✅ Phase 5 intégrée terminée: {intent_type_value}, "
+            f"Confiance: {classification_result.confidence:.2f}, "
+            f"Temps: {processing_time_ms}ms"
+        )
+        
+        # Créer une réponse API épurée pour l'utilisateur final
+        return _create_clean_api_response(response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        logger.error(f"[{request_id}] ❌ Erreur Phase 5 intégrée: {str(e)}")
+        
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Erreur traitement conversation",
+                "phase": 5,
+                "request_id": request_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+
+def _create_clean_api_response(full_response: ConversationResponse) -> Dict[str, Any]:
+    """
+    Crée une réponse API épurée pour l'utilisateur final
+    
+    Ne contient que les informations essentielles :
+    - Message original et réponse finale
+    - Métriques par agent (succès/échec + latence)
+    - Pas de détails techniques internes
+    """
+    
+    # Métriques par agent simplifiées
+    agent_metrics = {}
+    for step in full_response.processing_steps:
+        agent_metrics[step.agent] = {
+            "success": step.success,
+            "duration_ms": step.duration_ms,
+            "cache_hit": step.cache_hit
+        }
+        if step.error_message:
+            agent_metrics[step.agent]["error"] = step.error_message
+    
+    # Réponse épurée
+    clean_response = {
+        "user_id": full_response.user_id,
+        "message": full_response.message,
+        "timestamp": full_response.timestamp.isoformat(),
+        "request_id": full_response.request_id,
+        "processing_time_ms": full_response.processing_time_ms,
+        "status": full_response.status.value if hasattr(full_response.status, 'value') else str(full_response.status),
+        
+        # Intent classification essentiel
+        "intent": {
+            "type": full_response.intent.intent_type.value if hasattr(full_response.intent.intent_type, 'value') else str(full_response.intent.intent_type),
+            "confidence": full_response.intent.confidence,
+            "supported": full_response.intent.is_supported
+        },
+        
+        # Métriques agents
+        "agents": agent_metrics,
+        
+        # Réponse finale (l'essentiel !)
+        "response": full_response.response.dict() if full_response.response else None,
+        
+        # Résultats de recherche (synthèse uniquement)
+        "search_summary": {
+            "found_results": full_response.has_search_results,
+            "total_results": full_response.search_results.total_hits if full_response.search_results else 0,
+            "search_successful": full_response.search_execution_success
+        } if full_response.has_search_query else None,
+        
+        # Métriques globales
+        "performance": {
+            "overall_success": full_response.is_successful,
+            "confidence_level": full_response.intent.confidence_level.value if hasattr(full_response.intent.confidence_level, 'value') else str(full_response.intent.confidence_level),
+            "cache_efficiency": full_response.cache_efficiency,
+            "agents_used": len(full_response.processing_steps)
+        }
+    }
+    
+    return clean_response
+
+
+logger.info(f"Routes conversation configurées - Environnement: {environment}")
+logger.info(f"Endpoints debug: {'activés' if environment != 'production' else 'désactivés'}")
 logger.info("Endpoints configurés:")
-logger.info("  - /conversation/{user_id} → Phase 3 (Principal)")
+logger.info("  - /conversation/{user_id} → Phase 5 intégrée (Principal)")
 logger.info("  - /conversation/legacy/{user_id} → Phase 2 (Deprecated)")
 logger.info("  - /conversation/v2/{user_id} → Dual-mode AutoGen") 
 logger.info("  - /team/health, /team/metrics → Team monitoring")

@@ -16,6 +16,7 @@ from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.middleware.auth_middleware import get_current_user_id, verify_user_id_match
 from conversation_service.utils.metrics_collector import metrics_collector
 from conversation_service.teams import MultiAgentFinancialTeam
+from conversation_service.services.conversation_persistence import ConversationPersistenceService
 
 # Configuration du logger
 logger = logging.getLogger("conversation_service.dependencies")
@@ -1044,6 +1045,71 @@ async def get_multi_agent_team(request: Request) -> Optional[MultiAgentFinancial
         return None  # Toujours retourner None en cas d'erreur (non critique)
 
 
+async def get_conversation_persistence(request: Request) -> Optional[ConversationPersistenceService]:
+    """
+    Récupération service persistence conversations avec gestion d'erreur robuste
+    
+    La persistence est optionnelle - ne bloque JAMAIS le service.
+    
+    Args:
+        request: Requête FastAPI
+        
+    Returns:
+        ConversationPersistenceService ou None: Service persistence si disponible
+    """
+    try:
+        # Créer une session DB directe pour le service de persistence
+        from db_service.session import SessionLocal
+        
+        try:
+            db_session = SessionLocal()
+            
+            # Créer le service de persistence
+            persistence_service = ConversationPersistenceService(db_session)
+            
+            # Vérification santé persistence (non bloquante avec timeout très court)
+            try:
+                # Test simple de connexion DB
+                from sqlalchemy import text
+                health = await health_checker.check_service_health(
+                    "conversation_persistence",
+                    lambda: db_session.execute(text("SELECT 1")).scalar() == 1,
+                    critical_service=False
+                )
+                
+                if health.status in ["healthy", "degraded"]:
+                    metrics_collector.increment_counter("dependencies.success.persistence")
+                    if health.response_time_ms:
+                        metrics_collector.record_histogram("dependencies.persistence.response_time", health.response_time_ms)
+                    
+                    if health.status == "degraded":
+                        logger.debug("Persistence dégradée mais opérationnelle")
+                        metrics_collector.increment_counter("dependencies.warnings.persistence_degraded")
+                    
+                    return persistence_service
+                else:
+                    logger.debug(f"Persistence en état {health.status} - désactivation temporaire")
+                    metrics_collector.increment_counter("dependencies.persistence_unhealthy")
+                    db_session.close()
+                    return None
+                    
+            except Exception as health_error:
+                logger.debug(f"Vérification santé persistence échouée: {str(health_error)}")
+                metrics_collector.increment_counter("dependencies.persistence_check_failed")
+                # Retourner le service malgré l'échec du health check (dégradation gracieuse)
+                return persistence_service
+                
+        except Exception as session_error:
+            logger.debug(f"Erreur création session DB: {str(session_error)}")
+            metrics_collector.increment_counter("dependencies.persistence_db_unavailable")
+            return None
+        
+    except Exception as e:
+        metrics_collector.increment_counter("dependencies.errors.persistence_unexpected")
+        logger.debug(f"Erreur récupération service persistence: {str(e)}")
+        return None  # Toujours retourner None en cas d'erreur (non critique)
+
+
 async def get_conversation_processor(
     request: Request,
     deepseek_client: DeepSeekClient = Depends(get_deepseek_client),
@@ -1231,5 +1297,6 @@ __all__ = [
     'get_dependency_health_status',
     'get_detailed_service_health',
     'get_multi_agent_team',
-    'get_conversation_processor'
+    'get_conversation_processor',
+    'get_conversation_persistence'
 ]

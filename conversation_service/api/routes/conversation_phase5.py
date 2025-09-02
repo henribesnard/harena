@@ -27,6 +27,9 @@ from conversation_service.agents.financial.response_generator import ResponseGen
 
 # Services
 from conversation_service.services.insight_generator import InsightGenerator
+from conversation_service.services.conversation_persistence import (
+    ConversationPersistenceService, create_conversation_data, create_turn_data
+)
 from conversation_service.core.context_manager import TemporaryContextManager, PersonalizationEngine
 
 # Core
@@ -102,6 +105,7 @@ async def process_conversation_phase5(
     http_request: Request,
     validated_user_id: int = Depends(validate_path_user_id),
     user_context: Dict[str, Any] = Depends(get_user_context),
+    persistence_service: Optional["ConversationPersistenceService"] = None,
     _rate_limit: None = Depends(rate_limit_dependency)
 ):
     """
@@ -125,6 +129,24 @@ async def process_conversation_phase5(
     
     logger.info(f"[{request_id}] 🚀 Phase 5 - Début workflow complet pour user {user_id}")
     logger.info(f"[{request_id}] Message: '{request.message}'")
+    
+    # =============================================
+    # PERSISTENCE: Préparation conversation
+    # =============================================
+    conversation = None
+    if persistence_service:
+        try:
+            logger.info(f"[{request_id}] 💾 Récupération/création conversation")
+            conversation = persistence_service.get_or_create_active_conversation(
+                user_id=user_id,
+                conversation_title=f"Conversation du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            )
+            logger.info(f"[{request_id}] 💾 Conversation ID: {conversation.id} ({conversation.total_turns} tours)")
+        except Exception as e:
+            logger.warning(f"[{request_id}] ⚠️ Échec récupération conversation: {str(e)}")
+            # Continue sans persistence - not critical
+    else:
+        logger.warning(f"[{request_id}] ⚠️ Service persistence non disponible - pas de sauvegarde")
     
     try:
         # Récupération du contexte utilisateur existant
@@ -573,6 +595,67 @@ async def process_conversation_phase5(
             quality=response_quality,
             status="success"
         )
+        
+        # =============================================
+        # PERSISTENCE: Sauvegarde tour de conversation
+        # =============================================
+        if persistence_service and conversation and response_content:
+            try:
+                logger.info(f"[{request_id}] 💾 Sauvegarde tour conversation")
+                
+                # Création des métadonnées du tour
+                # Extraction sécurisée des métriques de recherche
+                search_success = False
+                search_result_count = 0
+                search_processing_time = 0
+                
+                if 'executor_response' in locals() and executor_response:
+                    search_success = executor_response.success
+                    search_processing_time = getattr(executor_response, 'execution_time_ms', 0)
+                    
+                    if executor_response.success and executor_response.search_results:
+                        # Utiliser total_hits pour le nombre de résultats
+                        search_result_count = executor_response.search_results.total_hits
+                
+                # Extraction sécurisée des métriques de qualité
+                quality_naturalness = 0.0
+                quality_completeness = 0.0
+                quality_accuracy = 0.0
+                
+                if 'response_quality' in locals() and response_quality:
+                    quality_naturalness = getattr(response_quality, 'naturalness', 0.0)
+                    quality_completeness = getattr(response_quality, 'completeness', 0.0)
+                    quality_accuracy = getattr(response_quality, 'accuracy', 0.0)
+                
+                turn_data = create_turn_data(
+                    request_id=request_id,
+                    intent=intent_dict,
+                    entities=entities_result or {},
+                    search_results_summary={
+                        "success": search_success,
+                        "result_count": search_result_count,
+                        "processing_time": search_processing_time
+                    },
+                    response_quality={
+                        "naturalness": quality_naturalness,
+                        "completeness": quality_completeness,
+                        "accuracy": quality_accuracy
+                    },
+                    processing_time_ms=total_processing_time
+                )
+                
+                # Sauvegarde du tour
+                turn = persistence_service.add_conversation_turn(
+                    conversation_id=conversation.id,
+                    user_message=request.message,
+                    assistant_response=response_content.message,
+                    turn_data=turn_data
+                )
+                logger.info(f"[{request_id}] 💾 ✅ Tour sauvé - ID: {turn.id}, Numéro: {turn.turn_number}")
+                
+            except Exception as e:
+                logger.warning(f"[{request_id}] ⚠️ Échec sauvegarde tour: {str(e)}")
+                # Continue - persistence failure is not critical
         
         logger.info(f"[{request_id}] 🚀 RETURNING CLEAN RESPONSE TO CLIENT")
         logger.info(f"[{request_id}] Clean response size: {len(response_content.message)} chars message, {len(response_content.insights)} insights, {len(response_content.suggestions)} suggestions")

@@ -58,7 +58,7 @@ class QueryTemplates:
                 }
             },
             "sort": [{"date": {"order": "desc"}}],
-            "page_size": 20,
+            "page_size": 200,
             "include_fields": [
                 "transaction_id", "amount", "amount_abs", "merchant_name",
                 "date", "primary_description", "category_name"
@@ -345,7 +345,7 @@ class QueryTemplates:
                 "user_id": "{user_id}"
             },
             "sort": [{"date": {"order": "desc"}}],
-            "page_size": 20,
+            "page_size": 200,
             "include_fields": [
                 "transaction_id", "amount", "merchant_name", "date",
                 "primary_description", "category_name"

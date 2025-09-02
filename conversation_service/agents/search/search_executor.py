@@ -236,12 +236,17 @@ class SearchExecutor:
                         estimated_performance="optimal"
                     )
             
-            # Exécution recherche
+            # Exécution recherche avec récupération complète si nécessaire
             async with self.search_client:
                 search_response = await self.search_client.search(
                     query=message.search_query,
                     validate_query=message.validate_before_search,
                     enable_fallback=message.enable_fallback
+                )
+                
+                # Si il y a plus de résultats que retournés, récupérer tous les résultats
+                search_response = await self._ensure_complete_results(
+                    search_response, message, start_time
                 )
             
             # Cache résultat si réussi
@@ -498,6 +503,93 @@ class SearchExecutor:
         
         return base_metrics
     
+    async def _ensure_complete_results(
+        self, 
+        initial_response: SearchResponse, 
+        message: SearchExecutorRequest,
+        start_time: float
+    ) -> SearchResponse:
+        """
+        S'assure que tous les résultats sont récupérés si nécessaire
+        
+        Logique adaptative pour récupérer tous les résultats disponibles
+        dans la limite des 128K tokens de DeepSeek.
+        """
+        # Si on n'a pas d'agrégation uniquement et qu'il y a plus de résultats
+        if (not message.search_query.aggregation_only and 
+            initial_response.total_hits > len(initial_response.hits)):
+            
+            total_available = initial_response.total_hits
+            current_hits = len(initial_response.hits)
+            
+            logger.info(f"Résultats partiels détectés: {current_hits}/{total_available} - récupération complète")
+            
+            # Estimer si on peut récupérer tous les résultats dans la limite de tokens
+            # Estimation conservatrice: ~100 tokens par transaction
+            estimated_tokens = total_available * 100
+            
+            # Limite DeepSeek: 128K tokens, gardons une marge pour le prompt système
+            max_safe_tokens = 120000
+            
+            if estimated_tokens <= max_safe_tokens and total_available <= 1000:
+                # Récupérer tous les résultats en une fois
+                logger.info(f"Récupération complète de {total_available} résultats (estimation: {estimated_tokens} tokens)")
+                
+                # Créer nouvelle requête avec taille augmentée
+                complete_query = message.search_query.model_copy(deep=True)
+                complete_query.page_size = min(total_available, 1000)  # Limite à 1000 max
+                
+                try:
+                    complete_request = SearchExecutorRequest(
+                        search_query=complete_query,
+                        user_id=message.user_id,
+                        request_id=f"{message.request_id}_complete",
+                        timeout_seconds=message.timeout_seconds,
+                        enable_fallback=message.enable_fallback,
+                        validate_before_search=False,  # Déjà validé
+                        context=message.context
+                    )
+                    
+                    # Faire la requête complète
+                    complete_response = await self.search_client.search(
+                        query=complete_query,
+                        validate_query=False,
+                        enable_fallback=message.enable_fallback
+                    )
+                    
+                    logger.info(f"✅ Récupération complète réussie: {len(complete_response.hits)} résultats")
+                    return complete_response
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ Échec récupération complète: {str(e)} - utilisation résultats partiels")
+                    # Retourner la réponse initiale en cas d'échec
+                    return initial_response
+            else:
+                logger.info(f"Trop de résultats pour récupération complète ({total_available}, ~{estimated_tokens} tokens) - utilisation pagination intelligente")
+                
+                # TODO: Implémenter pagination intelligente si nécessaire
+                # Pour l'instant, on augmente juste la page_size à 500
+                if current_hits < 500 and total_available > current_hits:
+                    try:
+                        complete_query = message.search_query.model_copy(deep=True)
+                        complete_query.page_size = min(500, total_available)
+                        
+                        complete_response = await self.search_client.search(
+                            query=complete_query,
+                            validate_query=False,
+                            enable_fallback=message.enable_fallback
+                        )
+                        
+                        logger.info(f"✅ Récupération partielle étendue: {len(complete_response.hits)}/{total_available} résultats")
+                        return complete_response
+                        
+                    except Exception as e:
+                        logger.warning(f"⚠️ Échec récupération étendue: {str(e)}")
+                        
+                return initial_response
+        
+        return initial_response
+
     async def clear_cache(self):
         """Vide le cache de résultats"""
         if self.results_cache:

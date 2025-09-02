@@ -172,7 +172,7 @@ class SearchQuery(BaseModel):
     
     # Configuration résultat
     sort: Optional[List[Dict[str, Dict[str, str]]]] = Field(None, description="Configuration tri")
-    page_size: Optional[int] = Field(20, description="Taille de page")
+    page_size: Optional[int] = Field(200, description="Taille de page (augmentée pour analyse complète)")
     offset: Optional[int] = Field(0, description="Offset pagination")
     
     # Champs à inclure
@@ -335,7 +335,7 @@ ESSENTIAL_FIELDS = [
 
 MAX_AGGREGATION_BUCKETS = 20
 MAX_NESTED_AGGREGATION_LEVELS = 3
-DEFAULT_PAGE_SIZE = 20
+DEFAULT_PAGE_SIZE = 200  # Augmenté pour analyse complète avec DeepSeek 128K tokens
 MAX_PAGE_SIZE = 1000
 
 # Configuration par type d'intention

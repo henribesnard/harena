@@ -24,8 +24,9 @@ from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.routes.conversation import router as conversation_router
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 from conversation_service.utils.metrics_collector import metrics_collector
-from conversation_service.autogen_core import ConversationServiceRuntime
-from conversation_service.teams import MultiAgentFinancialTeam
+# Imports AutoGen supprimés - Phase 5 workflow intégré ne les utilise plus
+# from conversation_service.autogen_core import ConversationServiceRuntime
+# from conversation_service.teams import MultiAgentFinancialTeam
 from config_service.config import settings
 
 # Configuration logging optimisée
@@ -45,8 +46,8 @@ class ConversationServiceLoader:
     def __init__(self):
         self.deepseek_client: DeepSeekClient = None
         self.cache_manager: CacheManager = None
-        self.autogen_runtime: ConversationServiceRuntime = None
-        self.multi_agent_team: MultiAgentFinancialTeam = None
+        # self.autogen_runtime: ConversationServiceRuntime = None  # Supprimé - Phase 5
+        # self.multi_agent_team: MultiAgentFinancialTeam = None  # Supprimé - Phase 5
         self.service_healthy = False
         self.initialization_error = None
         self.service_start_time = datetime.now(timezone.utc)
@@ -121,15 +122,8 @@ class ConversationServiceLoader:
             # Configuration middleware et routes APRÈS validation
             self._configure_app_middleware_and_routes(app)
             
-            # Initialisation AutoGen Runtime Phase 2
-            autogen_success = await self._initialize_autogen_runtime()
-            if not autogen_success:
-                logger.warning("⚠️ AutoGen Runtime non disponible - service en mode compatibilité Phase 1")
-            
-            # Initialisation équipe multi-agents
-            team_success = await self._initialize_multi_agent_team()
-            if not team_success:
-                logger.warning("⚠️ Équipe multi-agents non disponible - fallback agents individuels")
+            # Phase 5 : Workflow complet intégré - Plus besoin d'AutoGen Runtime
+            logger.info("✅ Phase 5 workflow intégré activé - AutoGen Runtime remplacé")
             
             # Warm-up optionnel du cache
             await self._optional_cache_warmup()
@@ -253,7 +247,7 @@ class ConversationServiceLoader:
                 logger.error("❌ DeepSeek API non accessible")
                 return False
             
-            logger.info("✅ DeepSeek client opérationnel")
+            logger.debug("DeepSeek client ready")
             
             # Initialisation Cache Manager (non critique)
             logger.info("💾 Initialisation cache Redis...")
@@ -275,7 +269,7 @@ class ConversationServiceLoader:
                         cache_healthy = True
                         
                     if cache_healthy:
-                        logger.info("✅ Redis cache opérationnel")
+                        logger.debug("Redis cache ready")
                     else:
                         logger.warning("⚠️ Redis indisponible - cache désactivé")
                         self.cache_manager = None
@@ -343,78 +337,8 @@ class ConversationServiceLoader:
             logger.error(f"❌ Erreur validation JSON Output: {str(e)}")
             return False
     
-    async def _initialize_autogen_runtime(self) -> bool:
-        """Initialisation AutoGen Runtime Phase 2 avec fallback Phase 1"""
-        try:
-            logger.info("🚀 Initialisation AutoGen Runtime Phase 2...")
-            
-            # Créer le runtime
-            self.autogen_runtime = ConversationServiceRuntime()
-            
-            # Vérifier disponibilité
-            if not self.autogen_runtime.is_available:
-                logger.warning("⚠️ AutoGen Core non disponible - Fallback mode compatibilité Phase 1")
-                return False
-            
-            # Initialiser le runtime
-            runtime_success = await self.autogen_runtime.initialize()
-            if not runtime_success:
-                logger.warning("⚠️ Initialisation AutoGen Runtime échouée - Fallback mode Phase 1")
-                self.autogen_runtime = None
-                return False
-            
-            # Vérifier status du runtime
-            runtime_status = self.autogen_runtime.get_status()
-            logger.info(f"✅ AutoGen Runtime initialisé: {runtime_status['agents_count']} agents")
-            logger.debug(f"Agents disponibles: {runtime_status['agents']}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur initialisation AutoGen Runtime: {str(e)}")
-            logger.warning("⚠️ Service continue en mode compatibilité Phase 1")
-            self.autogen_runtime = None
-            return False
-    
-    async def _initialize_multi_agent_team(self) -> bool:
-        """Initialisation équipe multi-agents avec infrastructure existante"""
-        try:
-            logger.info("🤖 Initialisation équipe multi-agents financière...")
-            
-            # Vérifier disponibilité DeepSeek client
-            if not self.deepseek_client:
-                logger.warning("⚠️ DeepSeek client requis pour équipe multi-agents")
-                return False
-            
-            # Feature flag pour contrôler activation équipe
-            team_enabled = os.getenv("MULTI_AGENT_TEAM_ENABLED", "true").lower() == "true"
-            if not team_enabled:
-                logger.info("📝 Équipe multi-agents désactivée par configuration")
-                return False
-            
-            # Créer équipe avec client existant
-            self.multi_agent_team = MultiAgentFinancialTeam(
-                deepseek_client=self.deepseek_client
-            )
-            
-            # Test health check équipe
-            team_health = await self.multi_agent_team.health_check()
-            
-            if team_health["overall_status"] == "healthy":
-                logger.info("✅ Équipe multi-agents opérationnelle")
-                logger.info(f"   - Agents: {', '.join(team_health['agents_status'].keys())}")
-                logger.info(f"   - Infrastructure: Cache + Métriques intégrés")
-                return True
-            else:
-                logger.warning(f"⚠️ Équipe multi-agents dégradée: {team_health['overall_status']}")
-                # Garder l'équipe même en mode dégradé pour fallback
-                return True
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur initialisation équipe multi-agents: {str(e)}")
-            logger.warning("⚠️ Service continue avec agents individuels uniquement")
-            self.multi_agent_team = None
-            return False
+    # Note: Les méthodes _initialize_autogen_runtime et _initialize_multi_agent_team
+    # ont été supprimées car obsolètes avec le workflow Phase 5 intégré
     
     async def _comprehensive_health_check(self) -> bool:
         """Health check complet multi-services avec diagnostic"""
@@ -470,7 +394,7 @@ class ConversationServiceLoader:
                 logger.info(f"{status_icon} {service.title()}: {result['details']}")
             
             if critical_ok:
-                logger.info("🏥 Health check global: ✅ Services critiques opérationnels")
+                logger.debug("Health check: critical services operational")
             else:
                 logger.error("🏥 Health check global: ❌ Services critiques défaillants")
             
@@ -552,8 +476,8 @@ class ConversationServiceLoader:
         app.state.conversation_service = self
         app.state.deepseek_client = self.deepseek_client
         app.state.cache_manager = self.cache_manager
-        app.state.autogen_runtime = self.autogen_runtime
-        app.state.multi_agent_team = self.multi_agent_team
+        # app.state.autogen_runtime = self.autogen_runtime  # Supprimé - Phase 5
+        # app.state.multi_agent_team = self.multi_agent_team  # Supprimé - Phase 5
         
         # Configuration service
         app.state.service_config = self.service_config
@@ -747,13 +671,12 @@ class ConversationServiceLoader:
                 await self.cache_manager.close()
                 logger.info("💾 Cache manager fermé")
             
-            if self.autogen_runtime:
-                await self.autogen_runtime.shutdown()
-                logger.info("🤖 AutoGen Runtime arrêté")
+            # if self.autogen_runtime:  # Supprimé - Phase 5
+            #     await self.autogen_runtime.shutdown()
+            #     logger.info("🤖 AutoGen Runtime arrêté")
             
-            if self.multi_agent_team:
-                # Pas de cleanup spécifique nécessaire pour l'équipe
-                logger.info("🤖 Équipe multi-agents déchargée")
+            # if self.multi_agent_team:  # Supprimé - Phase 5 
+            #     logger.info("🤖 Équipe multi-agents déchargée")
             
             cleanup_time = (datetime.now(timezone.utc) - cleanup_start).total_seconds()
             logger.info(f"✅ Nettoyage terminé en {cleanup_time:.2f}s")

@@ -1177,8 +1177,7 @@ async def get_team_metrics(
         )
 
 
-logger.info(f"Routes conversation configurées - Environnement: {environment}")
-logger.info(f"Endpoints debug: {'activés' if environment != 'production' else 'désactivés'}")
+logger.debug(f"Conversation routes configured - Environment: {environment}")
 # ============================================================================
 # INTÉGRATION FONCTIONS PHASE 5 - WORKFLOW COMPLET
 # ============================================================================
@@ -1198,7 +1197,7 @@ async def _process_conversation_phase5_integrated(
     start_time = time.time()
     request_id = f"phase5_{int(time.time() * 1000)}_{user_id}"
     
-    logger.info(f"[{request_id}] 🚀 Phase 5 intégrée - Début workflow pour user {user_id}")
+    logger.debug(f"[{request_id}] Phase 5 workflow start for user {user_id}")
     
     try:
         # Validation message
@@ -1392,7 +1391,7 @@ async def _process_conversation_phase5_integrated(
             from conversation_service.prompts.templates.response_templates import get_response_template
             
             # Génération de réponse contextualisée avec LLM (version simplifiée)
-            logger.info(f"[{request_id}] 🤖 Génération réponse LLM directe...")
+            logger.debug(f"[{request_id}] Generating LLM response...")
             
             # Préparation du prompt contextualisé
             intent_type = str(classification_result.intent_type.value if hasattr(classification_result.intent_type, 'value') else classification_result.intent_type)
@@ -1539,11 +1538,7 @@ async def _process_conversation_phase5_integrated(
             status="success"
         )
         
-        logger.info(
-            f"[{request_id}] ✅ Phase 5 intégrée terminée: {intent_type_value}, "
-            f"Confiance: {classification_result.confidence:.2f}, "
-            f"Temps: {processing_time_ms}ms"
-        )
+        logger.info(f"[{request_id}] Conversation completed: {intent_type_value} ({processing_time_ms}ms)")
         
         # ====================================================================
         # PERSISTANCE: Enregistrement en base de données
@@ -1582,7 +1577,7 @@ async def _process_conversation_phase5_integrated(
                     turn_data=turn_data
                 )
                 
-                logger.info(f"[{request_id}] ✅ Conversation persistée - ID: {conversation.id}")
+                logger.debug(f"[{request_id}] Conversation saved - ID: {conversation.id}")
                 
             except Exception as e:
                 logger.error(f"[{request_id}] ❌ Erreur persistence conversation: {str(e)}")
@@ -1670,10 +1665,4 @@ def _create_clean_api_response(full_response: ConversationResponse) -> Dict[str,
     return clean_response
 
 
-logger.info(f"Routes conversation configurées - Environnement: {environment}")
-logger.info(f"Endpoints debug: {'activés' if environment != 'production' else 'désactivés'}")
-logger.info("Endpoints configurés:")
-logger.info("  - /conversation/{user_id} → Phase 5 intégrée (Principal)")
-logger.info("  - /conversation/legacy/{user_id} → Phase 2 (Deprecated)")
-logger.info("  - /conversation/v2/{user_id} → Dual-mode AutoGen") 
-logger.info("  - /team/health, /team/metrics → Team monitoring")
+logger.debug(f"Conversation routes configured - Environment: {environment}")

@@ -39,8 +39,7 @@ class ElasticsearchHTTPError(Exception):
 
 logger = logging.getLogger(__name__)
 
-# 🔥 LOG DE DEBUG POUR VÉRIFIER QUE CE FICHIER EST CHARGÉ
-logger.critical("🔥🔥🔥 SEARCH_ENGINE.PY VERSION FINALE CORRIGÉE CHARGÉE 🔥🔥🔥")
+# Debug logs supprimés pour réduire la verbosité
 
 
 class SearchEngine:
@@ -50,7 +49,7 @@ class SearchEngine:
     """
 
     def __init__(self, elasticsearch_client=None, cache_enabled: bool = True):
-        logger.critical("🔥 SearchEngine.__init__() - VERSION FINALE CORRIGÉE")
+        logger.debug("SearchEngine initialized")
         
         self.elasticsearch_client = elasticsearch_client
         self.query_builder = QueryBuilder()
@@ -136,7 +135,7 @@ class SearchEngine:
         🔥 VERSION FINALE CORRIGÉE - Support complet _score et highlights avec debug forcing
         """
         start_time = time.time()
-        logger.critical(f"🔥 SEARCH() APPELÉE - query='{request.query}', highlights={bool(request.highlight)}")
+        logger.debug(f"Search request: query='{request.query}', highlights={bool(request.highlight)}")
 
         try:
             if not self.elasticsearch_client:
@@ -153,7 +152,7 @@ class SearchEngine:
                 if cached:
                     self.cache_hits += 1
                     cached["response_metadata"]["cache_hit"] = True
-                    logger.critical("🔥 CACHE HIT - returning cached result")
+                    logger.debug("Cache hit - returning cached result")
                     return cached
                 else:
                     self.cache_misses += 1
@@ -166,19 +165,19 @@ class SearchEngine:
             else:
                 es_query = self.query_builder.build_query(request)
 
-            logger.critical(f"🔥 ES_QUERY GÉNÉRÉE: {json.dumps(es_query, indent=2)}")
+            logger.debug(f"Elasticsearch query: {json.dumps(es_query, indent=2)}")
 
             # Exécution via le client existant avec retry
             es_response = await self._execute_search(es_query, request)
-            logger.critical(f"🔥 ES_RESPONSE REÇUE: hits={es_response.get('hits', {}).get('total', {}).get('value', 0)}")
+            logger.debug(f"🔥 ES_RESPONSE REÇUE: hits={es_response.get('hits', {}).get('total', {}).get('value', 0)}")
 
             # 🔥 CORRECTION CRITIQUE : Traitement des résultats avec debug
             processed = self._process_results(es_response, request)
-            logger.critical(f"🔥 RÉSULTATS PROCESSÉS: {len(processed)} objets SearchResult")
+            logger.debug(f"🔥 RÉSULTATS PROCESSÉS: {len(processed)} objets SearchResult")
             
             # Sécurité supplémentaire : filtrer par user_id côté application
             results = [r for r in processed if r.user_id == request.user_id]
-            logger.critical(f"🔥 RÉSULTATS FILTRÉS PAR USER: {len(results)} objets")
+            logger.debug(f"🔥 RÉSULTATS FILTRÉS PAR USER: {len(results)} objets")
 
             # Extraire le nombre total de résultats rapporté par Elasticsearch
             total_hits = self._get_total_hits(es_response)
@@ -230,9 +229,9 @@ class SearchEngine:
             has_more_results = (request.offset + returned_results) < total_results
 
             # 🔥 CORRECTION FINALE CRITIQUE : Sérialisation avec debug forcing
-            logger.critical(f"🔥 AVANT SÉRIALISATION: {len(results)} résultats à sérialiser")
+            logger.debug(f"🔥 AVANT SÉRIALISATION: {len(results)} résultats à sérialiser")
             serialized_results = self._serialize_results_with_score_and_highlights_FINAL(results, request)
-            logger.critical(f"🔥 APRÈS SÉRIALISATION: {len(serialized_results)} résultats sérialisés")
+            logger.debug(f"🔥 APRÈS SÉRIALISATION: {len(serialized_results)} résultats sérialisés")
 
             response = {
                 "results": serialized_results,
@@ -266,7 +265,7 @@ class SearchEngine:
             if self.cache_enabled and cache_key:
                 await self.cache.set(request.user_id, cache_key, response, ttl=settings.SEARCH_CACHE_TTL)
 
-            logger.critical(f"🔥 SEARCH TERMINÉE: {returned_results}/{total_results} results in {execution_time}ms")
+            logger.debug(f"🔥 SEARCH TERMINÉE: {returned_results}/{total_results} results in {execution_time}ms")
             return response
 
         except Exception as e:
@@ -313,7 +312,7 @@ class SearchEngine:
         3. Debug logging complet pour diagnostiquer
         4. Force les valeurs même si Pydantic a des problèmes
         """
-        logger.critical(f"🔥 _serialize_results_with_score_and_highlights_FINAL() - {len(results)} résultats à traiter")
+        logger.debug(f"🔥 _serialize_results_with_score_and_highlights_FINAL() - {len(results)} résultats à traiter")
         
         serialized_results = []
         
@@ -321,31 +320,31 @@ class SearchEngine:
             try:
                 # 🔥 CORRECTION : Sérialisation standard avec alias
                 result_data = result.model_dump(by_alias=True)
-                logger.critical(f"🔥 Résultat {i} sérialisé - keys avant corrections: {list(result_data.keys())}")
+                logger.debug(f"🔥 Résultat {i} sérialisé - keys avant corrections: {list(result_data.keys())}")
                 
                 # 🔥 CORRECTION CRITIQUE 1: Assurer que _score existe TOUJOURS
                 if "_score" not in result_data:
                     score_value = getattr(result, 'score', 0.0)
                     result_data["_score"] = float(score_value) if score_value is not None else 0.0
-                    logger.critical(f"🔥 Résultat {i} - _score manquant, ajouté: {result_data['_score']}")
+                    logger.debug(f"🔥 Résultat {i} - _score manquant, ajouté: {result_data['_score']}")
                 else:
-                    logger.critical(f"🔥 Résultat {i} - _score présent: {result_data['_score']}")
+                    logger.debug(f"🔥 Résultat {i} - _score présent: {result_data['_score']}")
                 
                 # 🔥 CORRECTION CRITIQUE 2: Assurer que highlights est correctement présent si demandé
                 if request.highlight:
                     if "highlights" not in result_data:
                         highlights_value = getattr(result, 'highlights', None)
                         result_data["highlights"] = highlights_value
-                        logger.critical(f"🔥 Résultat {i} - highlights manquant, ajouté: {result_data['highlights']}")
+                        logger.debug(f"🔥 Résultat {i} - highlights manquant, ajouté: {result_data['highlights']}")
                     else:
-                        logger.critical(f"🔥 Résultat {i} - highlights présent: {result_data['highlights']}")
+                        logger.debug(f"🔥 Résultat {i} - highlights présent: {result_data['highlights']}")
                 else:
-                    logger.critical(f"🔥 Résultat {i} - highlights non demandés")
+                    logger.debug(f"🔥 Résultat {i} - highlights non demandés")
                 
                 # 🔥 FORCE DEBUG : Vérification finale
                 final_score = result_data.get("_score")
                 final_highlights = result_data.get("highlights")
-                logger.critical(f"🔥 Résultat {i} FINAL - _score: {final_score}, highlights: {final_highlights}")
+                logger.debug(f"🔥 Résultat {i} FINAL - _score: {final_score}, highlights: {final_highlights}")
                 
                 serialized_results.append(result_data)
                 
@@ -368,9 +367,9 @@ class SearchEngine:
                     "highlights": None
                 }
                 serialized_results.append(minimal_result)
-                logger.critical(f"🔥 Résultat {i} - Erreur sérialisation, résultat minimal créé")
+                logger.debug(f"🔥 Résultat {i} - Erreur sérialisation, résultat minimal créé")
         
-        logger.critical(f"🔥 SÉRIALISATION TERMINÉE: {len(serialized_results)}/{len(results)} résultats traités avec succès")
+        logger.debug(f"🔥 SÉRIALISATION TERMINÉE: {len(serialized_results)}/{len(results)} résultats traités avec succès")
         return serialized_results
     
     async def _execute_search(self, es_query: Dict[str, Any], request: SearchRequest) -> Dict[str, Any]:
@@ -442,14 +441,14 @@ class SearchEngine:
             logger.debug("No hits returned from Elasticsearch")
             return []
         
-        logger.critical(f"🔥 _process_results() - Processing {len(hits)} hits from Elasticsearch")
+        logger.debug(f"🔥 _process_results() - Processing {len(hits)} hits from Elasticsearch")
         
         for i, hit in enumerate(hits):
             source = hit.get('_source', {})
             score = hit.get('_score')
             highlights = hit.get('highlight')  # ✅ Extraction highlighting
             
-            logger.critical(f"🔥 Hit {i} - _score: {score}, highlight: {'present' if highlights else 'none'}")
+            logger.debug(f"🔥 Hit {i} - _score: {score}, highlight: {'present' if highlights else 'none'}")
             
             try:
                 # 🔥 CORRECTION : Gestion robuste de tous les champs avec valeurs par défaut sécurisées
@@ -487,7 +486,7 @@ class SearchEngine:
                 results.append(result)
                 
                 # Log de succès pour debug
-                logger.critical(f"🔥 Successfully processed result {i+1}: {result.transaction_id} - score={result.score} - highlights={'present' if result.highlights else 'none'}")
+                logger.debug(f"🔥 Successfully processed result {i+1}: {result.transaction_id} - score={result.score} - highlights={'present' if result.highlights else 'none'}")
                 
             except ValueError as ve:
                 # Erreur de conversion de type (int, float)
@@ -530,7 +529,7 @@ class SearchEngine:
         if success_count < total_count:
             logger.warning(f"⚠️ Processed only {success_count}/{total_count} results due to errors")
         else:
-            logger.critical(f"🔥 Successfully processed all {success_count}/{total_count} Elasticsearch hits")
+            logger.debug(f"🔥 Successfully processed all {success_count}/{total_count} Elasticsearch hits")
         
         return results
     

@@ -1545,6 +1545,49 @@ async def _process_conversation_phase5_integrated(
             f"Temps: {processing_time_ms}ms"
         )
         
+        # ====================================================================
+        # PERSISTANCE: Enregistrement en base de données
+        # ====================================================================
+        if persistence_service:
+            try:
+                # Obtenir ou créer une conversation active pour l'utilisateur
+                conversation = persistence_service.get_or_create_active_conversation(
+                    user_id=validated_user_id,
+                    conversation_title=f"Conversation du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                )
+                
+                # Ajouter ce tour de conversation 
+                assistant_response_text = response_content.message if response_content else "Erreur de génération de réponse"
+                
+                turn_data = {
+                    "request_id": request_id,
+                    "processing_time_ms": processing_time_ms,
+                    "phase": 5,
+                    "intent_type": intent_type_value,
+                    "confidence": classification_result.confidence,
+                    "search_results_count": search_results.total_hits if search_results else 0,
+                    "agent_metrics": {
+                        "intent_classifier": {"success": step1.success, "duration_ms": step1.duration_ms},
+                        "entity_extractor": {"success": step2.success if step2 else False, "duration_ms": step2.duration_ms if step2 else 0},
+                        "query_builder": {"success": step3.success if step3 else False, "duration_ms": step3.duration_ms if step3 else 0},
+                        "search_executor": {"success": step4.success if step4 else False, "duration_ms": step4.duration_ms if step4 else 0},
+                        "response_generator": {"success": step5.success if step5 else False, "duration_ms": step5.duration_ms if step5 else 0}
+                    }
+                }
+                
+                persistence_service.add_conversation_turn(
+                    conversation_id=conversation.id,
+                    user_message=clean_message,
+                    assistant_response=assistant_response_text,
+                    turn_data=turn_data
+                )
+                
+                logger.info(f"[{request_id}] ✅ Conversation persistée - ID: {conversation.id}")
+                
+            except Exception as e:
+                logger.error(f"[{request_id}] ❌ Erreur persistence conversation: {str(e)}")
+                # On continue même si la persistence échoue
+        
         # Créer une réponse API épurée pour l'utilisateur final
         return _create_clean_api_response(response)
         

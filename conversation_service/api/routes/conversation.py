@@ -42,7 +42,11 @@ from conversation_service.api.dependencies import (
     get_user_context,
     rate_limit_dependency,
     get_multi_agent_team,
-    get_conversation_processor
+    get_conversation_processor,
+    get_conversation_persistence
+)
+from conversation_service.services.conversation_persistence import (
+    ConversationPersistenceService, create_conversation_data, create_turn_data
 )
 from conversation_service.utils.metrics_collector import metrics_collector
 from conversation_service.utils.validation_utils import validate_user_message, sanitize_user_input
@@ -62,6 +66,7 @@ async def analyze_conversation(
     validated_user_id: int = Depends(validate_path_user_id),
     user_context: Dict[str, Any] = Depends(get_user_context),
     service_status: dict = Depends(get_conversation_service_status),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence),
     _rate_limit: None = Depends(rate_limit_dependency)
 ):
     """
@@ -87,6 +92,7 @@ async def analyze_conversation(
         http_request=request,
         validated_user_id=validated_user_id,
         user_context=user_context,
+        persistence_service=persistence_service,
         _rate_limit=_rate_limit
     )
 

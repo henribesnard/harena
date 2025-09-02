@@ -84,7 +84,7 @@ class ConversationPersistenceService:
             self.db.commit()
             self.db.refresh(turn)
             
-            logger.info(f"✅ Tour ajouté - Conversation: {conversation_id}, Tour: {next_turn_number}")
+            logger.debug(f"Turn added - Conversation: {conversation_id}, Turn: {next_turn_number}")
             return turn
             
         except SQLAlchemyError as e:

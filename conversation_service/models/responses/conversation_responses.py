@@ -1,8 +1,9 @@
 """
 Modèles Pydantic V2 unifiés pour les réponses conversation service
 Consolidation de toutes les phases : 1-5 avec toutes les fonctionnalités
+Consolidation COMPLÈTE - Contient tous les modèles nécessaires
 """
-from pydantic import BaseModel, field_validator, ConfigDict, computed_field, field_serializer
+from pydantic import BaseModel, field_validator, ConfigDict, computed_field, field_serializer, Field
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timezone
 from enum import Enum
@@ -1772,6 +1773,306 @@ ConversationResponseFactoryPhase5 = ConversationResponseFactory
 # Alias pour classes Phase 2 manquantes (compatibilité tests)
 EntityValidationResult = AgentMetrics  # Compatible pour les tests
 MultiAgentProcessingInsights = AgentMetrics  # Compatible pour les tests
+
+# ============================================================================
+# AJOUT MODÈLES DEPUIS conversation_responses_clean.py
+# ============================================================================
+
+class CleanConversationResponse(BaseModel):
+    """Modèle de réponse API épurée pour l'endpoint public"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True
+    )
+    
+    request_id: str
+    processing_time_ms: int
+    response: ResponseContent
+    quality: ResponseQuality
+    status: str = "success"
+
+
+class CleanErrorResponse(BaseModel):
+    """Modèle de réponse d'erreur épurée"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True
+    )
+    
+    request_id: str
+    status: str = "error"
+    error: str
+    processing_time_ms: int
+    timestamp: datetime
+    suggestions: List[str] = []
+
+
+def create_enhanced_structured_data(
+    search_results, 
+    entities_result=None, 
+    intent_type=None
+) -> StructuredData:
+    """Crée des données structurées enrichies pour l'utilisateur final"""
+    
+    if not search_results or not search_results.hits:
+        return StructuredData()
+    
+    # Calcul des métriques réelles
+    total_amount = sum(hit.source.get("amount", 0) for hit in search_results.hits)
+    transaction_count = len(search_results.hits)
+    average_amount = total_amount / transaction_count if transaction_count > 0 else 0
+    
+    # Détermination de la période à partir des entités
+    period_start = None
+    period_end = None
+    period_description = None
+    
+    if entities_result and entities_result.get("entities", {}).get("dates"):
+        dates = entities_result["entities"]["dates"]
+        if dates:
+            date_info = dates[0]  # Premier élément de date
+            if date_info.get("type") == "period" and date_info.get("value"):
+                period_value = date_info["value"]
+                if len(period_value) == 7:  # Format YYYY-MM
+                    year, month = period_value.split("-")
+                    period_start = f"{period_value}-01"
+                    # Dernier jour du mois
+                    import calendar
+                    last_day = calendar.monthrange(int(year), int(month))[1]
+                    period_end = f"{period_value}-{last_day:02d}"
+                    period_description = f"{date_info.get('text', period_value)}"
+    
+    # Type d'analyse basé sur l'intent
+    analysis_type = None
+    if intent_type:
+        intent_str = str(intent_type).lower()
+        if "merchant" in intent_str:
+            analysis_type = "merchant"
+        elif "category" in intent_str:
+            analysis_type = "category"
+        elif "period" in intent_str:
+            analysis_type = "period"
+        elif "balance" in intent_str:
+            analysis_type = "balance"
+    
+    return StructuredData(
+        total_amount=total_amount,
+        transaction_count=transaction_count,
+        average_amount=average_amount,
+        period=period_description,
+        period_start=period_start,
+        period_end=period_end,
+        analysis_type=analysis_type
+    )
+
+
+# ============================================================================
+# AJOUT MODÈLES DEPUIS enriched_conversation_responses.py
+# ============================================================================
+
+class ProcessingMode(str, Enum):
+    """Modes de traitement disponibles"""
+    SINGLE_AGENT = "single_agent"              # Mode existant classique
+    MULTI_AGENT_TEAM = "multi_agent_team"      # Mode AutoGen équipe
+    FALLBACK_CHAIN = "fallback_chain"          # AutoGen puis fallback existant
+
+
+class TeamWorkflowStatus(str, Enum):
+    """Statuts workflow équipe AutoGen"""
+    COMPLETED = "completed"                     # Workflow complet (Intent + Entity)
+    PARTIAL = "partial"                         # Workflow partiel (Intent uniquement)
+    FAILED = "failed"                          # Workflow échoué
+    TIMEOUT = "timeout"                        # Timeout workflow
+    FALLBACK_APPLIED = "fallback_applied"      # Fallback vers agents individuels
+
+
+class EntityExtractionResult(BaseModel):
+    """Résultat extraction entités (nouveau avec AutoGen)"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True
+    )
+    
+    entities: Dict[str, Any] = Field(default_factory=dict)
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    reasoning: Optional[str] = None
+    extraction_strategy: Optional[str] = None  # "focused", "comprehensive", "minimal"
+    entities_count: int = Field(ge=0, default=0)
+    processing_time_ms: Optional[int] = Field(ge=0, default=None)
+
+
+class AutoGenTeamMetadata(BaseModel):
+    """Métadonnées équipe AutoGen enrichies"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True
+    )
+    
+    team_id: str
+    workflow_status: TeamWorkflowStatus
+    agents_involved: List[str] = Field(default_factory=list)
+    processing_time_ms: int = Field(ge=0)
+    
+    # Chat logs (filtré pour pertinence)
+    intent_agent_summary: Optional[str] = None
+    entity_agent_summary: Optional[str] = None
+    collaboration_insights: List[str] = Field(default_factory=list)
+    
+    # Performance équipe
+    team_efficiency_score: float = Field(ge=0.0, le=1.0, default=0.5)
+    individual_agent_scores: Dict[str, float] = Field(default_factory=dict)
+    
+    # Configuration utilisée
+    team_composition: Optional[Dict[str, Any]] = None
+    orchestration_strategy: Optional[str] = None
+
+
+class EnrichedConversationResponse(BaseModel):
+    """Réponse enrichie compatible avec ConversationResponse + métadonnées AutoGen"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        arbitrary_types_allowed=True
+    )
+    
+    # Champs principaux (compatibilité ConversationResponse)
+    user_id: int
+    message: str
+    timestamp: datetime
+    processing_time_ms: int
+    status: ProcessingStatus = ProcessingStatus.SUCCESS
+    
+    # Classification intention (compatible)
+    intent: IntentClassificationResult
+    agent_metrics: AgentMetrics
+    
+    # Mode de traitement utilisé
+    processing_mode: ProcessingMode
+    
+    # Extraction entités enrichie
+    entities: Optional[EntityExtractionResult] = None
+    
+    # Métadonnées équipe AutoGen (si applicable)
+    autogen_metadata: Optional[AutoGenTeamMetadata] = None
+    
+    # Comparaison performance
+    performance_comparison: Optional[Dict[str, Any]] = None
+    
+    # Fallback info si applicable
+    fallback_reason: Optional[str] = None
+    fallback_from_processing_mode: Optional[ProcessingMode] = None
+    
+    @staticmethod
+    def from_team_results(
+        user_id: int,
+        message: str,
+        team_results: Dict[str, Any],
+        processing_time_ms: int
+    ) -> "EnrichedConversationResponse":
+        """Factory method depuis résultats équipe AutoGen"""
+        
+        # Extraction intent depuis team_results
+        intent_data = team_results.get("intent_classification", {})
+        intent = IntentClassificationResult(
+            intent_type=intent_data.get("intent_type", "UNKNOWN"),
+            confidence=intent_data.get("confidence", 0.0),
+            reasoning=intent_data.get("reasoning", ""),
+            original_message=message,
+            category=intent_data.get("category", "UNKNOWN"),
+            is_supported=intent_data.get("is_supported", False)
+        )
+        
+        # Extraction entités si disponibles
+        entities_data = team_results.get("entity_extraction", {})
+        entities = None
+        if entities_data:
+            entities = EntityExtractionResult(
+                entities=entities_data.get("entities", {}),
+                confidence=entities_data.get("confidence", 0.0),
+                reasoning=entities_data.get("reasoning"),
+                entities_count=len(entities_data.get("entities", {}))
+            )
+        
+        # Métadonnées équipe
+        autogen_metadata = AutoGenTeamMetadata(
+            team_id=team_results.get("team_id", "unknown"),
+            workflow_status=TeamWorkflowStatus(team_results.get("workflow_status", "completed")),
+            agents_involved=team_results.get("agents_involved", []),
+            processing_time_ms=processing_time_ms,
+            intent_agent_summary=team_results.get("intent_agent_summary"),
+            entity_agent_summary=team_results.get("entity_agent_summary"),
+            collaboration_insights=team_results.get("collaboration_insights", []),
+            team_efficiency_score=team_results.get("team_efficiency_score", 0.5),
+            individual_agent_scores=team_results.get("individual_agent_scores", {})
+        )
+        
+        # Métriques agent
+        agent_metrics = AgentMetrics(
+            agent_used="multi_agent_team",
+            model_used="deepseek-chat",
+            tokens_consumed=team_results.get("total_tokens_consumed", 0),
+            processing_time_ms=processing_time_ms,
+            confidence_threshold_met=intent.confidence > 0.7,
+            cache_hit=team_results.get("from_cache", False)
+        )
+        
+        return EnrichedConversationResponse(
+            user_id=user_id,
+            message=message,
+            timestamp=datetime.now(timezone.utc),
+            processing_time_ms=processing_time_ms,
+            intent=intent,
+            agent_metrics=agent_metrics,
+            processing_mode=ProcessingMode.MULTI_AGENT_TEAM,
+            entities=entities,
+            autogen_metadata=autogen_metadata
+        )
+    
+    @staticmethod
+    def from_fallback_single_agent(
+        standard_response: ConversationResponse,
+        fallback_reason: str
+    ) -> "EnrichedConversationResponse":
+        """Factory method depuis réponse standard (fallback)"""
+        
+        return EnrichedConversationResponse(
+            user_id=standard_response.user_id,
+            message=standard_response.message,
+            timestamp=standard_response.timestamp,
+            processing_time_ms=standard_response.processing_time_ms,
+            status=ProcessingStatus(standard_response.status),
+            intent=standard_response.intent,
+            agent_metrics=standard_response.agent_metrics,
+            processing_mode=ProcessingMode.SINGLE_AGENT,
+            fallback_reason=fallback_reason
+        )
+
+
+class TeamHealthResponse(BaseModel):
+    """Réponse health check équipe"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True
+    )
+    
+    single_agent_available: bool
+    multi_agent_team_available: bool
+    current_processing_mode: str
+    autogen_details: Optional[Dict[str, Any]] = None
+
+
+class TeamMetricsResponse(BaseModel):
+    """Réponse métriques équipe"""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True
+    )
+    
+    available: bool
+    statistics: Optional[Dict[str, Any]] = None
+    health: Optional[Dict[str, Any]] = None
+    performance_comparison: Optional[Dict[str, Any]] = None
+
 
 # Types d'union pour flexibilité
 ResponseData = Union[IntentClassificationResult, Dict[str, Any]]

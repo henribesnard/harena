@@ -4,6 +4,7 @@ Health check avec correction de l'erreur await
 """
 import logging
 import asyncio
+import json
 import aiohttp
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
@@ -368,6 +369,83 @@ class DeepSeekClient:
         # Ne devrait jamais arriver
         self._consecutive_errors += 1
         raise DeepSeekError(f"Échec après {max_retries} tentatives")
+    
+    async def chat_completion_stream(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        model: Optional[str] = None
+    ):
+        """
+        Appel API chat completion en streaming
+        
+        Yield des chunks de données JSON au format:
+        {"choices": [{"delta": {"content": "chunk"}}]}
+        """
+        
+        if not self.api_key:
+            raise DeepSeekError("API Key DeepSeek manquante dans les paramètres")
+        
+        # Configuration requête
+        endpoint = f"{self.api_url}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "conversation_service/1.1.0"
+        }
+        
+        payload = {
+            "model": model or self.model_chat,
+            "messages": messages,
+            "max_tokens": max_tokens or self.max_tokens,
+            "temperature": temperature if temperature is not None else self.temperature,
+            "stream": True  # Activation du streaming
+        }
+        
+        # Initialisation de la session si nécessaire
+        if not self._initialized:
+            await self.initialize()
+        
+        if not self._session:
+            raise DeepSeekError("Session non initialisée")
+        
+        try:
+            start_time = datetime.now(timezone.utc)
+            
+            async with self._session.post(endpoint, headers=headers, json=payload) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise DeepSeekError(f"Erreur API DeepSeek ({response.status}): {error_text}")
+                
+                # Lecture du stream ligne par ligne
+                async for line in response.content:
+                    line_text = line.decode('utf-8').strip()
+                    
+                    # Format Server-Sent Events standard
+                    if line_text.startswith('data: '):
+                        data_part = line_text[6:]  # Supprimer "data: "
+                        
+                        # Ignorer les messages de fin
+                        if data_part == '[DONE]':
+                            break
+                        
+                        try:
+                            chunk_data = json.loads(data_part)
+                            yield chunk_data
+                        except json.JSONDecodeError:
+                            # Ignorer les chunks malformés
+                            logger.debug(f"Chunk JSON malformé ignoré: {data_part}")
+                            continue
+                
+                # Métriques finales
+                duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+                logger.info(f"DeepSeek stream completed - Duration: {duration_ms}ms")
+                
+        except Exception as e:
+            self._consecutive_errors += 1
+            logger.error(f"Erreur streaming DeepSeek: {str(e)}")
+            raise DeepSeekError(f"Erreur streaming: {str(e)}")
     
     def _validate_json_output(self, content: str) -> bool:
         """Validation stricte que la réponse est du JSON valide"""

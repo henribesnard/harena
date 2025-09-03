@@ -513,6 +513,7 @@ def get_response_template(
     entities: Dict[str, Any],
     analysis_data: Dict[str, Any],
     user_context: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[Dict[str, Any]] = None,
     use_personalization: bool = True
 ) -> str:
     """
@@ -524,20 +525,51 @@ def get_response_template(
         entities: Entités extraites
         analysis_data: Données d'analyse des résultats
         user_context: Contexte utilisateur (optionnel)
+        conversation_history: Historique des conversations précédentes (optionnel)
         use_personalization: Utiliser la personnalisation contextuelle
     
     Returns:
-        Template de prompt personnalisé
+        Template de prompt personnalisé avec historique intégré
     """
     
+    # Récupérer le template de base
     if use_personalization and user_context:
-        return contextual_templates.get_personalized_template(
+        base_template = contextual_templates.get_personalized_template(
             intent_type, user_message, entities, analysis_data, user_context
         )
     else:
-        return default_templates.get_template(
+        base_template = default_templates.get_template(
             intent_type, user_message, entities, analysis_data, user_context
         )
+    
+    # Intégrer l'historique des conversations si disponible
+    if conversation_history and conversation_history.get("summarized_context"):
+        history_context = conversation_history["summarized_context"]
+        estimated_tokens = conversation_history.get("estimated_tokens", 0)
+        
+        # Insérer l'historique avant les données actuelles
+        history_section = f"""
+=== CONTEXTE HISTORIQUE ===
+{history_context}
+
+PRIORITÉ: Les résultats de recherche actuels sont TOUJOURS prioritaires sur l'historique.
+L'historique sert uniquement de contexte pour personnaliser le ton et identifier les patterns.
+
+=== FIN CONTEXTE HISTORIQUE ===
+
+"""
+        
+        # Intégrer dans le template existant après les instructions de base
+        if "L'utilisateur demande:" in base_template:
+            base_template = base_template.replace(
+                "L'utilisateur demande:",
+                f"{history_section}L'utilisateur demande:"
+            )
+        else:
+            # Fallback si le format du template change
+            base_template = f"{base_template}\n\n{history_section}"
+    
+    return base_template
 
 
 # Configuration des templates par environnement

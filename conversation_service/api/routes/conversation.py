@@ -6,7 +6,7 @@ import time
 import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
 from conversation_service.models.responses.conversation_responses import (
@@ -43,6 +43,7 @@ from conversation_service.api.dependencies import (
     get_conversation_processor,
     get_conversation_persistence
 )
+from conversation_service.api.middleware.auth_middleware import get_current_user_id
 from conversation_service.services.conversation_persistence import (
     ConversationPersistenceService, create_conversation_data, create_turn_data
 )
@@ -523,6 +524,148 @@ async def conversation_metrics_detailed():
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
+
+@router.post("/conversation/feedback/{user_id}/{conversation_id}/{turn_number}")
+async def submit_conversation_feedback(
+    user_id: int,
+    conversation_id: int, 
+    turn_number: int,
+    feedback: Dict[str, Any],
+    validated_user_id: int = Depends(get_current_user_id),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence)
+):
+    """
+    Permet à l'utilisateur de donner un feedback sur un tour de conversation
+    
+    Payload attendu:
+    {
+        "rating": "positive" | "negative", 
+        "comment": "Commentaire optionnel"
+    }
+    """
+    try:
+        # Vérification des droits utilisateur
+        if validated_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Accès non autorisé")
+        
+        if not persistence_service:
+            raise HTTPException(status_code=500, detail="Service de persistence non disponible")
+        
+        # Récupérer le tour de conversation
+        conversation = persistence_service.get_conversation_with_turns(conversation_id)
+        if not conversation or conversation.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Conversation non trouvée")
+        
+        # Trouver le tour spécifique
+        target_turn = next((turn for turn in conversation.turns if turn.turn_number == turn_number), None)
+        if not target_turn:
+            raise HTTPException(status_code=404, detail="Tour de conversation non trouvé")
+        
+        # Mettre à jour le feedback dans les données JSON
+        turn_data = target_turn.data or {}
+        turn_data["client_feedback"] = {
+            "rating": feedback.get("rating"),  # positive/negative
+            "comment": feedback.get("comment"),
+            "feedback_date": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Sauvegarder les modifications
+        target_turn.data = turn_data
+        target_turn.updated_at = datetime.now(timezone.utc)
+        persistence_service.db.commit()
+        
+        return {
+            "success": True,
+            "message": "Feedback enregistré avec succès",
+            "conversation_id": conversation_id,
+            "turn_number": turn_number,
+            "feedback": turn_data["client_feedback"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur enregistrement feedback: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur")
+
+@router.get("/conversation/dataset/{user_id}")
+async def get_training_dataset(
+    user_id: int,
+    validated_user_id: int = Depends(get_current_user_id),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence),
+    limit: int = Query(100, description="Nombre maximum d'échantillons à retourner"),
+    with_feedback_only: bool = Query(False, description="Retourner seulement les échantillons avec feedback")
+):
+    """
+    Récupère les données d'entraînement pour un utilisateur
+    
+    Retourne les triplets (requête_utilisateur, intention+entités, query_elasticsearch) 
+    pour entraîner un modèle de génération de requêtes
+    """
+    try:
+        # Vérification des droits utilisateur
+        if validated_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Accès non autorisé")
+        
+        if not persistence_service:
+            raise HTTPException(status_code=500, detail="Service de persistence non disponible")
+        
+        # Récupérer toutes les conversations de l'utilisateur
+        conversations = persistence_service.get_user_conversations(user_id)
+        
+        training_samples = []
+        for conversation in conversations:
+            conversation_with_turns = persistence_service.get_conversation_with_turns(conversation.id)
+            
+            for turn in conversation_with_turns.turns:
+                turn_data = turn.data or {}
+                
+                # Filtrer par feedback si demandé
+                if with_feedback_only:
+                    client_feedback = turn_data.get("client_feedback", {})
+                    if not client_feedback.get("rating"):
+                        continue
+                
+                # Extraire les données d'entraînement
+                if all(key in turn_data for key in ["user_query", "intent_detected", "entities_extracted", "query_generated"]):
+                    sample = {
+                        # Identifiants
+                        "conversation_id": conversation.id,
+                        "turn_number": turn.turn_number,
+                        "timestamp": turn.created_at.isoformat(),
+                        
+                        # Données d'entraînement
+                        "input_query": turn_data["user_query"],
+                        "target_intent": turn_data["intent_detected"],
+                        "target_entities": turn_data["entities_extracted"], 
+                        "target_elasticsearch_query": turn_data["query_generated"],
+                        
+                        # Métadonnées de qualité
+                        "success_rate": turn_data.get("success_rate", {}),
+                        "processing_time_ms": turn_data.get("processing_time_ms", 0),
+                        "client_feedback": turn_data.get("client_feedback", {}),
+                        
+                        # Pour validation
+                        "response_generated": turn_data.get("response_generated"),
+                        "search_results_count": turn_data.get("search_results_count", 0)
+                    }
+                    training_samples.append(sample)
+        
+        # Limiter les résultats
+        training_samples = training_samples[-limit:] if limit else training_samples
+        
+        return {
+            "user_id": user_id,
+            "total_samples": len(training_samples),
+            "with_feedback_filter": with_feedback_only,
+            "samples": training_samples
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur récupération dataset: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur")
 
 @router.get("/conversation/status")
 async def conversation_status():
@@ -1554,12 +1697,63 @@ async def _process_conversation_phase5_integrated(
                 # Ajouter ce tour de conversation 
                 assistant_response_text = response_content.message if response_content else "Erreur de génération de réponse"
                 
+                # Construction des données complètes pour le dataset d'entraînement
                 turn_data = {
+                    # Métadonnées de traitement
                     "request_id": request_id,
                     "processing_time_ms": processing_time_ms,
                     "phase": 5,
-                    "intent_type": intent_type_value,
-                    "confidence": classification_result.confidence,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    
+                    # === DONNÉES POUR DATASET D'ENTRAÎNEMENT ===
+                    
+                    # 1. Requête utilisateur (déjà dans user_message mais dupliquée pour clarté)
+                    "user_query": clean_message,
+                    
+                    # 2. Intention détectée (JSON complet)
+                    "intent_detected": {
+                        "intent_type": intent_type_value,
+                        "confidence": classification_result.confidence,
+                        "is_supported": classification_result.is_supported,
+                        "reasoning": getattr(classification_result, 'reasoning', '')
+                    },
+                    
+                    # 3. Entités extraites (JSON complet)
+                    "entities_extracted": entities_result.get("entities", {}) if entities_result else {},
+                    
+                    # 4. Requête Elasticsearch générée (JSON complet)
+                    "query_generated": search_query.dict() if search_query else None,
+                    
+                    # 5. Réponse générée (déjà dans assistant_response mais dupliquée)  
+                    "response_generated": assistant_response_text,
+                    
+                    # 6. Taux de succès global
+                    "success_rate": {
+                        "workflow_success": all([
+                            step1.success,
+                            step2.success if step2 else True,
+                            step3.success if step3 else True, 
+                            step4.success if step4 else True,
+                            step5.success if step5 else True
+                        ]),
+                        "agents_success_count": sum([
+                            1 if step1.success else 0,
+                            1 if (step2 and step2.success) else 0,
+                            1 if (step3 and step3.success) else 0,
+                            1 if (step4 and step4.success) else 0,
+                            1 if (step5 and step5.success) else 0
+                        ]),
+                        "agents_total_count": 5
+                    },
+                    
+                    # 7. Placeholder pour feedback client (sera mis à jour via une API dédiée)
+                    "client_feedback": {
+                        "rating": None,  # positive/negative
+                        "comment": None,
+                        "feedback_date": None
+                    },
+                    
+                    # === DONNÉES TECHNIQUES EXISTANTES ===
                     "search_results_count": search_results.total_hits if search_results else 0,
                     "agent_metrics": {
                         "intent_classifier": {"success": step1.success, "duration_ms": step1.duration_ms},

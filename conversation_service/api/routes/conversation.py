@@ -4,9 +4,11 @@ Routes API pour conversation service - Version réécrite compatible JWT
 import logging
 import time
 import asyncio
-from typing import Dict, Any, Optional
+import json
+from typing import Dict, Any, Optional, List, AsyncGenerator
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import StreamingResponse
 
 from conversation_service.models.requests.conversation_requests import ConversationRequest
 from conversation_service.models.responses.conversation_responses import (
@@ -93,6 +95,285 @@ async def analyze_conversation(
         user_context=user_context,
         persistence_service=persistence_service,
         _rate_limit=_rate_limit
+    )
+
+
+@router.post("/conversation/{path_user_id}/stream")
+async def analyze_conversation_stream(
+    path_user_id: int,
+    request_data: ConversationRequest,
+    request: Request,
+    deepseek_client: DeepSeekClient = Depends(get_deepseek_client),
+    cache_manager: Optional[CacheManager] = Depends(get_cache_manager),
+    validated_user_id: int = Depends(validate_path_user_id),
+    user_context: Dict[str, Any] = Depends(get_user_context),
+    service_status: dict = Depends(get_conversation_service_status),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence),
+    _rate_limit: None = Depends(rate_limit_dependency)
+):
+    """
+    Endpoint de streaming pour conversation service Phase 5 - Réponse LLM en temps réel
+    
+    Exécute le workflow complet en arrière-plan (étapes 1-4) puis stream uniquement
+    la réponse LLM finale chunk par chunk.
+    
+    Workflow interne (non streamé):
+    - Étape 1: Classification d'intention
+    - Étape 2: Extraction d'entités  
+    - Étape 3: Génération de requête search
+    - Étape 4: Exécution de la recherche
+    - Étape 5: Génération de réponse finale (STREAMÉE)
+    
+    Format de stream simplifié:
+    data: {"chunk": "texte partiel de la réponse"}
+    data: {"chunk": "suite du texte"}
+    data: {"done": true}
+    
+    Ou en cas d'erreur:
+    data: {"error": "description de l'erreur"}
+    """
+    
+    async def generate_conversation_stream() -> AsyncGenerator[str, None]:
+        """Générateur de stream pour la réponse LLM uniquement"""
+        
+        start_time = time.time()
+        request_id = f"stream_{int(time.time() * 1000)}_{validated_user_id}"
+        
+        try:
+            # Validation du message (sans streaming)
+            message_validation = validate_user_message(request_data.message)
+            if not message_validation["valid"]:
+                error_data = {
+                    "error": "Message invalide",
+                    "details": message_validation["errors"]
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+                return
+            
+            clean_message = sanitize_user_input(request_data.message)
+            
+            # ====================================================================
+            # ÉTAPES 1-4: Traitement en interne (sans streaming)
+            # ====================================================================
+            
+            # Obtenir les dépendances depuis app state
+            deepseek_client = request.app.state.deepseek_client
+            cache_manager = request.app.state.cache_manager
+            
+            # ÉTAPE 1: Classification intention
+            intent_classifier = intent_classifier_module.IntentClassifierAgent(
+                deepseek_client=deepseek_client,
+                cache_manager=cache_manager
+            )
+            
+            classification_result = await intent_classifier.classify_intent(
+                user_message=clean_message,
+                user_context=user_context
+            )
+            
+            intent_type_value = getattr(classification_result.intent_type, 'value', str(classification_result.intent_type))
+            
+            # ÉTAPE 2: Extraction entités (si supportée)
+            entities_result = None
+            if classification_result.is_supported:
+                entity_extractor = EntityExtractorAgent(
+                    deepseek_client=deepseek_client,
+                    cache_manager=cache_manager,
+                    autogen_mode=False
+                )
+                
+                entities_result = await entity_extractor.extract_entities(
+                    user_message=clean_message,
+                    intent_result=classification_result,
+                    user_id=validated_user_id
+                )
+            
+            # ÉTAPE 3: Génération de requête search (si entités disponibles)
+            search_query = None
+            if classification_result.is_supported and entities_result:
+                query_builder = QueryBuilderAgent(
+                    deepseek_client=deepseek_client,
+                    cache_manager=cache_manager
+                )
+                
+                query_request = QueryGenerationRequest(
+                    user_message=clean_message,
+                    intent_type=str(classification_result.intent_type.value),
+                    intent_confidence=classification_result.confidence,
+                    entities=entities_result.get("entities", {}) if entities_result else {},
+                    user_id=validated_user_id
+                )
+                
+                try:
+                    query_result = await query_builder.generate_search_query(query_request)
+                    
+                    if query_result is not None:
+                        if hasattr(query_result, 'search_query') and hasattr(query_result, 'validation'):
+                            generation_success = (
+                                query_result.search_query is not None and
+                                query_result.validation is not None and
+                                query_result.validation.schema_valid
+                            )
+                            search_query = query_result.search_query if generation_success else None
+                        elif hasattr(query_result, 'success') and hasattr(query_result, 'search_query'):
+                            generation_success = query_result.success and query_result.search_query is not None
+                            search_query = query_result.search_query if generation_success else None
+                except Exception as e:
+                    logger.warning(f"[{request_id}] Erreur génération requête: {str(e)}")
+                    search_query = None
+            
+            # ÉTAPE 4: Exécution recherche (si requête disponible)
+            search_results = None
+            if search_query:
+                try:
+                    search_executor = SearchExecutor()
+                    executor_request = SearchExecutorRequest(
+                        search_query=search_query,
+                        user_id=validated_user_id,
+                        request_id=request_id
+                    )
+                    
+                    executor_response = await search_executor.handle_search_request(executor_request)
+                    search_results = executor_response.search_results if executor_response.success else None
+                except Exception as e:
+                    logger.warning(f"[{request_id}] Erreur exécution search: {str(e)}")
+                    search_results = None
+            
+            # ====================================================================
+            # ÉTAPE 5: Génération et streaming de la réponse LLM SEULEMENT
+            # ====================================================================
+            
+            # Préparer les données pour la génération
+            intent_type = str(classification_result.intent_type.value if hasattr(classification_result.intent_type, 'value') else classification_result.intent_type)
+            entities = entities_result.get("entities", {}) if entities_result else {}
+            
+            # Analyse des résultats de recherche
+            analysis_data = {}
+            if search_results and search_results.hits:
+                amounts = [abs(hit.source.get("amount", 0)) for hit in search_results.hits]
+                analysis_data = {
+                    "has_results": True,
+                    "total_hits": search_results.total_hits,
+                    "returned_hits": len(search_results.hits),
+                    "total_amount": sum(amounts),
+                    "average_amount": sum(amounts) / len(amounts) if amounts else 0,
+                    "transaction_count": len(amounts),
+                    "analysis_type": intent_type
+                }
+            else:
+                analysis_data = {
+                    "has_results": False,
+                    "total_hits": 0,
+                    "analysis_type": intent_type
+                }
+            
+            # Récupération historique contextualisé (en silence)
+            conversation_history = await _get_contextualized_conversation_history(
+                user_id=validated_user_id,
+                current_message=clean_message,
+                current_search_results=search_results,
+                persistence_service=persistence_service,
+                deepseek_client=deepseek_client,
+                request_id=request_id,
+                max_context_tokens=125000
+            )
+            
+            # Génération du prompt
+            from conversation_service.prompts.templates.response_templates import get_response_template
+            
+            prompt = get_response_template(
+                intent_type=intent_type,
+                user_message=clean_message,
+                entities=entities,
+                analysis_data=analysis_data,
+                user_context=user_context,
+                conversation_history=conversation_history,
+                use_personalization=user_context is not None
+            )
+            
+            # ====================================================================
+            # STREAMING DE LA RÉPONSE LLM UNIQUEMENT
+            # ====================================================================
+            full_response_text = ""
+            async for chunk in deepseek_client.chat_completion_stream(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0.3
+            ):
+                if chunk.get("choices") and len(chunk["choices"]) > 0:
+                    delta = chunk["choices"][0].get("delta", {})
+                    if "content" in delta and delta["content"]:
+                        content_chunk = delta["content"]
+                        full_response_text += content_chunk
+                        
+                        # Stream uniquement le contenu de la réponse
+                        yield f"data: {json.dumps({'chunk': content_chunk})}\n\n"
+            
+            # ====================================================================
+            # PERSISTANCE EN ARRIÈRE-PLAN (sans streaming)
+            # ====================================================================
+            if persistence_service and full_response_text:
+                try:
+                    conversation = persistence_service.get_or_create_active_conversation(
+                        user_id=validated_user_id,
+                        conversation_title=f"Conversation du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    )
+                    
+                    # Construction des données complètes pour le dataset
+                    processing_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    turn_data = {
+                        "request_id": request_id,
+                        "processing_time_ms": processing_time_ms,
+                        "phase": 5,
+                        "stream_mode": True,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "user_query": clean_message,
+                        "intent_detected": {
+                            "intent_type": intent_type_value,
+                            "confidence": classification_result.confidence,
+                            "is_supported": classification_result.is_supported,
+                            "reasoning": getattr(classification_result, 'reasoning', '')
+                        },
+                        "entities_extracted": entities_result.get("entities", {}) if entities_result else {},
+                        "query_generated": search_query.dict() if search_query else None,
+                        "response_generated": full_response_text,
+                        "search_results_count": search_results.total_hits if search_results else 0,
+                        "client_feedback": {
+                            "rating": None,
+                            "comment": None,
+                            "feedback_date": None
+                        }
+                    }
+                    
+                    persistence_service.add_conversation_turn(
+                        conversation_id=conversation.id,
+                        user_message=clean_message,
+                        assistant_response=full_response_text,
+                        turn_data=turn_data
+                    )
+                except Exception as e:
+                    logger.error(f"[{request_id}] Erreur persistence: {str(e)}")
+            
+            # Signal de fin de stream
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"[{request_id}] Erreur streaming: {str(e)}")
+            error_response = {
+                "error": str(e),
+                "request_id": request_id
+            }
+            yield f"data: {json.dumps(error_response)}\n\n"
+    
+    return StreamingResponse(
+        generate_conversation_stream(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Pour Nginx
+        }
     )
 
 
@@ -763,6 +1044,215 @@ async def get_team_metrics(
 
 
 logger.debug(f"Conversation routes configured - Environment: {environment}")
+
+# ============================================================================
+# GESTION CONTEXTE CONVERSATION AVEC LIMITE 128K TOKENS
+# ============================================================================
+
+async def _get_contextualized_conversation_history(
+    user_id: int,
+    current_message: str,
+    current_search_results: Optional[Any],
+    persistence_service: Optional[ConversationPersistenceService],
+    deepseek_client: DeepSeekClient,
+    request_id: str,
+    max_context_tokens: int = 125000
+) -> Optional[Dict[str, Any]]:
+    """
+    Récupère et résume l'historique des conversations avec gestion intelligente des 128k tokens.
+    
+    Priorité dans l'allocation des tokens:
+    1. Message utilisateur actuel (priorité absolue)
+    2. Résultats de recherche actuels (priorité absolue) 
+    3. Historique résumé (selon espace restant)
+    
+    Args:
+        user_id: ID de l'utilisateur
+        current_message: Message actuel de l'utilisateur
+        current_search_results: Résultats de recherche actuels
+        persistence_service: Service de persistance
+        deepseek_client: Client DeepSeek pour résumer
+        request_id: ID de la requête
+        max_context_tokens: Limite maximum de tokens (128k par défaut)
+        
+    Returns:
+        Dict contenant l'historique résumé ou None si pas d'historique
+    """
+    
+    if not persistence_service:
+        logger.debug(f"[{request_id}] Pas de service de persistance, historique ignoré")
+        return None
+    
+    try:
+        # Estimation des tokens obligatoires (priorité absolue)
+        current_message_tokens = _estimate_text_tokens(current_message)
+        current_results_tokens = 0
+        
+        if current_search_results and current_search_results.hits:
+            # Estimation des tokens des résultats de recherche
+            results_text = ""
+            for hit in current_search_results.hits[:10]:  # Limiter à 10 résultats pour estimation
+                source = hit.source or {}
+                results_text += f"Date: {source.get('date', '')}, Montant: {source.get('amount', 0)}€, Marchand: {source.get('merchant', '')}, Description: {source.get('description', '')}\n"
+            current_results_tokens = _estimate_text_tokens(results_text)
+        
+        # Tokens obligatoires + marge de sécurité pour le prompt système et la réponse
+        reserved_tokens = current_message_tokens + current_results_tokens + 5000  # 5k pour système + réponse
+        available_tokens_for_history = max_context_tokens - reserved_tokens
+        
+        logger.debug(f"[{request_id}] Tokens - Message: {current_message_tokens}, Résultats: {current_results_tokens}, Disponible historique: {available_tokens_for_history}")
+        
+        # Si pas assez de place pour l'historique, retourner None
+        if available_tokens_for_history < 2000:  # Minimum 2k tokens pour un historique utile
+            logger.debug(f"[{request_id}] Pas assez de tokens pour historique ({available_tokens_for_history} < 2000)")
+            return None
+        
+        # Récupérer les conversations récentes de l'utilisateur (exclure la conversation actuelle)
+        recent_conversations = persistence_service.get_user_conversations(
+            user_id=user_id,
+            limit=20,  # Dernières 20 conversations max
+            offset=0
+        )
+        
+        if not recent_conversations:
+            logger.debug(f"[{request_id}] Aucun historique trouvé")
+            return None
+        
+        # Construire l'historique brut des dernières conversations
+        raw_history = []
+        for conversation in recent_conversations[:10]:  # Limiter à 10 conversations
+            try:
+                conv_with_turns = persistence_service.get_conversation_with_turns(
+                    conversation_id=conversation.id,
+                    user_id=user_id
+                )
+                
+                if conv_with_turns and conv_with_turns.turns:
+                    # Prendre les 3 derniers tours de chaque conversation
+                    recent_turns = sorted(conv_with_turns.turns, key=lambda x: x.turn_number)[-3:]
+                    
+                    for turn in recent_turns:
+                        raw_history.append({
+                            "user_message": turn.user_message,
+                            "assistant_response": turn.assistant_response,
+                            "timestamp": turn.created_at.isoformat(),
+                            "intent": turn.data.get("intent_detected", {}).get("intent_type", "unknown") if turn.data else "unknown"
+                        })
+            except Exception as e:
+                logger.debug(f"[{request_id}] Erreur récupération conversation {conversation.id}: {str(e)}")
+                continue
+        
+        if not raw_history:
+            logger.debug(f"[{request_id}] Aucun tour de conversation dans l'historique")
+            return None
+        
+        # Trier par timestamp et prendre les plus récents
+        raw_history = sorted(raw_history, key=lambda x: x["timestamp"], reverse=True)
+        
+        # Résumer l'historique en respectant la limite de tokens
+        summarized_history = await _summarize_conversation_history(
+            raw_history=raw_history,
+            max_tokens=available_tokens_for_history,
+            deepseek_client=deepseek_client,
+            request_id=request_id
+        )
+        
+        if summarized_history:
+            logger.info(f"[{request_id}] ✅ Historique contextualisé intégré - {len(raw_history)} tours résumés")
+            return {
+                "summarized_context": summarized_history,
+                "raw_turns_count": len(raw_history),
+                "estimated_tokens": _estimate_text_tokens(summarized_history),
+                "context_priority": "search_results_first"
+            }
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] ❌ Erreur récupération historique: {str(e)}")
+        return None
+
+
+async def _summarize_conversation_history(
+    raw_history: List[Dict[str, Any]],
+    max_tokens: int,
+    deepseek_client: DeepSeekClient,
+    request_id: str
+) -> Optional[str]:
+    """
+    Résume l'historique des conversations en respectant la limite de tokens
+    """
+    
+    if not raw_history:
+        return None
+    
+    try:
+        # Construire le texte brut de l'historique
+        history_text = ""
+        for turn in raw_history[:20]:  # Max 20 tours les plus récents
+            history_text += f"User: {turn['user_message'][:200]}...\n"  # Tronquer à 200 chars
+            history_text += f"Assistant: {turn['assistant_response'][:300]}...\n"  # Tronquer à 300 chars
+            history_text += f"Intent: {turn['intent']}\n---\n"
+        
+        # Estimation des tokens du texte brut
+        estimated_tokens = _estimate_text_tokens(history_text)
+        
+        # Si l'historique brut tient dans la limite, le retourner tel quel
+        if estimated_tokens <= max_tokens * 0.8:  # Garde 20% de marge
+            logger.debug(f"[{request_id}] Historique brut utilisé ({estimated_tokens} tokens)")
+            return f"HISTORIQUE DES CONVERSATIONS PRÉCÉDENTES:\n{history_text}"
+        
+        # Sinon, demander à DeepSeek de résumer
+        summary_prompt = f"""Résume cet historique de conversations financières en gardant les informations essentielles pour le contexte :
+
+{history_text}
+
+Instructions :
+- Résume en maximum {max_tokens // 4} mots
+- Garde les patterns récurrents de demandes
+- Mentionne les montants et marchands fréquemment discutés
+- Conserve le style de communication de l'utilisateur
+- Format concis et structuré
+
+Résumé contextualisé :"""
+        
+        chat_response = await deepseek_client.chat_completion(
+            messages=[{"role": "user", "content": summary_prompt}],
+            max_tokens=min(1000, max_tokens // 4),  # Max 1000 tokens pour le résumé
+            temperature=0.1  # Très factuel
+        )
+        
+        summary = chat_response["choices"][0]["message"]["content"].strip()
+        
+        logger.debug(f"[{request_id}] Historique résumé par LLM ({_estimate_text_tokens(summary)} tokens)")
+        return f"CONTEXTE DES CONVERSATIONS PRÉCÉDENTES:\n{summary}"
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] ❌ Erreur résumé historique: {str(e)}")
+        return None
+
+
+def _estimate_text_tokens(text: str) -> int:
+    """
+    Estimation du nombre de tokens dans un texte
+    
+    Utilise une approximation basée sur:
+    - 1 token ≈ 4 caractères pour l'anglais
+    - 1 token ≈ 3 caractères pour le français (plus dense)
+    - Majoration de 20% pour la sécurité
+    """
+    if not text:
+        return 0
+    
+    # Estimation de base : 3 chars = 1 token en français
+    base_estimation = len(text) / 3.0
+    
+    # Majoration de sécurité de 20%
+    safe_estimation = int(base_estimation * 1.2)
+    
+    return max(1, safe_estimation)  # Au moins 1 token
+
+
 # ============================================================================
 # INTÉGRATION FONCTIONS PHASE 5 - WORKFLOW COMPLET
 # ============================================================================
@@ -928,8 +1418,10 @@ async def _process_conversation_phase5_integrated(
         # ÉTAPE 4: Exécution recherche (si requête générée)
         # ====================================================================
         search_results = None
+        resilience_metrics = None
         step4 = None
         
+        # Exécution de la recherche si une requête a été générée
         if search_query:
             step4_start = time.time()
             
@@ -944,7 +1436,22 @@ async def _process_conversation_phase5_integrated(
                 executor_response = await search_executor.handle_search_request(executor_request)
                 search_results = executor_response.search_results if executor_response.success else None
                 
+                # Calculer la durée d'abord
                 step4_duration = int((time.time() - step4_start) * 1000)
+                
+                # Récupération ou création des métriques de résilience depuis SearchExecutor
+                resilience_metrics = getattr(executor_response, 'resilience_metrics', None)
+                
+                # Créer des métriques par défaut si pas disponibles mais recherche réussie
+                if resilience_metrics is None and executor_response.success:
+                    from conversation_service.models.responses.conversation_responses import ResilienceMetrics
+                    resilience_metrics = ResilienceMetrics(
+                        circuit_breaker_triggered=False,
+                        fallback_used=getattr(executor_response, 'fallback_used', False),
+                        retry_attempts=0,
+                        search_execution_time_ms=getattr(executor_response, 'execution_time_ms', step4_duration)
+                    )
+                
                 step4 = ProcessingSteps(
                     agent="search_executor", 
                     duration_ms=step4_duration,
@@ -953,6 +1460,7 @@ async def _process_conversation_phase5_integrated(
                 )
             except Exception as e:
                 logger.warning(f"[{request_id}] ⚠️ Exécution search échouée: {str(e)}")
+                resilience_metrics = None  # Pas de métriques en cas d'exception
                 step4_duration = int((time.time() - step4_start) * 1000)
                 step4 = ProcessingSteps(
                     agent="search_executor",
@@ -975,8 +1483,8 @@ async def _process_conversation_phase5_integrated(
             from conversation_service.models.responses.conversation_responses import ResponseContent, StructuredData
             from conversation_service.prompts.templates.response_templates import get_response_template
             
-            # Génération de réponse contextualisée avec LLM (version simplifiée)
-            logger.debug(f"[{request_id}] Generating LLM response...")
+            # Génération de réponse contextualisée avec LLM (version avec historique)
+            logger.debug(f"[{request_id}] Generating LLM response with conversation history...")
             
             # Préparation du prompt contextualisé
             intent_type = str(classification_result.intent_type.value if hasattr(classification_result.intent_type, 'value') else classification_result.intent_type)
@@ -1002,13 +1510,25 @@ async def _process_conversation_phase5_integrated(
                     "analysis_type": intent_type
                 }
             
-            # Génération du prompt
+            # Récupération et résumé de l'historique des conversations avec gestion 128k tokens
+            conversation_history = await _get_contextualized_conversation_history(
+                user_id=validated_user_id,
+                current_message=clean_message,
+                current_search_results=search_results,
+                persistence_service=persistence_service,
+                deepseek_client=deepseek_client,
+                request_id=request_id,
+                max_context_tokens=125000  # Garde 3k tokens pour la réponse
+            )
+            
+            # Génération du prompt avec historique intégré
             prompt = get_response_template(
                 intent_type=intent_type,
                 user_message=clean_message,
                 entities=entities,
                 analysis_data=analysis_data,
                 user_context=user_context,
+                conversation_history=conversation_history,
                 use_personalization=user_context is not None
             )
             
@@ -1116,6 +1636,7 @@ async def _process_conversation_phase5_integrated(
             entities=entities_result,
             search_query=search_query,
             search_results=search_results,
+            resilience_metrics=resilience_metrics,
             response=response_content,
             phase=5,
             request_id=request_id,

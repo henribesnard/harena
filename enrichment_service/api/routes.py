@@ -128,21 +128,26 @@ async def sync_user_transactions(
             )
         
         # Précharger les informations de compte pour toutes les transactions
+        # On récupère les comptes par leur ID interne (FK de raw_transactions)
         account_ids = {tx.account_id for tx in raw_transactions}
         accounts = db.query(SyncAccount).filter(SyncAccount.id.in_(account_ids)).all()
-        accounts_map = {
-            (acc.id if hasattr(acc, "id") else acc.account_id): acc
-            for acc in accounts
-        }
+
+        # Map interne pour retrouver rapidement le compte à partir de l'ID interne
+        accounts_by_internal_id = {acc.id: acc for acc in accounts}
+
+        # Map public pour le processeur, indexé par bridge_account_id (identifiant métier)
+        accounts_map = {acc.bridge_account_id: acc for acc in accounts}
 
         # Convertir en TransactionInput avec métadonnées de compte
         transaction_inputs = []
         for raw_tx in raw_transactions:
-            account = accounts_map.get(raw_tx.account_id)
+            # Récupération via l'ID interne
+            account = accounts_by_internal_id.get(raw_tx.account_id)
             tx_input = TransactionInput(
                 bridge_transaction_id=raw_tx.bridge_transaction_id,
                 user_id=raw_tx.user_id,
-                account_id=raw_tx.account_id,
+                # Pour l'enrichment_service, account_id correspond désormais au bridge_account_id
+                account_id=(account.bridge_account_id if account else raw_tx.account_id),
                 account_name=account.account_name if account else None,
                 account_type=account.account_type if account else None,
                 account_balance=account.balance if account else None,

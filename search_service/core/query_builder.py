@@ -6,37 +6,69 @@ logger = logging.getLogger(__name__)
 
 class QueryBuilder:
     """
-    Constructeur de requêtes Elasticsearch - Version Production
+    Constructeur de requêtes Elasticsearch - Version Multi-Index
+    
+    Support 2 index :
+    - harena_transactions (transactions nettoyées)
+    - harena_accounts (comptes avec soldes)
     
     Corrections appliquées:
     - ✅ Support complet filtre EXISTS (true/false/{})
     - ✅ Détection pipeline aggregations dans order
     - ✅ Validation robuste des champs
     - ✅ Gestion d'erreurs améliorée
+    - ✅ Routage automatique multi-index
     """
     
     def __init__(self):
-        # Configuration des champs de recherche basée sur mapping réel Elasticsearch
-        self.search_fields = [
+        # Configuration des champs de recherche pour TRANSACTIONS
+        self.transaction_search_fields = [
             "primary_description^1.5",   # Description transaction principale
             "merchant_name^1.8",         # Nom marchand avec boost élevé
             "category_name^1.0",         # Catégorie standard
         ]
         
-        # Champs nécessitant .keyword pour filtres exacts
-        self.keyword_fields: Set[str] = {
+        # Configuration des champs de recherche pour ACCOUNTS
+        self.account_search_fields = [
+            "account_name^2.0",          # Nom du compte avec boost élevé
+            "account_type^1.0",          # Type de compte
+        ]
+        
+        # Champs nécessitant .keyword pour filtres exacts (TRANSACTIONS)
+        self.transaction_keyword_fields: Set[str] = {
             'category_name', 'merchant_name', 'operation_type',
-            'currency_code', 'transaction_type', 'weekday',
+            'currency_code', 'transaction_type', 'weekday'
+        }
+        
+        # Champs nécessitant .keyword pour filtres exacts (ACCOUNTS)  
+        self.account_keyword_fields: Set[str] = {
             'account_name', 'account_type', 'account_currency'
         }
         
-        # Champs autorisés pour les agrégations (sécurité)
-        self.allowed_aggregation_fields: Set[str] = {
+        # Configuration des index
+        self.transactions_index = "harena_transactions"
+        self.accounts_index = "harena_accounts"
+        
+        # Champs autorisés pour les agrégations TRANSACTIONS
+        self.transaction_aggregation_fields: Set[str] = {
             "amount", "amount_abs", "date", "transaction_id", "user_id", "account_id",
             "currency_code", "transaction_type", "operation_type", "category_name",
-            "merchant_name", "primary_description", "month_year", "weekday",
-            "account_name", "account_type", "account_balance", "account_currency"
+            "merchant_name", "primary_description", "month_year", "weekday"
         }
+        
+        # Champs autorisés pour les agrégations ACCOUNTS
+        self.account_aggregation_fields: Set[str] = {
+            "user_id", "account_id", "account_name", "account_type", 
+            "account_balance", "account_currency", "is_active", "created_at", "updated_at"
+        }
+
+        # Unions globales pour validations génériques
+        self.allowed_aggregation_fields: Set[str] = (
+            self.transaction_aggregation_fields | self.account_aggregation_fields
+        )
+        self.global_keyword_fields: Set[str] = (
+            self.transaction_keyword_fields | self.account_keyword_fields
+        )
         
         # Types d'agrégation Elasticsearch valides
         self.elasticsearch_agg_types: Set[str] = {
@@ -69,10 +101,85 @@ class QueryBuilder:
         except (TypeError, ValueError):
             return False
 
+    def _detect_search_type(self, request: SearchRequest) -> str:
+        """
+        Détecte automatiquement si on cherche des comptes ou des transactions.
+        
+        Returns:
+            str: "accounts" ou "transactions"
+        """
+        # 🏦 Détection ACCOUNTS : si on cherche spécifiquement des champs de comptes
+        account_specific_fields = {
+            'account_balance', 'account_name', 'account_type', 'account_currency', 'is_active'
+        }
+        
+        # Vérifier dans les filtres
+        if hasattr(request, 'filters') and request.filters:
+            for field in request.filters.keys():
+                if field in account_specific_fields:
+                    logger.debug(f"🏦 Détection ACCOUNTS via filtre: {field}")
+                    return "accounts"
+        
+        # Vérifier dans les agrégations
+        if hasattr(request, 'aggregations') and request.aggregations:
+            for agg_name, agg_def in request.aggregations.items():
+                if self._aggregation_references_accounts(agg_def):
+                    logger.debug(f"🏦 Détection ACCOUNTS via agrégation: {agg_name}")
+                    return "accounts"
+        
+        # Vérifier dans source (liste de champs demandés par le client)
+        if hasattr(request, 'source') and request.source:
+            for field in request.source:
+                if field in account_specific_fields:
+                    logger.debug(f"🏦 Détection ACCOUNTS via source: {field}")
+                    return "accounts"
+        
+        # 📄 Par défaut : TRANSACTIONS
+        logger.debug("📄 Détection TRANSACTIONS (par défaut)")
+        return "transactions"
+    
+    def _aggregation_references_accounts(self, agg_def: Dict[str, Any]) -> bool:
+        """Vérifie récursivement si une agrégation référence des champs de comptes."""
+        account_fields = {
+            'account_balance', 'account_name', 'account_type', 'account_currency', 'is_active'
+        }
+        
+        def check_recursive(obj):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    if key == "field" and value in account_fields:
+                        return True
+                    if isinstance(value, (dict, list)):
+                        if check_recursive(value):
+                            return True
+            elif isinstance(obj, list):
+                for item in obj:
+                    if check_recursive(item):
+                        return True
+            return False
+        
+        return check_recursive(agg_def)
+
     def build_query(self, request: SearchRequest) -> Dict[str, Any]:
         """
-        Construction d'une requête Elasticsearch complète avec séparation query/filter optimisée.
+        Construction d'une requête Elasticsearch complète avec détection multi-index.
         """
+        # 🔍 Détection automatique du type de recherche
+        search_type = self._detect_search_type(request)
+        target_index = self.accounts_index if search_type == "accounts" else self.transactions_index
+        
+        # Configuration adaptée au type de recherche
+        if search_type == "accounts":
+            search_fields = self.account_search_fields
+            keyword_fields = self.account_keyword_fields
+            allowed_agg_fields = self.account_aggregation_fields
+        else:
+            search_fields = self.transaction_search_fields
+            keyword_fields = self.transaction_keyword_fields
+            allowed_agg_fields = self.transaction_aggregation_fields
+        
+        logger.debug(f"🎯 Query builder: {search_type} sur index {target_index}")
+        
         # Séparation critique : query (scoring) vs filters (performance)
         text_query_part = None
         must_filters = []
@@ -83,17 +190,16 @@ class QueryBuilder:
         # 2. Requête textuelle → QUERY avec scoring
         if request.query and request.query.strip():
             cleaned_query = request.query.strip()
-            
-            if self._is_numeric(cleaned_query):
-                # Requête numérique → filtre sur account_balance
+            if self._is_numeric(cleaned_query) and search_type == "accounts":
+                # Requête numérique sur accounts → filtre sur account_balance
                 value = float(cleaned_query)
                 must_filters.append({"range": {"account_balance": {"gte": value, "lte": value}}})
             else:
                 # Requête textuelle → multi_match avec scoring
-                text_query_part = self._build_text_query(cleaned_query)
+                text_query_part = self._build_text_query(cleaned_query, search_fields)
         
         # 3. Filtres additionnels
-        additional_filters = self._build_additional_filters(request.filters)
+        additional_filters = self._build_additional_filters(request.filters, keyword_fields)
         must_filters.extend(additional_filters)
         
         # 4. Construction bool query optimisée
@@ -108,8 +214,8 @@ class QueryBuilder:
             # Mode filtre uniquement: tout dans must
             bool_query["must"] = must_filters
         
-        # 5. Tri intelligent
-        sort_criteria = request.sort if request.sort is not None else self._build_sort_criteria(request)
+        # 5. Tri intelligent adapté au type
+        sort_criteria = request.sort if request.sort is not None else self._build_sort_criteria(request, search_type)
         
         # 6. Pagination
         page = getattr(request, "page", 1)
@@ -119,7 +225,7 @@ class QueryBuilder:
         query = {
             "query": {"bool": bool_query},
             "sort": sort_criteria,
-            "_source": self._get_source_fields(),
+            "_source": self._get_source_fields(search_type),
             "size": request.page_size,
             "from": offset
         }
@@ -132,9 +238,14 @@ class QueryBuilder:
         if request.highlight:
             query["highlight"] = request.highlight
         
-        return query
+        # 🎯 Retour avec métadonnées d'index
+        return {
+            "query": query,
+            "target_index": target_index,
+            "search_type": search_type
+        }
 
-    def _build_text_query(self, query_text: str) -> Dict[str, Any]:
+    def _build_text_query(self, query_text: str, search_fields: List[str]) -> Dict[str, Any]:
         """Construction de la requête textuelle multi_match optimisée."""
         terms_count = len(query_text.split())
         minimum_should_match = "50%" if terms_count >= 2 else "100%"
@@ -142,15 +253,15 @@ class QueryBuilder:
         return {
             "multi_match": {
                 "query": query_text,
-                "fields": self.search_fields,
+                "fields": search_fields,  # 🔧 Utilise les champs dynamiques
                 "type": "best_fields",
                 "fuzziness": "AUTO",
                 "minimum_should_match": minimum_should_match
             }
         }
 
-    def _build_sort_criteria(self, request: SearchRequest) -> List[Dict[str, Any]]:
-        """Construction des critères de tri intelligents."""
+    def _build_sort_criteria(self, request: SearchRequest, search_type: str = "transactions") -> List[Dict[str, Any]]:
+        """Construction des critères de tri intelligents adaptés au type d'index."""
         sort_criteria = []
         
         # Si recherche textuelle non-numérique → tri par score d'abord
@@ -158,12 +269,17 @@ class QueryBuilder:
             not self._is_numeric(request.query.strip())):
             sort_criteria.append({"_score": {"order": "desc"}})
         
-        # Toujours trier par date décroissante en second/premier
-        sort_criteria.append({"date": {"order": "desc"}})
+        # Tri par défaut selon le type d'index
+        if search_type == "accounts":
+            # Pour les comptes : tri par account_id ou account_name
+            sort_criteria.append({"account_id": {"order": "asc"}})
+        else:
+            # Pour les transactions : tri par date (historique)
+            sort_criteria.append({"date": {"order": "desc"}})
         
         return sort_criteria
 
-    def _build_additional_filters(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _build_additional_filters(self, filters: Dict[str, Any], keyword_fields: Set[str]) -> List[Dict[str, Any]]:
         """
         Construction des filtres additionnels avec support complet des types Elasticsearch.
         
@@ -171,6 +287,7 @@ class QueryBuilder:
         - ✅ Support complet filtre EXISTS (true/false/{})
         - ✅ Gestion robuste de tous les types de filtres
         - ✅ Validation et sécurité renforcées
+        - ✅ Support multi-index avec keyword_fields dynamiques
         """
         filter_list: List[Dict[str, Any]] = []
 
@@ -181,18 +298,18 @@ class QueryBuilder:
             try:
                 # DICTIONNAIRE: différents types de filtres complexes
                 if isinstance(value, dict):
-                    filter_result = self._process_dict_filter(field, value)
+                    filter_result = self._process_dict_filter(field, value, keyword_fields)
                     if filter_result:
                         filter_list.append(filter_result)
 
                 # LISTE: terms filter
                 elif isinstance(value, list):
-                    field_name = self._get_filter_field_name(field)
+                    field_name = self._get_filter_field_name(field, keyword_fields)
                     filter_list.append({"terms": {field_name: value}})
 
                 # VALEUR SIMPLE: term filter
                 else:
-                    field_name = self._get_filter_field_name(field)
+                    field_name = self._get_filter_field_name(field, keyword_fields)
                     filter_list.append({"term": {field_name: value}})
                     
             except ValueError as e:
@@ -205,11 +322,11 @@ class QueryBuilder:
 
         return filter_list
 
-    def _process_dict_filter(self, field: str, value: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _process_dict_filter(self, field: str, value: Dict[str, Any], keyword_fields: Set[str]) -> Optional[Dict[str, Any]]:
         """
         Traite un filtre de type dictionnaire (filtres complexes).
         
-        CORRECTION MAJEURE: Support complet du filtre EXISTS
+        CORRECTION MAJEURE: Support complet du filtre EXISTS + multi-index
         """
         
         # 1. RANGE FILTER: opérateurs numériques/temporels
@@ -231,53 +348,99 @@ class QueryBuilder:
 
         # 3. WILDCARD FILTER: patterns
         elif "wildcard" in value:
-            field_name = self._get_filter_field_name(field)
+            field_name = self._get_filter_field_name(field, keyword_fields)
             pattern = value["wildcard"]
             return {"wildcard": {field_name: {"value": pattern}}}
 
         # 4. PREFIX FILTER: préfixes
         elif "prefix" in value:
-            field_name = self._get_filter_field_name(field)
+            field_name = self._get_filter_field_name(field, keyword_fields)
             prefix = value["prefix"]
             return {"prefix": {field_name: prefix}}
 
         # 5. REGEXP FILTER: expressions régulières
         elif "regexp" in value:
-            field_name = self._get_filter_field_name(field)
+            field_name = self._get_filter_field_name(field, keyword_fields)
             regex = value["regexp"]
             return {"regexp": {field_name: regex}}
 
-        # 6. TERM/TERMS EXPLICIT
+        # 6. MATCH / MATCH_PHRASE FILTERS: support textuel et fallback keyword
+        elif "match" in value:
+            match_value = value["match"]
+            # Pour les champs textuels connus comme keyword_fields, on convertit en term sur .keyword
+            if field in keyword_fields:
+                field_name = self._get_filter_field_name(field, keyword_fields)
+                if isinstance(match_value, dict):
+                    query_val = match_value.get("query")
+                else:
+                    query_val = match_value
+                if query_val is None:
+                    return None
+                return {"term": {field_name: query_val}}
+            else:
+                # Champ analysé: utiliser match natif
+                if isinstance(match_value, dict):
+                    return {"match": {field: match_value}}
+                else:
+                    return {"match": {field: {"query": match_value, "operator": "and"}}}
+
+        elif "match_phrase" in value:
+            phrase_value = value["match_phrase"]
+            if field in keyword_fields:
+                # Sur un keyword, match_phrase n'a pas de sens → fallback term
+                field_name = self._get_filter_field_name(field, keyword_fields)
+                if isinstance(phrase_value, dict):
+                    query_val = phrase_value.get("query")
+                else:
+                    query_val = phrase_value
+                if query_val is None:
+                    return None
+                return {"term": {field_name: query_val}}
+            else:
+                if isinstance(phrase_value, dict):
+                    return {"match_phrase": {field: phrase_value}}
+                else:
+                    return {"match_phrase": {field: {"query": phrase_value}}}
+
+        # 7. TERM/TERMS EXPLICIT
         elif "term" in value:
-            field_name = self._get_filter_field_name(field)
+            field_name = self._get_filter_field_name(field, keyword_fields)
             return {"term": {field_name: value["term"]}}
 
         elif "terms" in value:
-            field_name = self._get_filter_field_name(field)
+            field_name = self._get_filter_field_name(field, keyword_fields)
             return {"terms": {field_name: value["terms"]}}
 
-        # 7. FILTRE INCONNU
+        # 8. FILTRE INCONNU
         else:
             msg = f"Unsupported filter type for field '{field}': {value}"
             logger.error(msg)
             raise ValueError(msg)
 
-    def _get_filter_field_name(self, field: str) -> str:
+    def _get_filter_field_name(self, field: str, keyword_fields: Set[str]) -> str:
         """
         Détermine le nom de champ correct pour les filtres.
         Ajoute .keyword pour les champs textuels si nécessaire.
         """
-        return f"{field}.keyword" if field in self.keyword_fields else field
+        return f"{field}.keyword" if field in keyword_fields else field
     
-    def _get_source_fields(self) -> List[str]:
-        """Définit les champs à retourner dans les résultats de recherche."""
-        return [
-            "transaction_id", "user_id", "account_id",
-            "account_name", "account_type", "account_balance", "account_currency",
-            "amount", "amount_abs", "currency_code", "transaction_type",
-            "date", "month_year", "weekday",
-            "primary_description", "merchant_name", "category_name", "operation_type"
-        ]
+    def _get_source_fields(self, search_type: str = "transactions") -> List[str]:
+        """Définit les champs à retourner selon le type d'index."""
+        if search_type == "accounts":
+            # Champs pour l'index accounts
+            return [
+                "user_id", "account_id", "account_name", "account_type", 
+                "account_balance", "account_currency", "is_active",
+                "created_at", "updated_at", "last_sync_timestamp"
+            ]
+        else:
+            # Champs pour l'index transactions (nettoyé)
+            return [
+                "transaction_id", "user_id", "account_id",  # account_id comme lien
+                "amount", "amount_abs", "currency_code", "transaction_type",
+                "date", "month_year", "weekday",
+                "primary_description", "merchant_name", "category_name", "operation_type"
+            ]
 
     def _needs_score_tracking(self, sort_criteria: List[Dict[str, Any]]) -> bool:
         """Détermine si le tracking des scores est nécessaire."""
@@ -332,7 +495,7 @@ class QueryBuilder:
 
         if group_by:
             for field in group_by:
-                field_name = self._get_filter_field_name(field)
+                field_name = self._get_filter_field_name(field, self.global_keyword_fields)
                 agg_def: Dict[str, Any] = {
                     "terms": {"field": field_name, "size": 10}
                 }
@@ -401,46 +564,77 @@ class QueryBuilder:
         
         CORRECTION MAJEURE: Fix pipeline aggregations dans order
         """
-        validated = {}
-        
-        for key, value in agg_def.items():
-            # Validation field
-            if key == "field" and isinstance(value, str):
-                field_name = value.replace(".keyword", "")
-                if field_name in allowed_fields:
-                    validated[key] = value
-                else:
-                    logger.warning(f"Field not allowed in aggregation: {value}")
-                    return None
+        validated: Dict[str, Any] = {}
 
-            # Validation order - CORRECTION MAJEURE
-            elif key == "order" and isinstance(value, dict):
-                corrected_order = self._fix_pipeline_aggregation_order(value, agg_def)
-                if corrected_order:
-                    validated[key] = corrected_order
-                    if corrected_order != value:
-                        logger.info(f"Order corrected from {value} to {corrected_order}")
+        # 1) Traiter les définitions de types d'agrégations (terms, date_histogram, sum, ...)
+        agg_type_keys = set(agg_def.keys()) & self.elasticsearch_agg_types
+        for agg_type in agg_type_keys:
+            sub_def = agg_def.get(agg_type, {})
+            if not isinstance(sub_def, dict):
+                continue
+            validated_sub: Dict[str, Any] = {}
+            for k, v in sub_def.items():
+                if k == "field" and isinstance(v, str):
+                    base_field = v.replace(".keyword", "")
+                    if base_field not in allowed_fields:
+                        logger.warning(f"Field not allowed in aggregation: {v}")
+                        return None
+                    # Pour les agrégations sur des champs textuels, forcer .keyword si applicable
+                    if agg_type in {"terms", "cardinality", "value_count"} and base_field in self.global_keyword_fields:
+                        validated_sub[k] = f"{base_field}.keyword"
+                    else:
+                        validated_sub[k] = v
                 else:
-                    logger.warning(f"Invalid order removed: {value}")
+                    # Validation simple des autres valeurs
+                    if self._is_safe_aggregation_value(k, v):
+                        validated_sub[k] = v
+                    else:
+                        logger.warning(f"Invalid aggregation value for key {k}: {type(v)}")
+                        return None
+            # Politique métier: éviter 'global' (ignore la query).
+            # Remplacer tout 'global' par un bucket 'filter' neutre qui respecte le contexte de la query.
+            if agg_type == "global":
+                validated["filter"] = {"match_all": {}}
+            elif validated_sub:
+                validated[agg_type] = validated_sub
 
-            # Validation aggs - récursive
-            elif key == "aggs" and isinstance(value, dict):
-                sub_aggs = {}
-                for sub_name, sub_def in value.items():
-                    validated_sub = self._validate_aggregation_definition(sub_def, allowed_fields)
-                    if validated_sub:
-                        sub_aggs[sub_name] = validated_sub
-                if sub_aggs:
-                    validated[key] = sub_aggs
-            
-            # Autres clés - validation basique
+        # 2) Traiter la clé 'order' au même niveau (ex: terms + order)
+        if "order" in agg_def and isinstance(agg_def["order"], dict):
+            corrected_order = self._fix_pipeline_aggregation_order(agg_def["order"], agg_def)
+            if corrected_order:
+                validated["order"] = corrected_order
+                if corrected_order != agg_def["order"]:
+                    logger.info(f"Order corrected from {agg_def['order']} to {corrected_order}")
             else:
-                if self._is_safe_aggregation_value(key, value):
-                    validated[key] = value
-                else:
-                    logger.warning(f"Invalid aggregation value for key {key}: {type(value)}")
-                    return None
-        
+                logger.warning(f"Invalid order removed: {agg_def['order']}")
+
+        # 3) Traiter récursivement les sous-agrégations
+        if "aggs" in agg_def and isinstance(agg_def["aggs"], dict):
+            sub_aggs: Dict[str, Any] = {}
+            for sub_name, sub_def in agg_def["aggs"].items():
+                validated_sub = self._validate_aggregation_definition(sub_def, allowed_fields)
+                if validated_sub:
+                    sub_aggs[sub_name] = validated_sub
+            if sub_aggs:
+                validated["aggs"] = sub_aggs
+
+            # Si aucune définition d'agrégation top-level n'est présente
+            # mais qu'il y a des sous-agrégations, envelopper dans un 'filter' neutre
+            if not agg_type_keys and "filter" not in validated:
+                validated["filter"] = {"match_all": {}}
+
+        # 4) Conserver les autres paires clé/valeur sûres au niveau courant
+        for key, value in agg_def.items():
+            if key in validated:
+                continue
+            if key in agg_type_keys or key in {"aggs", "order"}:
+                continue
+            if self._is_safe_aggregation_value(key, value):
+                validated[key] = value
+            else:
+                logger.warning(f"Invalid aggregation value for key {key}: {type(value)}")
+                return None
+
         return validated if validated else None
 
     def _fix_pipeline_aggregation_order(self, order_def: Dict[str, Any], parent_agg: Dict[str, Any]) -> Optional[Dict[str, Any]]:

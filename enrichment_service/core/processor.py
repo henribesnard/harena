@@ -81,6 +81,12 @@ class ElasticsearchTransactionProcessor:
         if parts:
             structured_tx.searchable_text += " | " + " | ".join(parts)
 
+        # Propager aussi dans les champs structurés si non définis
+        if category and not getattr(structured_tx, "category_name", None):
+            structured_tx.category_name = category
+        if merchant and not getattr(structured_tx, "merchant_name", None):
+            structured_tx.merchant_name = merchant
+
     async def process_single_transaction(
         self,
         transaction: TransactionInput,
@@ -453,11 +459,32 @@ class ElasticsearchTransactionProcessor:
                 f"📝 {account_metadata_enriched} transactions enrichies avec des métadonnées de compte"
             )
 
-            # 1. Indexer les comptes associés si fournis
+            # 1. Indexer les comptes dans l'index accounts séparé si fournis
             accounts_indexed = 0
             if accounts:
                 try:
-                    accounts_indexed = await self.elasticsearch_client.index_accounts(accounts, user_id)
+                    # Préparer les comptes pour l'indexation
+                    accounts_data = []
+                    for acc in accounts:
+                        account_data = {
+                            "user_id": user_id,
+                            "account_id": getattr(acc, "bridge_account_id", getattr(acc, "account_id", None)),
+                            "account_name": getattr(acc, "account_name", None),
+                            "account_type": getattr(acc, "account_type", None),
+                            "account_balance": getattr(acc, "balance", None),
+                            "account_currency": getattr(acc, "currency_code", None),
+                            "created_at": getattr(acc, "created_at", datetime.now()).isoformat(),
+                            "last_sync_timestamp": getattr(acc, "last_sync_timestamp", datetime.now()).isoformat(),
+                            "is_active": getattr(acc, "is_active", True),
+                        }
+                        if account_data["account_id"]:
+                            accounts_data.append(account_data)
+                    
+                    if accounts_data:
+                        bulk_result = await self.elasticsearch_client.bulk_index_accounts(accounts_data)
+                        accounts_indexed = bulk_result.get("indexed", 0)
+                        logger.info(f"📊 {accounts_indexed} comptes indexés dans l'index accounts")
+                
                 except Exception as e:  # pragma: no cover - logging only
                     logger.error(f"Erreur indexation comptes user {user_id}: {e}")
 

@@ -51,6 +51,15 @@ class SearchRequest(BaseModel):
         default=False,
         description="Si vrai, seuls les résultats d'agrégations sont renvoyés",
     )
+    
+    # 🎯 Nouveau : support de la liste des champs demandés
+    # Utilise le nom public 'source' (sans underscore). On accepte l'alias
+    # d'entrée "_source" pour compatibilité avec les requêtes ES habituelles.
+    source: Optional[List[str]] = Field(
+        default=None,
+        description="Liste des champs à retourner (pour pilotage côté client)",
+        alias="_source"
+    )
 
     @model_validator(mode="before")
     @classmethod

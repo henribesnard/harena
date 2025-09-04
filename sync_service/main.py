@@ -90,5 +90,10 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == "__main__":
+    import os, sys
+    allow = os.getenv("HARENA_STANDALONE", "").lower() == "true"
+    if not allow:
+        print("Standalone server disabled. Use local_app.py (port 8000) or set HARENA_STANDALONE=true")
+        sys.exit(0)
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=True)
+    uvicorn.run("sync_service.main:app", host="0.0.0.0", port=8002, reload=True)

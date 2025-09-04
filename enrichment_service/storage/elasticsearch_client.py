@@ -18,11 +18,13 @@ from enrichment_service.storage.index_management import ensure_template_and_poli
 logger = logging.getLogger("enrichment_service.elasticsearch")
 
 class ElasticsearchClient:
-    """Client HTTP pour indexer dans Bonsai Elasticsearch."""
+    """Client HTTP pour indexer dans Bonsai Elasticsearch - Support dual index."""
     
     def __init__(self):
         self.base_url = settings.BONSAI_URL
-        self.index_name = "harena_transactions"
+        self.transactions_index = "harena_transactions"  # Index des transactions (nettoyé)
+        self.accounts_index = "harena_accounts"         # Nouvel index des comptes
+        self.index_name = self.transactions_index  # Rétrocompatibilité
         self.session = None
         self._initialized = False
         # Batch size used as a starting point for adaptive bulk indexing
@@ -59,56 +61,48 @@ class ElasticsearchClient:
             logger.error(f"❌ Erreur connexion Elasticsearch: {e}")
             raise
         
-        # Créer l'index s'il n'existe pas
-        await self._setup_index()
+        # Créer les index s'ils n'existent pas (transactions + accounts)
+        await self._setup_indexes()
         # Précharger certaines requêtes pour réchauffer les caches
-        await self._warm_index()
+        await self._warm_indexes()
         self._initialized = True
-        logger.info(f"📄 Client Elasticsearch initialisé pour index '{self.index_name}'")
+        logger.info(f"📄 Client Elasticsearch initialisé (transactions: '{self.transactions_index}', accounts: '{self.accounts_index}')")
     
-    async def _setup_index(self):
-        """Crée l'index s'il n'existe pas."""
+    async def _setup_indexes(self):
+        """Crée les index transactions et accounts s'ils n'existent pas."""
         # S'assurer que le template et la politique ILM existent
         await ensure_template_and_policy(self.session, self.base_url)
 
+        # 1. Créer l'index transactions (nettoyé)
+        await self._create_transactions_index()
+        
+        # 2. Créer l'index accounts (nouveau)
+        await self._create_accounts_index()
+
+    async def _create_transactions_index(self):
+        """Crée l'index des transactions (version nettoyée)."""
         # Vérifier l'existence de l'alias (index de rollover)
-        async with self.session.head(f"{self.base_url}/{self.index_name}") as response:
+        async with self.session.head(f"{self.base_url}/{self.transactions_index}") as response:
             if response.status == 200:
-                logger.info(f"📚 Index alias '{self.index_name}' existe déjà")
+                logger.info(f"📚 Index transactions '{self.transactions_index}' existe déjà")
                 return
 
         # Créer l'index initial avec alias pour le rollover
-        index_name = f"{self.index_name}-000001"
+        index_name = f"{self.transactions_index}-000001"
         body = {
             "aliases": {
-                self.index_name: {"is_write_index": True}
+                self.transactions_index: {"is_write_index": True}
             }
         }
 
-        # Créer l'index avec mapping optimisé
+        # Créer l'index avec mapping optimisé (NETTOYÉ - sans données de compte)
         mapping = {
             "mappings": {
                 "properties": {
-                    # 🔧 NOUVEAU : Type de document pour différencier
-                    "document_type": {"type": "keyword"},  # "transaction" ou "account"
-                    
                     # Identifiants
                     "user_id": {"type": "integer"},
                     "transaction_id": {"type": "keyword"},
-                    "account_id": {"type": "integer"},
-
-                    # Informations de compte
-                    "account_name": {
-                        "type": "text",
-                        "analyzer": "merchant_analyzer",
-                        "fields": {
-                            "keyword": {"type": "keyword"}
-                        }
-                    },
-                    "account_type": {"type": "keyword"},
-                    "account_balance": {"type": "float"},
-                    "account_currency": {"type": "keyword"},
-                    "last_sync_timestamp": {"type": "date"},
+                    "account_id": {"type": "integer"},  # 🔗 LIEN vers index accounts
 
                     # Contenu recherchable
                     "searchable_text": {
@@ -157,8 +151,6 @@ class ElasticsearchClient:
                     "is_deleted": {"type": "boolean"},
 
                     # Métadonnées
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"},
                     "indexed_at": {"type": "date"},
                     "version": {"type": "keyword"}
                 }
@@ -210,31 +202,103 @@ class ElasticsearchClient:
 
         async with self.session.put(f"{self.base_url}/{index_name}", json=body) as response:
             if response.status in [200, 201]:
-                logger.info(f"✅ Index '{index_name}' créé avec succès")
+                logger.info(f"✅ Index transactions '{index_name}' créé avec succès")
             else:
                 error_text = await response.text()
-                logger.error(f"❌ Erreur création index: {response.status} - {error_text}")
-                raise Exception(f"Failed to create index: {error_text}")
+                logger.error(f"❌ Erreur création index transactions: {response.status} - {error_text}")
+                raise Exception(f"Failed to create transactions index: {error_text}")
 
-    async def _warm_index(self):
+    async def _create_accounts_index(self):
+        """Crée l'index des comptes (nouveau)."""
+        # Vérifier l'existence de l'index
+        async with self.session.head(f"{self.base_url}/{self.accounts_index}") as response:
+            if response.status == 200:
+                logger.info(f"📚 Index accounts '{self.accounts_index}' existe déjà")
+                return
+
+        # Mapping spécialisé pour les comptes
+        accounts_mapping = {
+            "mappings": {
+                "properties": {
+                    # Identifiants
+                    "user_id": {"type": "integer"},
+                    "account_id": {"type": "integer"},  # Clé primaire
+                    
+                    # Données du compte
+                    "account_name": {
+                        "type": "text",
+                        "analyzer": "simple",
+                        "fields": {
+                            "keyword": {"type": "keyword"}
+                        }
+                    },
+                    "account_type": {"type": "keyword"},
+                    "account_balance": {"type": "float"},  # ⚡ SOLDE ACTUEL
+                    "account_currency": {"type": "keyword"},
+                    
+                    # Métadonnées
+                    "created_at": {"type": "date"},
+                    "updated_at": {"type": "date"},
+                    "last_sync_timestamp": {"type": "date"},
+                    "is_active": {"type": "boolean"},
+                    
+                    # Statistiques optionnelles (calculées)
+                    "total_transactions": {"type": "integer"},
+                    "last_transaction_date": {"type": "date"}
+                }
+            },
+            "settings": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+                "index": {
+                    "max_result_window": 10000
+                }
+            }
+        }
+
+        async with self.session.put(f"{self.base_url}/{self.accounts_index}", json=accounts_mapping) as response:
+            if response.status in [200, 201]:
+                logger.info(f"✅ Index accounts '{self.accounts_index}' créé avec succès")
+            else:
+                error_text = await response.text()
+                logger.error(f"❌ Erreur création index accounts: {response.status} - {error_text}")
+                raise Exception(f"Failed to create accounts index: {error_text}")
+
+    async def _warm_indexes(self):
         """Exécute des requêtes pour réchauffer les caches Elasticsearch."""
-        warm_queries = [
-            # Statistiques sur le solde pour forcer le chargement du champ
-            {"size": 0, "aggs": {"balance_stats": {"stats": {"field": "account_balance"}}}},
-            # Requête sur merchant_name.keyword pour réchauffer l'agrégation sur ce champ
+        # Requêtes de warmup pour les transactions
+        transactions_queries = [
+            # Requête sur merchant_name.keyword pour réchauffer l'agrégation
             {"size": 0, "query": {"match_all": {}}, "aggs": {"merchants": {"terms": {"field": "merchant_name.keyword", "size": 1}}}}
         ]
+        
+        # Requêtes de warmup pour les comptes
+        accounts_queries = [
+            # Statistiques sur le solde pour forcer le chargement du champ
+            {"size": 0, "aggs": {"balance_stats": {"stats": {"field": "account_balance"}}}},
+        ]
 
-        for query in warm_queries:
+        # Warmup transactions
+        for query in transactions_queries:
             try:
                 async with self.session.post(
-                    f"{self.base_url}/{self.index_name}/_search",
+                    f"{self.base_url}/{self.transactions_index}/_search",
                     json=query
                 ) as response:
-                    # On lit le corps pour s'assurer que la requête est exécutée
                     await response.text()
             except Exception as e:
-                logger.debug(f"Warmup query failed: {e}")
+                logger.debug(f"Transactions warmup query failed: {e}")
+        
+        # Warmup accounts
+        for query in accounts_queries:
+            try:
+                async with self.session.post(
+                    f"{self.base_url}/{self.accounts_index}/_search",
+                    json=query
+                ) as response:
+                    await response.text()
+            except Exception as e:
+                logger.debug(f"Accounts warmup query failed: {e}")
     
     async def index_transaction(self, structured_transaction) -> bool:
         """
@@ -425,7 +489,8 @@ class ElasticsearchClient:
 
         bulk_body: List[str] = []
         for acc in accounts:
-            account_id = getattr(acc, "id", getattr(acc, "account_id", None))
+            # Utiliser en priorité l'identifiant métier (bridge_account_id)
+            account_id = getattr(acc, "bridge_account_id", getattr(acc, "account_id", getattr(acc, "id", None)))
             if account_id is None:
                 continue
 
@@ -821,6 +886,212 @@ class ElasticsearchClient:
             logger.error(f"❌ Erreur cluster info: {e}")
             return {"error": str(e)}
         
+    # =============================================
+    # 🏦 MÉTHODES POUR GESTION DES COMPTES
+    # =============================================
+    
+    async def index_account(self, account_data: Dict[str, Any]) -> bool:
+        """
+        Indexe ou met à jour un compte dans l'index accounts.
+        
+        Args:
+            account_data: Données du compte à indexer
+            
+        Returns:
+            bool: True si l'indexation a réussi
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        account_id = account_data.get('account_id')
+        user_id = account_data.get('user_id')
+        
+        if not account_id or not user_id:
+            logger.error("❌ account_id et user_id requis pour indexer un compte")
+            return False
+        
+        # ID du document : user_<user_id>_acc_<account_id>
+        document_id = f"user_{user_id}_acc_{account_id}"
+        
+        try:
+            # Ajouter timestamp de mise à jour
+            account_data["updated_at"] = datetime.now().isoformat()
+            
+            async with self.session.put(
+                f"{self.base_url}/{self.accounts_index}/_doc/{document_id}",
+                json=account_data
+            ) as response:
+                if response.status in [200, 201]:
+                    logger.debug(f"✅ Compte {account_id} indexé avec succès")
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur indexation compte {account_id}: {response.status} - {error_text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception lors de l'indexation compte {account_id}: {e}")
+            return False
+    
+    async def bulk_index_accounts(self, accounts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Indexe un lot de comptes en mode bulk.
+        
+        Args:
+            accounts: Liste des comptes à indexer
+            
+        Returns:
+            Dict: Résumé de l'indexation
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        if not accounts:
+            return {"indexed": 0, "errors": 0, "total": 0}
+        
+        # Préparer le bulk request
+        bulk_body = []
+        
+        for account in accounts:
+            account_id = account.get('account_id')
+            user_id = account.get('user_id')
+            
+            if not account_id or not user_id:
+                logger.warning(f"⚠️ Compte invalide ignoré: {account}")
+                continue
+            
+            document_id = f"user_{user_id}_acc_{account_id}"
+            account["updated_at"] = datetime.now().isoformat()
+            
+            # Action header
+            bulk_body.append(json.dumps({
+                "index": {
+                    "_index": self.accounts_index,
+                    "_id": document_id
+                }
+            }))
+            
+            # Document data
+            bulk_body.append(json.dumps(account))
+        
+        if not bulk_body:
+            return {"indexed": 0, "errors": 0, "total": 0}
+        
+        # Joindre avec des nouvelles lignes (format bulk)
+        bulk_data = "\n".join(bulk_body) + "\n"
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/{self.accounts_index}/_bulk",
+                data=bulk_data,
+                headers={"Content-Type": "application/x-ndjson"}
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    # Analyser les résultats
+                    total = len(accounts)
+                    indexed = 0
+                    errors = 0
+                    
+                    for item in result.get("items", []):
+                        if "index" in item:
+                            if item["index"]["status"] in [200, 201]:
+                                indexed += 1
+                            else:
+                                errors += 1
+                    
+                    logger.info(f"📦 Bulk accounts: {indexed}/{total} comptes indexés")
+                    return {"indexed": indexed, "errors": errors, "total": total}
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Bulk accounts failed: {response.status} - {error_text}")
+                    return {"indexed": 0, "errors": len(accounts), "total": len(accounts)}
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception bulk accounts: {e}")
+            return {"indexed": 0, "errors": len(accounts), "total": len(accounts)}
+    
+    async def get_user_accounts(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        Récupère tous les comptes d'un utilisateur.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            List: Liste des comptes avec leurs soldes
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        try:
+            query = {
+                "query": {"term": {"user_id": user_id}},
+                "sort": [{"account_id": {"order": "asc"}}],
+                "size": 100
+            }
+            
+            async with self.session.post(
+                f"{self.base_url}/{self.accounts_index}/_search",
+                json=query
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    hits = result.get("hits", {}).get("hits", [])
+                    
+                    accounts = []
+                    for hit in hits:
+                        account = hit["_source"]
+                        accounts.append(account)
+                    
+                    logger.debug(f"📋 {len(accounts)} comptes trouvés pour user {user_id}")
+                    return accounts
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur récupération comptes user {user_id}: {response.status} - {error_text}")
+                    return []
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception récupération comptes user {user_id}: {e}")
+            return []
+    
+    async def get_account_balance(self, user_id: int, account_id: int) -> Optional[float]:
+        """
+        Récupère le solde d'un compte spécifique.
+        
+        Args:
+            user_id: ID de l'utilisateur  
+            account_id: ID du compte
+            
+        Returns:
+            Optional[float]: Solde du compte ou None si non trouvé
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        document_id = f"user_{user_id}_acc_{account_id}"
+        
+        try:
+            async with self.session.get(
+                f"{self.base_url}/{self.accounts_index}/_doc/{document_id}"
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    account_balance = result.get("_source", {}).get("account_balance")
+                    return account_balance
+                elif response.status == 404:
+                    logger.debug(f"🔍 Compte {account_id} non trouvé pour user {user_id}")
+                    return None
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur récupération solde compte {account_id}: {response.status} - {error_text}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception récupération solde compte {account_id}: {e}")
+            return None
+
     async def close(self):
         """Ferme la session HTTP."""
         if self.session:

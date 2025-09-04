@@ -223,6 +223,119 @@ async def debug_config() -> Dict[str, Any]:
     }
     return debug_info
 
+@router.get("/accounts/{user_id}")
+async def get_user_accounts(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    engine: SearchEngine = Depends(get_search_engine)
+) -> Dict[str, Any]:
+    """
+    🏦 Récupère tous les comptes d'un utilisateur avec leurs soldes
+    
+    Args:
+        user_id: ID de l'utilisateur
+        
+    Returns:
+        Dict avec la liste des comptes et leurs métadonnées
+    """
+    try:
+        if user_id <= 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="user_id doit être positif"
+            )
+        
+        # Contrôle d'accès : vérifier que l'utilisateur peut accéder aux données demandées  
+        validate_user_access(current_user, user_id)
+        
+        # Récupérer les comptes depuis l'index accounts
+        accounts = await engine.elasticsearch_client.get_user_accounts(user_id)
+        
+        # Calculer des statistiques
+        total_balance = sum(acc.get("account_balance", 0) or 0 for acc in accounts)
+        active_accounts = len([acc for acc in accounts if acc.get("is_active", True)])
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "accounts": accounts,
+            "summary": {
+                "total_accounts": len(accounts),
+                "active_accounts": active_accounts,
+                "total_balance": total_balance,
+                "currencies": list(set(acc.get("account_currency", "EUR") for acc in accounts if acc.get("account_currency")))
+            },
+            "response_metadata": {
+                "source": "accounts_index",
+                "returned_results": len(accounts)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get accounts failed for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erreur lors de la récupération des comptes: {str(e)}"
+        )
+
+@router.get("/accounts/{user_id}/{account_id}/balance")
+async def get_account_balance(
+    user_id: int,
+    account_id: int,
+    current_user: User = Depends(get_current_active_user),
+    engine: SearchEngine = Depends(get_search_engine)
+) -> Dict[str, Any]:
+    """
+    💰 Récupère le solde d'un compte spécifique (accès direct sans agrégation)
+    
+    Args:
+        user_id: ID de l'utilisateur
+        account_id: ID du compte
+        
+    Returns:
+        Dict avec le solde et les métadonnées du compte
+    """
+    try:
+        if user_id <= 0 or account_id <= 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="user_id et account_id doivent être positifs"
+            )
+        
+        # Contrôle d'accès
+        validate_user_access(current_user, user_id)
+        
+        # Récupérer le solde directement
+        balance = await engine.elasticsearch_client.get_account_balance(user_id, account_id)
+        
+        if balance is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Compte {account_id} non trouvé pour l'utilisateur {user_id}"
+            )
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "account_id": account_id,
+            "account_balance": balance,
+            "response_metadata": {
+                "source": "accounts_index",
+                "direct_access": True
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get balance failed for user {user_id}, account {account_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erreur lors de la récupération du solde: {str(e)}"
+        )
+
 # Fonction d'initialisation pour le moteur de recherche
 def initialize_search_engine(elasticsearch_client):
     """

@@ -5,7 +5,7 @@ import asyncio
 import math
 from datetime import datetime
 from collections import deque, defaultdict
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 
 from search_service.utils.cache import (
     MultiLevelCache,
@@ -13,7 +13,7 @@ from search_service.utils.cache import (
 )
 from config_service.config import settings
 from search_service.models.request import SearchRequest
-from search_service.models.response import SearchResult
+from search_service.models.response import SearchResult, AccountResult
 from .query_builder import QueryBuilder
 
 
@@ -157,23 +157,37 @@ class SearchEngine:
                 else:
                     self.cache_misses += 1
 
-            # Construction requête Elasticsearch
+            # Construction requête Elasticsearch avec détection d'index
             if request.aggregations:
-                es_query = self.query_builder.build_aggregation_query(
+                query_info = self.query_builder.build_aggregation_query(
                     request, request.aggregations
                 )
+                # Pour les agrégations, on récupère les infos d'index aussi
+                if isinstance(query_info, dict) and "query" in query_info:
+                    es_query = query_info["query"]
+                    target_index = query_info.get("target_index", "harena_transactions")
+                    search_type = query_info.get("search_type", "transactions")
+                else:
+                    # Rétrocompatibilité si la méthode n'est pas encore adaptée
+                    es_query = query_info
+                    target_index = "harena_transactions"
+                    search_type = "transactions"
             else:
-                es_query = self.query_builder.build_query(request)
+                query_info = self.query_builder.build_query(request)
+                es_query = query_info["query"]
+                target_index = query_info["target_index"]
+                search_type = query_info["search_type"]
 
+            logger.debug(f"🎯 Search type: {search_type}, target index: {target_index}")
             logger.debug(f"Elasticsearch query: {json.dumps(es_query, indent=2)}")
 
-            # Exécution via le client existant avec retry
-            es_response = await self._execute_search(es_query, request)
+            # Exécution via le client existant avec retry sur l'index approprié
+            es_response = await self._execute_search(es_query, request, target_index)
             logger.debug(f"🔥 ES_RESPONSE REÇUE: hits={es_response.get('hits', {}).get('total', {}).get('value', 0)}")
 
-            # 🔥 CORRECTION CRITIQUE : Traitement des résultats avec debug
-            processed = self._process_results(es_response, request)
-            logger.debug(f"🔥 RÉSULTATS PROCESSÉS: {len(processed)} objets SearchResult")
+            # 🔥 CORRECTION CRITIQUE : Traitement des résultats avec debug et type de recherche
+            processed = self._process_results(es_response, request, search_type)
+            logger.debug(f"🔥 RÉSULTATS PROCESSÉS: {len(processed)} objets ({search_type})")
             
             # Sécurité supplémentaire : filtrer par user_id côté application
             results = [r for r in processed if r.user_id == request.user_id]
@@ -190,9 +204,9 @@ class SearchEngine:
                     next_req_data = request.model_dump()
                     next_req_data["offset"] = current_offset
                     next_request = SearchRequest(**next_req_data)
-                    page_response = await self._execute_search(es_query, next_request)
+                    page_response = await self._execute_search(es_query, next_request, target_index)
                     es_took += page_response.get("took", 0)
-                    page_processed = self._process_results(page_response, next_request)
+                    page_processed = self._process_results(page_response, next_request, search_type)
                     page_results = [r for r in page_processed if r.user_id == request.user_id]
                     if not page_results:
                         break
@@ -207,8 +221,8 @@ class SearchEngine:
                 while request.offset + len(results) < total_hits:
                     next_request = request.model_copy(update={"offset": next_offset, "aggregations": None})
                     es_query_page = self.query_builder.build_query(next_request)
-                    es_response_page = await self._execute_search(es_query_page, next_request)
-                    processed_page = self._process_results(es_response_page, next_request)
+                    es_response_page = await self._execute_search(es_query_page["query"], next_request, target_index)
+                    processed_page = self._process_results(es_response_page, next_request, search_type)
                     page_results = [r for r in processed_page if r.user_id == request.user_id]
                     if not page_results:
                         break
@@ -300,7 +314,7 @@ class SearchEngine:
 
     def _serialize_results_with_score_and_highlights_FINAL(
         self, 
-        results: List[SearchResult], 
+        results: List[Union[SearchResult, AccountResult]], 
         request: SearchRequest
     ) -> List[Dict[str, Any]]:
         """
@@ -354,27 +368,42 @@ class SearchEngine:
                 logger.error(f"   Result attributes: {[attr for attr in dir(result) if not attr.startswith('_')]}")
                 
                 # Créer un résultat minimal en cas d'erreur de sérialisation
-                minimal_result = {
-                    "transaction_id": getattr(result, 'transaction_id', f'error_{i}'),
-                    "user_id": getattr(result, 'user_id', 0),
-                    "amount": 0.0,
-                    "amount_abs": 0.0,
-                    "currency_code": "EUR",
-                    "transaction_type": "error",
-                    "date": "",
-                    "primary_description": f"Serialization error: {str(e)[:100]}",
-                    "_score": 0.0,
-                    "highlights": None
-                }
+                if isinstance(result, AccountResult):
+                    minimal_result = {
+                        "user_id": getattr(result, 'user_id', 0),
+                        "account_id": getattr(result, 'account_id', 0),
+                        "account_name": f"Serialization error: {str(e)[:50]}",
+                        "account_type": "error",
+                        "account_balance": 0.0,
+                        "account_currency": "EUR",
+                        "_score": 0.0,
+                        "highlights": None
+                    }
+                else:
+                    minimal_result = {
+                        "transaction_id": getattr(result, 'transaction_id', f'error_{i}'),
+                        "user_id": getattr(result, 'user_id', 0),
+                        "amount": 0.0,
+                        "amount_abs": 0.0,
+                        "currency_code": "EUR",
+                        "transaction_type": "error",
+                        "date": "",
+                        "primary_description": f"Serialization error: {str(e)[:100]}",
+                        "_score": 0.0,
+                        "highlights": None
+                    }
                 serialized_results.append(minimal_result)
                 logger.debug(f"🔥 Résultat {i} - Erreur sérialisation, résultat minimal créé")
         
         logger.debug(f"🔥 SÉRIALISATION TERMINÉE: {len(serialized_results)}/{len(results)} résultats traités avec succès")
         return serialized_results
     
-    async def _execute_search(self, es_query: Dict[str, Any], request: SearchRequest) -> Dict[str, Any]:
-        """Exécute la recherche via le client Elasticsearch avec retries."""
+    async def _execute_search(self, es_query: Dict[str, Any], request: SearchRequest, target_index: str = None) -> Dict[str, Any]:
+        """Exécute la recherche via le client Elasticsearch avec retries et support multi-index."""
 
+        # Utiliser l'index détecté ou fallback sur l'index par défaut
+        index_name = target_index or self.index_name
+        
         max_retries = settings.INTENT_MAX_RETRIES
         backoff_base = settings.INTENT_BACKOFF_BASE
         retry_statuses = {429, 500, 502, 503, 504}
@@ -387,14 +416,14 @@ class SearchEngine:
                 # Utiliser la méthode search du client existant
                 if hasattr(self.elasticsearch_client, "search"):
                     response = await self.elasticsearch_client.search(
-                        index=self.index_name,
+                        index=index_name,  # 🎯 Index dynamique
                         body=es_query,
                         size=es_size,
                         from_=es_from,
                     )
                 else:
                     # Fallback: requête HTTP directe
-                    search_url = f"/{self.index_name}/_search"
+                    search_url = f"/{index_name}/_search"  # 🎯 Index dynamique
                     es_query["size"] = es_size
                     es_query["from"] = es_from
                     async with self.elasticsearch_client.session.post(
@@ -428,8 +457,9 @@ class SearchEngine:
     def _process_results(
         self, 
         es_response: Dict[str, Any], 
-        request: Optional[SearchRequest] = None
-    ) -> List[SearchResult]:
+        request: Optional[SearchRequest] = None,
+        search_type: str = "transactions"
+    ) -> List[Union[SearchResult, AccountResult]]:
         """
         🔥 VERSION FINALE - Traite les résultats Elasticsearch en objets SearchResult
         Support robuste _score et highlights avec debug forcing
@@ -441,7 +471,7 @@ class SearchEngine:
             logger.debug("No hits returned from Elasticsearch")
             return []
         
-        logger.debug(f"🔥 _process_results() - Processing {len(hits)} hits from Elasticsearch")
+        logger.debug(f"🔥 _process_results() - Processing {len(hits)} hits from Elasticsearch (search_type: {search_type})")
         
         for i, hit in enumerate(hits):
             source = hit.get('_source', {})
@@ -451,42 +481,59 @@ class SearchEngine:
             logger.debug(f"🔥 Hit {i} - _score: {score}, highlight: {'present' if highlights else 'none'}")
             
             try:
-                # 🔥 CORRECTION : Gestion robuste de tous les champs avec valeurs par défaut sécurisées
-                result = SearchResult(
-                    # Champs obligatoires avec fallbacks robustes
-                    transaction_id=str(source.get('transaction_id', f'tx_{i}_{int(time.time())}')),
-                    user_id=int(source.get('user_id', 0)),
-                    amount=float(source.get('amount', 0.0)),
-                    amount_abs=float(source.get('amount_abs', abs(float(source.get('amount', 0.0))))),
-                    currency_code=str(source.get('currency_code', 'EUR')),
-                    
-                    # 🔥 CORRECTION CRITIQUE : Gérer les champs obligatoires qui peuvent être vides
-                    transaction_type=str(source.get('transaction_type', 'unknown')),
-                    date=str(source.get('date', '')),
-                    primary_description=str(source.get('primary_description', 'Description non disponible')),
-                    
-                    # Champs optionnels - gestion explicite des None
-                    account_id=source.get('account_id'),  # Peut être None
-                    account_name=source.get('account_name'),
-                    account_type=source.get('account_type'),
-                    account_balance=source.get('account_balance'),
-                    account_currency=source.get('account_currency'),
-                    month_year=source.get('month_year'),  # Peut être None
-                    weekday=source.get('weekday'),        # Peut être None
-                    merchant_name=source.get('merchant_name'),      # Peut être None ou ""
-                    category_name=source.get('category_name'),      # Peut être None ou ""
-                    operation_type=source.get('operation_type'),    # Peut être None ou ""
-                    
-                    # 🔥 CORRECTION SCORE : Métadonnées de recherche avec gestion robuste
-                    score=float(score) if score is not None else 0.0,
-                    
-                    # 🔥 CORRECTION HIGHLIGHTS : Gestion robuste highlights
-                    highlights=highlights if highlights else None
-                )
-                results.append(result)
-                
-                # Log de succès pour debug
-                logger.debug(f"🔥 Successfully processed result {i+1}: {result.transaction_id} - score={result.score} - highlights={'present' if result.highlights else 'none'}")
+                if search_type == "accounts":
+                    # 🔥 CORRECTION : Créer un AccountResult pour les recherches de comptes
+                    result = AccountResult(
+                        user_id=int(source.get('user_id', 0)),
+                        account_id=int(source.get('account_id', 0)),
+                        account_name=str(source.get('account_name', 'Compte inconnu')),
+                        account_type=str(source.get('account_type', 'unknown')),
+                        account_balance=float(source.get('account_balance', 0.0)),
+                        account_currency=str(source.get('account_currency', 'EUR')),
+                        
+                        # 🔥 CORRECTION SCORE : Métadonnées de recherche
+                        score=float(score) if score is not None else 0.0,
+                        
+                        # 🔥 CORRECTION HIGHLIGHTS : Gestion robuste highlights
+                        highlights=highlights if highlights else None
+                    )
+                    results.append(result)
+                    logger.debug(f"🔥 Successfully processed account result {i+1}: {result.account_name} (ID: {result.account_id}) - score={result.score}")
+                else:
+                    # 🔥 CORRECTION : Gestion robuste de tous les champs pour les transactions
+                    result = SearchResult(
+                        # Champs obligatoires avec fallbacks robustes
+                        transaction_id=str(source.get('transaction_id', f'tx_{i}_{int(time.time())}')),
+                        user_id=int(source.get('user_id', 0)),
+                        amount=float(source.get('amount', 0.0)),
+                        amount_abs=float(source.get('amount_abs', abs(float(source.get('amount', 0.0))))),
+                        currency_code=str(source.get('currency_code', 'EUR')),
+                        
+                        # 🔥 CORRECTION CRITIQUE : Gérer les champs obligatoires qui peuvent être vides
+                        transaction_type=str(source.get('transaction_type', 'unknown')),
+                        date=str(source.get('date', '')),
+                        primary_description=str(source.get('primary_description', 'Description non disponible')),
+                        
+                        # Champs optionnels - gestion explicite des None
+                        account_id=source.get('account_id'),  # Peut être None
+                        account_name=source.get('account_name'),
+                        account_type=source.get('account_type'),
+                        account_balance=source.get('account_balance'),
+                        account_currency=source.get('account_currency'),
+                        month_year=source.get('month_year'),  # Peut être None
+                        weekday=source.get('weekday'),        # Peut être None
+                        merchant_name=source.get('merchant_name'),      # Peut être None ou ""
+                        category_name=source.get('category_name'),      # Peut être None ou ""
+                        operation_type=source.get('operation_type'),    # Peut être None ou ""
+                        
+                        # 🔥 CORRECTION SCORE : Métadonnées de recherche avec gestion robuste
+                        score=float(score) if score is not None else 0.0,
+                        
+                        # 🔥 CORRECTION HIGHLIGHTS : Gestion robuste highlights
+                        highlights=highlights if highlights else None
+                    )
+                    results.append(result)
+                    logger.debug(f"🔥 Successfully processed transaction result {i+1}: {result.transaction_id} - score={result.score} - highlights={'present' if result.highlights else 'none'}")
                 
             except ValueError as ve:
                 # Erreur de conversion de type (int, float)
@@ -496,20 +543,32 @@ class SearchEngine:
                 
                 # Essayer de créer un résultat minimal avec des types corrects
                 try:
-                    minimal_result = SearchResult(
-                        transaction_id=str(source.get('transaction_id', f'error_tx_{i}')),
-                        user_id=int(source.get('user_id', 0)) if source.get('user_id') is not None else 0,
-                        amount=0.0,
-                        amount_abs=0.0,
-                        currency_code='EUR',
-                        transaction_type='error',
-                        date='',
-                        primary_description=f'Erreur conversion: {str(ve)[:100]}',
-                        score=0.0,
-                        highlights=None
-                    )
+                    if search_type == "accounts":
+                        minimal_result = AccountResult(
+                            user_id=int(source.get('user_id', 0)) if source.get('user_id') is not None else 0,
+                            account_id=int(source.get('account_id', 0)) if source.get('account_id') is not None else 0,
+                            account_name=f'Erreur conversion: {str(ve)[:50]}',
+                            account_type='error',
+                            account_balance=0.0,
+                            account_currency='EUR',
+                            score=0.0,
+                            highlights=None
+                        )
+                    else:
+                        minimal_result = SearchResult(
+                            transaction_id=str(source.get('transaction_id', f'error_tx_{i}')),
+                            user_id=int(source.get('user_id', 0)) if source.get('user_id') is not None else 0,
+                            amount=0.0,
+                            amount_abs=0.0,
+                            currency_code='EUR',
+                            transaction_type='error',
+                            date='',
+                            primary_description=f'Erreur conversion: {str(ve)[:100]}',
+                            score=0.0,
+                            highlights=None
+                        )
                     results.append(minimal_result)
-                    logger.warning(f"⚠️ Created minimal result for failed conversion {i+1}")
+                    logger.warning(f"⚠️ Created minimal {search_type} result for failed conversion {i+1}")
                 except Exception as e2:
                     logger.error(f"❌ Failed to create minimal result: {str(e2)}")
                     continue

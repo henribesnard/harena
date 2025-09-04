@@ -1,0 +1,1654 @@
+{
+  "catalog_info": {
+    "title": "Catalogue de Requêtes Search Service - Version Test",
+    "description": "89 requêtes JSON valides pour tester search_service et s'assurer que toutes retournent un code 200",
+    "version": "1.0",
+    "notes": [
+      "Requêtes filtrées selon observations utilisateur:",
+      "- Évolution des soldes supprimée (historique non disponible)",
+      "- Soldes à date précise supprimés (historique non disponible)", 
+      "- Merchant_name remplacé par recherche textuelle",
+      "- user_id obligatoire appliqué automatiquement par query_builder",
+      "- Filtres appliqués avant agrégations",
+      "- Soldes simples adaptés pour results[] quand approprié"
+    ]
+  },
+  "queries": [
+    {
+      "intent": "BALANCE_INQUIRY",
+      "title": "1.1 Solde Total de Tous les Comptes",
+      "questions": ["Mon solde ?", "Quel est mon solde total ?"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
+      },
+      "description": "Recherche automatique dans l'index accounts via détection de champs"
+    },
+    {
+      "intent": "BALANCE_BY_TYPE", 
+      "title": "1.2 Solde par Type de Compte",
+      "questions": ["Mon solde courant ?", "Solde de mes cartes ?"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "account_type": "checking"
+        },
+        "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
+      },
+      "description": "Filtrage direct par type de compte dans l'index accounts"
+    },
+    {
+      "intent": "BALANCE_SPECIFIC_ACCOUNT",
+      "title": "1.3 Solde d'un Compte Spécifique", 
+      "questions": ["Solde de mon compte épargne", "Mon livret A"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "account_id": 53430187
+        },
+        "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
+      },
+      "description": "Recherche directe d'un compte spécifique par account_id"
+    },
+    {
+      "intent": "BALANCE_COMPARISON",
+      "title": "1.6 Comparaison Solde Actuel", 
+      "questions": ["Mon solde par rapport à mes comptes", "Comparaison de mes soldes"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"],
+        "page_size": 20
+      },
+      "description": "Comparaison des soldes actuels de tous les comptes"
+    },
+    {
+      "intent": "BALANCE_MIN_MAX",
+      "title": "1.7 Analyse des Soldes de Comptes",
+      "questions": ["Mes soldes de comptes", "Quels sont mes comptes avec le plus de solde ?"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"],
+        "sort": [{"account_balance": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Analyse des soldes de tous les comptes triés par montant"
+    },
+    {
+      "intent": "SEARCH_ALL_TRANSACTIONS",
+      "title": "2.1 Toutes les Transactions",
+      "questions": ["Mes transactions", "Historique complet"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 50
+      },
+      "description": "Liste complète des transactions de l'utilisateur"
+    },
+    {
+      "intent": "SEARCH_BY_AMOUNT",
+      "title": "2.2 Transactions par Montant",
+      "questions": ["Transactions supérieures à 100€", "Mes gros achats"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "amount_abs": {"gte": 100}
+        },
+        "sort": [{"amount_abs": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Recherche de transactions par montant minimum"
+    },
+    {
+      "intent": "SEARCH_BY_DATE",
+      "title": "2.3 Transactions par Date/Période",
+      "questions": ["Transactions du mois dernier", "Mes achats en janvier"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "date": {
+            "gte": "2024-01-01",
+            "lte": "2024-01-31"
+          }
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 50
+      },
+      "description": "Transactions dans une période spécifique"
+    },
+    {
+      "intent": "SEARCH_BY_MERCHANT",
+      "title": "2.4 Transactions par Marchand",
+      "questions": ["Mes achats Amazon", "Transactions chez Carrefour"],
+      "query": {
+        "user_id": 34,
+        "query": "Amazon",
+        "filters": {
+          "user_id": 34
+        },
+        "sort": [{"_score": {"order": "desc"}}, {"date": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Recherche textuelle de transactions par nom de marchand"
+    },
+    {
+      "intent": "SEARCH_BY_CATEGORY",
+      "title": "2.5 Transactions par Catégorie",
+      "questions": ["Mes achats alimentaires", "Dépenses transport"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "category_name": "Food"
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Transactions filtrées par catégorie"
+    },
+    {
+      "intent": "SEARCH_BY_TYPE",
+      "title": "2.6 Transactions par Type (Débit/Crédit)",
+      "questions": ["Mes dépenses", "Mes revenus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 30
+      },
+      "description": "Transactions filtrées par type (débit ou crédit)"
+    },
+    {
+      "intent": "SEARCH_TEXT",
+      "title": "2.7 Recherche Textuelle Libre",
+      "questions": ["Recherche 'restaurant'", "Achats 'électronique'"],
+      "query": {
+        "user_id": 34,
+        "query": "restaurant",
+        "filters": {
+          "user_id": 34
+        },
+        "sort": [{"_score": {"order": "desc"}}, {"date": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Recherche textuelle libre dans les descriptions"
+    },
+    {
+      "intent": "SEARCH_BY_ACCOUNT",
+      "title": "2.8 Transactions d'un Compte Spécifique",
+      "questions": ["Transactions de mon compte courant", "Historique carte de crédit"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "account_id": 53430187
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 30
+      },
+      "description": "Transactions d'un compte bancaire spécifique"
+    },
+    {
+      "intent": "SEARCH_ACCOUNT_COMPARISON",
+      "title": "2.9 Comparaison d'Usage des Comptes",
+      "questions": ["Comparer mes comptes", "Quel compte j'utilise le plus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "account_usage": {
+            "terms": {"field": "account_id", "size": 10},
+            "aggs": {
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "total_spent": {"sum": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse d'usage des comptes par nombre et volume de transactions"
+    },
+    {
+      "intent": "SPENDING_ANALYSIS_COMPLETE",
+      "title": "3.1 Analyse Complète des Dépenses",
+      "questions": ["Analyse de mes dépenses", "Rapport complet dépenses"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "spending_overview": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_spending": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_spending": {"avg": {"field": "amount_abs"}},
+              "categories": {
+                "terms": {"field": "category_name.keyword", "size": 10},
+                "aggs": {
+                  "category_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse complète des habitudes de dépenses"
+    },
+    {
+      "intent": "SPENDING_BY_PERIOD",
+      "title": "3.2 Dépenses par Période (Mois/Semaine/Jour)",
+      "questions": ["Dépenses mensuelles", "Évolution hebdomadaire"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "monthly_spending": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1M"
+            },
+            "aggs": {
+              "total": {"sum": {"field": "amount_abs"}},
+              "count": {"value_count": {"field": "transaction_id"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des dépenses regroupées par période"
+    },
+    {
+      "intent": "SPENDING_TOP",
+      "title": "3.3 Top Dépenses (Plus Grosses Transactions)",
+      "questions": ["Mes plus gros achats", "Top 10 dépenses"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "sort": [{"amount_abs": {"order": "desc"}}],
+        "page_size": 10,
+        "_source": ["amount", "merchant_name", "primary_description", "date", "category_name"]
+      },
+      "description": "Liste des plus grosses transactions (dépenses)"
+    },
+    {
+      "intent": "SPENDING_BY_CATEGORY",
+      "title": "3.4 Analyse d'une Catégorie Spécifique",
+      "questions": ["Dépenses alimentaires détaillées", "Analyse catégorie transport"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit",
+          "category_name": "Food"
+        },
+        "aggregations": {
+          "category_analysis": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_spent": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_amount": {"avg": {"field": "amount_abs"}},
+              "merchants": {
+                "terms": {"field": "merchant_name.keyword", "size": 10},
+                "aggs": {
+                  "merchant_total": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "monthly_trend": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse détaillée d'une catégorie de dépenses spécifique"
+    },
+    {
+      "intent": "SPENDING_CATEGORIES_COMPARISON",
+      "title": "3.5 Comparaison entre Catégories",
+      "questions": ["Comparer mes catégories de dépenses", "Quelle catégorie coûte le plus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "categories_comparison": {
+            "terms": {"field": "category_name.keyword", "size": 20},
+            "aggs": {
+              "category_total": {"sum": {"field": "amount_abs"}},
+              "category_count": {"value_count": {"field": "transaction_id"}},
+              "category_avg": {"avg": {"field": "amount_abs"}},
+              "monthly_trend": {
+                "date_histogram": {
+                  "field": "date", 
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Comparaison détaillée entre toutes les catégories de dépenses"
+    },
+    {
+      "intent": "SPENDING_UNUSUAL",
+      "title": "3.6 Dépenses Exceptionnelles/Inhabituelles",
+      "questions": ["Dépenses inhabituelles", "Achats exceptionnels"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit",
+          "amount_abs": {"gte": 500}
+        },
+        "aggregations": {
+          "unusual_spending": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "high_amounts": {
+                "histogram": {
+                  "field": "amount_abs",
+                  "interval": 100,
+                  "min_doc_count": 1
+                },
+                "aggs": {
+                  "amount_total": {"sum": {"field": "amount_abs"}},
+                  "transaction_count": {"value_count": {"field": "transaction_id"}}
+                }
+              },
+              "by_category": {
+                "terms": {"field": "category_name.keyword", "size": 10},
+                "aggs": {
+                  "category_high_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "sort": [{"amount_abs": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Détection des dépenses exceptionnelles ou inhabituelles"
+    },
+    {
+      "intent": "INCOME_ANALYSIS_COMPLETE",
+      "title": "4.1 Analyse Complète des Revenus",
+      "questions": ["Analyse de mes revenus", "Rapport revenus complet"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit"
+        },
+        "aggregations": {
+          "income_overview": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_income": {"sum": {"field": "amount_abs"}},
+              "income_count": {"value_count": {"field": "transaction_id"}},
+              "avg_income": {"avg": {"field": "amount_abs"}},
+              "income_sources": {
+                "terms": {"field": "merchant_name.keyword", "size": 10},
+                "aggs": {
+                  "source_income": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse complète de tous les revenus"
+    },
+    {
+      "intent": "INCOME_BY_PERIOD",
+      "title": "4.2 Revenus par Période",
+      "questions": ["Revenus mensuels", "Évolution revenus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit"
+        },
+        "aggregations": {
+          "monthly_income": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1M"
+            },
+            "aggs": {
+              "total": {"sum": {"field": "amount_abs"}},
+              "count": {"value_count": {"field": "transaction_id"}},
+              "avg": {"avg": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Revenus regroupés par période mensuelle"
+    },
+    {
+      "intent": "INCOME_BY_SOURCE",
+      "title": "4.3 Revenus par Source/Employeur",
+      "questions": ["Revenus par employeur", "Sources de revenus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit"
+        },
+        "aggregations": {
+          "income_sources": {
+            "terms": {"field": "merchant_name.keyword", "size": 15},
+            "aggs": {
+              "total_from_source": {"sum": {"field": "amount_abs"}},
+              "payment_count": {"value_count": {"field": "transaction_id"}},
+              "avg_payment": {"avg": {"field": "amount_abs"}},
+              "monthly_payments": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_amount": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des revenus par source ou employeur"
+    },
+    {
+      "intent": "INCOME_REGULAR_VS_EXCEPTIONAL",
+      "title": "4.4 Revenus Réguliers vs Exceptionnels",
+      "questions": ["Revenus réguliers", "Revenus exceptionnels", "Prime vs salaire"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit"
+        },
+        "aggregations": {
+          "income_analysis": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "regular_income": {
+                "filter": {"range": {"amount_abs": {"lte": 5000}}},
+                "aggs": {
+                  "regular_total": {"sum": {"field": "amount_abs"}},
+                  "regular_count": {"value_count": {"field": "transaction_id"}}
+                }
+              },
+              "exceptional_income": {
+                "filter": {"range": {"amount_abs": {"gt": 5000}}},
+                "aggs": {
+                  "exceptional_total": {"sum": {"field": "amount_abs"}},
+                  "exceptional_count": {"value_count": {"field": "transaction_id"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Distinction entre revenus réguliers et exceptionnels"
+    },
+    {
+      "intent": "INCOME_VS_EXPENSES",
+      "title": "4.6 Comparaison Revenus vs Dépenses",
+      "questions": ["Revenus vs dépenses", "Bilan financier", "Épargne nette"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "financial_balance": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_income": {
+                "filter": {"term": {"transaction_type": "credit"}},
+                "aggs": {
+                  "income_sum": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "total_expenses": {
+                "filter": {"term": {"transaction_type": "debit"}},
+                "aggs": {
+                  "expense_sum": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "monthly_comparison": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_income": {
+                    "filter": {"term": {"transaction_type": "credit"}},
+                    "aggs": {
+                      "income": {"sum": {"field": "amount_abs"}}
+                    }
+                  },
+                  "monthly_expenses": {
+                    "filter": {"term": {"transaction_type": "debit"}},
+                    "aggs": {
+                      "expenses": {"sum": {"field": "amount_abs"}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Comparaison détaillée entre revenus et dépenses"
+    },
+    {
+      "intent": "INCOME_BY_CATEGORY",
+      "title": "4.7 Revenus par Catégorie",
+      "questions": ["Types de revenus", "Catégories revenus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit"
+        },
+        "aggregations": {
+          "income_categories": {
+            "terms": {"field": "category_name.keyword", "size": 15},
+            "aggs": {
+              "category_income": {"sum": {"field": "amount_abs"}},
+              "category_count": {"value_count": {"field": "transaction_id"}},
+              "category_avg": {"avg": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Revenus organisés par catégorie"
+    },
+    {
+      "intent": "INCOME_IRREGULAR",
+      "title": "4.8 Revenus Irréguliers et Bonus",
+      "questions": ["Bonus reçus", "Revenus ponctuels", "Primes"],
+      "query": {
+        "user_id": 34,
+        "query": "bonus prime remboursement",
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit"
+        },
+        "sort": [{"_score": {"order": "desc"}}, {"amount_abs": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Recherche des revenus irréguliers et bonus"
+    },
+    {
+      "intent": "INCOME_PROJECTION", 
+      "title": "4.9 Projection des Revenus",
+      "questions": ["Projection revenus", "Revenus prévisionnels"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit",
+          "date": {
+            "gte": "2024-01-01",
+            "lte": "2024-12-31"
+          }
+        },
+        "aggregations": {
+          "income_projection": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1M"
+            },
+            "aggs": {
+              "monthly_income": {"sum": {"field": "amount_abs"}},
+              "income_count": {"value_count": {"field": "transaction_id"}},
+              "avg_monthly": {"avg": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse pour projection des revenus futurs"
+    },
+    {
+      "intent": "INCOME_SPECIFIC_PERIOD",
+      "title": "4.10 Revenus par Période Spécifique",
+      "questions": ["Revenus trimestre", "Revenus 2024"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "credit",
+          "date": {
+            "gte": "2024-01-01",
+            "lte": "2024-03-31"
+          }
+        },
+        "aggregations": {
+          "period_income": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_income": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "average_income": {"avg": {"field": "amount_abs"}},
+              "income_stats": {"extended_stats": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 50
+      },
+      "description": "Analyse des revenus sur une période spécifique"
+    },
+    {
+      "intent": "MERCHANT_TOP_SPENDING",
+      "title": "5.1 Top Marchands par Dépenses",
+      "questions": ["Mes marchands préférés", "Où je dépense le plus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "top_merchants": {
+            "terms": {"field": "merchant_name.keyword", "size": 20},
+            "aggs": {
+              "total_spent": {"sum": {"field": "amount_abs"}},
+              "visit_count": {"value_count": {"field": "transaction_id"}},
+              "avg_spending": {"avg": {"field": "amount_abs"}},
+              "last_visit": {"max": {"field": "date"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Classement des marchands par montant total dépensé"
+    },
+    {
+      "intent": "MERCHANT_SPECIFIC_ANALYSIS",
+      "title": "5.2 Analyse d'un Marchand Spécifique",
+      "questions": ["Mes achats Amazon", "Historique Carrefour"],
+      "query": {
+        "user_id": 34,
+        "query": "Amazon",
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "merchant_profile": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_spent": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_transaction": {"avg": {"field": "amount_abs"}},
+              "spending_over_time": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_spending": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "categories": {
+                "terms": {"field": "category_name.keyword", "size": 10},
+                "aggs": {
+                  "category_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 30
+      },
+      "description": "Analyse détaillée d'un marchand spécifique"
+    },
+    {
+      "intent": "MERCHANT_NEW",
+      "title": "5.3 Nouveaux Marchands",
+      "questions": ["Nouveaux marchands", "Dernières découvertes"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "date": {
+            "gte": "2024-01-01"
+          }
+        },
+        "aggregations": {
+          "new_merchants": {
+            "terms": {"field": "merchant_name.keyword", "size": 30},
+            "aggs": {
+              "first_visit": {"min": {"field": "date"}},
+              "total_spent": {"sum": {"field": "amount_abs"}},
+              "visit_count": {"value_count": {"field": "transaction_id"}}
+            }
+          }
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Découverte des nouveaux marchands récemment visités"
+    },
+    {
+      "intent": "MERCHANT_BY_FREQUENCY",
+      "title": "5.4 Marchands par Fréquence de Visite",
+      "questions": ["Marchands les plus fréquentés", "Où je vais souvent"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "merchant_frequency": {
+            "terms": {
+              "field": "merchant_name.keyword", 
+              "size": 20,
+              "order": {"visit_count": "desc"}
+            },
+            "aggs": {
+              "visit_count": {"value_count": {"field": "transaction_id"}},
+              "total_spent": {"sum": {"field": "amount_abs"}},
+              "avg_per_visit": {"avg": {"field": "amount_abs"}},
+              "last_visit": {"max": {"field": "date"}},
+              "first_visit": {"min": {"field": "date"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Marchands classés par nombre de visites"
+    },
+    {
+      "intent": "MERCHANT_COMPETITORS",
+      "title": "5.5 Comparaison entre Marchands Concurrents",
+      "questions": ["Amazon vs eBay", "Comparer supermarchés"],
+      "query": {
+        "user_id": 34,
+        "query": "Amazon eBay Fnac",
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "competitor_comparison": {
+            "terms": {"field": "merchant_name.keyword", "size": 10},
+            "aggs": {
+              "total_spent": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_amount": {"avg": {"field": "amount_abs"}},
+              "monthly_spending": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_total": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "sort": [{"date": {"order": "desc"}}],
+        "page_size": 50
+      },
+      "description": "Comparaison des dépenses entre marchands concurrents"
+    },
+    {
+      "intent": "MERCHANT_LOYALTY",
+      "title": "5.6 Analyse de Fidélité aux Marchands",
+      "questions": ["Fidélité marchands", "Marchands réguliers"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "date": {
+            "gte": "2024-01-01"
+          }
+        },
+        "aggregations": {
+          "merchant_loyalty": {
+            "terms": {"field": "merchant_name.keyword", "size": 25},
+            "aggs": {
+              "visit_frequency": {"value_count": {"field": "transaction_id"}},
+              "time_span": {
+                "date_range": {
+                  "field": "date",
+                  "ranges": [
+                    {"from": "2024-01-01", "to": "2024-12-31"}
+                  ]
+                }
+              },
+              "regularity": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M",
+                  "min_doc_count": 1
+                },
+                "aggs": {
+                  "monthly_visits": {"value_count": {"field": "transaction_id"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Mesure de la fidélité et régularité envers les marchands"
+    },
+    {
+      "intent": "TEMPORAL_WEEKDAY",
+      "title": "6.1 Analyse par Jour de la Semaine",
+      "questions": ["Dépenses par jour semaine", "Quel jour je dépense le plus"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "weekday_analysis": {
+            "terms": {"field": "weekday.keyword", "size": 7},
+            "aggs": {
+              "daily_spending": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_per_transaction": {"avg": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des patterns de dépense par jour de la semaine"
+    },
+    {
+      "intent": "TEMPORAL_SEASONAL",
+      "title": "6.2 Analyse Saisonnière",
+      "questions": ["Dépenses saisonnières", "Patterns par saison"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "seasonal_analysis": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "quarter"
+            },
+            "aggs": {
+              "quarterly_spending": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_spending": {"avg": {"field": "amount_abs"}},
+              "top_categories": {
+                "terms": {"field": "category_name.keyword", "size": 5},
+                "aggs": {
+                  "category_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des tendances saisonnières de dépenses"
+    },
+    {
+      "intent": "TEMPORAL_MONTHLY",
+      "title": "6.4 Analyse par Mois de l'Année",
+      "questions": ["Dépenses par mois", "Mois le plus coûteux"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "monthly_patterns": {
+            "terms": {"field": "month_year.keyword", "size": 12},
+            "aggs": {
+              "monthly_total": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "daily_average": {"avg": {"field": "amount_abs"}},
+              "top_merchants": {
+                "terms": {"field": "merchant_name.keyword", "size": 5},
+                "aggs": {
+                  "merchant_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Comparaison des dépenses mois par mois"
+    },
+    {
+      "intent": "TEMPORAL_WEEKLY_CYCLES",
+      "title": "6.5 Cycles de Dépenses Hebdomadaires",
+      "questions": ["Cycles hebdomadaires", "Pattern semaine"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "weekly_cycles": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1w"
+            },
+            "aggs": {
+              "weekly_spending": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "weekday_breakdown": {
+                "terms": {"field": "weekday.keyword", "size": 7},
+                "aggs": {
+                  "weekday_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des cycles de dépenses hebdomadaires"
+    },
+    {
+      "intent": "TEMPORAL_PEAK_PERIODS",
+      "title": "6.6 Analyse des Périodes de Pointe",
+      "questions": ["Périodes de pointe", "Pics de dépenses"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "peak_analysis": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1d"
+            },
+            "aggs": {
+              "daily_spending": {"sum": {"field": "amount_abs"}},
+              "daily_count": {"value_count": {"field": "transaction_id"}},
+              "spending_stats": {"stats": {"field": "amount_abs"}}
+            }
+          },
+          "high_spending_days": {
+            "filter": {"range": {"amount_abs": {"gte": 200}}},
+            "aggs": {
+              "peak_days": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1d",
+                  "min_doc_count": 1
+                },
+                "aggs": {
+                  "peak_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Identification des périodes de dépenses importantes"
+    },
+    {
+      "intent": "TEMPORAL_QUARTERLY",
+      "title": "6.7 Tendances Trimestrielles",
+      "questions": ["Évolution trimestrielle", "Tendances par trimestre"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "quarterly_trends": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "quarter"
+            },
+            "aggs": {
+              "quarterly_spending": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "avg_transaction": {"avg": {"field": "amount_abs"}},
+              "growth_metrics": {"extended_stats": {"field": "amount_abs"}}
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des tendances trimestrielles"
+    },
+    {
+      "intent": "TEMPORAL_YEARLY",
+      "title": "6.8 Analyse des Tendances Annuelles",
+      "questions": ["Évolution annuelle des dépenses", "Croissance année sur année"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "yearly_analysis": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1y"
+            },
+            "aggs": {
+              "yearly_spending": {"sum": {"field": "amount_abs"}},
+              "yearly_count": {"value_count": {"field": "transaction_id"}},
+              "yearly_average": {"avg": {"field": "amount_abs"}},
+              "yearly_categories": {
+                "terms": {"field": "category_name.keyword", "size": 10},
+                "aggs": {
+                  "category_total": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Tendances de dépenses sur plusieurs années"
+    },
+    {
+      "intent": "BUDGET_BY_CATEGORY",
+      "title": "7.1 Suivi Budgétaire par Catégorie",
+      "questions": ["Budget par catégorie", "Suivi budgétaire"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit",
+          "date": {
+            "gte": "2024-01-01",
+            "lte": "2024-01-31"
+          }
+        },
+        "aggregations": {
+          "budget_tracking": {
+            "terms": {"field": "category_name.keyword", "size": 20},
+            "aggs": {
+              "spent_this_month": {"sum": {"field": "amount_abs"}},
+              "transaction_count": {"value_count": {"field": "transaction_id"}},
+              "daily_average": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1d"
+                },
+                "aggs": {
+                  "daily_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Suivi des dépenses par catégorie pour contrôle budgétaire"
+    },
+    {
+      "intent": "BUDGET_OVERSPENDING",
+      "title": "7.2 Analyse de Dépassement Budgétaire",
+      "questions": ["Dépassements budget", "Catégories en dépassement"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit",
+          "amount_abs": {"gte": 100}
+        },
+        "aggregations": {
+          "overspending_analysis": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "high_spending_categories": {
+                "terms": {"field": "category_name.keyword", "size": 10},
+                "aggs": {
+                  "category_total": {"sum": {"field": "amount_abs"}},
+                  "high_transactions": {
+                    "filter": {"range": {"amount_abs": {"gte": 100}}},
+                    "aggs": {
+                      "overspend_total": {"sum": {"field": "amount_abs"}}
+                    }
+                  }
+                }
+              },
+              "monthly_overspending": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_high_spending": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "sort": [{"amount_abs": {"order": "desc"}}],
+        "page_size": 30
+      },
+      "description": "Détection des dépassements budgétaires"
+    },
+    {
+      "intent": "BUDGET_FORECAST",
+      "title": "7.3 Prévision Budgétaire",
+      "questions": ["Prévisions budget", "Projection dépenses"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit",
+          "date": {
+            "gte": "2024-01-01"
+          }
+        },
+        "aggregations": {
+          "budget_forecast": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "1M"
+            },
+            "aggs": {
+              "monthly_spending": {"sum": {"field": "amount_abs"}},
+              "spending_trend": {"avg": {"field": "amount_abs"}},
+              "category_breakdown": {
+                "terms": {"field": "category_name.keyword", "size": 8},
+                "aggs": {
+                  "category_monthly": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Données pour prévisions budgétaires basées sur l'historique"
+    },
+    {
+      "intent": "BUDGET_SAVINGS_GOALS",
+      "title": "7.4 Objectifs d'Épargne",
+      "questions": ["Objectifs épargne", "Suivi épargne"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "savings_analysis": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "total_income": {
+                "filter": {"term": {"transaction_type": "credit"}},
+                "aggs": {
+                  "income_sum": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "total_expenses": {
+                "filter": {"term": {"transaction_type": "debit"}},
+                "aggs": {
+                  "expense_sum": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "monthly_savings_potential": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_income": {
+                    "filter": {"term": {"transaction_type": "credit"}},
+                    "aggs": {
+                      "income": {"sum": {"field": "amount_abs"}}
+                    }
+                  },
+                  "monthly_expenses": {
+                    "filter": {"term": {"transaction_type": "debit"}},
+                    "aggs": {
+                      "expenses": {"sum": {"field": "amount_abs"}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des capacités d'épargne et suivi des objectifs"
+    },
+    {
+      "intent": "BUDGET_RATIOS",
+      "title": "7.5 Analyse de Ratios Financiers",
+      "questions": ["Ratios financiers", "Répartition dépenses"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "financial_ratios": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "category_ratios": {
+                "terms": {"field": "category_name.keyword", "size": 15},
+                "aggs": {
+                  "category_total": {"sum": {"field": "amount_abs"}},
+                  "category_count": {"value_count": {"field": "transaction_id"}},
+                  "category_avg": {"avg": {"field": "amount_abs"}}
+                }
+              },
+              "total_spending": {"sum": {"field": "amount_abs"}},
+              "spending_distribution": {
+                "percentiles": {
+                  "field": "amount_abs",
+                  "percents": [25, 50, 75, 90, 95]
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Calcul des ratios et répartition des dépenses par catégorie"
+    },
+    {
+      "intent": "BUDGET_OPTIMIZATION",
+      "title": "7.6 Optimisation des Coûts",
+      "questions": ["Optimisation coûts", "Réduction dépenses"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "cost_optimization": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "recurring_expenses": {
+                "terms": {"field": "category_name.keyword", "size": 20},
+                "aggs": {
+                  "category_total": {"sum": {"field": "amount_abs"}},
+                  "frequency": {"value_count": {"field": "transaction_id"}},
+                  "avg_amount": {"avg": {"field": "amount_abs"}},
+                  "merchants_in_category": {
+                    "terms": {"field": "merchant_name.keyword", "size": 5},
+                    "aggs": {
+                      "merchant_spending": {"sum": {"field": "amount_abs"}}
+                    }
+                  }
+                }
+              },
+              "high_frequency_low_amount": {
+                "filter": {"range": {"amount_abs": {"lte": 50}}},
+                "aggs": {
+                  "small_frequent_purchases": {
+                    "terms": {"field": "merchant_name.keyword", "size": 10},
+                    "aggs": {
+                      "total_small_purchases": {"sum": {"field": "amount_abs"}},
+                      "purchase_count": {"value_count": {"field": "transaction_id"}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse pour identifier les opportunités d'optimisation des coûts"
+    },
+    {
+      "intent": "ANOMALY_DETECTION",
+      "title": "8.1 Détection d'Anomalies dans les Dépenses",
+      "questions": ["Anomalies dépenses", "Transactions suspectes"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit",
+          "amount_abs": {"gte": 1000}
+        },
+        "aggregations": {
+          "anomaly_detection": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "unusual_amounts": {
+                "histogram": {
+                  "field": "amount_abs",
+                  "interval": 500,
+                  "min_doc_count": 1
+                },
+                "aggs": {
+                  "amount_total": {"sum": {"field": "amount_abs"}},
+                  "transaction_details": {
+                    "top_hits": {
+                      "size": 3,
+                      "sort": [{"amount_abs": {"order": "desc"}}],
+                      "_source": ["amount", "merchant_name", "date", "category_name"]
+                    }
+                  }
+                }
+              },
+              "unusual_categories": {
+                "terms": {"field": "category_name.keyword", "size": 10},
+                "aggs": {
+                  "category_high_spending": {"sum": {"field": "amount_abs"}},
+                  "max_transaction": {"max": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        },
+        "sort": [{"amount_abs": {"order": "desc"}}],
+        "page_size": 20
+      },
+      "description": "Détection des transactions anormales ou suspectes"
+    },
+    {
+      "intent": "CORRELATION_ANALYSIS",
+      "title": "8.2 Analyse de Corrélations",
+      "questions": ["Corrélations dépenses", "Patterns liés"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "transaction_type": "debit"
+        },
+        "aggregations": {
+          "correlation_analysis": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "category_merchant_correlation": {
+                "terms": {"field": "category_name.keyword", "size": 15},
+                "aggs": {
+                  "category_spending": {"sum": {"field": "amount_abs"}},
+                  "top_merchants_in_category": {
+                    "terms": {"field": "merchant_name.keyword", "size": 8},
+                    "aggs": {
+                      "merchant_spending": {"sum": {"field": "amount_abs"}},
+                      "transaction_frequency": {"value_count": {"field": "transaction_id"}}
+                    }
+                  },
+                  "temporal_patterns": {
+                    "terms": {"field": "weekday.keyword", "size": 7},
+                    "aggs": {
+                      "weekday_spending": {"sum": {"field": "amount_abs"}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Analyse des corrélations entre catégories, marchands et périodes"
+    },
+    {
+      "intent": "BEHAVIORAL_SEGMENTATION",
+      "title": "8.3 Segmentation Comportementale",
+      "questions": ["Profil dépenses", "Comportement financier"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "behavioral_profile": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "spending_behavior": {
+                "filter": {"term": {"transaction_type": "debit"}},
+                "aggs": {
+                  "spending_categories": {
+                    "terms": {"field": "category_name.keyword", "size": 20},
+                    "aggs": {
+                      "category_total": {"sum": {"field": "amount_abs"}},
+                      "frequency": {"value_count": {"field": "transaction_id"}},
+                      "avg_amount": {"avg": {"field": "amount_abs"}}
+                    }
+                  },
+                  "spending_patterns": {
+                    "terms": {"field": "weekday.keyword", "size": 7},
+                    "aggs": {
+                      "weekday_total": {"sum": {"field": "amount_abs"}},
+                      "weekday_count": {"value_count": {"field": "transaction_id"}}
+                    }
+                  },
+                  "amount_ranges": {
+                    "range": {
+                      "field": "amount_abs",
+                      "ranges": [
+                        {"to": 20, "key": "small"},
+                        {"from": 20, "to": 100, "key": "medium"},
+                        {"from": 100, "to": 500, "key": "large"},
+                        {"from": 500, "key": "very_large"}
+                      ]
+                    },
+                    "aggs": {
+                      "range_total": {"sum": {"field": "amount_abs"}},
+                      "range_count": {"value_count": {"field": "transaction_id"}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Segmentation du comportement financier de l'utilisateur"
+    },
+    {
+      "intent": "RISK_ANALYSIS",
+      "title": "8.4 Analyse de Risque Financier",
+      "questions": ["Risques financiers", "Vulnérabilités budget"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34
+        },
+        "aggregations": {
+          "risk_analysis": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "income_stability": {
+                "filter": {"term": {"transaction_type": "credit"}},
+                "aggs": {
+                  "monthly_income_variance": {
+                    "date_histogram": {
+                      "field": "date",
+                      "calendar_interval": "1M"
+                    },
+                    "aggs": {
+                      "monthly_income": {"sum": {"field": "amount_abs"}},
+                      "income_sources": {"cardinality": {"field": "merchant_name.keyword"}}
+                    }
+                  }
+                }
+              },
+              "expense_volatility": {
+                "filter": {"term": {"transaction_type": "debit"}},
+                "aggs": {
+                  "monthly_expense_variance": {
+                    "date_histogram": {
+                      "field": "date",
+                      "calendar_interval": "1M"
+                    },
+                    "aggs": {
+                      "monthly_expenses": {"sum": {"field": "amount_abs"}},
+                      "expense_stats": {"extended_stats": {"field": "amount_abs"}}
+                    }
+                  },
+                  "large_expense_frequency": {
+                    "filter": {"range": {"amount_abs": {"gte": 500}}},
+                    "aggs": {
+                      "large_expenses_count": {"value_count": {"field": "transaction_id"}},
+                      "large_expenses_total": {"sum": {"field": "amount_abs"}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Évaluation des risques financiers basée sur la volatilité des revenus et dépenses"
+    },
+    {
+      "intent": "CASHFLOW_PREDICTION",
+      "title": "8.6 Prédiction de Flux de Trésorerie",
+      "questions": ["Prédiction trésorerie", "Flux futurs"],
+      "query": {
+        "user_id": 34,
+        "filters": {
+          "user_id": 34,
+          "date": {
+            "gte": "2024-01-01"
+          }
+        },
+        "aggregations": {
+          "cashflow_prediction": {
+            "filter": {"match_all": {}},
+            "aggs": {
+              "historical_patterns": {
+                "date_histogram": {
+                  "field": "date",
+                  "calendar_interval": "1M"
+                },
+                "aggs": {
+                  "monthly_inflow": {
+                    "filter": {"term": {"transaction_type": "credit"}},
+                    "aggs": {
+                      "inflow": {"sum": {"field": "amount_abs"}}
+                    }
+                  },
+                  "monthly_outflow": {
+                    "filter": {"term": {"transaction_type": "debit"}},
+                    "aggs": {
+                      "outflow": {"sum": {"field": "amount_abs"}}
+                    }
+                  },
+                  "net_cashflow": {
+                    "bucket_script": {
+                      "buckets_path": {
+                        "inflow": "monthly_inflow>inflow",
+                        "outflow": "monthly_outflow>outflow"
+                      },
+                      "script": "(params.inflow ?: 0) - (params.outflow ?: 0)"
+                    }
+                  }
+                }
+              },
+              "recurring_transactions": {
+                "terms": {"field": "merchant_name.keyword", "size": 20},
+                "aggs": {
+                  "regularity": {"value_count": {"field": "transaction_id"}},
+                  "avg_amount": {"avg": {"field": "amount_abs"}},
+                  "last_transaction": {"max": {"field": "date"}}
+                }
+              }
+            }
+          }
+        },
+        "aggregation_only": true,
+        "page_size": 1
+      },
+      "description": "Données historiques pour prédiction des flux de trésorerie futurs"
+    }
+  ]
+}

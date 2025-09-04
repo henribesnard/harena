@@ -1,5 +1,19 @@
 # Harena
 
+## Local Development (Unified Port)
+
+- Single entrypoint: run `python local_app.py` and access `http://localhost:8000`.
+- All services (users, sync, enrichment, search, conversation) are mounted under the same FastAPI app.
+- Standalone service scripts are disabled by default to avoid port conflicts. To run a service alone, set `HARENA_STANDALONE=true` and invoke the target module, e.g. `HARENA_STANDALONE=true python search_service/main.py`.
+
+### Logging
+
+- Local app forces a deterministic logger configuration to stdout; optional file logging via env.
+- Control with:
+  - `LOG_LEVEL` (e.g. `INFO`, `DEBUG`)
+  - `LOG_TO_FILE` (`True`/`False`)
+  - `LOG_FILE` (default `harena_local.log`)
+
 ## Organisation du code
 
 Les anciens modules `agents`, `clients`, `models` et `utils` ont été supprimés.
@@ -216,6 +230,8 @@ following environment variables are recognised:
 - `BRIDGE_CLIENT_ID`, `BRIDGE_CLIENT_SECRET`: Bridge API credentials
 - `DEEPSEEK_API_KEY`: key for the DeepSeek client
 - `CORS_ORIGINS`, `HOST`, `PORT`, `DEBUG`: generic service settings
+- `LOG_LEVEL`, `LOG_TO_FILE`, `LOG_FILE`: logging controls for local dev
+- `HARENA_STANDALONE`: set to `true` to allow launching individual service entrypoints
 
 `SEARCH_SERVICE_URL` sets the base URL for the Search Service. It defaults to
 `http://localhost:8000/api/v1/search` and the service automatically appends

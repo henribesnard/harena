@@ -11,10 +11,14 @@ from pydantic import BaseModel, Field
 
 # Modèles Pydantic pour l'API
 class TransactionInput(BaseModel):
-    """Modèle d'entrée pour une transaction à traiter."""
+    """Modèle d'entrée pour une transaction à traiter.
+
+    Note: ``account_id`` correspond au ``bridge_account_id`` (identifiant métier)
+    du compte dans PostgreSQL, et non à l'ID interne.
+    """
     bridge_transaction_id: int
     user_id: int
-    account_id: int
+    account_id: int  # bridge_account_id
     account_name: Optional[str] = None
     account_type: Optional[str] = None
     account_balance: Optional[float] = None
@@ -118,15 +122,12 @@ class StructuredTransaction:
     balance_check_passed: Optional[bool] = None
     quality_score: Optional[float] = None
 
-    # Informations de compte
-    account_name: Optional[str] = None
-    account_type: Optional[str] = None
-    account_balance: Optional[float] = None
-    account_currency: Optional[str] = None
-    account_last_sync: Optional[datetime] = None
+    # SUPPRIMÉ : Informations de compte (maintenant dans index accounts séparé)
+    # Seul account_id reste pour le lien
 
     # Information sur la catégorie
     category_name: Optional[str] = None
+    merchant_name: Optional[str] = None
 
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> "StructuredTransaction":
@@ -180,11 +181,6 @@ class StructuredTransaction:
             operation_type=tx.operation_type,
             is_future=tx.future,
             is_deleted=tx.deleted,
-            account_name=tx.account_name,
-            account_type=tx.account_type,
-            account_balance=tx.account_balance,
-            account_currency=tx.account_currency,
-            account_last_sync=tx.account_last_sync,
             category_name=tx.category_name,
             balance_check_passed=balance_check_passed,
             quality_score=quality_score,
@@ -196,12 +192,7 @@ class StructuredTransaction:
         doc = {
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
-            "account_id": self.account_id,
-            "account_name": self.account_name,
-            "account_type": self.account_type,
-            "account_balance": self.account_balance,
-            "account_currency": self.account_currency,
-            "account_last_sync": self.account_last_sync.isoformat() if self.account_last_sync else None,
+            "account_id": self.account_id,  # 🔗 Lien vers index accounts
             "searchable_text": self.searchable_text,
             "primary_description": self.primary_description,
             "amount": self.amount,
@@ -218,6 +209,7 @@ class StructuredTransaction:
             "category_id": self.category_id,
             "operation_type": self.operation_type,
             "category_name": self.category_name,
+            "merchant_name": self.merchant_name,
 
             # Flags
 

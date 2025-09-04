@@ -19,19 +19,97 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
+# Charger le fichier .env en priorité (avant l'import des settings)
+load_dotenv()
+
 from config_service.config import settings
 from conversation_service.api.middleware.auth_middleware import JWTAuthMiddleware
 
-# Charger le fichier .env en priorité
-load_dotenv()
+# Configuration du logging robuste pour le dev local
+# - force=True garantit la réinitialisation même si Uvicorn a déjà configuré le logging
+# - niveau pris des settings (fallback INFO)
+# - sortie sur stdout et (optionnel) fichier si LOG_TO_FILE=true
+def _configure_logging():
+    level_name = getattr(settings, "LOG_LEVEL", "INFO") or "INFO"
+    level = getattr(logging, str(level_name).upper(), logging.INFO)
 
-# Configuration du logging simple
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
-)
+    handlers = [logging.StreamHandler(sys.stdout)]
+
+    # Toujours écrire un fichier local de dev pour simplifier le debug
+    try:
+        default_log_path = str(Path(__file__).with_name("harena_local.log"))
+        default_fh = logging.FileHandler(default_log_path, encoding="utf-8")
+        default_fh.setLevel(level)
+        default_fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        handlers.append(default_fh)
+    except Exception:
+        # Ne jamais casser le démarrage à cause du fichier de log
+        pass
+
+    # Optionnellement écrire vers le fichier configuré par les settings
+    try:
+        if getattr(settings, "LOG_TO_FILE", False):
+            configured_path = getattr(settings, "LOG_FILE", None)
+            if configured_path:
+                alt_fh = logging.FileHandler(configured_path, encoding="utf-8")
+                alt_fh.setLevel(level)
+                alt_fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+                handlers.append(alt_fh)
+    except Exception:
+        pass
+
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers,
+        force=True,
+    )
+
+# S'assurer que le logger applicatif principal a son propre FileHandler dédié
+def _ensure_named_logger_filehandler():
+    try:
+        logger_name = "harena_local"
+        target_path = str(Path(__file__).with_name("harena_local.log"))
+        lg = logging.getLogger(logger_name)
+        # Éviter les doublons
+        for h in lg.handlers:
+            if hasattr(h, 'baseFilename') and getattr(h, 'baseFilename', None) == os.path.abspath(target_path):
+                return
+        fh = logging.FileHandler(target_path, encoding="utf-8")
+        fh.setLevel(logging.getLogger().level)
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        lg.addHandler(fh)
+        # S'assurer que ce logger écrit même si root est reconfiguré par uvicorn
+        lg.propagate = True
+    except Exception:
+        pass
+
+_configure_logging()
+_ensure_named_logger_filehandler()
 logger = logging.getLogger("harena_local")
+
+# Attacher explicitement les loggers Uvicorn d'accès/erreurs au même fichier pour visibilité
+def _attach_uvicorn_loggers():
+    try:
+        target_path = os.path.abspath(str(Path(__file__).with_name("harena_local.log")))
+        fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        for lname in ("uvicorn.access", "uvicorn.error"):
+            lg = logging.getLogger(lname)
+            # éviter les doublons
+            has = False
+            for h in lg.handlers:
+                if hasattr(h, 'baseFilename') and getattr(h, 'baseFilename', None) == target_path:
+                    has = True
+                    break
+            if not has:
+                fh = logging.FileHandler(target_path, encoding="utf-8")
+                fh.setLevel(logging.getLogger().level)
+                fh.setFormatter(fmt)
+                lg.addHandler(fh)
+    except Exception:
+        pass
+
+_attach_uvicorn_loggers()
 
 # Fix DATABASE_URL pour développement local
 DATABASE_URL = settings.DATABASE_URL
@@ -377,6 +455,32 @@ def create_app():
 
     app.add_middleware(JWTAuthMiddleware)
 
+    # Middleware HTTP fonctionnel (plus fiable que BaseHTTPMiddleware pour le logging)
+    access_logger = logging.getLogger("uvicorn.access")
+
+    @app.middleware("http")
+    async def request_logging_middleware(request, call_next):
+        import time as _time
+        start = _time.time()
+        path = request.url.path
+        method = request.method
+        client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
+        try:
+            response = await call_next(request)
+            duration_ms = int((_time.time() - start) * 1000)
+            user_id = getattr(getattr(request, 'state', object()), 'user_id', None)
+            access_logger.info(f"{client_ip} - \"{method} {path}\" {response.status_code} {duration_ms}ms" + (f" user_id={user_id}" if user_id else ""))
+            return response
+        except Exception as e:
+            duration_ms = int((_time.time() - start) * 1000)
+            access_logger.error(f"{client_ip} - \"{method} {path}\" 500 {duration_ms}ms err={e}", exc_info=True)
+            raise
+
+    # Route de debug pour lister les routes disponibles
+    @app.get("/__routes")
+    async def list_routes():
+        return sorted([f"{getattr(r, 'path', '')} [{','.join(getattr(r, 'methods', []) or [])}]" for r in app.router.routes])
+
     # ========================================
     # INCLUSION DES ROUTERS (déplacé du lifespan)
     # ========================================
@@ -532,16 +636,40 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
     logger.info("🔥 Lancement du serveur de développement avec hot reload")
-    logger.info("📡 Accès: http://localhost:8002")
-    logger.info("📚 Docs: http://localhost:8002/docs")
-    logger.info("🔍 Status: http://localhost:8002/status")
+    logger.info("📡 Accès: http://localhost:8000")
+    logger.info("📚 Docs: http://localhost:8000/docs")
+    logger.info("🔍 Status: http://localhost:8000/status")
     logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
     logger.info("✅ Architecture allégée pour développement core avec sécurité JWT")
-    
+
+    # Configuration explicite de logging pour Uvicorn (console + fichier)
+    log_file_path = str(Path(__file__).with_name("harena_local.log"))
+    uvicorn_log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
+            "access": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
+        },
+        "handlers": {
+            "console": {"class": "logging.StreamHandler", "formatter": "default", "stream": "ext://sys.stdout"},
+            "file": {"class": "logging.FileHandler", "formatter": "default", "filename": log_file_path, "encoding": "utf-8"},
+            "file_access": {"class": "logging.FileHandler", "formatter": "access", "filename": log_file_path, "encoding": "utf-8"},
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["console", "file"], "level": "INFO"},
+            "uvicorn.error": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+            "uvicorn.access": {"handlers": ["console", "file_access"], "level": "INFO", "propagate": False},
+            "harena_local": {"handlers": ["console", "file"], "level": "INFO", "propagate": True},
+        },
+    }
+
     uvicorn.run(
         "local_app:app", 
-        host="0.0.0.0", 
-        port=8002,
+        host="::",  # écoute IPv4/IPv6 pour couvrir localhost
+        port=8000,
         reload=True,
-        log_level="info"
+        log_level="info",
+        access_log=True,
+        log_config=uvicorn_log_config
     )

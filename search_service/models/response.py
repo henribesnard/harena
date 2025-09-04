@@ -1,7 +1,7 @@
 """Schémas de réponse pour le service de recherche."""
 
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 class SearchResult(BaseModel):
     """Modèle d'un résultat de transaction basé sur votre schéma existant"""
@@ -76,6 +76,51 @@ class SearchResult(BaseModel):
                 "operation_type": "card_payment",
                 "_score": 1.0,
                 "highlights": {"primary_description": ["<em>bistrot</em>"]}
+            }
+        }
+    )
+
+class AccountResult(BaseModel):
+    """Modèle d'un résultat de compte pour les recherches sur l'index accounts"""
+    
+    # Champs obligatoires pour les comptes
+    user_id: int = Field(..., description="ID utilisateur")
+    account_id: int = Field(..., description="ID du compte")
+    account_name: str = Field(..., description="Nom du compte")
+    account_type: str = Field(..., description="Type de compte")
+    account_balance: float = Field(..., description="Solde du compte")
+    account_currency: str = Field(default="EUR", description="Devise du compte")
+    
+    # Métadonnées de recherche
+    score: float = Field(
+        default=0.0, 
+        description="Score de pertinence", 
+        alias="_score"
+    )
+    highlights: Optional[Dict[str, List[str]]] = Field(
+        default=None, 
+        description="Surlignade des termes"
+    )
+
+    @field_serializer('score', when_used='always')
+    def serialize_score(self, value: float) -> float:
+        """Garantit que _score apparaît toujours, même si 0.0"""
+        return value if value is not None else 0.0
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        use_enum_values=True,
+        validate_assignment=True,
+        json_schema_extra={
+            "example": {
+                "user_id": 34,
+                "account_id": 101,
+                "account_name": "Compte courant",
+                "account_type": "checking",
+                "account_balance": 1000.0,
+                "account_currency": "EUR",
+                "_score": 1.0,
+                "highlights": {"account_name": ["<em>courant</em>"]}
             }
         }
     )

@@ -217,6 +217,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ======== LANCEMENT DE L'APPLICATION ========
 
 if __name__ == "__main__":
+    import sys
+    allow = os.getenv("HARENA_STANDALONE", "").lower() == "true"
+    if not allow:
+        print("Standalone aggregator disabled. Use local_app.py (port 8000) or set HARENA_STANDALONE=true")
+        sys.exit(0)
+
     port = settings.PORT
     host = settings.HOST
     debug = settings.DEBUG

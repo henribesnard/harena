@@ -4,6 +4,8 @@ from typing import Dict, Any
 
 from search_service.models.request import SearchRequest
 from search_service.core.search_engine import SearchEngine, RateLimitExceeded
+from search_service.api.deps import get_current_active_user, validate_user_access
+from db_service.models.user import User
 from config_service.config import settings
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,7 @@ async def get_search_engine() -> SearchEngine:
 @router.post("/search")
 async def search_transactions(
     request: SearchRequest,
+    current_user: User = Depends(get_current_active_user),
     engine: SearchEngine = Depends(get_search_engine)
 ) -> Dict[str, Any]:
     """
@@ -58,17 +61,20 @@ async def search_transactions(
         HTTPException: En cas d'erreur de validation ou de recherche
     """
     try:
-        # Validation sécurité
+        # Validation sécurité - user_id obligatoire
         if request.user_id <= 0:
             raise HTTPException(
                 status_code=400, 
                 detail="user_id est obligatoire et doit être positif"
             )
         
-        # Log de la requête pour monitoring
+        # Contrôle d'accès : vérifier que l'utilisateur peut accéder aux données demandées
+        validate_user_access(current_user, request.user_id)
+        
+        # Log de la requête pour monitoring (inclus l'utilisateur authentifié)
         logger.info(
-            f"Search request from user {request.user_id}: "
-            f"query='{request.query}', filters={len(request.filters)}, page={request.page}, page_size={request.page_size}"
+            f"Search request from authenticated user {current_user.id} (admin: {current_user.is_superuser}) for user_id {request.user_id}: "
+            f"query='{request.query}', filters={len(request.filters) if request.filters else 0}, page={request.page}, page_size={request.page_size}"
         )
         
         # Recherche via moteur unifié
@@ -103,6 +109,7 @@ async def search_transactions(
 @router.post("/count")
 async def count_transactions(
     request: SearchRequest,
+    current_user: User = Depends(get_current_active_user),
     engine: SearchEngine = Depends(get_search_engine)
 ) -> Dict[str, Any]:
     """
@@ -120,6 +127,9 @@ async def count_transactions(
                 status_code=400, 
                 detail="user_id est obligatoire et doit être positif"
             )
+        
+        # Contrôle d'accès : vérifier que l'utilisateur peut accéder aux données demandées
+        validate_user_access(current_user, request.user_id)
         
         count = await engine.count(request)
         

@@ -21,6 +21,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     confirm_password: str
+    is_superuser: Optional[bool] = False  # Champ optionnel pour créer des admins
 
     @field_validator("confirm_password")
     @classmethod
@@ -87,6 +88,7 @@ class BridgeConnectionInDB(BridgeConnectionBase):
 class UserInDBBase(UserBase):
     id: int
     is_active: bool
+    is_superuser: bool = False  # Champ pour identifier les admins
     created_at: datetime
     updated_at: datetime
 

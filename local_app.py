@@ -147,44 +147,8 @@ def create_app():
         for service_name, module_path in services_health:
             loader.check_service_health(service_name, module_path)
         
-        # Charger les routers des services
-        logger.info("📋 Chargement des routes des services...")
-        
-        # 1. User Service
-        try:
-            from user_service.api.endpoints.users import router as user_router
-            app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
-            routes_count = len(user_router.routes) if hasattr(user_router, 'routes') else 0
-            logger.info(f"✅ user_service: {routes_count} routes sur /api/v1/users")
-            loader.services_status["user_service"] = {"status": "ok", "routes": routes_count, "prefix": "/api/v1/users"}
-        except Exception as e:
-            logger.error(f"❌ User Service: {e}")
-            loader.services_status["user_service"] = {"status": "error", "error": str(e)}
-
-        # 2. Sync Service - modules principaux
-        sync_modules = [
-            ("sync_service.api.endpoints.sync", "/api/v1/sync", "Synchronisation"),
-            ("sync_service.api.endpoints.transactions", "/api/v1/transactions", "Transactions"),
-            ("sync_service.api.endpoints.accounts", "/api/v1/accounts", "Comptes"),
-            ("sync_service.api.endpoints.categories", "/api/v1/categories", "Catégories"),
-            ("sync_service.api.endpoints.items", "/api/v1/items", "Items Bridge"),
-            ("sync_service.api.endpoints.webhooks", "/webhooks", "Webhooks"),
-        ]
-
-        sync_successful = 0
-        for module_path, prefix, description in sync_modules:
-            try:
-                module = __import__(module_path, fromlist=["router"])
-                router = getattr(module, "router")
-                service_name = f"sync_{module_path.split('.')[-1]}"
-                app.include_router(router, prefix=prefix, tags=[module_path.split('.')[-1]])
-                routes_count = len(router.routes) if hasattr(router, 'routes') else 0
-                logger.info(f"✅ {service_name}: {routes_count} routes sur {prefix}")
-                loader.services_status[service_name] = {"status": "ok", "routes": routes_count, "prefix": prefix}
-                sync_successful += 1
-            except Exception as e:
-                logger.error(f"❌ {module_path}: {e}")
-                loader.services_status[f"sync_{module_path.split('.')[-1]}"] = {"status": "error", "error": str(e)}
+        # Note: L'inclusion des routers a été déplacée vers la création de l'app
+        # pour garantir leur présence dans l'OpenAPI schema
 
         # 3. Enrichment Service - VERSION ELASTICSEARCH UNIQUEMENT (INCHANGÉ)
         logger.info("🔍 Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
@@ -226,10 +190,8 @@ def create_app():
                     logger.error(f"❌ Erreur initialisation composants enrichment: {e}")
                     enrichment_init_success = False
             
-            # Charger les routes enrichment_service
-            from enrichment_service.api.routes import router as enrichment_router
-            app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
-            routes_count = len(enrichment_router.routes) if hasattr(enrichment_router, 'routes') else 0
+            # Note: Router enrichment_service inclus dans create_app()
+            routes_count = 8  # Nombre approximatif pour les statuts
             
             if enrichment_elasticsearch_available and enrichment_init_success:
                 logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment (AVEC initialisation)")
@@ -302,9 +264,8 @@ def create_app():
             # Injecter dans les routes
             initialize_search_engine(elasticsearch_client)
             
-            # Charger les routes
-            app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-            routes_count = len(search_router.routes) if hasattr(search_router, 'routes') else 0
+            # Note: Router search_service inclus dans create_app()
+            routes_count = 5  # Nombre approximatif pour les statuts
             logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search")
             
             # Mettre dans app.state
@@ -354,8 +315,8 @@ def create_app():
             conversation_loader = ConversationServiceLoader()
             conversation_initialized = await conversation_loader.initialize_conversation_service(app)
 
-            app.include_router(conversation_router, prefix="/api/v1", tags=["conversation"])
-            routes_count = len(conversation_router.routes) if hasattr(conversation_router, 'routes') else 0
+            # Note: Router conversation_service inclus dans create_app()
+            routes_count = 9  # Nombre approximatif pour les statuts
 
             loader.conversation_service_initialized = conversation_initialized
             loader.conversation_service_error = conversation_loader.initialization_error
@@ -415,6 +376,61 @@ def create_app():
     )
 
     app.add_middleware(JWTAuthMiddleware)
+
+    # ========================================
+    # INCLUSION DES ROUTERS (déplacé du lifespan)
+    # ========================================
+    
+    # 1. User Service
+    try:
+        from user_service.api.endpoints.users import router as user_router
+        app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
+        logger.info("✅ user_service router included")
+    except Exception as e:
+        logger.error(f"❌ User Service router: {e}")
+
+    # 2. Sync Service - modules principaux
+    sync_modules = [
+        ("sync_service.api.endpoints.sync", "/api/v1/sync", "sync"),
+        ("sync_service.api.endpoints.transactions", "/api/v1/transactions", "transactions"),
+        ("sync_service.api.endpoints.accounts", "/api/v1/accounts", "accounts"),
+        ("sync_service.api.endpoints.categories", "/api/v1/categories", "categories"),
+        ("sync_service.api.endpoints.items", "/api/v1/items", "items"),
+        ("sync_service.api.endpoints.webhooks", "/webhooks", "webhooks"),
+    ]
+
+    for module_path, prefix, tag in sync_modules:
+        try:
+            module = __import__(module_path, fromlist=["router"])
+            router = getattr(module, "router")
+            app.include_router(router, prefix=prefix, tags=[tag])
+            logger.info(f"✅ {module_path.split('.')[-1]} router included")
+        except Exception as e:
+            logger.error(f"❌ {module_path}: {e}")
+
+    # 3. Enrichment Service
+    try:
+        from enrichment_service.api.routes import router as enrichment_router
+        app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
+        logger.info("✅ enrichment_service router included")
+    except Exception as e:
+        logger.error(f"❌ Enrichment Service router: {e}")
+
+    # 4. Search Service
+    try:
+        from search_service.api.routes import router as search_router
+        app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+        logger.info("✅ search_service router included")
+    except Exception as e:
+        logger.error(f"❌ Search Service router: {e}")
+
+    # 5. Conversation Service
+    try:
+        from conversation_service.api.routes.conversation import router as conversation_router
+        app.include_router(conversation_router, prefix="/api/v1", tags=["conversation"])
+        logger.info("✅ conversation_service router included")
+    except Exception as e:
+        logger.error(f"❌ Conversation Service router: {e}")
 
     @app.get("/health")
     async def health():
@@ -516,16 +532,16 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
     logger.info("🔥 Lancement du serveur de développement avec hot reload")
-    logger.info("📡 Accès: http://localhost:8000")
-    logger.info("📚 Docs: http://localhost:8000/docs")
-    logger.info("🔍 Status: http://localhost:8000/status")
+    logger.info("📡 Accès: http://localhost:8002")
+    logger.info("📚 Docs: http://localhost:8002/docs")
+    logger.info("🔍 Status: http://localhost:8002/status")
     logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
-    logger.info("✅ Architecture allégée pour développement core")
+    logger.info("✅ Architecture allégée pour développement core avec sécurité JWT")
     
     uvicorn.run(
         "local_app:app", 
         host="0.0.0.0", 
-        port=8000,
+        port=8002,
         reload=True,
         log_level="info"
     )

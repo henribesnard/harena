@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import Any, List, Optional
 from datetime import timedelta
+import logging
 
 from user_service.schemas.user import (
     User, UserCreate, UserUpdate, Token,
@@ -13,6 +14,7 @@ from user_service.services import users, bridge
 from config_service.config import settings
 from user_service.core.security import create_access_token
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -23,12 +25,28 @@ async def register_user(
 ) -> Any:
     """
     Créer un nouvel utilisateur et l'enregistrer auprès de Bridge API.
+    
+    Note: Les administrateurs (is_superuser=True) ne nécessitent pas de compte Bridge
+    car ils n'ont pas besoin d'accéder à des données financières personnelles.
     """
-    # Créer l'utilisateur
+    # Créer l'utilisateur en base
     db_user = users.create_user(db, user_in)
     
-    # Créer l'utilisateur Bridge
-    await bridge.create_bridge_user(db, db_user)
+    # Créer l'utilisateur Bridge SEULEMENT pour les utilisateurs normaux
+    if not db_user.is_superuser:
+        try:
+            await bridge.create_bridge_user(db, db_user)
+        except Exception as e:
+            # En cas d'échec Bridge pour un utilisateur normal, on annule la création
+            db.delete(db_user)
+            db.commit()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create Bridge user: {str(e)}"
+            )
+    else:
+        # Pour les admins, on log juste qu'on ne crée pas de compte Bridge
+        logger.info(f"Admin user {db_user.id} created without Bridge account (not required)")
     
     return db_user
 

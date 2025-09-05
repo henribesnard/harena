@@ -41,8 +41,9 @@ class QueryBuilder:
         }
         
         # Champs nécessitant .keyword pour filtres exacts (ACCOUNTS)  
+        # Note: account_type est déjà mappé comme keyword dans ES, donc pas besoin de .keyword
         self.account_keyword_fields: Set[str] = {
-            'account_name', 'account_type', 'account_currency'
+            'account_name', 'account_currency'
         }
         
         # Configuration des index
@@ -184,10 +185,15 @@ class QueryBuilder:
         text_query_part = None
         must_filters = []
         
-        # 1. Filtre obligatoire user_id (sécurité critique)
+        # 1. Filtres obligatoires (sécurité critique)
         must_filters.append({"term": {"user_id": request.user_id}})
         
-        # 2. Requête textuelle → QUERY avec scoring
+        # 2. Filtre document_type pour éviter la pollution des index
+        if search_type == "transactions":
+            # Pour les transactions : exclure les documents account qui sont mélangés dans harena_transactions
+            must_filters.append({"bool": {"must_not": [{"term": {"document_type.keyword": "account"}}]}})
+        
+        # 3. Requête textuelle → QUERY avec scoring
         if request.query and request.query.strip():
             cleaned_query = request.query.strip()
             if self._is_numeric(cleaned_query) and search_type == "accounts":
@@ -198,11 +204,12 @@ class QueryBuilder:
                 # Requête textuelle → multi_match avec scoring
                 text_query_part = self._build_text_query(cleaned_query, search_fields)
         
-        # 3. Filtres additionnels
-        additional_filters = self._build_additional_filters(request.filters, keyword_fields)
+        # 4. Filtres additionnels (exclure user_id déjà ajouté pour sécurité)
+        additional_filters_dict = {k: v for k, v in request.filters.items() if k != "user_id"}
+        additional_filters = self._build_additional_filters(additional_filters_dict, keyword_fields)
         must_filters.extend(additional_filters)
         
-        # 4. Construction bool query optimisée
+        # 5. Construction bool query optimisée
         bool_query = {}
         
         if text_query_part:
@@ -214,14 +221,14 @@ class QueryBuilder:
             # Mode filtre uniquement: tout dans must
             bool_query["must"] = must_filters
         
-        # 5. Tri intelligent adapté au type
+        # 6. Tri intelligent adapté au type
         sort_criteria = request.sort if request.sort is not None else self._build_sort_criteria(request, search_type)
         
-        # 6. Pagination
+        # 7. Pagination
         page = getattr(request, "page", 1)
         offset = (page - 1) * request.page_size
         
-        # 7. Construction requête finale
+        # 8. Construction requête finale
         query = {
             "query": {"bool": bool_query},
             "sort": sort_criteria,
@@ -230,11 +237,11 @@ class QueryBuilder:
             "from": offset
         }
 
-        # 8. Track scores si nécessaire
+        # 9. Track scores si nécessaire
         if self._needs_score_tracking(sort_criteria):
             query["track_scores"] = True
 
-        # 9. Highlighting si demandé
+        # 10. Highlighting si demandé
         if request.highlight:
             query["highlight"] = request.highlight
         
@@ -476,13 +483,13 @@ class QueryBuilder:
 
         # Ajouter les agrégations à la requête finale
         if aggregations:
-            base_query["aggs"] = aggregations
+            base_query["query"]["aggs"] = aggregations
             
             # Mode aggregation-only
             if getattr(request, "aggregation_only", False):
-                base_query["size"] = 0
+                base_query["query"]["size"] = 0
             else:
-                base_query["size"] = request.page_size
+                base_query["query"]["size"] = request.page_size
 
         return base_query
 

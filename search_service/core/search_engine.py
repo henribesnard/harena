@@ -173,10 +173,19 @@ class SearchEngine:
                     target_index = "harena_transactions"
                     search_type = "transactions"
             else:
-                query_info = self.query_builder.build_query(request)
-                es_query = query_info["query"]
-                target_index = query_info["target_index"]
-                search_type = query_info["search_type"]
+                # Utiliser build_aggregation_query si des agrégations sont présentes
+                if request.aggregations:
+                    query_info = self.query_builder.build_aggregation_query(request, request.aggregations)
+                    es_query = query_info["query"] if "query" in query_info else query_info
+                    # Récupérer les métadonnées depuis build_query
+                    base_info = self.query_builder.build_query(request)
+                    target_index = base_info["target_index"]
+                    search_type = base_info["search_type"]
+                else:
+                    query_info = self.query_builder.build_query(request)
+                    es_query = query_info["query"]
+                    target_index = query_info["target_index"]
+                    search_type = query_info["search_type"]
 
             logger.debug(f"🎯 Search type: {search_type}, target index: {target_index}")
             logger.debug(f"Elasticsearch query: {json.dumps(es_query, indent=2)}")

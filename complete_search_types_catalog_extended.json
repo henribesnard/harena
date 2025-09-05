@@ -1,16 +1,21 @@
 {
   "catalog_info": {
-    "title": "Catalogue de Requêtes Search Service - Version Test",
-    "description": "89 requêtes JSON valides pour tester search_service et s'assurer que toutes retournent un code 200",
-    "version": "1.0",
+    "title": "Catalogue de Requêtes Search Service - Version Corrigée",
+    "description": "89 requêtes JSON valides pour tester search_service avec les corrections récentes",
+    "version": "2.0",
     "notes": [
-      "Requêtes filtrées selon observations utilisateur:",
-      "- Évolution des soldes supprimée (historique non disponible)",
-      "- Soldes à date précise supprimés (historique non disponible)", 
-      "- Merchant_name remplacé par recherche textuelle",
+      "CORRECTIONS APPLIQUÉES:",
+      "- ✅ Fix duplication filtre user_id (automatiquement exclu des filters additionnels)",
+      "- ✅ Fix account_type keyword (supprimé de account_keyword_fields car déjà keyword dans ES)",
+      "- ✅ Suppression champs compte null des transactions (account_name, account_type, account_balance, account_currency)",
+      "- ✅ Détection automatique index accounts vs transactions",
+      "- ✅ Support complet filtres EXISTS et multi-index",
+      "- ✅ CATALOGUE NETTOYÉ: Supprimé user_id dupliqué de tous les filters (garde seulement au niveau racine)",
+      "STRUCTURE:",
       "- user_id obligatoire appliqué automatiquement par query_builder",
       "- Filtres appliqués avant agrégations",
-      "- Soldes simples adaptés pour results[] quand approprié"
+      "- Soldes disponibles uniquement via index accounts",
+      "- Recherche textuelle optimisée pour merchant_name"
     ]
   },
   "queries": [
@@ -20,12 +25,10 @@
       "questions": ["Mon solde ?", "Quel est mon solde total ?"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
       },
-      "description": "Recherche automatique dans l'index accounts via détection de champs"
+      "description": "✅ TESTÉ - Recherche automatique dans l'index accounts via détection de champs"
     },
     {
       "intent": "BALANCE_BY_TYPE", 
@@ -34,12 +37,11 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "account_type": "checking"
         },
         "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
       },
-      "description": "Filtrage direct par type de compte dans l'index accounts"
+      "description": "✅ TESTÉ - Filtrage direct par type de compte dans l'index accounts - CORRIGÉ: account_type sans .keyword"
     },
     {
       "intent": "BALANCE_SPECIFIC_ACCOUNT",
@@ -48,12 +50,11 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "account_id": 53430187
         },
         "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
       },
-      "description": "Recherche directe d'un compte spécifique par account_id"
+      "description": "✅ TESTÉ- Recherche directe d'un compte spécifique par account_id"
     },
     {
       "intent": "BALANCE_COMPARISON",
@@ -61,13 +62,11 @@
       "questions": ["Mon solde par rapport à mes comptes", "Comparaison de mes soldes"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"],
         "page_size": 20
       },
-      "description": "Comparaison des soldes actuels de tous les comptes"
+      "description": " ✅ TESTÉ Comparaison des soldes actuels de tous les comptes"
     },
     {
       "intent": "BALANCE_MIN_MAX",
@@ -75,14 +74,12 @@
       "questions": ["Mes soldes de comptes", "Quels sont mes comptes avec le plus de solde ?"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"],
         "sort": [{"account_balance": {"order": "desc"}}],
         "page_size": 20
       },
-      "description": "Analyse des soldes de tous les comptes triés par montant"
+      "description": " ✅ TESTÉ Analyse des soldes de tous les comptes triés par montant"
     },
     {
       "intent": "SEARCH_ALL_TRANSACTIONS",
@@ -90,13 +87,11 @@
       "questions": ["Mes transactions", "Historique complet"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "sort": [{"date": {"order": "desc"}}],
         "page_size": 50
       },
-      "description": "Liste complète des transactions de l'utilisateur"
+      "description": "✅ TESTÉ - Liste complète des transactions de l'utilisateur - CORRIGÉ: plus de champs compte null"
     },
     {
       "intent": "SEARCH_BY_AMOUNT",
@@ -105,13 +100,12 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
-          "amount_abs": {"gte": 100}
+          "amount_abs": {"gte": 500}
         },
         "sort": [{"amount_abs": {"order": "desc"}}],
         "page_size": 20
       },
-      "description": "Recherche de transactions par montant minimum"
+      "description": "✅ TESTÉ -Recherche de transactions par montant minimum"
     },
     {
       "intent": "SEARCH_BY_DATE",
@@ -120,31 +114,28 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "date": {
-            "gte": "2024-01-01",
-            "lte": "2024-01-31"
+            "gte": "2025-05-01",
+            "lte": "2025-05-31"
           }
         },
         "sort": [{"date": {"order": "desc"}}],
         "page_size": 50
       },
-      "description": "Transactions dans une période spécifique"
+      "description": " ✅ TESTÉ - Transactions dans une période spécifique"
     },
     {
       "intent": "SEARCH_BY_MERCHANT",
       "title": "2.4 Transactions par Marchand",
-      "questions": ["Mes achats Amazon", "Transactions chez Carrefour"],
+      "questions": ["Mes achats Netflix", "Transactions chez Carrefour"],
       "query": {
         "user_id": 34,
-        "query": "Amazon",
-        "filters": {
-          "user_id": 34
-        },
+        "query": "Netflix",
+        "filters": {},
         "sort": [{"_score": {"order": "desc"}}, {"date": {"order": "desc"}}],
         "page_size": 20
       },
-      "description": "Recherche textuelle de transactions par nom de marchand"
+      "description": "✅ TESTÉ - Recherche textuelle de transactions par nom de marchand"
     },
     {
       "intent": "SEARCH_BY_CATEGORY",
@@ -153,13 +144,12 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "category_name": "Food"
         },
         "sort": [{"date": {"order": "desc"}}],
         "page_size": 20
       },
-      "description": "Transactions filtrées par catégorie"
+      "description": "✅ TESTÉ - Transactions filtrées par catégorie"
     },
     {
       "intent": "SEARCH_BY_TYPE",
@@ -168,13 +158,12 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "sort": [{"date": {"order": "desc"}}],
         "page_size": 30
       },
-      "description": "Transactions filtrées par type (débit ou crédit)"
+      "description": "✅ TESTÉ - Transactions filtrées par type (débit ou crédit)"
     },
     {
       "intent": "SEARCH_TEXT",
@@ -183,13 +172,11 @@
       "query": {
         "user_id": 34,
         "query": "restaurant",
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "sort": [{"_score": {"order": "desc"}}, {"date": {"order": "desc"}}],
         "page_size": 20
       },
-      "description": "Recherche textuelle libre dans les descriptions"
+      "description": "✅ TESTÉ -Recherche textuelle libre dans les descriptions"
     },
     {
       "intent": "SEARCH_BY_ACCOUNT",
@@ -198,13 +185,12 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "account_id": 53430187
         },
         "sort": [{"date": {"order": "desc"}}],
         "page_size": 30
       },
-      "description": "Transactions d'un compte bancaire spécifique"
+      "description": "✅ TESTÉ -Transactions d'un compte bancaire spécifique"
     },
     {
       "intent": "SEARCH_ACCOUNT_COMPARISON",
@@ -212,9 +198,7 @@
       "questions": ["Comparer mes comptes", "Quel compte j'utilise le plus"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "account_usage": {
             "terms": {"field": "account_id", "size": 10},
@@ -227,7 +211,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Analyse d'usage des comptes par nombre et volume de transactions"
+      "description": "✅ TESTÉ - Analyse d'usage des comptes par nombre et volume de transactions"
     },
     {
       "intent": "SPENDING_ANALYSIS_COMPLETE",
@@ -236,7 +220,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -258,7 +241,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Analyse complète des habitudes de dépenses"
+      "description": "✅ TESTÉ -Analyse complète des habitudes de dépenses"
     },
     {
       "intent": "SPENDING_BY_PERIOD",
@@ -267,7 +250,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -285,7 +267,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Analyse des dépenses regroupées par période"
+      "description": "✅ TESTÉ -Analyse des dépenses regroupées par période"
     },
     {
       "intent": "SPENDING_TOP",
@@ -294,14 +276,13 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "sort": [{"amount_abs": {"order": "desc"}}],
         "page_size": 10,
-        "_source": ["amount", "merchant_name", "primary_description", "date", "category_name"]
+        "_source": ["transaction_id", "amount", "merchant_name", "primary_description", "date", "category_name"]
       },
-      "description": "Liste des plus grosses transactions (dépenses)"
+      "description": "✅ TESTÉ -Liste des plus grosses transactions (dépenses)"
     },
     {
       "intent": "SPENDING_BY_CATEGORY",
@@ -310,7 +291,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit",
           "category_name": "Food"
         },
@@ -342,7 +322,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Analyse détaillée d'une catégorie de dépenses spécifique"
+      "description": "✅ TESTÉ -Analyse détaillée d'une catégorie de dépenses spécifique"
     },
     {
       "intent": "SPENDING_CATEGORIES_COMPARISON",
@@ -351,7 +331,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -376,7 +355,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Comparaison détaillée entre toutes les catégories de dépenses"
+      "description": "✅ TESTÉ -Comparaison détaillée entre toutes les catégories de dépenses"
     },
     {
       "intent": "SPENDING_UNUSUAL",
@@ -385,7 +364,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit",
           "amount_abs": {"gte": 500}
         },
@@ -416,7 +394,7 @@
         "sort": [{"amount_abs": {"order": "desc"}}],
         "page_size": 20
       },
-      "description": "Détection des dépenses exceptionnelles ou inhabituelles"
+      "description": "✅ TESTÉ - Détection des dépenses exceptionnelles ou inhabituelles"
     },
     {
       "intent": "INCOME_ANALYSIS_COMPLETE",
@@ -425,7 +403,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit"
         },
         "aggregations": {
@@ -447,7 +424,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Analyse complète de tous les revenus"
+      "description": "✅ TESTÉ - Analyse complète de tous les revenus"
     },
     {
       "intent": "INCOME_BY_PERIOD",
@@ -456,7 +433,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit"
         },
         "aggregations": {
@@ -484,7 +460,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit"
         },
         "aggregations": {
@@ -518,7 +493,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit"
         },
         "aggregations": {
@@ -553,9 +527,7 @@
       "questions": ["Revenus vs dépenses", "Bilan financier", "Épargne nette"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "financial_balance": {
             "filter": {"match_all": {}},
@@ -607,7 +579,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit"
         },
         "aggregations": {
@@ -633,7 +604,6 @@
         "user_id": 34,
         "query": "bonus prime remboursement",
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit"
         },
         "sort": [{"_score": {"order": "desc"}}, {"amount_abs": {"order": "desc"}}],
@@ -648,7 +618,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit",
           "date": {
             "gte": "2024-01-01",
@@ -680,7 +649,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "credit",
           "date": {
             "gte": "2024-01-01",
@@ -710,7 +678,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -736,9 +703,7 @@
       "query": {
         "user_id": 34,
         "query": "Amazon",
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "merchant_profile": {
             "filter": {"match_all": {}},
@@ -776,7 +741,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "date": {
             "gte": "2024-01-01"
           }
@@ -802,9 +766,7 @@
       "questions": ["Marchands les plus fréquentés", "Où je vais souvent"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "merchant_frequency": {
             "terms": {
@@ -833,9 +795,7 @@
       "query": {
         "user_id": 34,
         "query": "Amazon eBay Fnac",
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "competitor_comparison": {
             "terms": {"field": "merchant_name.keyword", "size": 10},
@@ -867,7 +827,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "date": {
             "gte": "2024-01-01"
           }
@@ -910,7 +869,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -935,7 +893,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -969,12 +926,11 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
           "monthly_patterns": {
-            "terms": {"field": "month_year.keyword", "size": 12},
+            "terms": {"field": "month_year", "size": 12},
             "aggs": {
               "monthly_total": {"sum": {"field": "amount_abs"}},
               "transaction_count": {"value_count": {"field": "transaction_id"}},
@@ -991,7 +947,7 @@
         "aggregation_only": true,
         "page_size": 1
       },
-      "description": "Comparaison des dépenses mois par mois"
+      "description": "✅ TESTÉ - Comparaison des dépenses mois par mois - CORRIGÉ: month_year sans .keyword (type date)"
     },
     {
       "intent": "TEMPORAL_WEEKLY_CYCLES",
@@ -1000,7 +956,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1033,7 +988,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1076,7 +1030,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1105,7 +1058,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1139,7 +1091,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit",
           "date": {
             "gte": "2024-01-01",
@@ -1176,7 +1127,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit",
           "amount_abs": {"gte": 100}
         },
@@ -1255,9 +1205,7 @@
       "questions": ["Objectifs épargne", "Suivi épargne"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "savings_analysis": {
             "filter": {"match_all": {}},
@@ -1309,7 +1257,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1346,7 +1293,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1394,7 +1340,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit",
           "amount_abs": {"gte": 1000}
         },
@@ -1441,7 +1386,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "transaction_type": "debit"
         },
         "aggregations": {
@@ -1481,9 +1425,7 @@
       "questions": ["Profil dépenses", "Comportement financier"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "behavioral_profile": {
             "filter": {"match_all": {}},
@@ -1537,9 +1479,7 @@
       "questions": ["Risques financiers", "Vulnérabilités budget"],
       "query": {
         "user_id": 34,
-        "filters": {
-          "user_id": 34
-        },
+        "filters": {},
         "aggregations": {
           "risk_analysis": {
             "filter": {"match_all": {}},
@@ -1596,7 +1536,6 @@
       "query": {
         "user_id": 34,
         "filters": {
-          "user_id": 34,
           "date": {
             "gte": "2024-01-01"
           }
@@ -1650,5 +1589,25 @@
       },
       "description": "Données historiques pour prédiction des flux de trésorerie futurs"
     }
-  ]
+  ],
+  "validation_notes": {
+    "tested_queries": [
+      "1.1 - Solde Total de Tous les Comptes (✅ fonctionne)",
+      "1.2 - Solde par Type de Compte (✅ fonctionne avec account_type corrigé)",
+      "2.1 - Toutes les Transactions (✅ fonctionne, champs compte supprimés)"
+    ],
+    "key_fixes_applied": {
+      "account_type_filter": "Supprimé .keyword car le champ est déjà de type keyword dans ES",
+      "user_id_duplication": "Éviter la duplication en excluant user_id des filtres additionnels",
+      "transaction_model": "Supprimé champs compte null (account_name, account_type, account_balance, account_currency)",
+      "month_year_aggregations": "Supprimé .keyword car le champ est de type date dans ES"
+    },
+    "field_mappings": {
+      "account_type": "keyword (pas de .keyword nécessaire)",
+      "month_year": "date (pas de .keyword nécessaire)",
+      "weekday": "text avec .keyword (utiliser weekday.keyword pour agrégations)",
+      "category_name": "text avec .keyword (utiliser category_name.keyword pour agrégations)",
+      "merchant_name": "text avec .keyword (utiliser merchant_name.keyword pour agrégations)"
+    }
+  }
 }

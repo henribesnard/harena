@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional
 from db_service.session import get_db
 from user_service.api.deps import get_current_active_user, get_current_active_superuser
 from db_service.models.user import User
-from db_service.models.sync import BridgeCategory
+from db_service.models.sync import Category
 import logging
 
 router = APIRouter()
@@ -34,11 +34,11 @@ async def get_categories(
         List: Liste des catégories
     """
     # Construire la requête de base
-    query = db.query(BridgeCategory)
+    query = db.query(Category)
     
     # Appliquer le filtre par parent si nécessaire
     if parent_id is not None:
-        query = query.filter(BridgeCategory.parent_id == parent_id)
+        query = query.filter(Category.group_id == parent_id)
     
     # Exécuter la requête
     categories = query.all()
@@ -69,8 +69,8 @@ async def get_category(
         Dict: Détails de la catégorie
     """
     # Récupérer la catégorie
-    category = db.query(BridgeCategory).filter(
-        BridgeCategory.bridge_category_id == category_id
+    category = db.query(Category).filter(
+        Category.category_id == category_id
     ).first()
     
     if not category:
@@ -84,8 +84,8 @@ async def get_category(
     
     # Inclure les sous-catégories si demandé
     if include_children:
-        children = db.query(BridgeCategory).filter(
-            BridgeCategory.parent_id == category_id
+        children = db.query(Category).filter(
+            Category.group_id == category_id
         ).all()
         
         result["children"] = [format_category(child) for child in children]
@@ -137,7 +137,7 @@ async def refresh_categories(
         )
 
 # Fonctions utilitaires pour formater les réponses
-def format_category(category: BridgeCategory) -> Dict[str, Any]:
+def format_category(category: Category) -> Dict[str, Any]:
     """
     Formate une catégorie pour la réponse API.
     
@@ -148,13 +148,13 @@ def format_category(category: BridgeCategory) -> Dict[str, Any]:
         Dict: Catégorie formatée
     """
     return {
-        "id": category.bridge_category_id,
-        "name": category.name,
-        "parent_id": category.parent_id,
-        "parent_name": category.parent_name
+        "id": category.category_id,
+        "name": category.category_name,
+        "parent_id": category.group_id,
+        "parent_name": category.group_name
     }
 
-def organize_categories_hierarchy(categories: List[BridgeCategory]) -> List[Dict[str, Any]]:
+def organize_categories_hierarchy(categories: List[Category]) -> List[Dict[str, Any]]:
     """
     Organise les catégories en hiérarchie.
     
@@ -165,24 +165,24 @@ def organize_categories_hierarchy(categories: List[BridgeCategory]) -> List[Dict
         List: Catégories organisées en hiérarchie
     """
     # Créer un dictionnaire pour accéder aux catégories par ID
-    categories_dict = {cat.bridge_category_id: format_category(cat) for cat in categories}
+    categories_dict = {cat.category_id: format_category(cat) for cat in categories}
     
     # Identifier les catégories racines (sans parent) et les enfants
     root_categories = []
     child_categories = {}
     
     for category in categories:
-        if category.parent_id is None:
+        if category.group_id == 0 or category.group_id is None:
             # Catégorie racine
-            cat_dict = categories_dict[category.bridge_category_id]
+            cat_dict = categories_dict[category.category_id]
             cat_dict["children"] = []
             root_categories.append(cat_dict)
         else:
             # Catégorie enfant
-            if category.parent_id not in child_categories:
-                child_categories[category.parent_id] = []
+            if category.group_id not in child_categories:
+                child_categories[category.group_id] = []
             
-            child_categories[category.parent_id].append(categories_dict[category.bridge_category_id])
+            child_categories[category.group_id].append(categories_dict[category.category_id])
     
     # Attacher les enfants à leurs parents
     for parent_id, children in child_categories.items():

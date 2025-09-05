@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from db_service.base import Base
 from db_service.models.sync import (
     SyncAccount as SyncAccountModel,
-    BridgeCategory as BridgeCategoryModel,
+    Category as CategoryModel,
     RawTransaction as RawTransactionModel,
 )
 
@@ -30,7 +30,7 @@ def test_join_helpers_with_shared_models(session):
         bridge_account_id=123,
         account_name="Main Account",
     )
-    category = BridgeCategoryModel(id=1, bridge_category_id=10, name="Food")
+    category = CategoryModel(category_id=10, category_name="Food", group_id=0, group_name="")
     tx = RawTransactionModel(
         id=1,
         bridge_transaction_id=100,
@@ -45,11 +45,11 @@ def test_join_helpers_with_shared_models(session):
     session.commit()
 
     result = (
-        session.query(RawTransactionModel, SyncAccountModel, BridgeCategoryModel)
+        session.query(RawTransactionModel, SyncAccountModel, CategoryModel)
         .join(SyncAccountModel, RawTransactionModel.account_id == SyncAccountModel.id)
         .join(
-            BridgeCategoryModel,
-            RawTransactionModel.category_id == BridgeCategoryModel.bridge_category_id,
+            CategoryModel,
+            RawTransactionModel.category_id == CategoryModel.category_id,
         )
         .all()
     )
@@ -57,6 +57,6 @@ def test_join_helpers_with_shared_models(session):
     assert len(result) == 1
     raw_tx, acc, cat = result[0]
     assert acc.account_name == "Main Account"
-    assert cat.name == "Food"
+    assert cat.category_name == "Food"
     assert raw_tx.account_id == acc.id
-    assert raw_tx.category_id == cat.bridge_category_id
+    assert raw_tx.category_id == cat.category_id

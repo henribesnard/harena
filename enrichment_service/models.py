@@ -139,6 +139,18 @@ class StructuredTransaction:
         month_year = tx.date.strftime("%Y-%m")
         weekday = tx.date.strftime("%A")
 
+        # 🔄 SYNCHRONISATION AUTOMATIQUE: Récupérer category_name depuis PostgreSQL
+        category_name = tx.category_name  # Utiliser d'abord la valeur fournie
+        if tx.category_id and not category_name:
+            # Si category_id existe mais pas de nom, récupérer depuis PostgreSQL
+            try:
+                from .category_service import get_category_service
+                category_service = get_category_service()
+                category_name = category_service.get_category_name(tx.category_id)
+            except Exception as e:
+                # En cas d'erreur, continuer sans bloquer l'enrichissement
+                category_name = None
+
         searchable_parts = [
             f"Description: {primary_desc}",
             f"Montant: {abs(tx.amount):.2f} {tx.currency_code or 'EUR'}",
@@ -149,6 +161,8 @@ class StructuredTransaction:
             searchable_parts.append(f"Opération: {tx.operation_type}")
         if tx.category_id:
             searchable_parts.append(f"Catégorie: {tx.category_id}")
+        if category_name:
+            searchable_parts.append(f"Nom catégorie: {category_name}")
         searchable_text = " | ".join(searchable_parts)
 
         balance_check_passed = None
@@ -181,7 +195,7 @@ class StructuredTransaction:
             operation_type=tx.operation_type,
             is_future=tx.future,
             is_deleted=tx.deleted,
-            category_name=tx.category_name,
+            category_name=category_name,  # ✅ Nom récupéré automatiquement
             balance_check_passed=balance_check_passed,
             quality_score=quality_score,
 

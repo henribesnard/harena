@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 
 from enrichment_service.models import TransactionInput
-from db_service.models.sync import SyncAccount, BridgeCategory
+from db_service.models.sync import SyncAccount, Category
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +72,14 @@ class AccountEnrichmentService:
         if not self.db or not category_id:
             return None
         category = (
-            self.db.query(BridgeCategory)
-            .filter(BridgeCategory.bridge_category_id == category_id)
+            self.db.query(Category)
+            .filter(Category.category_id == category_id)
             .first()
         )
         if not category:
             logger.debug(f"No category found for id {category_id}")
             return None
-        return category.name
+        return category.category_name
 
     def extract_merchant_name(self, description: str) -> Optional[str]:
         """Very naive merchant name extraction from the description."""

@@ -2,13 +2,14 @@
 Gestionnaire des catégories Bridge.
 
 Ce module gère le stockage et la gestion des catégories fournies par Bridge API.
+MISE À JOUR: Utilise maintenant la table 'categories' au lieu de 'bridge_categories'
 """
 
 import logging
 from sqlalchemy.orm import Session
 from typing import Dict, List, Any, Optional
 
-from db_service.models.sync import BridgeCategory
+from db_service.models.sync import Category
 from sync_service.utils.logging import get_contextual_logger
 
 logger = logging.getLogger(__name__)
@@ -36,42 +37,45 @@ async def store_bridge_categories(db: Session, categories: List[Dict[str, Any]])
     
     try:
         # Récupérer les IDs des catégories existantes
-        existing_category_ids = {cat.bridge_category_id for cat in 
-                                db.query(BridgeCategory.bridge_category_id).all()}
+        existing_category_ids = {cat.category_id for cat in 
+                                db.query(Category.category_id).all()}
         
         for category_data in categories:
-            bridge_category_id = category_data.get("bridge_category_id")
-            if not bridge_category_id:
-                ctx_logger.warning(f"Catégorie sans ID Bridge, ignorée: {category_data}")
+            # Support des deux formats: Bridge API natif et notre format
+            category_id = category_data.get("id") or category_data.get("category_id")
+            category_name = category_data.get("name") or category_data.get("category_name")
+            
+            if not category_id:
+                ctx_logger.warning(f"Catégorie sans ID, ignorée: {category_data}")
                 continue
                 
             try:
                 # Vérifier si la catégorie existe déjà
-                if bridge_category_id in existing_category_ids:
+                if category_id in existing_category_ids:
                     # Mise à jour
-                    category = db.query(BridgeCategory).filter(
-                        BridgeCategory.bridge_category_id == bridge_category_id
+                    category = db.query(Category).filter(
+                        Category.category_id == category_id
                     ).first()
                     
                     if category:
-                        category.name = category_data.get("name", category.name)
-                        category.parent_id = category_data.get("parent_id", category.parent_id)
-                        category.parent_name = category_data.get("parent_name", category.parent_name)
+                        category.category_name = category_name or category.category_name
+                        category.group_id = category_data.get("group_id", category.group_id)
+                        category.group_name = category_data.get("group_name", category.group_name)
                         
                         db.add(category)
                         result["categories_updated"] += 1
                 else:
                     # Création
-                    new_category = BridgeCategory(
-                        bridge_category_id=bridge_category_id,
-                        name=category_data.get("name", ""),
-                        parent_id=category_data.get("parent_id"),
-                        parent_name=category_data.get("parent_name")
+                    new_category = Category(
+                        category_id=category_id,
+                        category_name=category_name or "",
+                        group_id=category_data.get("group_id", 0),
+                        group_name=category_data.get("group_name", "")
                     )
                     
                     db.add(new_category)
                     result["categories_created"] += 1
-                    existing_category_ids.add(bridge_category_id)
+                    existing_category_ids.add(category_id)
                     
                 result["categories_processed"] += 1
                 
@@ -80,7 +84,7 @@ async def store_bridge_categories(db: Session, categories: List[Dict[str, Any]])
                     db.commit()
                     
             except Exception as e:
-                ctx_logger.error(f"Erreur lors du stockage de la catégorie {bridge_category_id}: {e}", exc_info=True)
+                ctx_logger.error(f"Erreur lors du stockage de la catégorie {category_id}: {e}", exc_info=True)
                 # Continuer avec la catégorie suivante
         
         # Commit final

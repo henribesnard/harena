@@ -4,7 +4,7 @@ from typing import Generator
 from db_service.base import Base
 from db_service.models.sync import (
     SyncAccount as SyncAccountModel,
-    BridgeCategory as BridgeCategoryModel,
+    Category as CategoryModel,
     RawTransaction as RawTransactionModel,
 )  # noqa: F401
 from db_service.session import SessionLocal, engine

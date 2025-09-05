@@ -13,7 +13,7 @@ from datetime import datetime, date
 from db_service.session import get_db
 from user_service.api.deps import get_current_active_user
 from db_service.models.user import User
-from db_service.models.sync import RawTransaction, SyncAccount, BridgeCategory
+from db_service.models.sync import RawTransaction, SyncAccount, Category
 import logging
 
 router = APIRouter()
@@ -120,7 +120,7 @@ async def get_categories(
     Returns:
         List: Liste des catégories
     """
-    categories = db.query(BridgeCategory).all()
+    categories = db.query(Category).all()
     return [format_category(cat) for cat in categories]
 
 @router.get("/categories/{category_id}")
@@ -138,8 +138,8 @@ async def get_category(
     Returns:
         Dict: Détails de la catégorie
     """
-    category = db.query(BridgeCategory).filter(
-        BridgeCategory.bridge_category_id == category_id
+    category = db.query(Category).filter(
+        Category.category_id == category_id
     ).first()
     
     if not category:
@@ -179,7 +179,7 @@ def format_transaction(transaction: RawTransaction) -> Dict[str, Any]:
         "future": transaction.future
     }
 
-def format_category(category: BridgeCategory) -> Dict[str, Any]:
+def format_category(category: Category) -> Dict[str, Any]:
     """
     Formate une catégorie pour la réponse API.
     
@@ -190,8 +190,8 @@ def format_category(category: BridgeCategory) -> Dict[str, Any]:
         Dict: Catégorie formatée
     """
     return {
-        "id": category.bridge_category_id,
-        "name": category.name,
-        "parent_id": category.parent_id,
-        "parent_name": category.parent_name
+        "id": category.category_id,
+        "name": category.category_name,
+        "parent_id": category.group_id,
+        "parent_name": category.group_name
     }

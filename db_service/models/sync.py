@@ -114,15 +114,19 @@ class RawTransaction(Base, TimestampMixin):
     # Relations
     account = relationship("SyncAccount", back_populates="raw_transactions")
     user = relationship("User", back_populates="raw_transactions")
+    category = relationship("Category", foreign_keys="RawTransaction.category_id", primaryjoin="RawTransaction.category_id == Category.category_id")
 
-class BridgeCategory(Base, TimestampMixin):
-    __tablename__ = "bridge_categories"
+class Category(Base, TimestampMixin):
+    """Catégories de transactions au format Bridge API (remplace BridgeCategory)"""
+    __tablename__ = "categories"
     
-    id = Column(Integer, primary_key=True)
-    bridge_category_id = Column(Integer, nullable=False, unique=True)
-    name = Column(String, nullable=False)
-    parent_id = Column(Integer, nullable=True)
-    parent_name = Column(String, nullable=True)
+    category_id = Column(Integer, primary_key=True, comment="Bridge API category ID")
+    category_name = Column(String(255), nullable=False, comment="Bridge API category name")
+    group_id = Column(Integer, nullable=False, comment="Bridge API category group ID")  
+    group_name = Column(String(255), nullable=False, comment="Bridge API category group name")
+    
+    # Relation vers transactions
+    # Note: RawTransaction.category_id → Category.category_id (via foreign key)
 
 class RawStock(Base, TimestampMixin):
     __tablename__ = "raw_stocks"

@@ -9,7 +9,7 @@ from db_service.models.user import User, BridgeConnection, UserPreference
 
 # Import modèles de synchronisation
 from db_service.models.sync import (
-    SyncItem, SyncAccount, LoanDetail, RawTransaction, BridgeCategory,
+    SyncItem, SyncAccount, LoanDetail, RawTransaction, Category,
     RawStock, AccountInformation, BridgeInsight, SyncTask, SyncStat
 )
 
@@ -25,7 +25,7 @@ __all__ = [
     'User', 'BridgeConnection', 'UserPreference',
     
     # Modèles de synchronisation
-    'SyncItem', 'SyncAccount', 'LoanDetail', 'RawTransaction', 'BridgeCategory',
+    'SyncItem', 'SyncAccount', 'LoanDetail', 'RawTransaction', 'Category',
     'RawStock', 'AccountInformation', 'BridgeInsight', 'SyncTask', 'SyncStat',
     
     # Modèles conversation SIMPLES (seulement ceux qui existent)

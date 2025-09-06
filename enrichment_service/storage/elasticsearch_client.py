@@ -702,6 +702,92 @@ class ElasticsearchClient:
                 "total": len(documents_to_index),
                 "responses": responses
             }
+
+    async def bulk_update_documents(self, updates: List[Dict]) -> Dict[str, Any]:
+        """
+        Met à jour un lot de documents dans Elasticsearch (mise à jour partielle).
+        
+        Args:
+            updates: Liste de dicts avec 'id' et 'update' (les champs à mettre à jour)
+            
+        Returns:
+            Dict: Résumé de la mise à jour
+        """
+        if not self._initialized:
+            raise ValueError("ElasticsearchClient not initialized")
+        
+        if not updates:
+            return {"updated": 0, "errors": 0, "total": 0}
+        
+        # Préparer le bulk request pour updates
+        bulk_body = []
+        
+        for item in updates:
+            doc_id = item["id"]
+            update_data = item["update"]
+            
+            # Action header pour update
+            bulk_body.append(json.dumps({
+                "update": {
+                    "_index": self.index_name,
+                    "_id": doc_id
+                }
+            }))
+            
+            # Document data pour update
+            bulk_body.append(json.dumps({
+                "doc": update_data,
+                "doc_as_upsert": False  # Ne pas créer si le doc n'existe pas
+            }))
+        
+        # Joindre avec des nouvelles lignes (format bulk)
+        bulk_data = "\n".join(bulk_body) + "\n"
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/{self.index_name}/_bulk",
+                data=bulk_data,
+                headers={"Content-Type": "application/x-ndjson"}
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    # Analyser les résultats
+                    updated_count = 0
+                    error_count = 0
+                    
+                    for item in result.get("items", []):
+                        if "update" in item:
+                            if item["update"].get("status") in [200, 201]:
+                                updated_count += 1
+                            else:
+                                error_count += 1
+                                error_msg = item["update"].get("error", {}).get("reason", "Unknown error")
+                                logger.warning(f"⚠️ Erreur update: {error_msg}")
+                    
+                    logger.info(f"📦 Bulk update: {updated_count}/{len(updates)} documents mis à jour")
+                    return {
+                        "updated": updated_count,
+                        "errors": error_count,
+                        "total": len(updates)
+                    }
+                    
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Erreur bulk update: {response.status} - {error_text}")
+                    return {
+                        "updated": 0,
+                        "errors": len(updates),
+                        "total": len(updates)
+                    }
+                    
+        except Exception as e:
+            logger.error(f"❌ Exception lors du bulk update: {e}")
+            return {
+                "updated": 0,
+                "errors": len(updates),
+                "total": len(updates)
+            }
     
     async def delete_user_transactions(self, user_id: int) -> int:
         """

@@ -242,6 +242,29 @@ class StructuredTransaction:
         """Génère l'ID du document Elasticsearch."""
         return f"user_{self.user_id}_tx_{self.transaction_id}"
 
+class MerchantEnrichmentResult(BaseModel):
+    """Résultat d'enrichissement de marchand pour une transaction."""
+    transaction_id: int
+    original_description: str
+    merchant_name: Optional[str]
+    confidence: float
+    processing_time: float
+    status: str  # "success", "skipped", "error"
+    error_message: Optional[str] = None
+
+class BatchMerchantEnrichmentResult(BaseModel):
+    """Résultat d'enrichissement par lot."""
+    user_id: int
+    total_transactions: int
+    processed: int
+    successful_extractions: int
+    skipped: int
+    errors: int
+    total_processing_time: float
+    average_time_per_transaction: float
+    results: List[MerchantEnrichmentResult]
+    cost_estimate: Dict[str, Any]
+
 class ElasticsearchHealthStatus(BaseModel):
     """Statut de santé du service Elasticsearch."""
     service: str = "enrichment_service_elasticsearch"

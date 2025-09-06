@@ -14,7 +14,7 @@ SUPPRIMÉ: Endpoints de recherche (déplacés vers search_service)
 SUPPRIMÉ: Endpoints Qdrant et dual storage
 """
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -28,9 +28,11 @@ from enrichment_service.models import (
     TransactionInput,
     UserSyncResult,
     ElasticsearchHealthStatus,
+    BatchMerchantEnrichmentResult,
 )
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 from enrichment_service.core.account_enrichment_service import AccountEnrichmentService
+from enrichment_service.core.merchant_batch_enrichment import MerchantBatchEnrichmentService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -39,6 +41,7 @@ router = APIRouter()
 elasticsearch_client = None
 elasticsearch_processor = None
 account_enrichment_service = None
+merchant_batch_service = None
 
 
 def get_account_enrichment_service(
@@ -67,6 +70,22 @@ def get_elasticsearch_processor(
             elasticsearch_client, account_service
         )
     return elasticsearch_processor
+
+
+def get_merchant_batch_service(
+    db: Session = Depends(get_db),
+) -> MerchantBatchEnrichmentService:
+    """Récupère l'instance du service d'enrichissement de marchands par lot."""
+    global merchant_batch_service
+    if not merchant_batch_service:
+        global elasticsearch_client
+        if not elasticsearch_client:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Elasticsearch client not available",
+            )
+        merchant_batch_service = MerchantBatchEnrichmentService(db, elasticsearch_client)
+    return merchant_batch_service
 
 # ==========================================
 # ENDPOINTS ELASTICSEARCH PRINCIPAUX
@@ -508,4 +527,154 @@ async def check_document_exists(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to check document existence: {str(e)}"
+        )
+
+# ==========================================
+# ENDPOINTS ENRICHISSEMENT MARCHANDS PAR LOT
+# ==========================================
+
+@router.post("/merchant-batch-enrichment/{user_id}", response_model=BatchMerchantEnrichmentResult)
+async def enrich_user_merchants_batch(
+    user_id: int,
+    limit: Optional[int] = Query(None, description="Limite du nombre de transactions à traiter"),
+    only_missing: bool = Query(True, description="Ne traiter que les transactions sans merchant_name"),
+    confidence_threshold: Optional[float] = Query(None, description="Seuil de confiance (défaut 0.3)"),
+    current_user: User = Depends(get_current_active_user),
+    merchant_service: MerchantBatchEnrichmentService = Depends(get_merchant_batch_service),
+):
+    """
+    Enrichit les noms de marchands pour un utilisateur par lot avec Deepseek LLM.
+    
+    Cette méthode est spécialement conçue pour l'enrichissement économique :
+    1. Traite les transactions par petits lots pour éviter les timeouts
+    2. Ajoute des délais entre requêtes pour éviter rate limiting
+    3. Estime les coûts de traitement
+    4. Met à jour uniquement les documents Elasticsearch avec succès
+    
+    Args:
+        user_id: ID de l'utilisateur à traiter
+        limit: Limite du nombre de transactions (optionnel)
+        only_missing: Ne traiter que les transactions sans merchant_name
+        confidence_threshold: Seuil de confiance personnalisé
+        
+    Returns:
+        BatchMerchantEnrichmentResult: Résultat complet du traitement
+    """
+    if user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    logger.info(f"🤖 Enrichissement marchands par lot demandé pour user {user_id}")
+    
+    try:
+        result = await merchant_service.enrich_user_merchants(
+            user_id=user_id,
+            limit=limit,
+            only_missing=only_missing,
+            confidence_threshold=confidence_threshold
+        )
+        
+        logger.info(
+            f"🎉 Enrichissement terminé: {result.successful_extractions}/{result.total_transactions} "
+            f"extractions réussies en {result.total_processing_time:.2f}s - "
+            f"Coût estimé: ${result.cost_estimate['estimated_cost_usd']}"
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur enrichissement marchands user {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enrich user merchants: {str(e)}"
+        )
+
+@router.get("/merchant-batch-enrichment/{user_id}/preview")
+async def preview_merchant_enrichment(
+    user_id: int,
+    limit: int = Query(10, description="Nombre de transactions à prévisualiser"),
+    only_missing: bool = Query(True, description="Ne traiter que les transactions sans merchant_name"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Prévisualise les transactions qui seraient traitées par l'enrichissement par lot.
+    
+    Utile pour estimer les coûts et vérifier les données avant traitement.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        limit: Nombre de transactions à prévisualiser
+        only_missing: Filtre pour transactions sans merchant_name
+        
+    Returns:
+        Dict: Aperçu des transactions et estimation des coûts
+    """
+    if user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    try:
+        # Récupérer un échantillon de transactions
+        query = db.query(RawTransaction).filter(
+            RawTransaction.user_id == user_id,
+            RawTransaction.deleted == False
+        )
+        
+        # Filtrer les transactions avec description
+        query = query.filter(
+            (RawTransaction.clean_description.isnot(None)) |
+            (RawTransaction.provider_description.isnot(None))
+        )
+        
+        if only_missing:
+            # TODO: Ajouter filtre Elasticsearch pour ne prendre que celles sans merchant_name
+            pass
+        
+        transactions = query.order_by(RawTransaction.date.desc()).limit(limit).all()
+        
+        # Compter le total sans limite
+        total_count = query.count()
+        
+        # Estimation des coûts (approximative)
+        cost_per_request = 0.0001  # ~0.01 centime par requête
+        estimated_total_cost = total_count * cost_per_request
+        
+        preview_data = []
+        for tx in transactions:
+            description = tx.clean_description or tx.provider_description or ""
+            preview_data.append({
+                "transaction_id": tx.bridge_transaction_id,
+                "description": description,
+                "amount": tx.amount,
+                "date": tx.date.isoformat(),
+                "currency": tx.currency_code
+            })
+        
+        return {
+            "user_id": user_id,
+            "preview_transactions": preview_data,
+            "preview_count": len(preview_data),
+            "total_eligible_transactions": total_count,
+            "cost_estimate": {
+                "total_transactions": total_count,
+                "estimated_cost_usd": round(estimated_total_cost, 4),
+                "cost_per_extraction": cost_per_request,
+                "currency": "USD"
+            },
+            "filters_applied": {
+                "only_missing": only_missing,
+                "has_description": True
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur prévisualisation enrichissement user {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to preview merchant enrichment: {str(e)}"
         )

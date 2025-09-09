@@ -27,10 +27,8 @@ from conversation_service.models.responses.conversation_responses import (
     TeamHealthResponse,
     TeamMetricsResponse
 )
-from conversation_service.agents.financial import intent_classifier as intent_classifier_module
-from conversation_service.agents.financial.entity_extractor import EntityExtractorAgent
-from conversation_service.agents.financial.query_builder import QueryBuilderAgent
-from conversation_service.models.contracts.search_service import QueryGenerationRequest
+# Old intent_classifier module removed - using streamlined architecture
+# QueryGenerationRequest removed - using deterministic query building
 from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.prompts.harena_intents import HarenaIntentType
@@ -41,7 +39,7 @@ from conversation_service.api.dependencies import (
     validate_path_user_id,
     get_user_context,
     rate_limit_dependency,
-    get_multi_agent_team,
+    # get_multi_agent_team removed - streamlined architecture
     get_conversation_processor,
     get_conversation_persistence
 )
@@ -160,69 +158,54 @@ async def analyze_conversation_stream(
             deepseek_client = request.app.state.deepseek_client
             cache_manager = request.app.state.cache_manager
             
-            # ÉTAPE 1: Classification intention
-            intent_classifier = intent_classifier_module.IntentClassifierAgent(
+            # Extraire le token d'authentification pour search_service
+            auth_token = None
+            authorization = request.headers.get("Authorization")
+            if authorization and authorization.startswith("Bearer "):
+                auth_token = authorization[7:]  # Enlever "Bearer "
+            
+            # ÉTAPE 1: Classification intention + extraction entités unifiées
+            from conversation_service.agents.financial.intent_entity_classifier import IntentEntityClassifier
+            
+            intent_entity_classifier = IntentEntityClassifier(
                 deepseek_client=deepseek_client,
                 cache_manager=cache_manager
             )
             
-            classification_result = await intent_classifier.classify_intent(
-                user_message=clean_message,
-                user_context=user_context
+            unified_result = await intent_entity_classifier.execute(
+                input_data=clean_message,
+                context=user_context
             )
+            
+            classification_result = unified_result["intent_result"]
+            entities_result = unified_result["entity_result"]
             
             intent_type_value = getattr(classification_result.intent_type, 'value', str(classification_result.intent_type))
             
-            # ÉTAPE 2: Extraction entités (si supportée)
-            entities_result = None
-            if classification_result.is_supported:
-                entity_extractor = EntityExtractorAgent(
-                    deepseek_client=deepseek_client,
-                    cache_manager=cache_manager,
-                    autogen_mode=False
-                )
-                
-                entities_result = await entity_extractor.extract_entities(
-                    user_message=clean_message,
-                    intent_result=classification_result,
-                    user_id=validated_user_id
-                )
-            
-            # ÉTAPE 3: Génération de requête search (si entités disponibles)
+            # ÉTAPE 2: Construction requête déterministe (logique pure)
             search_query = None
-            if classification_result.is_supported and entities_result:
-                query_builder = QueryBuilderAgent(
-                    deepseek_client=deepseek_client,
-                    cache_manager=cache_manager
-                )
+            if classification_result.is_supported:
+                from conversation_service.core.deterministic_query_builder import DeterministicQueryBuilder
                 
-                query_request = QueryGenerationRequest(
-                    user_message=clean_message,
-                    intent_type=str(classification_result.intent_type.value),
-                    intent_confidence=classification_result.confidence,
-                    entities=entities_result.get("entities", {}) if entities_result else {},
-                    user_id=validated_user_id
-                )
+                query_builder = DeterministicQueryBuilder()
                 
                 try:
-                    query_result = await query_builder.generate_search_query(query_request)
+                    search_query = query_builder.build_query(
+                        intent_result=classification_result,
+                        entity_result=entities_result,
+                        user_id=validated_user_id,
+                        context=user_context
+                    )
                     
-                    if query_result is not None:
-                        if hasattr(query_result, 'search_query') and hasattr(query_result, 'validation'):
-                            generation_success = (
-                                query_result.search_query is not None and
-                                query_result.validation is not None and
-                                query_result.validation.schema_valid
-                            )
-                            search_query = query_result.search_query if generation_success else None
-                        elif hasattr(query_result, 'success') and hasattr(query_result, 'search_query'):
-                            generation_success = query_result.success and query_result.search_query is not None
-                            search_query = query_result.search_query if generation_success else None
+                    # Validation de la requête construite
+                    if search_query and not query_builder.validate_query(search_query):
+                        search_query = None
+                        
                 except Exception as e:
-                    logger.warning(f"[{request_id}] Erreur génération requête: {str(e)}")
+                    logger.warning(f"[{request_id}] Erreur construction requête: {str(e)}")
                     search_query = None
             
-            # ÉTAPE 4: Exécution recherche (si requête disponible)
+            # ÉTAPE 3: Exécution recherche (si requête disponible)
             search_results = None
             if search_query:
                 try:
@@ -230,7 +213,8 @@ async def analyze_conversation_stream(
                     executor_request = SearchExecutorRequest(
                         search_query=search_query,
                         user_id=validated_user_id,
-                        request_id=request_id
+                        request_id=request_id,
+                        auth_token=auth_token
                     )
                     
                     executor_response = await search_executor.handle_search_request(executor_request)
@@ -240,7 +224,7 @@ async def analyze_conversation_stream(
                     search_results = None
             
             # ====================================================================
-            # ÉTAPE 5: Génération et streaming de la réponse LLM SEULEMENT
+            # ÉTAPE 4: Génération et streaming de la réponse LLM SEULEMENT
             # ====================================================================
             
             # Préparer les données pour la génération
@@ -325,7 +309,7 @@ async def analyze_conversation_stream(
                     turn_data = {
                         "request_id": request_id,
                         "processing_time_ms": processing_time_ms,
-                        "phase": 5,
+                        "phase": 6,
                         "stream_mode": True,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "user_query": clean_message,
@@ -921,22 +905,29 @@ if environment != "production":
         deepseek_client: DeepSeekClient = Depends(get_deepseek_client),
         cache_manager: Optional[CacheManager] = Depends(get_cache_manager)
     ):
-        """Test direct classification pour debugging - NÉCESSITE AUTH"""
+        """Test direct classification avec nouvelle architecture - NÉCESSITE AUTH"""
         request_id = f"debug_{int(time.time() * 1000)}"
         
         try:
-            intent_classifier = intent_classifier_module.IntentClassifierAgent(
+            from conversation_service.agents.financial.intent_entity_classifier import IntentEntityClassifier
+            
+            classifier = IntentEntityClassifier(
                 deepseek_client=deepseek_client,
                 cache_manager=cache_manager
             )
             
-            result = await intent_classifier.classify_intent(text)
+            result = await classifier.execute(
+                input_data=text,
+                context={"user_id": 1}  # Debug context
+            )
             
             return {
                 "input": text,
-                "result": result.model_dump(mode="json") if hasattr(result, 'model_dump') else str(result),
+                "intent_result": result["intent_result"].model_dump(mode="json") if hasattr(result["intent_result"], 'model_dump') else str(result["intent_result"]),
+                "entity_result": result["entity_result"],
                 "request_id": request_id,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "architecture": "streamlined"
             }
             
         except Exception as e:
@@ -945,102 +936,22 @@ if environment != "production":
                 "input": text,
                 "error": str(e),
                 "request_id": request_id,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "architecture": "streamlined"
             }
 
 
 # ============================================================================
-# ENDPOINTS DUAL-MODE (MULTI-AGENT + FALLBACK)
+# LEGACY MULTI-AGENT ENDPOINTS - DISABLED (using streamlined architecture)
 # ============================================================================
 
-
-@router.get("/team/health", response_model=TeamHealthResponse)
-async def get_team_health_status(
-    request: Request,
-    multi_agent_team = Depends(get_multi_agent_team),
-    deepseek_client: DeepSeekClient = Depends(get_deepseek_client)
-):
-    """Health check détaillé modes de traitement"""
-    
-    try:
-        # Test disponibilité équipe
-        team_available = multi_agent_team is not None
-        team_details = None
-        
-        if team_available:
-            try:
-                team_health = await asyncio.wait_for(
-                    multi_agent_team.health_check(),
-                    timeout=5.0
-                )
-                team_details = team_health
-            except Exception as e:
-                logger.debug(f"Team health check failed: {str(e)}")
-                team_available = False
-        
-        # Test agent unique
-        single_agent_available = deepseek_client is not None
-        
-        # Déterminer mode courant
-        if team_available:
-            current_mode = "multi_agent_team"
-        elif single_agent_available:
-            current_mode = "single_agent"
-        else:
-            current_mode = "unavailable"
-        
-        return TeamHealthResponse(
-            single_agent_available=single_agent_available,
-            multi_agent_team_available=team_available,
-            current_processing_mode=current_mode,
-            autogen_details=team_details
-        )
-        
-    except Exception as e:
-        logger.error(f"Erreur team health check: {str(e)}")
-        return TeamHealthResponse(
-            single_agent_available=False,
-            multi_agent_team_available=False,
-            current_processing_mode="error"
-        )
-
-
-@router.get("/team/metrics", response_model=TeamMetricsResponse)
-async def get_team_metrics(
-    multi_agent_team = Depends(get_multi_agent_team)
-):
-    """Métriques détaillées équipe multi-agents"""
-    
-    try:
-        if not multi_agent_team:
-            return TeamMetricsResponse(available=False)
-        
-        team_stats = multi_agent_team.get_team_statistics()
-        team_health = await multi_agent_team.health_check()
-        
-        # Métriques comparatives (simulation - à enrichir avec vraies données)
-        performance_comparison = {
-            "multi_agent_vs_single": {
-                "avg_processing_time_improvement": -15,  # % (négatif = plus lent)
-                "feature_completeness_improvement": 150,  # % (plus de fonctionnalités)
-                "cache_efficiency_improvement": 25  # % (meilleur cache)
-            },
-            "recommendation": "Multi-agent recommandé pour requêtes complexes"
-        }
-        
-        return TeamMetricsResponse(
-            available=True,
-            statistics=team_stats,
-            health=team_health,
-            performance_comparison=performance_comparison
-        )
-        
-    except Exception as e:
-        logger.error(f"Erreur team metrics: {str(e)}")
-        return TeamMetricsResponse(
-            available=False,
-            statistics={"error": str(e)}
-        )
+# Multi-agent team endpoints removed as part of architecture streamlining
+# The new architecture uses:
+# 1. IntentEntityClassifier (1 LLM call for both tasks)
+# 2. DeterministicQueryBuilder (no LLM, pure logic)
+# 3. ResponseGenerator (existing LLM call)
+#
+# This reduces latency from ~80s to expected ~5-10s
 
 
 logger.debug(f"Conversation routes configured - Environment: {environment}")
@@ -1254,7 +1165,7 @@ def _estimate_text_tokens(text: str) -> int:
 
 
 # ============================================================================
-# INTÉGRATION FONCTIONS PHASE 5 - WORKFLOW COMPLET
+# INTÉGRATION NOUVELLE ARCHITECTURE - WORKFLOW STREAMLINÉ 3 ÉTAPES
 # ============================================================================
 
 async def _process_conversation_phase5_integrated(
@@ -1267,12 +1178,16 @@ async def _process_conversation_phase5_integrated(
     _rate_limit: None = None
 ) -> ConversationResponse:
     """
-    Phase 5: Workflow complet avec génération de réponse naturelle - Intégré
+    Nouvelle architecture streamlinée - 3 étapes au lieu de 5
+    
+    ÉTAPE 1: Classification intention + extraction entités (1 seul appel LLM)
+    ÉTAPE 2: Construction requête déterministe (logique pure, pas de LLM)
+    ÉTAPE 3: Génération réponse (après exécution search)
     """
     start_time = time.time()
-    request_id = f"phase5_{int(time.time() * 1000)}_{user_id}"
+    request_id = f"streamlined_{int(time.time() * 1000)}_{user_id}"
     
-    logger.debug(f"[{request_id}] Phase 5 workflow start for user {user_id}")
+    logger.debug(f"[{request_id}] Streamlined workflow start for user {user_id}")
     
     try:
         # Validation message
@@ -1283,161 +1198,124 @@ async def _process_conversation_phase5_integrated(
                 detail={
                     "error": "Message invalide",
                     "errors": message_validation["errors"],
-                    "phase": 5,
+                    "phase": 6,  # Nouvelle phase
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
         
         clean_message = sanitize_user_input(request.message)
         
-        # ====================================================================
-        # ÉTAPE 1: Classification intention
-        # ====================================================================
-        step1_start = time.time()
-        
         # Obtenir les dépendances depuis app state
         deepseek_client = http_request.app.state.deepseek_client
         cache_manager = http_request.app.state.cache_manager
         
-        intent_classifier = intent_classifier_module.IntentClassifierAgent(
+        # Extraire le token d'authentification pour search_service
+        auth_token = None
+        authorization = http_request.headers.get("Authorization")
+        if authorization and authorization.startswith("Bearer "):
+            auth_token = authorization[7:]  # Enlever "Bearer "
+        
+        # ====================================================================
+        # ÉTAPE 1: Classification intention + extraction entités unifiées
+        # ====================================================================
+        step1_start = time.time()
+        
+        from conversation_service.agents.financial.intent_entity_classifier import IntentEntityClassifier
+        
+        intent_entity_classifier = IntentEntityClassifier(
             deepseek_client=deepseek_client,
             cache_manager=cache_manager
         )
         
-        classification_result = await intent_classifier.classify_intent(
-            user_message=clean_message,
-            user_context=user_context
+        unified_result = await intent_entity_classifier.execute(
+            input_data=clean_message,
+            context=user_context
         )
+        
+        classification_result = unified_result["intent_result"]
+        entities_result = unified_result["entity_result"]
         
         step1_duration = int((time.time() - step1_start) * 1000)
         step1 = ProcessingSteps(
-            agent="intent_classifier",
+            agent="intent_entity_classifier",
             duration_ms=step1_duration,
-            cache_hit=step1_duration < 100,
+            cache_hit=step1_duration < 200,  # Plus large car 2 tâches
             success=True
         )
         
         intent_type_value = getattr(classification_result.intent_type, 'value', str(classification_result.intent_type))
         
         # ====================================================================
-        # ÉTAPE 2: Extraction entités
+        # ÉTAPE 2: Construction requête déterministe (logique pure)
         # ====================================================================
-        entities_result = None
+        search_query = None
         step2 = None
         
         if classification_result.is_supported:
             step2_start = time.time()
             
-            entity_extractor = EntityExtractorAgent(
-                deepseek_client=deepseek_client,
-                cache_manager=cache_manager,
-                autogen_mode=False
-            )
+            from conversation_service.core.deterministic_query_builder import DeterministicQueryBuilder
             
-            entities_result = await entity_extractor.extract_entities(
-                user_message=clean_message,
-                intent_result=classification_result,
-                user_id=validated_user_id
-            )
-            
-            step2_duration = int((time.time() - step2_start) * 1000)
-            step2 = ProcessingSteps(
-                agent="entity_extractor",
-                duration_ms=step2_duration,
-                cache_hit=step2_duration < 150,
-                success=True
-            )
-        
-        # ====================================================================
-        # ÉTAPE 3: Génération de requête search (si intention supportée)
-        # ====================================================================
-        search_query = None
-        step3 = None
-        
-        if classification_result.is_supported and entities_result:
-            step3_start = time.time()
-            
-            query_builder = QueryBuilderAgent(
-                deepseek_client=deepseek_client,
-                cache_manager=cache_manager
-            )
-            
-            query_request = QueryGenerationRequest(
-                user_message=clean_message,
-                intent_type=str(classification_result.intent_type.value),
-                intent_confidence=classification_result.confidence,
-                entities=entities_result.get("entities", {}) if entities_result else {},
-                user_id=validated_user_id
-            )
+            query_builder = DeterministicQueryBuilder()
             
             try:
-                query_result = await query_builder.generate_search_query(query_request)
+                search_query = query_builder.build_query(
+                    intent_result=classification_result,
+                    entity_result=entities_result,
+                    user_id=validated_user_id,
+                    context=user_context
+                )
                 
-                # Vérification robuste de la réponse du query_builder
-                generation_success = False
-                search_query = None
+                # Validation de la requête construite
+                generation_success = query_builder.validate_query(search_query) if search_query else False
                 
-                if query_result is not None:
-                    # Vérifier le type de réponse retournée
-                    if hasattr(query_result, 'search_query') and hasattr(query_result, 'validation'):
-                        # QueryGenerationResponse standard
-                        generation_success = (
-                            query_result.search_query is not None and
-                            query_result.validation is not None and
-                            query_result.validation.schema_valid
-                        )
-                        search_query = query_result.search_query if generation_success else None
-                        logger.info(f"[{request_id}] QueryBuilder standard response: success={generation_success}")
-                    elif hasattr(query_result, 'success') and hasattr(query_result, 'search_query'):
-                        # Réponse avec attribut success (ancien format)
-                        generation_success = query_result.success and query_result.search_query is not None
-                        search_query = query_result.search_query if generation_success else None
-                        logger.info(f"[{request_id}] QueryBuilder legacy response: success={generation_success}")
-                    else:
-                        logger.warning(f"[{request_id}] QueryBuilder réponse inattendue: {type(query_result)}")
-                
-                step3_duration = int((time.time() - step3_start) * 1000)
-                step3 = ProcessingSteps(
-                    agent="query_builder",
-                    duration_ms=step3_duration,
-                    cache_hit=step3_duration < 200,
+                step2_duration = int((time.time() - step2_start) * 1000)
+                step2 = ProcessingSteps(
+                    agent="deterministic_query_builder",
+                    duration_ms=step2_duration,
+                    cache_hit=False,  # Pas de cache pour logique déterministe
                     success=generation_success
                 )
+                
+                logger.info(f"[{request_id}] Deterministic query built: success={generation_success}")
+                
             except Exception as e:
-                logger.warning(f"[{request_id}] ⚠️ Génération requête échouée: {str(e)}")
-                step3_duration = int((time.time() - step3_start) * 1000)
-                step3 = ProcessingSteps(
-                    agent="query_builder",
-                    duration_ms=step3_duration,
+                logger.warning(f"[{request_id}] ⚠️ Construction requête échouée: {str(e)}")
+                step2_duration = int((time.time() - step2_start) * 1000)
+                step2 = ProcessingSteps(
+                    agent="deterministic_query_builder",
+                    duration_ms=step2_duration,
                     cache_hit=False,
                     success=False,
                     error_message=str(e)
                 )
+                search_query = None
         
         # ====================================================================
-        # ÉTAPE 4: Exécution recherche (si requête générée)
+        # ÉTAPE 3: Exécution recherche (si requête générée)
         # ====================================================================
         search_results = None
         resilience_metrics = None
-        step4 = None
+        step3 = None
         
         # Exécution de la recherche si une requête a été générée
         if search_query:
-            step4_start = time.time()
+            step3_start = time.time()
             
             try:
                 search_executor = SearchExecutor()
                 executor_request = SearchExecutorRequest(
                     search_query=search_query,
                     user_id=validated_user_id,
-                    request_id=request_id
+                    request_id=request_id,
+                    auth_token=auth_token
                 )
                 
                 executor_response = await search_executor.handle_search_request(executor_request)
                 search_results = executor_response.search_results if executor_response.success else None
                 
                 # Calculer la durée d'abord
-                step4_duration = int((time.time() - step4_start) * 1000)
+                step3_duration = int((time.time() - step3_start) * 1000)
                 
                 # Récupération ou création des métriques de résilience depuis SearchExecutor
                 resilience_metrics = getattr(executor_response, 'resilience_metrics', None)
@@ -1449,35 +1327,35 @@ async def _process_conversation_phase5_integrated(
                         circuit_breaker_triggered=False,
                         fallback_used=getattr(executor_response, 'fallback_used', False),
                         retry_attempts=0,
-                        search_execution_time_ms=getattr(executor_response, 'execution_time_ms', step4_duration)
+                        search_execution_time_ms=getattr(executor_response, 'execution_time_ms', step3_duration)
                     )
                 
-                step4 = ProcessingSteps(
+                step3 = ProcessingSteps(
                     agent="search_executor", 
-                    duration_ms=step4_duration,
+                    duration_ms=step3_duration,
                     cache_hit=executor_response.fallback_used if hasattr(executor_response, 'fallback_used') else False,
                     success=executor_response.success
                 )
             except Exception as e:
                 logger.warning(f"[{request_id}] ⚠️ Exécution search échouée: {str(e)}")
                 resilience_metrics = None  # Pas de métriques en cas d'exception
-                step4_duration = int((time.time() - step4_start) * 1000)
-                step4 = ProcessingSteps(
+                step3_duration = int((time.time() - step3_start) * 1000)
+                step3 = ProcessingSteps(
                     agent="search_executor",
-                    duration_ms=step4_duration,
+                    duration_ms=step3_duration,
                     cache_hit=False,
                     success=False,
                     error_message=str(e)
                 )
         
         # ====================================================================
-        # ÉTAPE 5: Génération réponse finale pour l'utilisateur
+        # NOUVELLE ÉTAPE: Génération réponse finale pour l'utilisateur
         # ====================================================================
         response_content = None
-        step5 = None
+        step4 = None
         
         # Toujours générer une réponse, même sans résultats de recherche
-        step5_start = time.time()
+        step4_start = time.time()
         
         try:
             from conversation_service.models.responses.conversation_responses import ResponseContent, StructuredData
@@ -1557,10 +1435,10 @@ async def _process_conversation_phase5_integrated(
             
             logger.info(f"[{request_id}] ✅ Réponse LLM générée: {len(llm_message)} caractères")
             
-            step5_duration = int((time.time() - step5_start) * 1000)
-            step5 = ProcessingSteps(
+            step4_duration = int((time.time() - step4_start) * 1000)
+            step4 = ProcessingSteps(
                 agent="response_generator",
-                duration_ms=step5_duration,
+                duration_ms=step4_duration,
                 cache_hit=False,
                 success=True
             )
@@ -1591,22 +1469,22 @@ async def _process_conversation_phase5_integrated(
                 structured_data=structured_data
             )
             
-            step5_duration = int((time.time() - step5_start) * 1000)
-            step5 = ProcessingSteps(
+            step4_duration = int((time.time() - step4_start) * 1000)
+            step4 = ProcessingSteps(
                 agent="response_generator",
-                duration_ms=step5_duration,
+                duration_ms=step4_duration,
                 cache_hit=False,
                 success=False,
                 error_message=str(e)
             )
         
         # ====================================================================
-        # Construction réponse complète Phase 5
+        # Construction réponse complète - Architecture streamlinée
         # ====================================================================
         processing_time_ms = int((time.time() - start_time) * 1000)
         
         agent_metrics = AgentMetrics(
-            agent_used="phase5_integrated",
+            agent_used="streamlined_architecture",
             cache_hit=step1.cache_hit,
             model_used=getattr(settings, 'DEEPSEEK_CHAT_MODEL', 'deepseek-chat'),
             tokens_consumed=await _estimate_tokens_consumption_safe(clean_message, classification_result),
@@ -1614,7 +1492,7 @@ async def _process_conversation_phase5_integrated(
             confidence_threshold_met=classification_result.confidence >= 0.5
         )
         
-        # Construction de la réponse complète avec toutes les étapes
+        # Construction de la réponse complète avec toutes les étapes streamlinées
         processing_steps = [step1]
         if step2:
             processing_steps.append(step2)
@@ -1622,8 +1500,6 @@ async def _process_conversation_phase5_integrated(
             processing_steps.append(step3)
         if step4:
             processing_steps.append(step4)
-        if step5:
-            processing_steps.append(step5)
         
         response = ConversationResponse(
             user_id=validated_user_id,
@@ -1638,7 +1514,7 @@ async def _process_conversation_phase5_integrated(
             search_results=search_results,
             resilience_metrics=resilience_metrics,
             response=response_content,
-            phase=5,
+            phase=6,
             request_id=request_id,
             processing_steps=processing_steps,
             status="success"
@@ -1665,7 +1541,7 @@ async def _process_conversation_phase5_integrated(
                     # Métadonnées de traitement
                     "request_id": request_id,
                     "processing_time_ms": processing_time_ms,
-                    "phase": 5,
+                    "phase": 6,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     
                     # === DONNÉES POUR DATASET D'ENTRAÎNEMENT ===
@@ -1696,17 +1572,15 @@ async def _process_conversation_phase5_integrated(
                             step1.success,
                             step2.success if step2 else True,
                             step3.success if step3 else True, 
-                            step4.success if step4 else True,
-                            step5.success if step5 else True
+                            step4.success if step4 else True
                         ]),
                         "agents_success_count": sum([
                             1 if step1.success else 0,
                             1 if (step2 and step2.success) else 0,
                             1 if (step3 and step3.success) else 0,
-                            1 if (step4 and step4.success) else 0,
-                            1 if (step5 and step5.success) else 0
+                            1 if (step4 and step4.success) else 0
                         ]),
-                        "agents_total_count": 5
+                        "agents_total_count": 4
                     },
                     
                     # 7. Placeholder pour feedback client (sera mis à jour via une API dédiée)
@@ -1719,11 +1593,10 @@ async def _process_conversation_phase5_integrated(
                     # === DONNÉES TECHNIQUES EXISTANTES ===
                     "search_results_count": search_results.total_hits if search_results else 0,
                     "agent_metrics": {
-                        "intent_classifier": {"success": step1.success, "duration_ms": step1.duration_ms},
-                        "entity_extractor": {"success": step2.success if step2 else False, "duration_ms": step2.duration_ms if step2 else 0},
-                        "query_builder": {"success": step3.success if step3 else False, "duration_ms": step3.duration_ms if step3 else 0},
-                        "search_executor": {"success": step4.success if step4 else False, "duration_ms": step4.duration_ms if step4 else 0},
-                        "response_generator": {"success": step5.success if step5 else False, "duration_ms": step5.duration_ms if step5 else 0}
+                        "intent_entity_classifier": {"success": step1.success, "duration_ms": step1.duration_ms},
+                        "deterministic_query_builder": {"success": step2.success if step2 else False, "duration_ms": step2.duration_ms if step2 else 0},
+                        "search_executor": {"success": step3.success if step3 else False, "duration_ms": step3.duration_ms if step3 else 0},
+                        "response_generator": {"success": step4.success if step4 else False, "duration_ms": step4.duration_ms if step4 else 0}
                     }
                 }
                 
@@ -1747,13 +1620,13 @@ async def _process_conversation_phase5_integrated(
         raise
     except Exception as e:
         processing_time_ms = int((time.time() - start_time) * 1000)
-        logger.error(f"[{request_id}] ❌ Erreur Phase 5 intégrée: {str(e)}")
+        logger.error(f"[{request_id}] ❌ Erreur architecture streamlinée: {str(e)}")
         
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "Erreur traitement conversation",
-                "phase": 5,
+                "phase": 6,
                 "request_id": request_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
@@ -1809,6 +1682,14 @@ def _create_clean_api_response(full_response: ConversationResponse) -> Dict[str,
             "total_results": full_response.search_results.total_hits if full_response.search_results else 0,
             "search_successful": full_response.search_execution_success
         } if full_response.has_search_query else None,
+        
+        # Debug - Entités et query générée
+        "debug_info": {
+            "entities_detected": full_response.entities.get("entities") if full_response.entities else {},
+            "search_query": full_response.search_query.dict(exclude_none=True) if hasattr(full_response, 'search_query') and full_response.search_query else None,
+            "aggregations_returned": bool(full_response.search_results.aggregations) if full_response.search_results else False,
+            "aggregation_keys": list(full_response.search_results.aggregations.keys()) if full_response.search_results and full_response.search_results.aggregations else []
+        },
         
         # Métriques globales
         "performance": {

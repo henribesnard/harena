@@ -120,7 +120,8 @@ class SearchServiceClient:
         self,
         query: SearchQuery,
         validate_query: bool = True,
-        enable_fallback: bool = None
+        enable_fallback: bool = None,
+        auth_token: Optional[str] = None
     ) -> SearchResponse:
         """
         Exécute une recherche avec protection complète
@@ -154,13 +155,15 @@ class SearchServiceClient:
             if self.circuit_breaker:
                 result = await self.circuit_breaker.call(
                     self._execute_search_request,
-                    query.dict(exclude_none=True)
+                    query.dict(exclude_none=True),
+                    auth_token
                 )
             else:
                 result = await self.retry_handler.execute_search_request(
                     self._execute_search_request,
                     query.dict(exclude_none=True),
-                    error_context="direct_search"
+                    error_context="direct_search",
+                    auth_token=auth_token
                 )
             
             # Métriques succès
@@ -175,7 +178,7 @@ class SearchServiceClient:
             
             if enable_fb:
                 logger.warning(f"Search failed, attempting fallback: {str(e)}")
-                result = await self._execute_fallback(query, e)
+                result = await self._execute_fallback(query, e, auth_token)
                 if result:
                     self.fallback_requests += 1
                     return result
@@ -191,14 +194,20 @@ class SearchServiceClient:
             logger.error(f"Search request unexpected error: {type(e).__name__}: {str(e)}")
             raise SearchServiceError(f"Unexpected error: {str(e)}")
     
-    async def _execute_search_request(self, query_dict: Dict[str, Any]) -> SearchResponse:
+    async def _execute_search_request(self, query_dict: Dict[str, Any], auth_token: Optional[str] = None) -> SearchResponse:
         """Exécution requête HTTP search_service"""
         await self._ensure_session()
         
         try:
+            # Construction des headers avec authentification
+            headers = {}
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+            
             async with self._session.post(
                 self.config.search_endpoint,
-                json=query_dict
+                json=query_dict,
+                headers=headers
             ) as response:
                 
                 # Vérification statut
@@ -218,6 +227,14 @@ class SearchServiceClient:
                 
                 # Parsing réponse
                 response_data = await response.json()
+                
+                # Debug: vérifier si on reçoit des agrégations
+                aggregations = response_data.get('aggregations')
+                if aggregations:
+                    logger.info(f"🔍 AGGREGATIONS REÇUES DU SEARCH SERVICE: {list(aggregations.keys())}")
+                else:
+                    logger.warning(f"🚨 AUCUNE AGRÉGATION REÇUE DU SEARCH SERVICE (total_results: {response_data.get('response_metadata', {}).get('total_results', 'N/A')})")
+                
                 return self._convert_search_service_response(response_data)
                 
         except aiohttp.ClientError as e:
@@ -262,7 +279,8 @@ class SearchServiceClient:
     async def _execute_fallback(
         self,
         original_query: SearchQuery,
-        original_error: Exception
+        original_error: Exception,
+        auth_token: Optional[str] = None
     ) -> Optional[SearchResponse]:
         """
         Stratégies de fallback en cas d'échec
@@ -281,7 +299,7 @@ class SearchServiceClient:
             simplified_query = self._create_simplified_query(original_query)
             if simplified_query:
                 try:
-                    return await self._execute_search_request(simplified_query.dict(exclude_none=True))
+                    return await self._execute_search_request(simplified_query.dict(exclude_none=True), auth_token)
                 except Exception as e:
                     logger.warning(f"Simplified query fallback failed: {str(e)}")
         
@@ -289,7 +307,7 @@ class SearchServiceClient:
         if isinstance(original_error, (SearchServiceTimeoutError, SearchServiceError)):
             empty_query = self._create_empty_query(original_query.user_id)
             try:
-                return await self._execute_search_request(empty_query.dict(exclude_none=True))
+                return await self._execute_search_request(empty_query.dict(exclude_none=True), auth_token)
             except Exception as e:
                 logger.warning(f"Empty query fallback failed: {str(e)}")
         

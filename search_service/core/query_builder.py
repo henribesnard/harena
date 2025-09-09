@@ -82,6 +82,9 @@ class QueryBuilder:
             "filters", "filter", "missing", "nested", "reverse_nested",
             "global", "sampler", "diversified_sampler",
             
+            # Métrique spéciale
+            "top_hits",
+            
             # Pipeline aggregations
             "derivative", "moving_avg", "cumulative_sum", "bucket_script",
             "bucket_selector", "bucket_sort", "serial_diff"
@@ -562,6 +565,9 @@ class QueryBuilder:
             validated_def = self._validate_aggregation_definition(agg_def, self.allowed_aggregation_fields)
             if validated_def:
                 validated[agg_name] = validated_def
+                logger.info(f"✅ Agrégation validée: {agg_name}")
+            else:
+                logger.warning(f"❌ Agrégation rejetée: {agg_name} - Définition: {agg_def}")
         
         return validated
 

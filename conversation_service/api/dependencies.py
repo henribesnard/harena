@@ -15,7 +15,7 @@ from conversation_service.clients.deepseek_client import DeepSeekClient
 from conversation_service.core.cache_manager import CacheManager
 from conversation_service.api.middleware.auth_middleware import get_current_user_id, verify_user_id_match
 from conversation_service.utils.metrics_collector import metrics_collector
-from conversation_service.teams import MultiAgentFinancialTeam
+# MultiAgentFinancialTeam removed - using streamlined architecture
 from conversation_service.services.conversation_persistence import ConversationPersistenceService
 
 # Configuration du logger
@@ -973,76 +973,20 @@ class AdvancedRateLimitDependency:
             logger.debug(f"Erreur logging violation rate limit: {str(log_error)}")
 
 
-async def get_multi_agent_team(request: Request) -> Optional[MultiAgentFinancialTeam]:
+async def get_multi_agent_team(request: Request) -> None:
     """
-    Récupération équipe multi-agents depuis app state avec fallback gracieux
+    DEPRECATED: Multi-agent team functionality removed in streamlined architecture
     
-    L'équipe est optionnelle - ne bloque JAMAIS le service.
+    The new streamlined architecture uses:
+    - IntentEntityClassifier (single LLM call for both intent + entities)
+    - DeterministicQueryBuilder (no LLM, pure logic)
+    - ResponseGenerator (existing LLM call)
     
-    Args:
-        request: Requête FastAPI
-        
-    Returns:
-        MultiAgentFinancialTeam ou None: Équipe si disponible
+    This reduces latency from ~80s to ~10s while maintaining functionality.
+    Always returns None to indicate no multi-agent team available.
     """
-    try:
-        import os
-        
-        # Vérification feature flag
-        team_enabled = os.getenv("MULTI_AGENT_TEAM_ENABLED", "true").lower() == "true"
-        if not team_enabled:
-            logger.debug("Équipe multi-agents désactivée par configuration")
-            return None
-        
-        # Vérification présence dans app state
-        if not hasattr(request.app.state, 'multi_agent_team'):
-            metrics_collector.increment_counter("dependencies.team_not_configured")
-            logger.debug("Équipe multi-agents non configurée dans app state")
-            return None
-        
-        multi_agent_team = request.app.state.multi_agent_team
-        
-        if not multi_agent_team:
-            metrics_collector.increment_counter("dependencies.team_disabled")
-            logger.debug("Équipe multi-agents désactivée - mode agents individuels")
-            return None
-        
-        # Vérification santé équipe (non bloquante avec timeout court)
-        try:
-            team_health = await asyncio.wait_for(
-                multi_agent_team.health_check(),
-                timeout=2.0  # Timeout court pour l'équipe
-            )
-            
-            if team_health["overall_status"] in ["healthy", "degraded"]:
-                metrics_collector.increment_counter("dependencies.success.team")
-                
-                if team_health["overall_status"] == "degraded":
-                    logger.debug("Équipe multi-agents dégradée mais opérationnelle")
-                    metrics_collector.increment_counter("dependencies.warnings.team_degraded")
-                
-                return multi_agent_team
-            else:
-                logger.debug(f"Équipe multi-agents en état {team_health['overall_status']} - fallback agents individuels")
-                metrics_collector.increment_counter("dependencies.team_unhealthy")
-                return None
-                
-        except asyncio.TimeoutError:
-            logger.debug("Health check équipe timeout - utilisation en mode dégradé")
-            metrics_collector.increment_counter("dependencies.team_timeout")
-            # Retourner l'équipe malgré le timeout (dégradation gracieuse)
-            return multi_agent_team
-            
-        except Exception as e:
-            logger.debug(f"Vérification santé équipe échouée: {str(e)}")
-            metrics_collector.increment_counter("dependencies.team_check_failed")
-            # Retourner l'équipe même si health check échoue (dégradation gracieuse)
-            return multi_agent_team
-        
-    except Exception as e:
-        metrics_collector.increment_counter("dependencies.errors.team_unexpected")
-        logger.debug(f"Erreur récupération équipe multi-agents: {str(e)}")
-        return None  # Toujours retourner None en cas d'erreur (non critique)
+    logger.debug("Multi-agent team deprecated - using streamlined architecture")
+    return None
 
 
 async def get_conversation_persistence(request: Request) -> Optional[ConversationPersistenceService]:
@@ -1113,7 +1057,7 @@ async def get_conversation_persistence(request: Request) -> Optional[Conversatio
 async def get_conversation_processor(
     request: Request,
     deepseek_client: DeepSeekClient = Depends(get_deepseek_client),
-    multi_agent_team: Optional[MultiAgentFinancialTeam] = Depends(get_multi_agent_team)
+    multi_agent_team: None = Depends(get_multi_agent_team)  # Always None in streamlined architecture
 ) -> Dict[str, Any]:
     """
     Processeur conversation avec choix automatique entre modes
@@ -1131,41 +1075,36 @@ async def get_conversation_processor(
         Dict contenant le processeur et métadonnées de mode
     """
     try:
-        # Déterminer mode de traitement optimal
-        if multi_agent_team:
-            processing_mode = "multi_agent_team"
-            metrics_collector.increment_counter("dependencies.mode_selection.multi_agent")
-            logger.debug("Mode multi-agent sélectionné pour traitement")
-        else:
-            processing_mode = "single_agent"
-            metrics_collector.increment_counter("dependencies.mode_selection.single_agent")
-            logger.debug("Mode agent unique sélectionné (fallback ou préférence)")
+        # Use streamlined architecture (multi_agent_team is always None)
+        processing_mode = "streamlined_architecture"
+        metrics_collector.increment_counter("dependencies.mode_selection.streamlined")
+        logger.debug("Mode architecture streamlinée sélectionné (IntentEntityClassifier + DeterministicQueryBuilder)")
         
         # Enrichir request.state avec informations mode
         if hasattr(request, 'state'):
             request.state.processing_mode = processing_mode
-            request.state.multi_agent_available = multi_agent_team is not None
+            request.state.multi_agent_available = False  # Always False in streamlined architecture
             request.state.fallback_available = deepseek_client is not None
         
-        # Contexte processeur avec toutes les options disponibles
+        # Contexte processeur avec architecture streamlinée
         processor_context = {
             "processing_mode": processing_mode,
-            "multi_agent_team": multi_agent_team,
+            "multi_agent_team": None,  # Always None
             "deepseek_client": deepseek_client,
             "fallback_chain": [
-                "multi_agent_team" if multi_agent_team else None,
+                None,  # No multi-agent fallback
                 "single_agent" if deepseek_client else None,
                 "error"
             ],
             "capabilities": {
                 "intent_classification": True,
-                "entity_extraction": multi_agent_team is not None,
-                "coherence_validation": multi_agent_team is not None,
-                "team_context": multi_agent_team is not None,
+                "entity_extraction": True,  # Always True with IntentEntityClassifier
+                "coherence_validation": True,  # Always True with deterministic query builder
+                "team_context": False,  # No team context in streamlined architecture
                 "caching": hasattr(request.app.state, 'cache_manager') and request.app.state.cache_manager is not None
             },
             "performance_expectations": {
-                "multi_agent_team": {"target_ms": 2000, "features": "full"},
+                "streamlined_architecture": {"target_ms": 10000, "features": "full"},  # 10s target vs 80s before
                 "single_agent": {"target_ms": 800, "features": "intent_only"}
             }
         }
@@ -1179,13 +1118,13 @@ async def get_conversation_processor(
         
         # Fallback critique: au minimum le client DeepSeek
         if deepseek_client:
-            logger.warning("Fallback sur mode single_agent après erreur sélection processeur")
+            logger.warning("Fallback sur mode streamlined après erreur sélection processeur")
             return {
-                "processing_mode": "single_agent",
+                "processing_mode": "streamlined_architecture",
                 "multi_agent_team": None,
                 "deepseek_client": deepseek_client,
-                "fallback_chain": ["single_agent", "error"],
-                "capabilities": {"intent_classification": True},
+                "fallback_chain": ["streamlined_architecture", "error"],
+                "capabilities": {"intent_classification": True, "entity_extraction": True},
                 "error": "Mode dégradé après erreur sélection"
             }
         else:

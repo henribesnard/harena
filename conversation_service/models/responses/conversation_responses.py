@@ -450,8 +450,13 @@ class ProcessingSteps(BaseModel):
     @classmethod
     def validate_agent(cls, v: str) -> str:
         valid_agents = [
+            # Legacy agents (deprecated but kept for compatibility)
             "intent_classifier", "entity_extractor", "query_builder",
-            "multi_agent_team", "query_validator", "query_optimizer", "search_executor", "response_generator"
+            "multi_agent_team", "query_validator", "query_optimizer",
+            # New streamlined architecture agents
+            "intent_entity_classifier", "deterministic_query_builder",
+            # Still active agents
+            "search_executor", "response_generator"
         ]
         if v not in valid_agents:
             raise ValueError(f"Agent invalide. Doit être un de: {valid_agents}")
@@ -713,8 +718,9 @@ class StructuredData(BaseModel):
         validate_assignment=True
     )
     
-    # Montants principaux
-    total_amount: Optional[float] = None
+    # Montants principaux séparés par type
+    total_amount_debit: Optional[float] = None   # Dépenses (montants négatifs)
+    total_amount_credit: Optional[float] = None  # Revenus (montants positifs)
     currency: str = "EUR"
     transaction_count: Optional[int] = None
     average_amount: Optional[float] = None
@@ -730,6 +736,16 @@ class StructuredData(BaseModel):
     # Métadonnées contextuelles
     analysis_type: Optional[str] = None  # merchant, category, period, balance
     primary_entity: Optional[str] = None  # Amazon, Restaurant, etc.
+    
+    # Propriété calculée pour compatibilité (deprecated)
+    @property
+    def total_amount(self) -> Optional[float]:
+        """Propriété de compatibilité - somme algébrique des débits et crédits"""
+        if self.total_amount_debit is not None or self.total_amount_credit is not None:
+            debit = self.total_amount_debit or 0.0
+            credit = self.total_amount_credit or 0.0
+            return credit - debit  # Convention: crédit positif, débit positif -> net = crédit - débit
+        return None
 
 
 class ResponseContent(BaseModel):
@@ -1817,10 +1833,22 @@ def create_enhanced_structured_data(
     if not search_results or not search_results.hits:
         return StructuredData()
     
-    # Calcul des métriques réelles
-    total_amount = sum(hit.source.get("amount", 0) for hit in search_results.hits)
+    # Calcul des métriques réelles avec séparation débit/crédit
+    total_amount_debit = 0.0
+    total_amount_credit = 0.0
+    
+    for hit in search_results.hits:
+        amount = hit.source.get("amount", 0)
+        if amount < 0:
+            total_amount_debit += abs(amount)  # Stocker les débits en positif
+        else:
+            total_amount_credit += amount
+    
     transaction_count = len(search_results.hits)
-    average_amount = total_amount / transaction_count if transaction_count > 0 else 0
+    
+    # Calcul de la moyenne sur la base du montant net
+    net_amount = total_amount_credit - total_amount_debit
+    average_amount = net_amount / transaction_count if transaction_count > 0 else 0
     
     # Détermination de la période à partir des entités
     period_start = None
@@ -1856,7 +1884,8 @@ def create_enhanced_structured_data(
             analysis_type = "balance"
     
     return StructuredData(
-        total_amount=total_amount,
+        total_amount_debit=total_amount_debit if total_amount_debit > 0 else None,
+        total_amount_credit=total_amount_credit if total_amount_credit > 0 else None,
         transaction_count=transaction_count,
         average_amount=average_amount,
         period=period_description,

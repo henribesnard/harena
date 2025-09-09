@@ -111,7 +111,9 @@
       "Read(/C:\\Users\\henri\\Projets\\harena/**)",
       "Read(/C:\\Users\\henri\\Projets\\harena/**)",
       "Read(/C:\\Users\\henri\\Projets\\harena/**)",
-      "Read(/C:\\Users\\henri\\Projets\\harena/**)"
+      "Read(/C:\\Users\\henri\\Projets\\harena/**)",
+      "Bash(cat:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

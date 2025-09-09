@@ -32,6 +32,7 @@ class SearchExecutorRequest(BaseModel):
     timeout_seconds: Optional[float] = 30.0
     enable_fallback: bool = True
     validate_before_search: bool = True
+    auth_token: Optional[str] = None  # Token JWT pour authentification search_service
     
     # Contexte pour monitoring
     context: Dict[str, Any] = Field(default_factory=dict)
@@ -241,7 +242,8 @@ class SearchExecutor:
                 search_response = await self.search_client.search(
                     query=message.search_query,
                     validate_query=message.validate_before_search,
-                    enable_fallback=message.enable_fallback
+                    enable_fallback=message.enable_fallback,
+                    auth_token=message.auth_token
                 )
                 
                 # Si il y a plus de résultats que retournés, récupérer tous les résultats
@@ -406,7 +408,8 @@ class SearchExecutor:
                 search_response = await self.search_client.search(
                     query=simplified_query,
                     validate_query=False,
-                    enable_fallback=False  # Pas de fallback récursif
+                    enable_fallback=False,  # Pas de fallback récursif
+                    auth_token=original_request.auth_token
                 )
             
             return SearchExecutorResponse(
@@ -554,7 +557,8 @@ class SearchExecutor:
                     complete_response = await self.search_client.search(
                         query=complete_query,
                         validate_query=False,
-                        enable_fallback=message.enable_fallback
+                        enable_fallback=message.enable_fallback,
+                        auth_token=message.auth_token
                     )
                     
                     logger.info(f"✅ Récupération complète réussie: {len(complete_response.hits)} résultats")
@@ -577,7 +581,8 @@ class SearchExecutor:
                         complete_response = await self.search_client.search(
                             query=complete_query,
                             validate_query=False,
-                            enable_fallback=message.enable_fallback
+                            enable_fallback=message.enable_fallback,
+                            auth_token=message.auth_token
                         )
                         
                         logger.info(f"✅ Récupération partielle étendue: {len(complete_response.hits)}/{total_available} résultats")

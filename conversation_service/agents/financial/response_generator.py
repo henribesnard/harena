@@ -143,7 +143,7 @@ class ResponseGeneratorAgent(BaseAgent):
     ) -> Dict[str, Any]:
         """Analyse les résultats de recherche pour extraction de données"""
         
-        if not search_results or not search_results.hits:
+        if not search_results:
             return {
                 "has_results": False,
                 "total_hits": 0,
@@ -159,15 +159,250 @@ class ResponseGeneratorAgent(BaseAgent):
             "primary_entity": self._extract_primary_entity(entities)
         }
         
-        # Analyse des agrégations si disponibles
+        # Prioriser les agrégations si disponibles (mode aggregation_only)
         if search_results.aggregations:
-            analysis.update(self._analyze_aggregations(search_results.aggregations))
+            logger.info(f"🔍 SEARCH RESULTS AGGREGATIONS RECEIVED: {list(search_results.aggregations.keys())}")
+            
+            # Si on a des agrégations spécialisées (recent_transactions, etc.)
+            if self._has_specialized_aggregations(search_results.aggregations):
+                logger.info(f"✅ USING SPECIALIZED AGGREGATIONS")
+                analysis.update(self._analyze_specialized_aggregations(search_results.aggregations))
+            else:
+                logger.info(f"⚠️ USING CLASSIC AGGREGATIONS (no specialized found)")
+                # Agrégations classiques
+                analysis.update(self._analyze_aggregations(search_results.aggregations))
+        else:
+            logger.warning(f"🚨 NO AGGREGATIONS IN SEARCH RESULTS")
         
-        # Analyse des transactions individuelles
-        if search_results.hits:
+        # Analyse des transactions individuelles seulement si on n'a pas d'agrégations spécialisées
+        if search_results.hits and not self._has_specialized_aggregations(search_results.aggregations or {}):
             analysis.update(self._analyze_transactions(search_results.hits))
         
         return analysis
+    
+    def _has_specialized_aggregations(self, aggregations: Dict[str, Any]) -> bool:
+        """Vérifie si on a des agrégations spécialisées (recent_transactions, etc.)"""
+        specialized_keys = ["recent_transactions", "weekly_summary", "monthly_summary", "category_breakdown", "merchant_breakdown"]
+        has_specialized = any(key in aggregations for key in specialized_keys)
+        
+        # Debug logging
+        logger.info(f"🔍 CHECKING SPECIALIZED AGGREGATIONS:")
+        logger.info(f"  - Keys in aggregations: {list(aggregations.keys()) if aggregations else 'None'}")
+        logger.info(f"  - Specialized keys expected: {specialized_keys}")
+        logger.info(f"  - Has specialized: {has_specialized}")
+        
+        return has_specialized
+    
+    def _analyze_specialized_aggregations(self, aggregations: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyse les agrégations spécialisées pour requêtes vagues"""
+        
+        analysis = {}
+        
+        # Traiter les transactions récentes depuis top_hits
+        if "recent_transactions" in aggregations:
+            recent_agg = aggregations["recent_transactions"]
+            if "hits" in recent_agg and "hits" in recent_agg["hits"]:
+                transactions = recent_agg["hits"]["hits"]
+                analysis.update(self._process_recent_transactions(transactions))
+        
+        # Traiter les résumés hebdomadaires
+        if "weekly_summary" in aggregations:
+            weekly_agg = aggregations["weekly_summary"]
+            if "buckets" in weekly_agg:
+                analysis.update(self._process_weekly_summary(weekly_agg["buckets"]))
+        
+        # Traiter les résumés mensuels  
+        if "monthly_summary" in aggregations:
+            monthly_agg = aggregations["monthly_summary"]
+            if "buckets" in monthly_agg:
+                analysis.update(self._process_monthly_summary(monthly_agg["buckets"]))
+        
+        # Traiter la répartition par catégorie
+        if "category_breakdown" in aggregations:
+            category_agg = aggregations["category_breakdown"]
+            if "buckets" in category_agg:
+                analysis.update(self._process_category_breakdown(category_agg["buckets"]))
+        
+        # Traiter la répartition par marchand
+        if "merchant_breakdown" in aggregations:
+            merchant_agg = aggregations["merchant_breakdown"]
+            if "buckets" in merchant_agg:
+                analysis.update(self._process_merchant_breakdown(merchant_agg["buckets"]))
+        
+        return analysis
+    
+    def _process_recent_transactions(self, transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Traite les transactions récentes depuis top_hits"""
+        
+        if not transactions:
+            return {}
+        
+        total_amount_debit = 0.0
+        total_amount_credit = 0.0
+        merchants = set()
+        categories = set()
+        transactions_detail = []
+        
+        for transaction in transactions:
+            source = transaction.get("_source", {})
+            
+            amount = source.get("amount", 0)
+            if amount < 0:
+                total_amount_debit += abs(amount)
+            else:
+                total_amount_credit += amount
+            
+            if source.get("merchant_name"):
+                merchants.add(source["merchant_name"])
+            
+            if source.get("category_name"):
+                categories.add(source["category_name"])
+            
+            # Limiter les détails aux 10 premières transactions
+            if len(transactions_detail) < 10:
+                transactions_detail.append({
+                    "amount": abs(amount),
+                    "merchant": source.get("merchant_name", "N/A"),
+                    "date": source.get("date", "N/A"),
+                    "description": source.get("primary_description", ""),
+                    "category": source.get("category_name", ""),
+                    "is_debit": amount < 0
+                })
+        
+        return {
+            "transaction_count": len(transactions),
+            "total_amount_debit": total_amount_debit if total_amount_debit > 0 else None,
+            "total_amount_credit": total_amount_credit if total_amount_credit > 0 else None,
+            "total_amount": total_amount_credit - total_amount_debit,  # Net
+            "average_amount": (total_amount_credit - total_amount_debit) / len(transactions),
+            "unique_merchants": len(merchants),
+            "merchant_list": list(merchants),
+            "unique_categories": len(categories),
+            "category_list": list(categories),
+            "transactions_detail": transactions_detail
+        }
+    
+    def _process_weekly_summary(self, buckets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Traite le résumé hebdomadaire"""
+        
+        weekly_data = []
+        total_weeks_debit = 0.0
+        total_weeks_credit = 0.0
+        
+        for bucket in buckets[:4]:  # Limiter aux 4 dernières semaines
+            week_key = bucket.get("key_as_string", bucket.get("key"))
+            
+            debit_amount = 0.0
+            credit_amount = 0.0
+            
+            if "debit_total" in bucket and "amount" in bucket["debit_total"]:
+                debit_amount = bucket["debit_total"]["amount"].get("value", 0)
+                total_weeks_debit += debit_amount
+            
+            if "credit_total" in bucket and "amount" in bucket["credit_total"]:
+                credit_amount = bucket["credit_total"]["amount"].get("value", 0)
+                total_weeks_credit += credit_amount
+            
+            weekly_data.append({
+                "week": week_key,
+                "debit": debit_amount,
+                "credit": credit_amount,
+                "net": credit_amount - debit_amount
+            })
+        
+        return {
+            "weekly_summary": weekly_data,
+            "total_weeks_debit": total_weeks_debit,
+            "total_weeks_credit": total_weeks_credit
+        }
+    
+    def _process_monthly_summary(self, buckets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Traite le résumé mensuel"""
+        
+        monthly_data = []
+        total_months_debit = 0.0
+        total_months_credit = 0.0
+        
+        for bucket in buckets[:6]:  # Limiter aux 6 derniers mois
+            month_key = bucket.get("key_as_string", bucket.get("key"))
+            
+            debit_amount = 0.0
+            credit_amount = 0.0
+            
+            if "debit_total" in bucket and "amount" in bucket["debit_total"]:
+                debit_amount = bucket["debit_total"]["amount"].get("value", 0)
+                total_months_debit += debit_amount
+            
+            if "credit_total" in bucket and "amount" in bucket["credit_total"]:
+                credit_amount = bucket["credit_total"]["amount"].get("value", 0)
+                total_months_credit += credit_amount
+            
+            monthly_data.append({
+                "month": month_key,
+                "debit": debit_amount,
+                "credit": credit_amount,
+                "net": credit_amount - debit_amount
+            })
+        
+        return {
+            "monthly_summary": monthly_data,
+            "total_months_debit": total_months_debit,
+            "total_months_credit": total_months_credit
+        }
+    
+    def _process_category_breakdown(self, buckets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Traite la répartition par catégorie"""
+        
+        categories_data = []
+        
+        for bucket in buckets[:10]:  # Top 10 catégories
+            category_name = bucket.get("key")
+            
+            debit_amount = 0.0
+            credit_amount = 0.0
+            
+            if "debit_total" in bucket and "amount" in bucket["debit_total"]:
+                debit_amount = bucket["debit_total"]["amount"].get("value", 0)
+            
+            if "credit_total" in bucket and "amount" in bucket["credit_total"]:
+                credit_amount = bucket["credit_total"]["amount"].get("value", 0)
+            
+            categories_data.append({
+                "name": category_name,
+                "debit": debit_amount,
+                "credit": credit_amount,
+                "net": credit_amount - debit_amount,
+                "doc_count": bucket.get("doc_count", 0)
+            })
+        
+        return {"categories_breakdown": categories_data}
+    
+    def _process_merchant_breakdown(self, buckets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Traite la répartition par marchand"""
+        
+        merchants_data = []
+        
+        for bucket in buckets[:10]:  # Top 10 marchands
+            merchant_name = bucket.get("key")
+            
+            debit_amount = 0.0
+            credit_amount = 0.0
+            
+            if "debit_total" in bucket and "amount" in bucket["debit_total"]:
+                debit_amount = bucket["debit_total"]["amount"].get("value", 0)
+            
+            if "credit_total" in bucket and "amount" in bucket["credit_total"]:
+                credit_amount = bucket["credit_total"]["amount"].get("value", 0)
+            
+            merchants_data.append({
+                "name": merchant_name,
+                "debit": debit_amount,
+                "credit": credit_amount,
+                "net": credit_amount - debit_amount,
+                "doc_count": bucket.get("doc_count", 0)
+            })
+        
+        return {"merchants_breakdown": merchants_data}
     
     def _extract_primary_entity(self, entities: Dict[str, Any]) -> Optional[str]:
         """Extrait l'entité principale de la requête"""
@@ -227,6 +462,8 @@ class ResponseGeneratorAgent(BaseAgent):
         """Analyse les transactions individuelles"""
         
         amounts = []
+        total_amount_debit = 0.0
+        total_amount_credit = 0.0
         merchants = set()
         dates = []
         transactions_detail = []  # Pour passer les détails des transactions
@@ -236,7 +473,14 @@ class ResponseGeneratorAgent(BaseAgent):
             source = hit.source if hasattr(hit, 'source') else hit.get("_source", {})
             
             if "amount" in source:
-                amounts.append(abs(source["amount"]))
+                amount = source["amount"]
+                amounts.append(abs(amount))
+                
+                # Séparer débits et crédits
+                if amount < 0:
+                    total_amount_debit += abs(amount)
+                else:
+                    total_amount_credit += amount
             
             if "merchant_name" in source and source["merchant_name"] is not None:
                 merchants.add(source["merchant_name"])
@@ -250,7 +494,8 @@ class ResponseGeneratorAgent(BaseAgent):
                 "merchant": source.get("merchant_name", "N/A"),
                 "date": source.get("date", "N/A"),
                 "description": source.get("primary_description", ""),
-                "category": source.get("category_name", "")
+                "category": source.get("category_name", ""),
+                "is_debit": source.get("amount", 0) < 0
             }
             transactions_detail.append(transaction_detail)
         
@@ -258,7 +503,10 @@ class ResponseGeneratorAgent(BaseAgent):
         
         if amounts:
             analysis["transaction_count"] = len(amounts)
-            analysis["total_amount"] = sum(amounts)  # AJOUT DU MONTANT TOTAL MANQUANT
+            analysis["total_amount_debit"] = total_amount_debit if total_amount_debit > 0 else None
+            analysis["total_amount_credit"] = total_amount_credit if total_amount_credit > 0 else None
+            # Montant net pour compatibilité
+            analysis["total_amount"] = total_amount_credit - total_amount_debit
             analysis["average_amount"] = analysis["total_amount"] / len(amounts)
             analysis["min_amount"] = min(amounts)
             analysis["max_amount"] = max(amounts)
@@ -327,8 +575,12 @@ class ResponseGeneratorAgent(BaseAgent):
             primary_entity=analysis_data.get("primary_entity")
         )
         
-        if analysis_data.get("total_amount"):
-            data.total_amount = analysis_data["total_amount"]
+        # Utiliser les nouveaux champs séparés
+        if analysis_data.get("total_amount_debit"):
+            data.total_amount_debit = analysis_data["total_amount_debit"]
+        
+        if analysis_data.get("total_amount_credit"):
+            data.total_amount_credit = analysis_data["total_amount_credit"]
         
         if analysis_data.get("transaction_count"):
             data.transaction_count = analysis_data["transaction_count"]
@@ -420,6 +672,50 @@ class ResponseGeneratorAgent(BaseAgent):
                 confidence=0.8
             ))
         
+        # Insights basés sur les données hebdomadaires si disponibles
+        if "weekly_summary" in analysis_data:
+            weekly_data = analysis_data["weekly_summary"]
+            if len(weekly_data) >= 2:
+                # Comparaison cette semaine vs semaine précédente
+                current_week = weekly_data[0]
+                previous_week = weekly_data[1]
+                
+                current_net = current_week.get("net", 0)
+                previous_net = previous_week.get("net", 0)
+                
+                if abs(current_net - previous_net) > 100:  # Différence significative
+                    if current_net > previous_net:
+                        insights.append(Insight(
+                            type="trend",
+                            title="Amélioration financière hebdomadaire",
+                            description=f"Cette semaine: {current_net:.2f}€ vs {previous_net:.2f}€ la semaine précédente",
+                            severity="positive",
+                            confidence=0.8
+                        ))
+                    else:
+                        insights.append(Insight(
+                            type="trend",
+                            title="Baisse financière hebdomadaire",
+                            description=f"Cette semaine: {current_net:.2f}€ vs {previous_net:.2f}€ la semaine précédente",
+                            severity="warning",
+                            confidence=0.8
+                        ))
+        
+        # Insights basés sur la répartition par catégorie
+        if "categories_breakdown" in analysis_data:
+            categories = analysis_data["categories_breakdown"]
+            if categories:
+                # Trouver la catégorie avec le plus de dépenses
+                max_debit_category = max(categories, key=lambda x: x.get("debit", 0))
+                if max_debit_category.get("debit", 0) > 0:
+                    insights.append(Insight(
+                        type="category",
+                        title="Catégorie de dépense principale",
+                        description=f"'{max_debit_category['name']}' représente vos plus grosses dépenses: {max_debit_category['debit']:.2f}€",
+                        severity="info",
+                        confidence=0.9
+                    ))
+        
         return insights
     
     def _generate_suggestions(
@@ -442,17 +738,29 @@ class ResponseGeneratorAgent(BaseAgent):
             ))
             return suggestions
         
-        # Suggestion budget si montant élevé
-        total_amount = analysis_data.get("total_amount")
-        if total_amount and total_amount > 500:
-            budget_amount = int(total_amount * 1.1)  # 10% de marge
+        # Suggestion budget si montant de dépenses élevé
+        total_debit = analysis_data.get("total_amount_debit")
+        if total_debit and total_debit > 500:
+            budget_amount = int(total_debit * 1.1)  # 10% de marge
             suggestions.append(Suggestion(
                 type="budget",
                 title="Définir un budget",
-                description=f"Avec {total_amount:.2f}€ dépensés, considérez un budget de {budget_amount}€",
+                description=f"Avec {total_debit:.2f}€ de dépenses, considérez un budget de {budget_amount}€",
                 action=f"Créer un budget de {budget_amount}€",
                 priority="medium"
             ))
+        
+        # Suggestion équilibre si déséquilibre important
+        total_credit = analysis_data.get("total_amount_credit")
+        if total_debit and total_credit:
+            ratio = total_debit / total_credit if total_credit > 0 else float('inf')
+            if ratio > 0.8:  # Dépenses > 80% des revenus
+                suggestions.append(Suggestion(
+                    type="alert",
+                    title="Surveiller l'équilibre",
+                    description=f"Vos dépenses ({total_debit:.2f}€) représentent {ratio*100:.0f}% de vos revenus ({total_credit:.2f}€)",
+                    priority="high" if ratio > 1.0 else "medium"
+                ))
         
         # Suggestion analyse si beaucoup de transactions
         total_hits = analysis_data.get("total_hits", 0)
@@ -474,6 +782,36 @@ class ResponseGeneratorAgent(BaseAgent):
                 action="Voir la répartition par catégorie",
                 priority="low"
             ))
+        
+        # Suggestions basées sur les tendances hebdomadaires
+        if "weekly_summary" in analysis_data:
+            weekly_data = analysis_data["weekly_summary"]
+            if len(weekly_data) >= 2:
+                current_week = weekly_data[0]
+                current_debit = current_week.get("debit", 0)
+                
+                if current_debit > 200:  # Dépenses élevées cette semaine
+                    suggestions.append(Suggestion(
+                        type="alert",
+                        title="Surveiller les dépenses hebdomadaires",
+                        description=f"Vos dépenses cette semaine ({current_debit:.2f}€) sont importantes",
+                        action="Réviser le budget hebdomadaire",
+                        priority="medium"
+                    ))
+        
+        # Suggestions basées sur les catégories les plus coûteuses
+        if "categories_breakdown" in analysis_data:
+            categories = analysis_data["categories_breakdown"]
+            if categories and len(categories) > 1:
+                top_category = max(categories, key=lambda x: x.get("debit", 0))
+                if top_category.get("debit", 0) > 100:
+                    suggestions.append(Suggestion(
+                        type="optimization",
+                        title="Optimiser la catégorie principale",
+                        description=f"La catégorie '{top_category['name']}' représente {top_category['debit']:.2f}€ de dépenses",
+                        action=f"Chercher des économies dans '{top_category['name']}'",
+                        priority="medium"
+                    ))
         
         return suggestions
     
@@ -607,21 +945,30 @@ class ResponseGeneratorAgent(BaseAgent):
             return "Aucune transaction trouvée pour vos critères de recherche."
         
         total_hits = analysis_data.get("total_hits", 0)
-        total_amount = analysis_data.get("total_amount")
+        total_debit = analysis_data.get("total_amount_debit")
+        total_credit = analysis_data.get("total_amount_credit")
         
-        if total_amount:
-            return f"J'ai trouvé {total_hits} transactions pour un montant total de {total_amount:.2f}€."
+        if total_debit and total_credit:
+            return f"J'ai trouvé {total_hits} transactions: {total_debit:.2f}€ de dépenses et {total_credit:.2f}€ de revenus."
+        elif total_debit:
+            return f"J'ai trouvé {total_hits} transactions pour un total de {total_debit:.2f}€ de dépenses."
+        elif total_credit:
+            return f"J'ai trouvé {total_hits} transactions pour un total de {total_credit:.2f}€ de revenus."
         else:
             return f"J'ai trouvé {total_hits} transactions correspondant à votre recherche."
     
     # Templates de réponse par intention
     def _get_merchant_template(self, message: str, entities: Dict, analysis: Dict, context: Dict) -> str:
+        debit_info = f"- Dépenses: {analysis.get('total_amount_debit', 0):.2f}€" if analysis.get('total_amount_debit') else ""
+        credit_info = f"- Revenus: {analysis.get('total_amount_credit', 0):.2f}€" if analysis.get('total_amount_credit') else ""
+        
         return f"""Tu es un assistant financier. L'utilisateur demande: "{message}"
 
 Données analysées:
 - Marchand principal: {analysis.get('primary_entity', 'Non spécifié')}
 - Nombre de transactions: {analysis.get('total_hits', 0)}
-- Montant total: {analysis.get('total_amount', 0)}€
+{debit_info}
+{credit_info}
 - Montant moyen: {analysis.get('average_amount', 0):.2f}€
 
 Génère une réponse naturelle, informative et engageante qui:
@@ -633,15 +980,33 @@ Génère une réponse naturelle, informative et engageante qui:
 Réponse:"""
 
     def _get_spending_analysis_template(self, message: str, entities: Dict, analysis: Dict, context: Dict) -> str:
+        debit_info = f"- Total dépensé: {analysis.get('total_amount_debit', 0):.2f}€" if analysis.get('total_amount_debit') else ""
+        credit_info = f"- Total reçu: {analysis.get('total_amount_credit', 0):.2f}€" if analysis.get('total_amount_credit') else ""
+        
+        # Ajouter des informations sur les tendances si disponibles
+        trends_info = ""
+        if "weekly_summary" in analysis and len(analysis["weekly_summary"]) >= 2:
+            current_week = analysis["weekly_summary"][0]
+            trends_info = f"- Tendance cette semaine: {current_week.get('debit', 0):.2f}€ dépenses, {current_week.get('credit', 0):.2f}€ revenus"
+        
+        categories_info = ""
+        if "categories_breakdown" in analysis and analysis["categories_breakdown"]:
+            top_category = max(analysis["categories_breakdown"], key=lambda x: x.get("debit", 0))
+            categories_info = f"- Catégorie principale: {top_category['name']} ({top_category['debit']:.2f}€)"
+        
         return f"""Tu es un assistant financier. L'utilisateur demande: "{message}"
 
 Données d'analyse:
 - Période analysée: {entities.get('dates', 'Non spécifiée')}
-- Total dépensé: {analysis.get('total_amount', 0)}€
+{debit_info}
+{credit_info}
 - Nombre de transactions: {analysis.get('total_hits', 0)}
 - Marchands différents: {analysis.get('unique_merchants', 0)}
+{trends_info}
+{categories_info}
 
 Génère une analyse claire et actionnable qui présente les informations principales de manière structurée.
+Utilise les données de tendances et catégories pour donner des insights pertinents.
 
 Réponse:"""
 

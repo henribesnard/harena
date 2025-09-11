@@ -1,0 +1,100 @@
+{
+  "template_name": "analysis_trend",
+  "description": "Analyse d'évolution temporelle avec histogramme de dates",
+  "target_intention": "ANALYSIS_INSIGHTS.trend",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "date": "{{date_range}}",
+      "transaction_type": "{{transaction_type}}",
+      "category_name": "{{category_filter}}"
+    },
+    "aggregations": {
+      "trend_analysis": {
+        "aggs": {
+          "spending_over_time": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "{{granularity}}"
+            },
+            "aggs": {
+              "period_total": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              },
+              "period_count": {
+                "value_count": {
+                  "field": "transaction_id"
+                }
+              },
+              "period_avg": {
+                "avg": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "overall_stats": {
+            "stats": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    },
+    "aggregation_only": true,
+    "page_size": 1
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "date_range": {
+      "required": true,
+      "type": "object",
+      "source": "entities.periode_temporelle",
+      "validation": {
+        "min_range": "7d"
+      }
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type.transaction_type",
+      "default": "debit"
+    },
+    "category_filter": {
+      "required": false,
+      "type": "string",
+      "source": "entities.category_search.category_name"
+    },
+    "granularity": {
+      "required": false,
+      "type": "string",
+      "source": "entities.granularite_temporelle",
+      "default": "1w",
+      "allowed_values": ["1d", "1w", "1M", "quarter"]
+    }
+  },
+  "granularity_auto_selection": {
+    "rules": [
+      {"range": "<=30d", "granularity": "1d"},
+      {"range": "<=180d", "granularity": "1w"},
+      {"range": "<=730d", "granularity": "1M"},
+      {"range": ">730d", "granularity": "quarter"}
+    ]
+  },
+  "response_processing": {
+    "extract_aggregations": true,
+    "calculate_trend": true,
+    "format_dates": "human_readable",
+    "format_currency": "EUR"
+  },
+  "optimizations": {
+    "cache_duration": "15m",
+    "elasticsearch_routing": "user_id"
+  }
+}

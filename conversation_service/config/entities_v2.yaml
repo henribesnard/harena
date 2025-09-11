@@ -1,0 +1,352 @@
+# Configuration des Entités Harena v2.0 - Production
+# Basée sur les champs réels de enrichment_service/models.py et search_service
+version: "2.0.0"
+description: "Configuration entités production alignée avec enrichment_service"
+approach: "few_shot_learning"
+last_updated: "2025-01-15"
+
+metadata:
+  source_validation: "enrichment_service.models.StructuredTransaction"
+  target_interface: "search_service.models.request.SearchRequest"
+  compatibility_verified: true
+
+# ============================================================================
+# CHAMPS RÉELS DISPONIBLES (Source: enrichment_service/models.py)
+# ============================================================================
+search_service_fields:
+  description: "Champs réellement disponibles dans le système Harena"
+  
+  # Champs temporels
+  temporal_fields:
+    - "date"           # datetime ISO 8601 principal
+    - "date_str"       # format YYYY-MM-DD
+    - "month_year"     # format YYYY-MM pour agrégations
+    - "weekday"        # jour de la semaine
+    - "timestamp"      # timestamp Unix
+    
+  # Champs monétaires  
+  monetary_fields:
+    - "amount"         # montant signé (positif=crédit, négatif=débit)
+    - "amount_abs"     # montant absolu (toujours positif) pour ranges
+    - "currency_code"  # devise (défaut: "EUR")
+    
+  # Champs textuels
+  text_fields:
+    - "searchable_text"      # texte enrichi pour recherche libre
+    - "primary_description"  # description principale
+    - "merchant_name"        # nom du marchand (peut être null)
+    - "category_name"        # nom de catégorie
+    - "operation_type"       # type d'opération bancaire
+    
+  # Champs énumérés/filtrables
+  enum_fields:
+    - "transaction_type"     # "credit" | "debit"
+    - "account_id"          # ID numérique du compte
+    - "user_id"             # ID utilisateur (toujours requis)
+    - "transaction_id"      # ID unique de transaction
+    - "category_id"         # ID catégorie (peut être null)
+    
+  # Champs booléens
+  boolean_fields:
+    - "is_future"           # transaction future
+    - "is_deleted"          # transaction supprimée
+    - "balance_check_passed" # validation qualité (optionnel)
+    
+  # Champs de qualité/métadonnées
+  quality_fields:
+    - "quality_score"       # score de qualité (0.0-1.0)
+    - "indexed_at"          # timestamp d'indexation
+    - "version"             # version du format
+
+# ============================================================================
+# ENTITÉS TEMPORELLES - ALIGNÉES SYSTÈME RÉEL
+# ============================================================================
+temporal_entities:
+  periode_temporelle:
+    description: "Expressions temporelles → ranges sur champ 'date'"
+    type: "temporal_range"
+    target_field: "date"
+    
+    few_shot_examples:
+      - input: "le mois dernier"
+        output: {"date": {"gte": "2024-12-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}}
+        explanation: "Range complet du mois précédent"
+        
+      - input: "ces 30 derniers jours"
+        output: {"date": {"gte": "2025-01-16T00:00:00Z"}}
+        explanation: "Range depuis 30 jours (date calculée dynamiquement)"
+        
+      - input: "en janvier 2024"
+        output: {"date": {"gte": "2024-01-01T00:00:00Z", "lte": "2024-01-31T23:59:59Z"}}
+        explanation: "Mois spécifique d'une année"
+        
+      - input: "depuis le 15 mars"
+        output: {"date": {"gte": "2025-03-15T00:00:00Z"}}
+        explanation: "Range ouvert depuis une date"
+        
+      - input: "cette semaine"
+        output: {"date": {"gte": "2025-01-13T00:00:00Z", "lte": "2025-01-19T23:59:59Z"}}
+        explanation: "Semaine en cours (calculée dynamiquement)"
+
+    extraction_guidance:
+      - "Utiliser toujours le champ 'date' (principal) pour les filtres temporels"
+      - "Format ISO 8601 avec timezone UTC"
+      - "Expressions relatives calculées depuis la date actuelle"
+      - "Ranges fermés pour périodes complètes (mois, semaines)"
+
+  granularite_temporelle:
+    description: "Granularité pour agrégations date_histogram"
+    type: "aggregation_interval"
+    target_aggregation: "date_histogram.calendar_interval"
+    
+    few_shot_examples:
+      - input: "par mois"
+        output: "1M"
+      - input: "quotidien"
+        output: "1d"
+      - input: "par semaine"
+        output: "1w"
+      - input: "trimestriel"
+        output: "quarter"
+
+# ============================================================================
+# ENTITÉS MONÉTAIRES - CHAMPS RÉELS amount/amount_abs
+# ============================================================================
+monetary_entities:
+  montant:
+    description: "Filtres monétaires sur amount_abs (toujours positif)"
+    type: "monetary_range" 
+    target_fields: ["amount_abs", "amount"]
+    
+    few_shot_examples:
+      - input: "plus de 100 euros"
+        output: {"amount_abs": {"gte": 100.0}}
+        explanation: "Utiliser amount_abs pour montants > 0"
+        
+      - input: "entre 50 et 200€"
+        output: {"amount_abs": {"gte": 50.0, "lte": 200.0}}
+        explanation: "Range sur montant absolu"
+        
+      - input: "moins de 25 euros"
+        output: {"amount_abs": {"lte": 25.0}}
+        explanation: "Filtre maximum"
+        
+      - input: "mes plus grosses dépenses"
+        output: {"sort": [{"amount_abs": {"order": "desc"}}]}
+        explanation: "Tri décroissant par montant"
+        
+      - input: "montant exact de 75€"
+        output: {"amount_abs": 75.0}
+        explanation: "Valeur exacte (rare en pratique)"
+
+    extraction_guidance:
+      - "amount_abs pour tous les filtres de montant (toujours positif)"
+      - "amount pour tri si le signe importe (crédit/débit)"
+      - "Conversion automatique des devises vers EUR par défaut"
+      - "Support décimaux (ex: 25.50)"
+
+# ============================================================================
+# ENTITÉS TEXTUELLES - CHAMPS RÉELS
+# ============================================================================
+textual_entities:
+  merchant_search:
+    description: "Recherche de marchands via searchable_text ou merchant_name"
+    type: "text_search"
+    target_fields: ["merchant_name", "searchable_text"]
+    
+    few_shot_examples:
+      - input: "mes achats chez Amazon"
+        output: {"query": "Amazon"}
+        explanation: "Recherche textuelle libre sur searchable_text"
+        
+      - input: "toutes mes transactions Carrefour"
+        output: {"merchant_name": "Carrefour"}
+        explanation: "Filtre exact si nom complet"
+        
+      - input: "mes restaurants préférés"
+        output: {"query": "restaurant"}
+        explanation: "Recherche textuelle large"
+
+    extraction_guidance:
+      - "Préférer 'query' pour recherche textuelle flexible"
+      - "Utiliser 'merchant_name' filtre exact si nom précis fourni" 
+      - "Le champ merchant_name peut être null (pas tous les enrichissements)"
+
+  category_search:
+    description: "Recherche par catégorie via category_name"
+    type: "category_filter"
+    target_fields: ["category_name", "category_id"]
+    
+    few_shot_examples:
+      - input: "mes dépenses alimentaires"
+        output: {"query": "alimentation food"}
+        explanation: "Recherche textuelle sur category_name + synonymes"
+        
+      - input: "frais de transport"
+        output: {"query": "transport mobilité"}
+        explanation: "Recherche avec termes liés"
+        
+      - input: "catégorie restaurant"
+        output: {"category_name": "restaurant"}
+        explanation: "Filtre exact sur nom de catégorie"
+
+    extraction_guidance:
+      - "Le champ category_name est synchronisé depuis PostgreSQL"
+      - "Utiliser 'query' pour flexibilité (synonymes, variations)"
+      - "category_id disponible mais category_name plus naturel"
+
+  description_search:
+    description: "Recherche dans les descriptions"
+    type: "text_search"
+    target_fields: ["primary_description", "searchable_text"]
+    
+    few_shot_examples:
+      - input: "paiement carte bancaire"
+        output: {"query": "paiement carte bancaire"}
+        explanation: "Recherche libre dans searchable_text"
+        
+      - input: "virement SEPA"
+        output: {"primary_description": "virement SEPA"}
+        explanation: "Recherche ciblée dans description principale"
+
+# ============================================================================
+# ENTITÉS MÉTIER - ÉNUMÉRATIONS RÉELLES
+# ============================================================================
+business_entities:
+  transaction_type:
+    description: "Type de transaction (valeurs exactes du système)"
+    type: "enum_filter"
+    target_field: "transaction_type"
+    allowed_values: ["credit", "debit"]
+    
+    few_shot_examples:
+      - input: "mes dépenses"
+        output: {"transaction_type": "debit"}
+        explanation: "Débit = argent qui sort"
+        
+      - input: "mes revenus"
+        output: {"transaction_type": "credit"}
+        explanation: "Crédit = argent qui rentre"
+        
+      - input: "mes virements reçus"
+        output: {"transaction_type": "credit"}
+
+    extraction_guidance:
+      - "Débit: achats, dépenses, retraits, virements sortants"
+      - "Crédit: salaires, virements entrants, remboursements"
+
+  account_reference:
+    description: "Référence à un compte spécifique"
+    type: "account_filter"
+    target_field: "account_id"
+    
+    few_shot_examples:
+      - input: "compte 12345"
+        output: {"account_id": 12345}
+        explanation: "Filtre par ID numérique exact"
+        
+      - input: "mon compte principal"
+        output: {}
+        explanation: "Pas d'info suffisante → pas de filtre (laisser tous comptes)"
+
+    extraction_guidance:
+      - "Utiliser account_id uniquement si ID numérique fourni"
+      - "Pas de mapping type→ID (info non disponible dans ce contexte)"
+
+# ============================================================================
+# ENTITÉS ANALYTIQUES - AGRÉGATIONS ELASTICSEARCH
+# ============================================================================
+analytical_entities:
+  aggregation_request:
+    description: "Demandes d'analyses → agrégations Elasticsearch"
+    type: "aggregation_intent"
+    
+    few_shot_examples:
+      - input: "répartition par catégorie"
+        output: {
+          "aggregations": {
+            "categories": {
+              "terms": {"field": "category_name.keyword", "size": 20},
+              "aggs": {"total_spent": {"sum": {"field": "amount_abs"}}}
+            }
+          }
+        }
+        explanation: "Terms aggregation avec somme"
+        
+      - input: "évolution mensuelle"
+        output: {
+          "aggregations": {
+            "monthly_trend": {
+              "date_histogram": {
+                "field": "date",
+                "calendar_interval": "1M"
+              },
+              "aggs": {"monthly_total": {"sum": {"field": "amount_abs"}}}
+            }
+          }
+        }
+        explanation: "Histogram temporel"
+        
+      - input: "top 10 des marchands"
+        output: {
+          "aggregations": {
+            "top_merchants": {
+              "terms": {
+                "field": "merchant_name.keyword", 
+                "size": 10,
+                "order": {"total_spending": "desc"}
+              },
+              "aggs": {"total_spending": {"sum": {"field": "amount_abs"}}}
+            }
+          }
+        }
+        explanation: "Top N avec tri par montant"
+
+    extraction_guidance:
+      - "Utiliser .keyword pour agrégations sur champs textuels"
+      - "date pour histogrammes temporels" 
+      - "amount_abs pour sommes (toujours positif)"
+      - "Combiner agrégations pour analyses complexes"
+
+# ============================================================================
+# ENTITÉS CONTEXTUELLES
+# ============================================================================
+contextual_entities:
+  reference_contextuelle:
+    description: "Références au contexte conversationnel"
+    type: "context_reference"
+    
+    few_shot_examples:
+      - input: "et pour avril ?"
+        context_modification: {"date": {"gte": "2025-04-01T00:00:00Z", "lte": "2025-04-30T23:59:59Z"}}
+        explanation: "Modifier la période en gardant le reste"
+        
+      - input: "pareil mais Amazon"
+        context_modification: {"merchant_name": "Amazon"}
+        explanation: "Modifier le marchand"
+        
+      - input: "la même chose en 2023"
+        context_modification: {"date": {"gte": "2023-01-01T00:00:00Z", "lte": "2023-12-31T23:59:59Z"}}
+
+# ============================================================================
+# CONFIGURATION VALIDATION ET PERFORMANCE
+# ============================================================================
+validation_rules:
+  required_fields: ["user_id"]  # Toujours obligatoire pour sécurité
+  
+  field_validation:
+    user_id: {"type": "integer", "minimum": 1}
+    amount_abs: {"type": "number", "minimum": 0}
+    date: {"type": "string", "format": "datetime"}
+    transaction_type: {"enum": ["credit", "debit"]}
+    
+performance_settings:
+  cache_entity_patterns: true
+  adaptive_field_selection: true
+  field_popularity_tracking: true
+
+global_settings:
+  extraction_method: "llm_autonomous_with_validation"
+  fallback_to_text_search: true
+  strict_field_validation: false  # Permissif pour nouveaux cas
+  learning_enabled: true

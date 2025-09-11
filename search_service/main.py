@@ -10,7 +10,7 @@ from .api import router, initialize_search_engine
 
 # Configuration du logging
 logging.basicConfig(
-    level=getattr(logging, settings.log_level),
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     global _service_initialized, _initialization_error, _elasticsearch_client
     
     logger.info("🚀 Démarrage du Search Service...")
-    logger.info(f"📋 Configuration: API v{settings.api_version}")
+    logger.info("📋 Configuration: API v1.0.0")
     
     try:
         # Initialisation du client Elasticsearch unifié
@@ -103,9 +103,9 @@ def create_app() -> FastAPI:
     """Crée et configure l'application FastAPI"""
     
     app = FastAPI(
-        title=settings.api_title,
-        version=settings.api_version,
-        description=settings.api_description,
+        title="Search Service API",
+        version="1.0.0",
+        description="API de recherche pour transactions et comptes",
         lifespan=lifespan
     )
     
@@ -126,7 +126,7 @@ def create_app() -> FastAPI:
     async def root():
         return {
             "service": "search_service",
-            "version": settings.api_version,
+            "version": "1.0.0",
             "status": "running",
             "initialized": _service_initialized,
             "error": _initialization_error
@@ -148,6 +148,6 @@ if __name__ == "__main__":
         "search_service.main:app",
         host="0.0.0.0",
         port=8001,
-        reload=settings.debug_mode,
-        log_level=settings.log_level.lower()
+        reload=False,
+        log_level="info"
     )

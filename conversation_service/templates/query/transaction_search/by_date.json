@@ -1,0 +1,35 @@
+{
+  "template_name": "transaction_search_by_date",
+  "description": "Recherche de transactions par période temporelle",
+  "target_intention": "TRANSACTION_SEARCH.by_date",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "date": "{{date_range}}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}}
+    ],
+    "page_size": 50
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "date_range": {
+      "required": true,
+      "type": "object",
+      "source": "entities.periode_temporelle",
+      "validation": {
+        "keys": ["gte", "lte"],
+        "date_format": "ISO8601"
+      }
+    }
+  },
+  "optimizations": {
+    "cache_duration": "1h",
+    "elasticsearch_routing": "user_id"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "template_name": "transaction_search_filter",
+  "description": "Template pour recherche de transactions avec filtre marchand",
+  "target_intention": "TRANSACTION_SEARCH.filter",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "query": "{{merchant_query}}",
+    "filters": {
+      "user_id": "{{user_id}}",
+      "merchant_name": "{{merchant_name}}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}}
+    ],
+    "page_size": 50
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "merchant_query": {
+      "required": false,
+      "type": "string", 
+      "source": "entities.merchant",
+      "default": ""
+    },
+    "merchant_name": {
+      "required": false,
+      "type": "merchant_name",
+      "source": "entities.merchant"
+    }
+  },
+  "optimizations": {
+    "cache_duration": "30m",
+    "elasticsearch_routing": "user_id"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "template_name": "balance_evolution",
+  "description": "Évolution du solde sur une période via analyse des transactions",
+  "target_intention": "ACCOUNT_BALANCE.evolution",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "date": "{{date_range}}",
+      "account_id": "{{account_id}}"
+    },
+    "aggregations": {
+      "balance_evolution": {
+        "aggs": {
+          "balance_over_time": {
+            "date_histogram": {
+              "field": "date",
+              "calendar_interval": "{{granularity}}"
+            },
+            "aggs": {
+              "period_credits": {
+                "filter": {
+                  "term": {"transaction_type": "credit"}
+                },
+                "aggs": {
+                  "credits_sum": {
+                    "sum": {"field": "amount_abs"}
+                  }
+                }
+              },
+              "period_debits": {
+                "filter": {
+                  "term": {"transaction_type": "debit"}
+                },
+                "aggs": {
+                  "debits_sum": {
+                    "sum": {"field": "amount_abs"}
+                  }
+                }
+              },
+              "net_change": {
+                "bucket_script": {
+                  "buckets_path": {
+                    "credits": "period_credits>credits_sum",
+                    "debits": "period_debits>debits_sum"
+                  },
+                  "script": "params.credits - params.debits"
+                }
+              }
+            }
+          },
+          "period_summary": {
+            "aggs": {
+              "total_credits": {
+                "filter": {
+                  "term": {"transaction_type": "credit"}
+                },
+                "aggs": {
+                  "sum": {"sum": {"field": "amount_abs"}}
+                }
+              },
+              "total_debits": {
+                "filter": {
+                  "term": {"transaction_type": "debit"}
+                },
+                "aggs": {
+                  "sum": {"sum": {"field": "amount_abs"}}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "aggregation_only": true,
+    "page_size": 1
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "date_range": {
+      "required": true,
+      "type": "object",
+      "source": "entities.periode_temporelle"
+    },
+    "account_id": {
+      "required": false,
+      "type": "integer",
+      "source": "entities.account_reference.account_id"
+    },
+    "granularity": {
+      "required": false,
+      "type": "string",
+      "source": "entities.granularite_temporelle",
+      "default": "1d",
+      "allowed_values": ["1d", "1w", "1M"]
+    }
+  },
+  "response_processing": {
+    "extract_aggregations": true,
+    "calculate_running_balance": true,
+    "format_currency": "EUR"
+  },
+  "optimizations": {
+    "cache_duration": "5m",
+    "elasticsearch_routing": "user_id"
+  }
+}

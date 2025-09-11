@@ -675,6 +675,30 @@ async def get_current_token_payload(request: Request) -> Dict[str, Any]:
     
     return request.state.token_payload
 
+async def get_current_jwt_token(request: Request) -> str:
+    """Récupère le token JWT brut depuis les headers de la requête"""
+    authorization = request.headers.get("Authorization")
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Token Authorization manquant"
+        )
+    
+    scheme, token = get_authorization_scheme_param(authorization)
+    if scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=401,
+            detail="Schéma d'autorisation invalide. Bearer requis."
+        )
+    
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Token JWT manquant"
+        )
+    
+    return token
+
 async def verify_user_id_match(request: Request, path_user_id: int) -> None:
     """
     Vérification que user_id du path correspond au token avec logging sécurité

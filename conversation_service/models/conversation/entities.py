@@ -379,3 +379,19 @@ def create_category_from_text(text: str, confidence: float = 0.8) -> ExtractedCa
         confidence=confidence,
         extraction_method="llm_classification"
     )
+
+
+# Backward compatibility imports
+from .intent_entity_models import Intent, Entity
+
+__all__ = [
+    # Main classes
+    "CurrencyCode", "EntityExtractionConfidence", "EntityType",
+    "ExtractedAmount", "ExtractedMerchant", "ExtractedDateRange", 
+    "ExtractedCategory", "ComprehensiveEntityExtraction",
+    # Factory functions
+    "create_amount_from_text", "create_merchant_from_text", 
+    "create_date_range_from_text", "create_category_from_text",
+    # Backward compatibility
+    "Intent", "Entity"
+]

@@ -36,8 +36,12 @@ class QueryBuilder:
         
         # Champs nécessitant .keyword pour filtres exacts (TRANSACTIONS)
         self.transaction_keyword_fields: Set[str] = {
-            'category_name', 'merchant_name', 'operation_type',
-            'currency_code', 'transaction_type', 'weekday'
+            'operation_type', 'currency_code', 'transaction_type', 'weekday'
+        }
+        
+        # Champs textuels nécessitant une recherche case-insensitive (TRANSACTIONS)
+        self.transaction_case_insensitive_fields: Set[str] = {
+            'category_name', 'merchant_name'
         }
         
         # Champs nécessitant .keyword pour filtres exacts (ACCOUNTS)  
@@ -176,10 +180,12 @@ class QueryBuilder:
         if search_type == "accounts":
             search_fields = self.account_search_fields
             keyword_fields = self.account_keyword_fields
+            case_insensitive_fields = set()
             allowed_agg_fields = self.account_aggregation_fields
         else:
             search_fields = self.transaction_search_fields
             keyword_fields = self.transaction_keyword_fields
+            case_insensitive_fields = self.transaction_case_insensitive_fields
             allowed_agg_fields = self.transaction_aggregation_fields
         
         logger.debug(f"🎯 Query builder: {search_type} sur index {target_index}")
@@ -209,7 +215,7 @@ class QueryBuilder:
         
         # 4. Filtres additionnels (exclure user_id déjà ajouté pour sécurité)
         additional_filters_dict = {k: v for k, v in request.filters.items() if k != "user_id"}
-        additional_filters = self._build_additional_filters(additional_filters_dict, keyword_fields)
+        additional_filters = self._build_additional_filters(additional_filters_dict, keyword_fields, case_insensitive_fields)
         must_filters.extend(additional_filters)
         
         # 5. Construction bool query optimisée
@@ -289,7 +295,7 @@ class QueryBuilder:
         
         return sort_criteria
 
-    def _build_additional_filters(self, filters: Dict[str, Any], keyword_fields: Set[str]) -> List[Dict[str, Any]]:
+    def _build_additional_filters(self, filters: Dict[str, Any], keyword_fields: Set[str], case_insensitive_fields: Set[str]) -> List[Dict[str, Any]]:
         """
         Construction des filtres additionnels avec support complet des types Elasticsearch.
         
@@ -308,7 +314,7 @@ class QueryBuilder:
             try:
                 # DICTIONNAIRE: différents types de filtres complexes
                 if isinstance(value, dict):
-                    filter_result = self._process_dict_filter(field, value, keyword_fields)
+                    filter_result = self._process_dict_filter(field, value, keyword_fields, case_insensitive_fields)
                     if filter_result:
                         filter_list.append(filter_result)
 
@@ -317,10 +323,14 @@ class QueryBuilder:
                     field_name = self._get_filter_field_name(field, keyword_fields)
                     filter_list.append({"terms": {field_name: value}})
 
-                # VALEUR SIMPLE: term filter
+                # VALEUR SIMPLE: term filter ou match pour case-insensitive
                 else:
-                    field_name = self._get_filter_field_name(field, keyword_fields)
-                    filter_list.append({"term": {field_name: value}})
+                    if field in case_insensitive_fields:
+                        # Utiliser match pour recherche case-insensitive
+                        filter_list.append({"match": {field: {"query": value, "operator": "and"}}})
+                    else:
+                        field_name = self._get_filter_field_name(field, keyword_fields)
+                        filter_list.append({"term": {field_name: value}})
                     
             except ValueError as e:
                 logger.error(f"Error processing filter {field}: {e}")
@@ -332,7 +342,7 @@ class QueryBuilder:
 
         return filter_list
 
-    def _process_dict_filter(self, field: str, value: Dict[str, Any], keyword_fields: Set[str]) -> Optional[Dict[str, Any]]:
+    def _process_dict_filter(self, field: str, value: Dict[str, Any], keyword_fields: Set[str], case_insensitive_fields: Set[str]) -> Optional[Dict[str, Any]]:
         """
         Traite un filtre de type dictionnaire (filtres complexes).
         
@@ -377,8 +387,14 @@ class QueryBuilder:
         # 6. MATCH / MATCH_PHRASE FILTERS: support textuel et fallback keyword
         elif "match" in value:
             match_value = value["match"]
+            # Pour les champs case-insensitive, toujours utiliser match
+            if field in case_insensitive_fields:
+                if isinstance(match_value, dict):
+                    return {"match": {field: match_value}}
+                else:
+                    return {"match": {field: {"query": match_value, "operator": "and"}}}
             # Pour les champs textuels connus comme keyword_fields, on convertit en term sur .keyword
-            if field in keyword_fields:
+            elif field in keyword_fields:
                 field_name = self._get_filter_field_name(field, keyword_fields)
                 if isinstance(match_value, dict):
                     query_val = match_value.get("query")
@@ -396,7 +412,13 @@ class QueryBuilder:
 
         elif "match_phrase" in value:
             phrase_value = value["match_phrase"]
-            if field in keyword_fields:
+            # Pour les champs case-insensitive, utiliser match_phrase
+            if field in case_insensitive_fields:
+                if isinstance(phrase_value, dict):
+                    return {"match_phrase": {field: phrase_value}}
+                else:
+                    return {"match_phrase": {field: {"query": phrase_value}}}
+            elif field in keyword_fields:
                 # Sur un keyword, match_phrase n'a pas de sens → fallback term
                 field_name = self._get_filter_field_name(field, keyword_fields)
                 if isinstance(phrase_value, dict):
@@ -414,12 +436,26 @@ class QueryBuilder:
 
         # 7. TERM/TERMS EXPLICIT
         elif "term" in value:
-            field_name = self._get_filter_field_name(field, keyword_fields)
-            return {"term": {field_name: value["term"]}}
+            # Pour les champs case-insensitive, convertir en match
+            if field in case_insensitive_fields:
+                return {"match": {field: {"query": value["term"], "operator": "and"}}}
+            else:
+                field_name = self._get_filter_field_name(field, keyword_fields)
+                return {"term": {field_name: value["term"]}}
 
         elif "terms" in value:
-            field_name = self._get_filter_field_name(field, keyword_fields)
-            return {"terms": {field_name: value["terms"]}}
+            # Pour les champs case-insensitive, convertir chaque terme en match dans un should
+            if field in case_insensitive_fields:
+                terms_list = value["terms"]
+                if not isinstance(terms_list, list):
+                    return None
+                should_queries = []
+                for term in terms_list:
+                    should_queries.append({"match": {field: {"query": term, "operator": "and"}}})
+                return {"bool": {"should": should_queries, "minimum_should_match": 1}}
+            else:
+                field_name = self._get_filter_field_name(field, keyword_fields)
+                return {"terms": {field_name: value["terms"]}}
 
         # 8. FILTRE INCONNU
         else:

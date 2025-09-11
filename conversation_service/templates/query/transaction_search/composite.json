@@ -1,0 +1,75 @@
+{
+  "template_name": "transaction_search_composite",
+  "description": "Recherche de transactions avec critères multiples",
+  "target_intention": "TRANSACTION_SEARCH.composite",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "query": "{{text_query}}",
+    "filters": {
+      "date": "{{date_range}}",
+      "amount_abs": "{{amount_range}}",
+      "transaction_type": "{{transaction_type}}",
+      "merchant_name": "{{merchant_name}}",
+      "category_name": "{{category_name}}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}},
+      {"amount_abs": {"order": "desc"}}
+    ],
+    "page_size": "{{page_size}}"
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "text_query": {
+      "required": false,
+      "type": "string",
+      "source": "entities.text_search.query"
+    },
+    "date_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.periode_temporelle"
+    },
+    "amount_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.montant"
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type.transaction_type",
+      "allowed_values": ["credit", "debit"]
+    },
+    "merchant_name": {
+      "required": false,
+      "type": "string",
+      "source": "entities.merchant_search.merchant_name"
+    },
+    "category_name": {
+      "required": false,
+      "type": "string",
+      "source": "entities.category_search.category_name"
+    },
+    "page_size": {
+      "required": false,
+      "type": "integer",
+      "source": "context.page_size",
+      "default": 50,
+      "min": 1,
+      "max": 200
+    }
+  },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
+  },
+  "optimizations": {
+    "cache_duration": "10m",
+    "elasticsearch_routing": "user_id"
+  }
+}

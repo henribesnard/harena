@@ -1,0 +1,44 @@
+{
+  "template_name": "transaction_search_by_merchant",
+  "description": "Recherche de transactions par marchand",
+  "target_intention": "TRANSACTION_SEARCH.by_merchant",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "query": "{{merchant_query}}",
+    "filters": {
+      "merchant_name": "{{merchant_name}}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}}
+    ],
+    "page_size": 50
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "merchant_query": {
+      "required": false,
+      "type": "string",
+      "source": "entities.merchant_search.query",
+      "condition": "entities.merchant_search.query is not null"
+    },
+    "merchant_name": {
+      "required": false,
+      "type": "string",
+      "source": "entities.merchant_search.merchant_name",
+      "condition": "entities.merchant_search.merchant_name is not null"
+    }
+  },
+  "parameter_selection": {
+    "merchant_query_or_filter": {
+      "logic": "if entities.merchant_search.merchant_name then use merchant_name filter else use merchant_query"
+    }
+  },
+  "optimizations": {
+    "cache_duration": "30m",
+    "elasticsearch_routing": "user_id"
+  }
+}

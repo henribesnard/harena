@@ -1,0 +1,42 @@
+{
+  "template_name": "transaction_search_by_amount",
+  "description": "Recherche de transactions par montant",
+  "target_intention": "TRANSACTION_SEARCH.by_amount",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "amount_abs": "{{amount_range}}"
+    },
+    "sort": [
+      {"amount_abs": {"order": "{{sort_order}}"}}
+    ],
+    "page_size": 50
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "amount_range": {
+      "required": true,
+      "type": "object",
+      "source": "entities.montant",
+      "validation": {
+        "numeric_values": true,
+        "positive_only": true
+      }
+    },
+    "sort_order": {
+      "required": false,
+      "type": "string",
+      "source": "entities.sort_preference",
+      "default": "desc",
+      "allowed_values": ["asc", "desc"]
+    }
+  },
+  "optimizations": {
+    "cache_duration": "15m",
+    "elasticsearch_routing": "user_id"
+  }
+}

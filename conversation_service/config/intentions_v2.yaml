@@ -1,0 +1,512 @@
+# Configuration des Intentions Harena v2.0 - Production
+# Alignée avec les capacités réelles du système search_service
+version: "2.0.0"
+description: "Configuration intentions production pour système Harena"
+approach: "few_shot_autonomous_classification"
+last_updated: "2025-01-15"
+
+metadata:
+  target_system: "search_service unified endpoint"
+  supported_operations: ["query", "filters", "aggregations", "sort"]
+  llm_optimization: "few_shot_learning"
+
+# ============================================================================
+# GROUPES D'INTENTIONS BASÉS SUR LES CAPACITÉS RÉELLES
+# ============================================================================
+intent_groups:
+
+  # ========================================================================
+  # GROUPE 1: RECHERCHE ET CONSULTATION DE TRANSACTIONS
+  # ========================================================================
+  TRANSACTION_SEARCH:
+    description: "Recherche et consultation de transactions via search_service"
+    priority: 1
+    query_complexity: "simple_to_moderate"
+    
+    patterns_generiques:
+      simple_search:
+        description: "Recherche par critères simples"
+        few_shot_examples:
+          - input: "mes transactions de janvier"
+            output: {
+              "intent_group": "TRANSACTION_SEARCH",
+              "intent_subtype": "by_date",
+              "entities": {
+                "periode_temporelle": {
+                  "date": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-01-31T23:59:59Z"}
+                }
+              },
+              "query_strategy": "date_filter",
+              "confidence": 0.95
+            }
+            
+          - input: "mes achats Amazon"
+            output: {
+              "intent_group": "TRANSACTION_SEARCH", 
+              "intent_subtype": "by_merchant",
+              "entities": {
+                "merchant_search": {"query": "Amazon"}
+              },
+              "query_strategy": "text_search",
+              "confidence": 0.92
+            }
+            
+          - input: "transactions supérieures à 100€"
+            output: {
+              "intent_group": "TRANSACTION_SEARCH",
+              "intent_subtype": "by_amount", 
+              "entities": {
+                "montant": {"amount_abs": {"gte": 100.0}}
+              },
+              "query_strategy": "amount_filter",
+              "confidence": 0.90
+            }
+
+          - input: "mes dépenses alimentaires"
+            output: {
+              "intent_group": "TRANSACTION_SEARCH",
+              "intent_subtype": "by_category",
+              "entities": {
+                "category_search": {"query": "alimentation food"},
+                "transaction_type": {"transaction_type": "debit"}
+              },
+              "query_strategy": "category_filter",
+              "confidence": 0.88
+            }
+
+      composite_search:
+        description: "Recherche avec critères multiples"
+        few_shot_examples:
+          - input: "mes restaurants en décembre"
+            output: {
+              "intent_group": "TRANSACTION_SEARCH",
+              "intent_subtype": "by_category_and_date",
+              "entities": {
+                "category_search": {"query": "restaurant"},
+                "periode_temporelle": {
+                  "date": {"gte": "2024-12-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}
+                }
+              },
+              "query_strategy": "composite_filter",
+              "confidence": 0.87
+            }
+            
+          - input: "achats Carrefour plus de 50€"
+            output: {
+              "intent_group": "TRANSACTION_SEARCH",
+              "intent_subtype": "by_merchant_and_amount",
+              "entities": {
+                "merchant_search": {"merchant_name": "Carrefour"},
+                "montant": {"amount_abs": {"gte": 50.0}},
+                "transaction_type": {"transaction_type": "debit"}
+              },
+              "query_strategy": "composite_filter",
+              "confidence": 0.85
+            }
+
+    classification_guidance:
+      - "Identifier le nombre de critères (simple vs composite)"
+      - "Détecter implicitement transaction_type (dépenses=debit, revenus=credit)"
+      - "Mapper termes naturels vers champs search_service réels"
+      - "Privilégier 'query' pour flexibilité, filtres pour précision"
+
+  # ========================================================================
+  # GROUPE 2: ANALYSES ET INSIGHTS FINANCIERS
+  # ========================================================================
+  ANALYSIS_INSIGHTS:
+    description: "Analyses et insights via agrégations search_service"
+    priority: 2
+    query_complexity: "moderate_to_advanced"
+    
+    patterns_generiques:
+      simple_aggregations:
+        description: "Analyses simples (totaux, moyennes)"
+        few_shot_examples:
+          - input: "combien j'ai dépensé ce mois ?"
+            output: {
+              "intent_group": "ANALYSIS_INSIGHTS",
+              "intent_subtype": "spending_total",
+              "entities": {
+                "periode_temporelle": {
+                  "date": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-01-31T23:59:59Z"}
+                },
+                "transaction_type": {"transaction_type": "debit"},
+                "analysis_type": "sum_aggregation"
+              },
+              "query_strategy": "sum_aggregation",
+              "confidence": 0.93
+            }
+            
+          - input: "ma dépense moyenne par transaction"
+            output: {
+              "intent_group": "ANALYSIS_INSIGHTS", 
+              "intent_subtype": "average_spending",
+              "entities": {
+                "transaction_type": {"transaction_type": "debit"},
+                "analysis_type": "avg_aggregation"
+              },
+              "query_strategy": "avg_aggregation",
+              "confidence": 0.90
+            }
+
+      breakdown_analysis:
+        description: "Analyses de répartition"
+        few_shot_examples:
+          - input: "répartition par catégorie"
+            output: {
+              "intent_group": "ANALYSIS_INSIGHTS",
+              "intent_subtype": "spending_breakdown",
+              "entities": {
+                "dimension_analyse": "category_name",
+                "analysis_type": "terms_aggregation"
+              },
+              "query_strategy": "terms_aggregation",
+              "confidence": 0.91
+            }
+            
+          - input: "top 10 de mes marchands"
+            output: {
+              "intent_group": "ANALYSIS_INSIGHTS",
+              "intent_subtype": "merchant_ranking",
+              "entities": {
+                "dimension_analyse": "merchant_name", 
+                "top_n": 10,
+                "analysis_type": "terms_aggregation_sorted"
+              },
+              "query_strategy": "terms_aggregation",
+              "confidence": 0.89
+            }
+
+      trend_analysis:
+        description: "Analyses d'évolution temporelle"
+        few_shot_examples:
+          - input: "évolution mensuelle de mes dépenses"
+            output: {
+              "intent_group": "ANALYSIS_INSIGHTS",
+              "intent_subtype": "spending_trend",
+              "entities": {
+                "periode_analyse": "last_6_months",
+                "granularite_temporelle": "1M",
+                "transaction_type": {"transaction_type": "debit"},
+                "analysis_type": "date_histogram"
+              },
+              "query_strategy": "date_histogram_aggregation",
+              "confidence": 0.88
+            }
+
+      comparative_analysis:
+        description: "Analyses comparatives"
+        few_shot_examples:
+          - input: "comparer janvier vs décembre"
+            output: {
+              "intent_group": "ANALYSIS_INSIGHTS",
+              "intent_subtype": "period_comparison", 
+              "entities": {
+                "periode_1": {"date": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-01-31T23:59:59Z"}},
+                "periode_2": {"date": {"gte": "2024-12-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}},
+                "analysis_type": "multi_period_comparison"
+              },
+              "query_strategy": "parallel_aggregations",
+              "confidence": 0.85
+            }
+
+    analysis_guidance:
+      - "Distinguer analyses simples (1 métrique) vs complexes (multiples)"
+      - "Identifier automatiquement la granularité temporelle appropriée"
+      - "Détecter les demandes de comparaison (multi-période, multi-dimension)"
+      - "Utiliser .keyword pour agrégations sur champs textuels"
+
+  # ========================================================================
+  # GROUPE 3: CONSULTATION SOLDES ET COMPTES
+  # ========================================================================
+  ACCOUNT_BALANCE:
+    description: "Consultation soldes via search_service (comptes et transactions)"
+    priority: 3
+    query_complexity: "simple"
+    
+    patterns_generiques:
+      balance_inquiry:
+        description: "Consultation de soldes actuels"
+        few_shot_examples:
+          - input: "mon solde"
+            output: {
+              "intent_group": "ACCOUNT_BALANCE",
+              "intent_subtype": "current_balance", 
+              "entities": {},
+              "query_strategy": "account_balance_all",
+              "confidence": 0.96
+            }
+            
+          - input: "solde compte 12345"
+            output: {
+              "intent_group": "ACCOUNT_BALANCE",
+              "intent_subtype": "balance_specific_account",
+              "entities": {
+                "account_reference": {"account_id": 12345}
+              },
+              "query_strategy": "account_balance_filtered",
+              "confidence": 0.94
+            }
+
+      balance_evolution:
+        description: "Évolution des soldes"
+        few_shot_examples:
+          - input: "évolution de mon solde ce mois"
+            output: {
+              "intent_group": "ACCOUNT_BALANCE",
+              "intent_subtype": "balance_trend",
+              "entities": {
+                "periode_temporelle": {
+                  "date": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-01-31T23:59:59Z"}
+                },
+                "analysis_type": "balance_evolution"
+              },
+              "query_strategy": "balance_history_aggregation", 
+              "confidence": 0.87
+            }
+
+    balance_guidance:
+      - "Distinguer solde actuel vs évolution historique"
+      - "account_id optionnel (tous comptes si absent)"
+      - "Utiliser agrégations pour évolutions temporelles"
+
+  # ========================================================================
+  # GROUPE 4: INTERACTIONS CONVERSATIONNELLES  
+  # ========================================================================
+  CONVERSATIONAL:
+    description: "Gestion interactions sociales et références contextuelles"
+    priority: 4
+    query_complexity: "minimal"
+    
+    patterns_generiques:
+      social_interactions:
+        description: "Politesses et interactions sociales"
+        few_shot_examples:
+          - input: "bonjour"
+            output: {
+              "intent_group": "CONVERSATIONAL",
+              "intent_subtype": "greeting",
+              "entities": {},
+              "query_strategy": "no_search_needed",
+              "confidence": 0.99
+            }
+            
+          - input: "merci beaucoup"
+            output: {
+              "intent_group": "CONVERSATIONAL", 
+              "intent_subtype": "gratitude",
+              "entities": {},
+              "query_strategy": "no_search_needed",
+              "confidence": 0.98
+            }
+
+      context_references:
+        description: "Références au contexte conversationnel précédent"
+        few_shot_examples:
+          - input: "et pour février ?"
+            output: {
+              "intent_group": "CONVERSATIONAL",
+              "intent_subtype": "context_continuation",
+              "entities": {
+                "reference_contextuelle": {
+                  "modification_type": "period_change",
+                  "new_period": {"date": {"gte": "2025-02-01T00:00:00Z", "lte": "2025-02-28T23:59:59Z"}}
+                }
+              },
+              "query_strategy": "modify_previous_query",
+              "confidence": 0.82
+            }
+            
+          - input: "pareil mais pour Amazon"
+            output: {
+              "intent_group": "CONVERSATIONAL",
+              "intent_subtype": "context_continuation", 
+              "entities": {
+                "reference_contextuelle": {
+                  "modification_type": "merchant_change",
+                  "new_merchant": {"merchant_name": "Amazon"}
+                }
+              },
+              "query_strategy": "modify_previous_query",
+              "confidence": 0.79
+            }
+
+    conversational_guidance:
+      - "Détecter références pronominales ('ça', 'la même chose', 'pareil')"
+      - "Identifier le type de modification demandée"
+      - "Préserver la structure de requête de base"
+
+  # ========================================================================
+  # GROUPE 5: GESTION SYSTÈME ET AIDE
+  # ========================================================================
+  SYSTEM_CONTROL:
+    description: "Aide, support et gestion des cas limites"
+    priority: 5
+    query_complexity: "minimal"
+    
+    patterns_generiques:
+      help_requests:
+        description: "Demandes d'aide et explication des capacités"
+        few_shot_examples:
+          - input: "aide"
+            output: {
+              "intent_group": "SYSTEM_CONTROL",
+              "intent_subtype": "general_help",
+              "entities": {},
+              "query_strategy": "show_capabilities",
+              "confidence": 0.97
+            }
+            
+          - input: "comment chercher mes transactions ?"
+            output: {
+              "intent_group": "SYSTEM_CONTROL",
+              "intent_subtype": "feature_explanation",
+              "entities": {
+                "feature_topic": "transaction_search"
+              },
+              "query_strategy": "explain_feature", 
+              "confidence": 0.91
+            }
+
+      error_handling:
+        description: "Gestion des ambiguïtés et cas d'erreur"
+        few_shot_examples:
+          - input: "je ne sais pas"
+            output: {
+              "intent_group": "SYSTEM_CONTROL",
+              "intent_subtype": "unclear_intent",
+              "entities": {},
+              "query_strategy": "request_clarification",
+              "confidence": 0.95
+            }
+            
+          - input: "fais un virement de 1000€"
+            output: {
+              "intent_group": "SYSTEM_CONTROL", 
+              "intent_subtype": "out_of_scope",
+              "entities": {
+                "unsupported_action": "transaction_creation"
+              },
+              "query_strategy": "explain_limitations",
+              "confidence": 0.93
+            }
+
+# ============================================================================
+# STRATÉGIES DE CLASSIFICATION AUTONOME
+# ============================================================================
+classification_strategies:
+  autonomous_principles:
+    description: "Principes pour classification autonome efficace"
+    
+    pattern_recognition_focus:
+      - "Mots-clés financiers: 'dépenses', 'solde', 'transactions', 'achats'"
+      - "Indicateurs temporels: 'janvier', 'ce mois', 'derniers jours'"
+      - "Noms de marchands sans liste prédéfinie (apprentissage)"
+      - "Indicateurs d'analyse: 'combien', 'répartition', 'évolution', 'comparer'"
+    
+    context_intelligence:
+      - "Historique conversationnel pour désambiguïser"
+      - "Références implicites ('ça', 'pareil', 'aussi')"
+      - "Cohérence avec les requêtes précédentes" 
+      - "Adaptation au style utilisateur"
+
+  confidence_evaluation:
+    description: "Évaluation de confiance adaptative"
+    
+    high_confidence_indicators:
+      - "Mots-clés financiers clairs et non ambigus"
+      - "Entités financières bien identifiées"
+      - "Cohérence avec le contexte récent"
+      - "Requête similaire à des exemples d'entraînement"
+    
+    low_confidence_handling:
+      - "Dégradation gracieuse vers recherche textuelle libre"
+      - "Demande de clarification si très ambigu"  
+      - "Utilisation du contexte pour lever l'ambiguïté"
+
+# ============================================================================
+# MAPPING VERS STRATÉGIES DE REQUÊTE SEARCH_SERVICE  
+# ============================================================================
+query_strategies:
+  description: "Correspondance intentions → requêtes search_service optimales"
+  
+  # Stratégies simples
+  simple_strategies:
+    date_filter:
+      target_params: ["filters.date"]
+      query_type: "filter_based"
+      complexity: "low"
+      
+    text_search:
+      target_params: ["query"]
+      query_type: "text_search"
+      complexity: "low"
+      
+    amount_filter:  
+      target_params: ["filters.amount_abs"]
+      query_type: "range_filter"
+      complexity: "low"
+      
+    category_filter:
+      target_params: ["query", "filters.category_name"] 
+      query_type: "hybrid_search"
+      complexity: "low"
+
+  # Stratégies d'agrégation
+  aggregation_strategies:
+    sum_aggregation:
+      target_params: ["aggregations"]
+      aggregation_type: "sum"
+      target_field: "amount_abs"
+      complexity: "medium"
+      
+    terms_aggregation:
+      target_params: ["aggregations"]
+      aggregation_type: "terms" 
+      target_fields: ["category_name.keyword", "merchant_name.keyword"]
+      complexity: "medium"
+      
+    date_histogram_aggregation:
+      target_params: ["aggregations"]
+      aggregation_type: "date_histogram"
+      target_field: "date"
+      intervals: ["1d", "1w", "1M"]
+      complexity: "medium"
+
+  # Stratégies complexes
+  advanced_strategies:
+    composite_filter:
+      target_params: ["query", "filters", "sort"]
+      query_type: "multi_filter"
+      complexity: "high"
+      
+    parallel_aggregations:
+      target_params: ["aggregations"]
+      query_type: "multi_period_analysis"
+      complexity: "very_high"
+
+# ============================================================================
+# CONFIGURATION GLOBALE ET PERFORMANCE
+# ============================================================================
+global_settings:
+  classification_method: "autonomous_llm_few_shot"
+  context_window_size: 8  # Conversations récentes à considérer
+  learning_mode: true
+  pattern_adaptation: true
+  
+validation_settings:
+  validate_structure_only: true  # Pas de validation de contenu stricte
+  allow_creative_intents: true   # Nouvelles intentions autorisées
+  log_unknown_patterns: true    # Pour apprentissage continu
+  
+performance_optimization:
+  cache_classifications: true
+  pattern_frequency_tracking: true 
+  adaptive_confidence_thresholds: true
+  query_strategy_optimization: true
+
+output_format:
+  required_fields: ["intent_group", "intent_subtype", "entities", "query_strategy", "confidence"]
+  entities_format: "flexible_dict"  
+  allow_nested_entities: true
+  preserve_original_input: true

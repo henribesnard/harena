@@ -12,6 +12,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+
+# Charger le fichier .env au démarrage
+load_dotenv()
 
 # Configuration path pour imports
 current_dir = Path(__file__).parent.absolute()
@@ -547,9 +551,17 @@ class ConversationServiceLoader:
             app.add_middleware(JWTAuthMiddleware)
             logger.info("🔐 Middleware JWT configuré - Compatible user_service")
             
-            # Routes conversation avec préfixe API
+            # Routes conversation v1 (legacy) avec préfixe API
             app.include_router(conversation_router, prefix="/api/v1")
-            logger.info("🔗 Routes conversation configurées (Phase 5 intégrée)")
+            logger.info("🔗 Routes conversation v1 configurées (Phase 5 intégrée)")
+            
+            # Routes conversation v2.0 (nouvelle architecture)
+            try:
+                from conversation_service.api.routes.conversation_v2 import router as conversation_v2_router
+                app.include_router(conversation_v2_router)
+                logger.info("🚀 Routes conversation v2.0 configurées (Architecture hybride IA + Pure Logic)")
+            except ImportError as e:
+                logger.warning(f"⚠️ Routes v2.0 non disponibles: {e}")
             
             # Routes de santé globales
             self._add_global_health_routes(app)

@@ -1,0 +1,73 @@
+{
+  "template_name": "analysis_spending_total",
+  "description": "Analyse du total des dépenses avec agrégation",
+  "target_intention": "ANALYSIS_INSIGHTS.spending_total",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "date": "{{date_range}}",
+      "transaction_type": "{{transaction_type}}",
+      "category_name": "{{category_filter}}"
+    },
+    "aggregations": {
+      "spending_analysis": {
+        "aggs": {
+          "total_spent": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          },
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "average_amount": {
+            "avg": {
+              "field": "amount_abs"
+            }
+          },
+          "spending_stats": {
+            "stats": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    },
+    "aggregation_only": true,
+    "page_size": 1
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "date_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.periode_temporelle"
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type.transaction_type",
+      "default": "debit"
+    },
+    "category_filter": {
+      "required": false,
+      "type": "string",
+      "source": "entities.category_search.category_name"
+    }
+  },
+  "response_processing": {
+    "extract_aggregations": true,
+    "format_currency": "EUR",
+    "round_decimals": 2
+  },
+  "optimizations": {
+    "cache_duration": "5m",
+    "elasticsearch_routing": "user_id"
+  }
+}

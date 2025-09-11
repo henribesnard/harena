@@ -2,7 +2,7 @@
 Application Harena pour développement local.
 Version avec conversation_service.
 
-✅ SERVICES DISPONIBLES:
+OK SERVICES DISPONIBLES:
 - User Service: Gestion utilisateurs
 - Sync Service: Synchronisation Bridge API
 - Enrichment Service: Elasticsearch uniquement (v2.0)
@@ -144,7 +144,7 @@ class ServiceLoader:
                 routes_count = len(router.routes) if hasattr(router, 'routes') else 0
                 
                 # Log et statut
-                logger.info(f"✅ {service_name}: {routes_count} routes sur {prefix}")
+                logger.info(f"OK {service_name}: {routes_count} routes sur {prefix}")
                 self.services_status[service_name] = {"status": "ok", "routes": routes_count, "prefix": prefix}
                 return True
             else:
@@ -167,7 +167,7 @@ class ServiceLoader:
                     from sqlalchemy import text
                     with engine.connect() as conn:
                         conn.execute(text("SELECT 1"))
-                    logger.info(f"✅ {service_name}: Connexion DB OK")
+                    logger.info(f"OK {service_name}: Connexion DB OK")
                     return True
                 except Exception as e:
                     logger.error(f"❌ {service_name}: Connexion DB échouée - {str(e)}")
@@ -179,7 +179,7 @@ class ServiceLoader:
                 
                 # Vérifier l'existence de l'app
                 if hasattr(main_module, "app") or hasattr(main_module, "create_app"):
-                    logger.info(f"✅ {service_name}: Module principal OK")
+                    logger.info(f"OK {service_name}: Module principal OK")
                     return True
                 else:
                     logger.warning(f"⚠️ {service_name}: Pas d'app FastAPI trouvée")
@@ -200,7 +200,7 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("🚀 Démarrage Harena Finance Platform - LOCAL DEV")
+        logger.info("BOOT Demarrage Harena Finance Platform - LOCAL DEV")
         
         # Test DB critique
         try:
@@ -208,7 +208,7 @@ def create_app():
             from sqlalchemy import text
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            logger.info("✅ Base de données connectée")
+            logger.info("OK Base de données connectée")
         except Exception as e:
             logger.error(f"❌ DB critique: {e}")
             raise RuntimeError("Database connection failed")
@@ -229,7 +229,7 @@ def create_app():
         # pour garantir leur présence dans l'OpenAPI schema
 
         # 3. Enrichment Service - VERSION ELASTICSEARCH UNIQUEMENT (INCHANGÉ)
-        logger.info("🔍 Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
+        logger.info("INFO Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
         try:
             # Vérifier BONSAI_URL pour enrichment_service
             bonsai_url = settings.BONSAI_URL
@@ -238,29 +238,29 @@ def create_app():
                 enrichment_elasticsearch_available = False
                 enrichment_init_success = False
             else:
-                logger.info(f"📡 BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
+                logger.info(f"CONF BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
                 enrichment_elasticsearch_available = True
                 
                 # Initialiser les composants enrichment_service
                 try:
-                    logger.info("🔍 Initialisation des composants enrichment_service...")
+                    logger.info("INFO Initialisation des composants enrichment_service...")
                     from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
                     from enrichment_service.core.processor import ElasticsearchTransactionProcessor
                     
                     # Créer et initialiser le client Elasticsearch pour enrichment
                     enrichment_elasticsearch_client = ElasticsearchClient()
                     await enrichment_elasticsearch_client.initialize()
-                    logger.info("✅ Enrichment Elasticsearch client initialisé")
+                    logger.info("OK Enrichment Elasticsearch client initialisé")
                     
                     # Créer le processeur
                     enrichment_processor = ElasticsearchTransactionProcessor(enrichment_elasticsearch_client)
-                    logger.info("✅ Enrichment processor créé")
+                    logger.info("OK Enrichment processor créé")
                     
                     # Injecter dans les routes enrichment_service
                     import enrichment_service.api.routes as enrichment_routes
                     enrichment_routes.elasticsearch_client = enrichment_elasticsearch_client
                     enrichment_routes.elasticsearch_processor = enrichment_processor
-                    logger.info("✅ Instances injectées dans enrichment_service routes")
+                    logger.info("OK Instances injectées dans enrichment_service routes")
                     
                     enrichment_init_success = True
                     
@@ -272,7 +272,7 @@ def create_app():
             routes_count = 8  # Nombre approximatif pour les statuts
             
             if enrichment_elasticsearch_available and enrichment_init_success:
-                logger.info(f"✅ enrichment_service: {routes_count} routes sur /api/v1/enrichment (AVEC initialisation)")
+                logger.info(f"OK enrichment_service: {routes_count} routes sur /api/v1/enrichment (AVEC initialisation)")
                 loader.services_status["enrichment_service"] = {
                     "status": "ok", 
                     "routes": routes_count, 
@@ -305,46 +305,46 @@ def create_app():
             }
 
         # 4. Search Service - VERSION FINALE CORRIGÉE
-        logger.info("🔍 Chargement et initialisation du search_service...")
+        logger.info("INFO Chargement et initialisation du search_service...")
         try:
             # Vérifier BONSAI_URL
             bonsai_url = settings.BONSAI_URL
             if not bonsai_url:
                 raise ValueError("BONSAI_URL n'est pas configurée")
             
-            logger.info(f"📡 BONSAI_URL configurée: {bonsai_url[:50]}...")
+            logger.info(f"CONF BONSAI_URL configurée: {bonsai_url[:50]}...")
             
-            # ✅ CORRECTION CRITIQUE : Import correct de mes classes corrigées
-            from search_service.core.elasticsearch_client import ElasticsearchClient  # ✅ CORRIGÉ
+            # OK CORRECTION CRITIQUE : Import correct de mes classes corrigées
+            from search_service.core.elasticsearch_client import ElasticsearchClient  # OK CORRIGÉ
             from search_service.core.search_engine import SearchEngine
             from search_service.api.routes import router as search_router, initialize_search_engine
             
             # Initialiser le client Elasticsearch directement
-            logger.info("📡 Initialisation du client Elasticsearch...")
+            logger.info("CONF Initialisation du client Elasticsearch...")
             elasticsearch_client = ElasticsearchClient()
             await elasticsearch_client.initialize()
-            logger.info("✅ Client Elasticsearch initialisé")
+            logger.info("OK Client Elasticsearch initialisé")
             
             # Test de connexion
             health = await elasticsearch_client.health_check()
             if health.get("status") != "healthy":
                 logger.warning(f"⚠️ Elasticsearch health: {health}")
             else:
-                logger.info("✅ Test de connexion Elasticsearch réussi")
+                logger.info("OK Test de connexion Elasticsearch réussi")
             
-            # ✅ CORRECTION FINALE : Initialisation directe du moteur avec mes corrections
+            # OK CORRECTION FINALE : Initialisation directe du moteur avec mes corrections
             search_engine = SearchEngine(
                 elasticsearch_client=elasticsearch_client,
                 cache_enabled=True
             )
-            logger.info("🔥 SearchEngine initialisé avec TOUTES mes corrections!")
+            logger.info("INIT SearchEngine initialisé avec TOUTES mes corrections!")
             
             # Injecter dans les routes
             initialize_search_engine(elasticsearch_client)
             
             # Note: Router search_service inclus dans create_app()
             routes_count = 5  # Nombre approximatif pour les statuts
-            logger.info(f"✅ search_service: {routes_count} routes sur /api/v1/search")
+            logger.info(f"OK search_service: {routes_count} routes sur /api/v1/search")
             
             # Mettre dans app.state
             app.state.service_initialized = True
@@ -360,7 +360,7 @@ def create_app():
                 "routes": routes_count, 
                 "prefix": "/api/v1/search",
                 "initialized": True,
-                "architecture": "corrected_final_v2"  # ✅ Version marquée
+                "architecture": "corrected_final_v2"  # OK Version marquée
             }
             
             logger.info("🎉 search_service: Complètement initialisé avec corrections FINALES!")
@@ -384,40 +384,51 @@ def create_app():
                 "architecture": "corrected_final_v2"
             }
 
-        # 5. Conversation Service
-        logger.info("💬 Chargement et initialisation du conversation_service...")
+        # 5. Conversation Service v2.0
+        logger.info("💬 Chargement et initialisation du conversation_service v2.0...")
         try:
-            from conversation_service.main import ConversationServiceLoader
+            # Import de la nouvelle architecture v2.0
             from conversation_service.api.routes.conversation import router as conversation_router
+            from conversation_service.api.dependencies import app_state, get_application_lifespan
 
-            conversation_loader = ConversationServiceLoader()
-            conversation_initialized = await conversation_loader.initialize_conversation_service(app)
+            # Initialisation du pipeline v2.0
+            conversation_initialized = await app_state.initialize()
 
             # Note: Router conversation_service inclus dans create_app()
             routes_count = 9  # Nombre approximatif pour les statuts
 
             loader.conversation_service_initialized = conversation_initialized
-            loader.conversation_service_error = conversation_loader.initialization_error
+            loader.conversation_service_error = app_state.initialization_error
 
             status = "ok" if conversation_initialized else "error"
             loader.services_status["conversation_service"] = {
                 "status": status,
                 "routes": routes_count,
-                "prefix": "/api/v1",
+                "prefix": "/api/v1/conversation",
                 "initialized": conversation_initialized,
-                "error": conversation_loader.initialization_error,
+                "architecture": "v2.0",
+                "pipeline_stages": 5,
+                "error": app_state.initialization_error,
             }
 
-            logger.info("✅ conversation_service: %s", "initialisé" if conversation_initialized else "non initialisé")
+            if conversation_initialized:
+                logger.info("OK conversation_service v2.0: Pipeline complet initialise (5 stages)")
+            else:
+                logger.warning(f"WARNING conversation_service v2.0: Echec initialisation - {app_state.initialization_error}")
+                
         except Exception as e:
-            logger.error(f"❌ conversation_service: {e}")
+            logger.error(f"ERROR conversation_service v2.0: {e}")
             loader.conversation_service_initialized = False
             loader.conversation_service_error = str(e)
-            loader.services_status["conversation_service"] = {"status": "error", "error": str(e)}
+            loader.services_status["conversation_service"] = {
+                "status": "error", 
+                "error": str(e),
+                "architecture": "v2.0"
+            }
 
         # Compter les services réussis (INCHANGÉ)
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
-        logger.info(f"✅ Démarrage terminé: {successful_services} services chargés")
+        logger.info(f"OK Démarrage terminé: {successful_services} services chargés")
         
         # Rapport final détaillé
         ok_services = [name for name, status in loader.services_status.items() if status.get("status") == "ok"]
@@ -489,7 +500,7 @@ def create_app():
     try:
         from user_service.api.endpoints.users import router as user_router
         app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
-        logger.info("✅ user_service router included")
+        logger.info("OK user_service router included")
     except Exception as e:
         logger.error(f"❌ User Service router: {e}")
 
@@ -508,7 +519,7 @@ def create_app():
             module = __import__(module_path, fromlist=["router"])
             router = getattr(module, "router")
             app.include_router(router, prefix=prefix, tags=[tag])
-            logger.info(f"✅ {module_path.split('.')[-1]} router included")
+            logger.info(f"OK {module_path.split('.')[-1]} router included")
         except Exception as e:
             logger.error(f"❌ {module_path}: {e}")
 
@@ -516,7 +527,7 @@ def create_app():
     try:
         from enrichment_service.api.routes import router as enrichment_router
         app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
-        logger.info("✅ enrichment_service router included")
+        logger.info("OK enrichment_service router included")
     except Exception as e:
         logger.error(f"❌ Enrichment Service router: {e}")
 
@@ -524,17 +535,17 @@ def create_app():
     try:
         from search_service.api.routes import router as search_router
         app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-        logger.info("✅ search_service router included")
+        logger.info("OK search_service router included")
     except Exception as e:
         logger.error(f"❌ Search Service router: {e}")
 
-    # 5. Conversation Service
+    # 5. Conversation Service v2.0
     try:
         from conversation_service.api.routes.conversation import router as conversation_router
-        app.include_router(conversation_router, prefix="/api/v1", tags=["conversation"])
-        logger.info("✅ conversation_service router included")
+        app.include_router(conversation_router, tags=["conversation"])
+        logger.info("OK conversation_service v2.0 router included (Architecture Complete)")
     except Exception as e:
-        logger.error(f"❌ Conversation Service router: {e}")
+        logger.error(f"ERROR Conversation Service v2.0 router: {e}")
 
     @app.get("/health")
     async def health():
@@ -635,12 +646,12 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("🔥 Lancement du serveur de développement avec hot reload")
-    logger.info("📡 Accès: http://localhost:8000")
-    logger.info("📚 Docs: http://localhost:8000/docs")
-    logger.info("🔍 Status: http://localhost:8000/status")
-    logger.info("🏦 Services Core: User, Sync, Enrichment, Search, Conversation")
-    logger.info("✅ Architecture allégée pour développement core avec sécurité JWT")
+    logger.info("Lancement du serveur de developpement avec hot reload")
+    logger.info("Acces: http://localhost:8000")
+    logger.info("Docs: http://localhost:8000/docs")
+    logger.info("Status: http://localhost:8000/status")
+    logger.info("Services Core: User, Sync, Enrichment, Search, Conversation")
+    logger.info("Architecture allegee pour developpement core avec securite JWT")
 
     # Configuration explicite de logging pour Uvicorn (console + fichier)
     log_file_path = str(Path(__file__).with_name("harena_local.log"))

@@ -1,0 +1,48 @@
+{
+  "template_name": "balance_current",
+  "description": "Consultation du solde actuel de tous les comptes",
+  "target_intention": "ACCOUNT_BALANCE.current",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "account_id": "{{account_id}}"
+    },
+    "_source": [
+      "account_id",
+      "account_name", 
+      "account_type",
+      "account_balance",
+      "account_currency"
+    ],
+    "sort": [
+      {"account_type": {"order": "asc"}},
+      {"account_balance": {"order": "desc"}}
+    ],
+    "page_size": 20
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "account_id": {
+      "required": false,
+      "type": "integer",
+      "source": "entities.account_reference.account_id"
+    }
+  },
+  "data_source": {
+    "index": "accounts",
+    "routing": "user_id"
+  },
+  "response_processing": {
+    "calculate_total_balance": true,
+    "group_by_currency": true,
+    "format_currency": "account_currency"
+  },
+  "optimizations": {
+    "cache_duration": "2m",
+    "elasticsearch_routing": "user_id"
+  }
+}

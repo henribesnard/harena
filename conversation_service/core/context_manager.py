@@ -1,505 +1,594 @@
 """
-Gestionnaire de contexte temporaire Phase 5
-Gère la mémoire conversationnelle en session pour personnaliser les réponses
+Context Manager - Agent Logique Phase 3
+Architecture v2.0 - Composant déterministe
+
+Responsabilité : Compression intelligente des tokens
+- Gestion contexte conversationnel
+- Compression tokens pour optimisation LLM
+- Historique conversation avec TTL
+- Résumé intelligent des échanges précédents
 """
+
 import logging
-import time
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone
-from threading import Lock
 import json
+from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class ConversationTurn:
+    """Un tour de conversation (user message + assistant response)"""
+    user_message: str
+    assistant_response: str
+    intent_detected: Optional[str]
+    entities_extracted: List[Dict[str, Any]]
+    timestamp: datetime
+    processing_time_ms: int
+    token_count: int = 0
 
-class TemporaryContextManager:
-    """Gestionnaire de contexte conversationnel temporaire sans persistance"""
+@dataclass 
+class ContextSnapshot:
+    """Snapshot du contexte à un moment donné"""
+    conversation_id: str
+    user_id: int
+    turns_count: int
+    total_tokens: int
+    compressed_tokens: int
+    compression_ratio: float
+    created_at: datetime
+    summary: Optional[str] = None
+
+@dataclass
+class ContextCompressionRequest:
+    """Requête de compression de contexte"""
+    conversation_id: str
+    max_tokens: int = 4000
+    preserve_last_turns: int = 3
+    compression_strategy: str = "summarize"  # summarize, truncate, intelligent
+
+@dataclass
+class ContextCompressionResult:
+    """Résultat de compression de contexte"""
+    success: bool
+    compressed_context: List[ConversationTurn]
+    original_token_count: int
+    compressed_token_count: int
+    compression_ratio: float
+    summary_generated: Optional[str] = None
+    processing_time_ms: int = 0
+
+class ContextManager:
+    """
+    Agent logique pour gestion du contexte conversationnel
     
-    def __init__(self, context_ttl_seconds: int = 3600):
+    Optimise la mémoire et les tokens pour les appels LLM
+    """
+    
+    def __init__(
+        self,
+        max_context_turns: int = 10,
+        max_total_tokens: int = 8000,
+        context_ttl_hours: int = 24,
+        enable_compression: bool = True
+    ):
+        self.max_context_turns = max_context_turns
+        self.max_total_tokens = max_total_tokens
+        self.context_ttl_hours = context_ttl_hours
+        self.enable_compression = enable_compression
+        
+        # Stockage des conversations actives
+        self._conversations: Dict[str, deque] = {}
+        self._conversation_metadata: Dict[str, Dict[str, Any]] = {}
+        
+        # Cache des résumés
+        self._summary_cache: Dict[str, str] = {}
+        
+        # Statistiques
+        self.stats = {
+            "conversations_active": 0,
+            "total_turns_stored": 0,
+            "compressions_performed": 0,
+            "tokens_saved": 0,
+            "cache_hits": 0
+        }
+        
+        logger.info("ContextManager initialisé")
+    
+    async def add_conversation_turn(
+        self,
+        conversation_id: str,
+        user_id: int,
+        user_message: str,
+        assistant_response: str,
+        intent_detected: Optional[str] = None,
+        entities_extracted: List[Dict[str, Any]] = None,
+        processing_time_ms: int = 0
+    ) -> bool:
         """
-        Initialise le gestionnaire de contexte
+        Ajoute un nouveau tour de conversation
         
         Args:
-            context_ttl_seconds: TTL du contexte en secondes (défaut: 1 heure)
+            conversation_id: ID de la conversation
+            user_id: ID de l'utilisateur
+            user_message: Message utilisateur
+            assistant_response: Réponse assistant
+            intent_detected: Intention détectée
+            entities_extracted: Entités extraites
+            processing_time_ms: Temps de traitement
+            
+        Returns:
+            bool: Succès de l'ajout
         """
-        self.session_contexts = {}  # user_id -> context_data
-        self.context_ttl = context_ttl_seconds
-        self._lock = Lock()
-        
-        # Configuration des éléments de contexte
-        self.max_recent_queries = 5
-        self.max_recent_intents = 10
-        self.max_merchants_history = 20
-        self.max_categories_history = 15
-    
-    def get_user_context(self, user_id: int) -> Dict[str, Any]:
-        """Récupère le contexte utilisateur temporaire"""
-        
-        with self._lock:
-            context = self.session_contexts.get(user_id)
-            
-            if not context:
-                return self._create_empty_context()
-            
-            # Vérification TTL
-            if self._is_context_expired(context):
-                logger.info(f"Contexte expiré pour utilisateur {user_id}, suppression")
-                self.session_contexts.pop(user_id, None)
-                return self._create_empty_context()
-            
-            return context.copy()  # Copie pour éviter les modifications externes
-    
-    def update_context(
-        self, 
-        user_id: int, 
-        message: str,
-        intent: Dict[str, Any],
-        entities: Dict[str, Any],
-        search_results: Optional[Dict[str, Any]] = None,
-        response_generated: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Met à jour le contexte utilisateur avec les nouvelles données"""
-        
-        with self._lock:
-            try:
-                current_context = self.session_contexts.get(user_id, self._create_empty_context())
-                
-                # Mise à jour timestamp
-                current_context["updated_at"] = datetime.now(timezone.utc).isoformat()
-                current_context["interaction_count"] += 1
-                
-                # Historique des requêtes
-                self._update_query_history(current_context, message, intent)
-                
-                # Historique des entités
-                self._update_entity_history(current_context, entities)
-                
-                # Patterns de comportement
-                self._update_behavior_patterns(current_context, intent, entities, search_results)
-                
-                # Préférences déduites
-                self._update_inferred_preferences(current_context, intent, entities, response_generated)
-                
-                # Métriques d'engagement
-                self._update_engagement_metrics(current_context, search_results, response_generated)
-                
-                # Sauvegarde du contexte mis à jour
-                self.session_contexts[user_id] = current_context
-                
-                logger.debug(f"Contexte mis à jour pour utilisateur {user_id}: {current_context['interaction_count']} interactions")
-                
-            except Exception as e:
-                logger.error(f"Erreur mise à jour contexte pour {user_id}: {str(e)}")
-    
-    def get_context_summary(self, user_id: int) -> Dict[str, Any]:
-        """Récupère un résumé du contexte pour personnalisation"""
-        
-        context = self.get_user_context(user_id)
-        
-        return {
-            "is_returning_user": context["interaction_count"] > 1,
-            "interaction_count": context["interaction_count"],
-            "preferred_intents": self._get_top_intents(context),
-            "frequent_merchants": self._get_frequent_merchants(context),
-            "preferred_categories": self._get_preferred_categories(context),
-            "communication_style": context.get("communication_preferences", {}).get("style", "balanced"),
-            "detail_level": context.get("communication_preferences", {}).get("detail_level", "medium"),
-            "recent_topics": context.get("recent_queries", [])[-3:],  # 3 derniers sujets
-            "engagement_level": self._calculate_engagement_level(context)
-        }
-    
-    def cleanup_expired_contexts(self) -> int:
-        """Nettoie les contextes expirés et retourne le nombre de contextes supprimés"""
-        
-        with self._lock:
-            expired_users = []
-            
-            for user_id, context in self.session_contexts.items():
-                if self._is_context_expired(context):
-                    expired_users.append(user_id)
-            
-            for user_id in expired_users:
-                self.session_contexts.pop(user_id, None)
-            
-            if expired_users:
-                logger.info(f"Nettoyage: {len(expired_users)} contextes expirés supprimés")
-            
-            return len(expired_users)
-    
-    def get_context_stats(self) -> Dict[str, Any]:
-        """Retourne des statistiques sur les contextes actifs"""
-        
-        with self._lock:
-            active_contexts = len(self.session_contexts)
-            
-            if active_contexts == 0:
-                return {
-                    "active_contexts": 0,
-                    "total_interactions": 0,
-                    "average_interactions_per_user": 0
-                }
-            
-            total_interactions = sum(ctx["interaction_count"] for ctx in self.session_contexts.values())
-            
-            return {
-                "active_contexts": active_contexts,
-                "total_interactions": total_interactions,
-                "average_interactions_per_user": total_interactions / active_contexts,
-                "oldest_context_age_minutes": self._get_oldest_context_age_minutes(),
-                "memory_usage_estimate_mb": self._estimate_memory_usage()
-            }
-    
-    def _create_empty_context(self) -> Dict[str, Any]:
-        """Crée un contexte vide pour un nouvel utilisateur"""
-        
-        return {
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "interaction_count": 0,
-            "recent_queries": [],
-            "intent_history": {},
-            "entity_history": {
-                "merchants": {},
-                "categories": {},
-                "date_patterns": []
-            },
-            "behavior_patterns": {
-                "most_common_intent": None,
-                "average_query_complexity": 0,
-                "preferred_time_periods": [],
-                "typical_amounts": []
-            },
-            "communication_preferences": {
-                "style": "balanced",  # concise, balanced, detailed
-                "detail_level": "medium",  # basic, medium, advanced
-                "tone_preference": "professional_friendly"
-            },
-            "engagement_metrics": {
-                "queries_with_results": 0,
-                "total_queries": 0,
-                "insights_shown": 0,
-                "suggestions_provided": 0
-            }
-        }
-    
-    def _is_context_expired(self, context: Dict[str, Any]) -> bool:
-        """Vérifie si un contexte est expiré"""
-        
         try:
-            updated_at_str = context.get("updated_at")
-            if not updated_at_str:
-                return True
+            # Initialisation conversation si nécessaire
+            if conversation_id not in self._conversations:
+                self._conversations[conversation_id] = deque(maxlen=self.max_context_turns)
+                self._conversation_metadata[conversation_id] = {
+                    "user_id": user_id,
+                    "created_at": datetime.now(),
+                    "last_activity": datetime.now(),
+                    "turn_count": 0,
+                    "total_tokens": 0
+                }
+                self.stats["conversations_active"] += 1
             
-            updated_at = datetime.fromisoformat(updated_at_str.replace('Z', '+00:00'))
-            age_seconds = (datetime.now(timezone.utc) - updated_at).total_seconds()
+            # Estimation tokens (approximation)
+            token_count = self._estimate_tokens(user_message + assistant_response)
             
-            return age_seconds > self.context_ttl
+            # Création du tour
+            turn = ConversationTurn(
+                user_message=user_message,
+                assistant_response=assistant_response,
+                intent_detected=intent_detected,
+                entities_extracted=entities_extracted or [],
+                timestamp=datetime.now(),
+                processing_time_ms=processing_time_ms,
+                token_count=token_count
+            )
+            
+            # Ajout à la conversation
+            self._conversations[conversation_id].append(turn)
+            
+            # Mise à jour métadonnées
+            metadata = self._conversation_metadata[conversation_id]
+            metadata["last_activity"] = datetime.now()
+            metadata["turn_count"] += 1
+            metadata["total_tokens"] += token_count
+            
+            self.stats["total_turns_stored"] += 1
+            
+            # Auto-compression si nécessaire
+            if (self.enable_compression and 
+                metadata["total_tokens"] > self.max_total_tokens):
+                await self._auto_compress_conversation(conversation_id)
+            
+            return True
             
         except Exception as e:
-            logger.error(f"Erreur vérification expiration contexte: {str(e)}")
-            return True
+            logger.error(f"Erreur ajout tour conversation {conversation_id}: {str(e)}")
+            return False
     
-    def _update_query_history(self, context: Dict[str, Any], message: str, intent: Dict[str, Any]) -> None:
-        """Met à jour l'historique des requêtes"""
+    async def get_conversation_context(
+        self,
+        conversation_id: str,
+        max_turns: Optional[int] = None,
+        include_summary: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Récupère le contexte conversationnel optimisé
         
-        # Ajouter la nouvelle requête
-        query_entry = {
-            "message": message,
-            "intent": intent.get("intent_type"),
-            "confidence": intent.get("confidence", 0),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        
-        context["recent_queries"].append(query_entry)
-        
-        # Limiter la taille de l'historique
-        if len(context["recent_queries"]) > self.max_recent_queries:
-            context["recent_queries"] = context["recent_queries"][-self.max_recent_queries:]
-        
-        # Mettre à jour statistiques intentions
-        intent_type = intent.get("intent_type")
-        if intent_type:
-            context["intent_history"][intent_type] = context["intent_history"].get(intent_type, 0) + 1
+        Args:
+            conversation_id: ID de la conversation
+            max_turns: Nombre max de tours à récupérer
+            include_summary: Inclure résumé si disponible
+            
+        Returns:
+            List[Dict]: Contexte conversationnel formaté
+        """
+        try:
+            if conversation_id not in self._conversations:
+                return []
+            
+            turns = list(self._conversations[conversation_id])
+            
+            # Limitation nombre de tours
+            if max_turns:
+                turns = turns[-max_turns:]
+            
+            # Construction contexte
+            context = []
+            
+            # Ajout résumé si demandé et disponible
+            if include_summary and conversation_id in self._summary_cache:
+                context.append({
+                    "type": "summary",
+                    "content": self._summary_cache[conversation_id],
+                    "timestamp": None
+                })
+                self.stats["cache_hits"] += 1
+            
+            # Ajout tours de conversation
+            for turn in turns:
+                context.extend([
+                    {
+                        "type": "user_message",
+                        "content": turn.user_message,
+                        "timestamp": turn.timestamp.isoformat(),
+                        "intent": turn.intent_detected,
+                        "entities": turn.entities_extracted
+                    },
+                    {
+                        "type": "assistant_response", 
+                        "content": turn.assistant_response,
+                        "timestamp": turn.timestamp.isoformat(),
+                        "processing_time_ms": turn.processing_time_ms
+                    }
+                ])
+            
+            return context
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération contexte {conversation_id}: {str(e)}")
+            return []
     
-    def _update_entity_history(self, context: Dict[str, Any], entities: Dict[str, Any]) -> None:
-        """Met à jour l'historique des entités"""
+    async def compress_conversation_context(
+        self,
+        request: ContextCompressionRequest
+    ) -> ContextCompressionResult:
+        """
+        Compresse le contexte conversationnel selon la stratégie demandée
         
-        # Marchands
-        if entities.get("merchants"):
-            merchants = entities["merchants"]
-            if isinstance(merchants, list):
-                for merchant in merchants:
-                    merchant_name = merchant if isinstance(merchant, str) else merchant.get("name")
-                    if merchant_name:
-                        context["entity_history"]["merchants"][merchant_name] = \
-                            context["entity_history"]["merchants"].get(merchant_name, 0) + 1
-        
-        # Catégories
-        if entities.get("categories"):
-            categories = entities["categories"]
-            if isinstance(categories, list):
-                for category in categories:
-                    context["entity_history"]["categories"][category] = \
-                        context["entity_history"]["categories"].get(category, 0) + 1
-        
-        # Patterns de dates
-        if entities.get("dates"):
-            date_info = entities["dates"]
-            if isinstance(date_info, dict):
-                pattern = self._extract_date_pattern(date_info)
-                if pattern:
-                    context["entity_history"]["date_patterns"].append(pattern)
-                    # Garder seulement les 10 derniers patterns
-                    context["entity_history"]["date_patterns"] = \
-                        context["entity_history"]["date_patterns"][-10:]
-    
-    def _update_behavior_patterns(
-        self, 
-        context: Dict[str, Any], 
-        intent: Dict[str, Any], 
-        entities: Dict[str, Any],
-        search_results: Optional[Dict[str, Any]]
-    ) -> None:
-        """Met à jour les patterns de comportement détectés"""
-        
-        # Intent le plus commun
-        if context["intent_history"]:
-            most_common = max(context["intent_history"], key=context["intent_history"].get)
-            context["behavior_patterns"]["most_common_intent"] = most_common
-        
-        # Complexité moyenne des requêtes
-        complexity_score = self._calculate_query_complexity(intent, entities)
-        current_avg = context["behavior_patterns"].get("average_query_complexity", 0)
-        interaction_count = context["interaction_count"]
-        new_avg = (current_avg * (interaction_count - 1) + complexity_score) / interaction_count
-        context["behavior_patterns"]["average_query_complexity"] = new_avg
-        
-        # Montants typiques si disponibles
-        if search_results and "total_amount" in search_results:
-            amount = search_results["total_amount"]
-            context["behavior_patterns"]["typical_amounts"].append(amount)
-            # Garder seulement les 20 derniers montants
-            context["behavior_patterns"]["typical_amounts"] = \
-                context["behavior_patterns"]["typical_amounts"][-20:]
-    
-    def _update_inferred_preferences(
-        self, 
-        context: Dict[str, Any], 
-        intent: Dict[str, Any], 
-        entities: Dict[str, Any],
-        response_generated: Optional[Dict[str, Any]]
-    ) -> None:
-        """Met à jour les préférences déduites de l'utilisateur"""
-        
-        # Style de communication basé sur la complexité des requêtes
-        avg_complexity = context["behavior_patterns"].get("average_query_complexity", 0)
-        if avg_complexity > 0.7:
-            context["communication_preferences"]["detail_level"] = "advanced"
-            context["communication_preferences"]["style"] = "detailed"
-        elif avg_complexity < 0.3:
-            context["communication_preferences"]["detail_level"] = "basic"
-            context["communication_preferences"]["style"] = "concise"
-    
-    def _update_engagement_metrics(
-        self, 
-        context: Dict[str, Any], 
-        search_results: Optional[Dict[str, Any]],
-        response_generated: Optional[Dict[str, Any]]
-    ) -> None:
-        """Met à jour les métriques d'engagement"""
-        
-        metrics = context["engagement_metrics"]
-        metrics["total_queries"] += 1
-        
-        if search_results and search_results.get("has_results"):
-            metrics["queries_with_results"] += 1
-        
-        if response_generated:
-            if response_generated.get("insights"):
-                metrics["insights_shown"] += len(response_generated["insights"])
-            if response_generated.get("suggestions"):
-                metrics["suggestions_provided"] += len(response_generated["suggestions"])
-    
-    def _extract_date_pattern(self, date_info: Dict[str, Any]) -> Optional[str]:
-        """Extrait un pattern de date lisible"""
+        Args:
+            request: Paramètres de compression
+            
+        Returns:
+            ContextCompressionResult: Résultat compression
+        """
+        start_time = datetime.now()
         
         try:
-            if "original" in date_info:
-                original = date_info["original"].lower()
-                if "mois" in original:
-                    return "monthly_analysis"
-                elif "semaine" in original:
-                    return "weekly_analysis"
-                elif "année" in original:
-                    return "yearly_analysis"
-                elif "jour" in original or "aujourd'hui" in original:
-                    return "daily_analysis"
+            conversation_id = request.conversation_id
             
-            return "date_range_analysis"
+            if conversation_id not in self._conversations:
+                return ContextCompressionResult(
+                    success=False,
+                    compressed_context=[],
+                    original_token_count=0,
+                    compressed_token_count=0,
+                    compression_ratio=0.0,
+                    processing_time_ms=self._get_processing_time(start_time)
+                )
             
-        except Exception:
-            return None
+            turns = list(self._conversations[conversation_id])
+            original_token_count = sum(turn.token_count for turn in turns)
+            
+            # Application stratégie de compression
+            if request.compression_strategy == "truncate":
+                compressed_turns = await self._truncate_compression(turns, request)
+                summary = None
+                
+            elif request.compression_strategy == "summarize":
+                compressed_turns, summary = await self._summarize_compression(turns, request)
+                
+            elif request.compression_strategy == "intelligent":
+                compressed_turns, summary = await self._intelligent_compression(turns, request)
+                
+            else:
+                # Fallback: truncate
+                compressed_turns = await self._truncate_compression(turns, request)
+                summary = None
+            
+            compressed_token_count = sum(turn.token_count for turn in compressed_turns)
+            
+            # Calcul ratio compression
+            compression_ratio = 0.0
+            if original_token_count > 0:
+                compression_ratio = 1.0 - (compressed_token_count / original_token_count)
+            
+            # Mise à jour conversation compressée
+            self._conversations[conversation_id] = deque(compressed_turns, maxlen=self.max_context_turns)
+            
+            # Cache du résumé si généré
+            if summary:
+                self._summary_cache[conversation_id] = summary
+            
+            # Statistiques
+            self.stats["compressions_performed"] += 1
+            self.stats["tokens_saved"] += (original_token_count - compressed_token_count)
+            
+            return ContextCompressionResult(
+                success=True,
+                compressed_context=compressed_turns,
+                original_token_count=original_token_count,
+                compressed_token_count=compressed_token_count,
+                compression_ratio=compression_ratio,
+                summary_generated=summary,
+                processing_time_ms=self._get_processing_time(start_time)
+            )
+            
+        except Exception as e:
+            logger.error(f"Erreur compression contexte {request.conversation_id}: {str(e)}")
+            return ContextCompressionResult(
+                success=False,
+                compressed_context=[],
+                original_token_count=0,
+                compressed_token_count=0,
+                compression_ratio=0.0,
+                processing_time_ms=self._get_processing_time(start_time)
+            )
     
-    def _calculate_query_complexity(self, intent: Dict[str, Any], entities: Dict[str, Any]) -> float:
-        """Calcule un score de complexité de la requête (0-1)"""
+    async def _auto_compress_conversation(self, conversation_id: str) -> None:
+        """Compression automatique d'une conversation"""
         
-        complexity = 0.3  # Base
+        request = ContextCompressionRequest(
+            conversation_id=conversation_id,
+            max_tokens=self.max_total_tokens // 2,  # Cible 50% du max
+            preserve_last_turns=3,
+            compression_strategy="intelligent"
+        )
         
-        # Bonus pour la confiance de l'intent
-        if intent.get("confidence", 0) > 0.8:
-            complexity += 0.2
+        result = await self.compress_conversation_context(request)
         
-        # Bonus pour le nombre d'entités
-        entity_count = 0
-        for entity_type, entity_data in entities.items():
-            if entity_data:
-                if isinstance(entity_data, list):
-                    entity_count += len(entity_data)
-                else:
-                    entity_count += 1
-        
-        complexity += min(0.3, entity_count * 0.1)
-        
-        # Bonus pour les dates spécifiques
-        if entities.get("dates") and isinstance(entities["dates"], dict):
-            if "normalized" in entities["dates"]:
-                complexity += 0.2
-        
-        return min(1.0, complexity)
-    
-    def _get_top_intents(self, context: Dict[str, Any], limit: int = 3) -> List[str]:
-        """Récupère les intentions les plus fréquentes"""
-        
-        intent_history = context.get("intent_history", {})
-        if not intent_history:
-            return []
-        
-        sorted_intents = sorted(intent_history.items(), key=lambda x: x[1], reverse=True)
-        return [intent for intent, _ in sorted_intents[:limit]]
-    
-    def _get_frequent_merchants(self, context: Dict[str, Any], limit: int = 5) -> List[str]:
-        """Récupère les marchands les plus fréquents"""
-        
-        merchants = context.get("entity_history", {}).get("merchants", {})
-        if not merchants:
-            return []
-        
-        sorted_merchants = sorted(merchants.items(), key=lambda x: x[1], reverse=True)
-        return [merchant for merchant, _ in sorted_merchants[:limit]]
-    
-    def _get_preferred_categories(self, context: Dict[str, Any], limit: int = 3) -> List[str]:
-        """Récupère les catégories préférées"""
-        
-        categories = context.get("entity_history", {}).get("categories", {})
-        if not categories:
-            return []
-        
-        sorted_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)
-        return [category for category, _ in sorted_categories[:limit]]
-    
-    def _calculate_engagement_level(self, context: Dict[str, Any]) -> str:
-        """Calcule le niveau d'engagement de l'utilisateur"""
-        
-        metrics = context.get("engagement_metrics", {})
-        total_queries = metrics.get("total_queries", 0)
-        
-        if total_queries == 0:
-            return "new"
-        
-        success_rate = metrics.get("queries_with_results", 0) / total_queries
-        interaction_count = context.get("interaction_count", 0)
-        
-        if interaction_count >= 10 and success_rate > 0.8:
-            return "high"
-        elif interaction_count >= 5 and success_rate > 0.6:
-            return "medium"
+        if result.success:
+            logger.info(f"Auto-compression {conversation_id}: "
+                       f"{result.compression_ratio:.1%} tokens saved")
         else:
-            return "low"
+            logger.warning(f"Échec auto-compression {conversation_id}")
     
-    def _get_oldest_context_age_minutes(self) -> float:
-        """Récupère l'âge du plus ancien contexte en minutes"""
+    async def _truncate_compression(
+        self, 
+        turns: List[ConversationTurn], 
+        request: ContextCompressionRequest
+    ) -> List[ConversationTurn]:
+        """Compression par troncature - garde les derniers tours"""
         
-        if not self.session_contexts:
-            return 0
+        # Garde les N derniers tours selon preserve_last_turns
+        preserved_turns = turns[-request.preserve_last_turns:] if turns else []
         
-        oldest_time = None
-        for context in self.session_contexts.values():
-            try:
-                created_at = datetime.fromisoformat(context["created_at"].replace('Z', '+00:00'))
-                if oldest_time is None or created_at < oldest_time:
-                    oldest_time = created_at
-            except Exception:
-                continue
+        # Vérifie la limite de tokens
+        total_tokens = sum(turn.token_count for turn in preserved_turns)
         
-        if oldest_time:
-            age_seconds = (datetime.now(timezone.utc) - oldest_time).total_seconds()
-            return age_seconds / 60
+        # Supprime progressivement les plus anciens si dépassement
+        while preserved_turns and total_tokens > request.max_tokens:
+            removed_turn = preserved_turns.pop(0)
+            total_tokens -= removed_turn.token_count
         
-        return 0
+        return preserved_turns
     
-    def _estimate_memory_usage(self) -> float:
-        """Estime l'usage mémoire en MB (approximatif)"""
+    async def _summarize_compression(
+        self, 
+        turns: List[ConversationTurn], 
+        request: ContextCompressionRequest
+    ) -> Tuple[List[ConversationTurn], str]:
+        """Compression par résumé - génère un résumé des anciens tours"""
+        
+        if len(turns) <= request.preserve_last_turns:
+            return turns, ""
+        
+        # Tours à résumer (tous sauf les derniers à préserver)
+        turns_to_summarize = turns[:-request.preserve_last_turns]
+        turns_to_keep = turns[-request.preserve_last_turns:]
+        
+        # Génération résumé simple (peut être amélioré avec LLM)
+        summary = await self._generate_simple_summary(turns_to_summarize)
+        
+        return turns_to_keep, summary
+    
+    async def _intelligent_compression(
+        self, 
+        turns: List[ConversationTurn], 
+        request: ContextCompressionRequest
+    ) -> Tuple[List[ConversationTurn], str]:
+        """Compression intelligente - combine résumé et sélection pertinente"""
+        
+        # Stratégie hybride:
+        # 1. Garde les derniers tours (plus récents)
+        # 2. Sélectionne quelques tours importants du milieu
+        # 3. Résume le reste
+        
+        if len(turns) <= request.preserve_last_turns:
+            return turns, ""
+        
+        # Derniers tours (toujours gardés)
+        recent_turns = turns[-request.preserve_last_turns:]
+        
+        # Tours plus anciens à analyser
+        older_turns = turns[:-request.preserve_last_turns]
+        
+        if not older_turns:
+            return recent_turns, ""
+        
+        # Sélection intelligente des tours importants
+        important_turns = self._select_important_turns(older_turns, max_turns=2)
+        
+        # Résumé des tours non sélectionnés
+        turns_to_summarize = [turn for turn in older_turns if turn not in important_turns]
+        summary = await self._generate_simple_summary(turns_to_summarize) if turns_to_summarize else ""
+        
+        # Reconstitution ordre chronologique
+        final_turns = important_turns + recent_turns
+        final_turns.sort(key=lambda t: t.timestamp)
+        
+        return final_turns, summary
+    
+    def _select_important_turns(
+        self, 
+        turns: List[ConversationTurn], 
+        max_turns: int = 2
+    ) -> List[ConversationTurn]:
+        """Sélectionne les tours les plus importants selon critères heuristiques"""
+        
+        # Scoring des tours selon différents critères
+        scored_turns = []
+        
+        for turn in turns:
+            score = 0.0
+            
+            # Bonus si intention détectée
+            if turn.intent_detected and turn.intent_detected != "UNCLEAR_INTENT":
+                score += 2.0
+            
+            # Bonus si entités extraites
+            if turn.entities_extracted:
+                score += len(turn.entities_extracted) * 0.5
+            
+            # Bonus pour longueur raisonnable (ni trop court ni trop long)
+            msg_length = len(turn.user_message)
+            if 20 <= msg_length <= 200:
+                score += 1.0
+            
+            # Malus pour tours très récents (seront déjà gardés)
+            minutes_ago = (datetime.now() - turn.timestamp).total_seconds() / 60
+            if minutes_ago < 10:
+                score -= 1.0
+            
+            scored_turns.append((turn, score))
+        
+        # Tri par score décroissant
+        scored_turns.sort(key=lambda x: x[1], reverse=True)
+        
+        # Sélection des meilleurs
+        return [turn for turn, score in scored_turns[:max_turns]]
+    
+    async def _generate_simple_summary(
+        self, 
+        turns: List[ConversationTurn]
+    ) -> str:
+        """Génère un résumé simple des tours de conversation"""
+        
+        if not turns:
+            return ""
+        
+        # Extraction des informations clés
+        intents = [turn.intent_detected for turn in turns if turn.intent_detected]
+        entities = []
+        for turn in turns:
+            entities.extend(turn.entities_extracted or [])
+        
+        # Construction résumé basique
+        summary_parts = []
+        
+        if len(turns) == 1:
+            summary_parts.append("L'utilisateur a fait 1 demande précédente.")
+        else:
+            summary_parts.append(f"L'utilisateur a fait {len(turns)} demandes précédentes.")
+        
+        # Résumé des intentions
+        if intents:
+            intent_counts = {}
+            for intent in intents:
+                intent_counts[intent] = intent_counts.get(intent, 0) + 1
+            
+            most_frequent = max(intent_counts.items(), key=lambda x: x[1])
+            summary_parts.append(f"Principalement des demandes de type {most_frequent[0]}.")
+        
+        # Résumé des entités
+        if entities:
+            entity_types = {entity.get("type", "unknown") for entity in entities}
+            summary_parts.append(f"Entités mentionnées: {', '.join(entity_types)}.")
+        
+        return " ".join(summary_parts)
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimation approximative du nombre de tokens"""
+        
+        # Approximation basique: 1 token  4 caractères pour l'anglais/français
+        # Plus sophistiqué avec un tokenizer réel en production
+        return max(1, len(text) // 4)
+    
+    def _get_processing_time(self, start_time: datetime) -> int:
+        """Calcule le temps de traitement en ms"""
+        return int((datetime.now() - start_time).total_seconds() * 1000)
+    
+    async def cleanup_expired_conversations(self) -> int:
+        """Nettoie les conversations expirées selon TTL"""
+        
+        cutoff_time = datetime.now() - timedelta(hours=self.context_ttl_hours)
+        expired_conversations = []
+        
+        for conversation_id, metadata in self._conversation_metadata.items():
+            if metadata["last_activity"] < cutoff_time:
+                expired_conversations.append(conversation_id)
+        
+        # Suppression des conversations expirées
+        for conversation_id in expired_conversations:
+            if conversation_id in self._conversations:
+                del self._conversations[conversation_id]
+            if conversation_id in self._conversation_metadata:
+                del self._conversation_metadata[conversation_id]
+            if conversation_id in self._summary_cache:
+                del self._summary_cache[conversation_id]
+        
+        self.stats["conversations_active"] -= len(expired_conversations)
+        
+        if expired_conversations:
+            logger.info(f"Cleaned up {len(expired_conversations)} expired conversations")
+        
+        return len(expired_conversations)
+    
+    def get_conversation_snapshot(self, conversation_id: str) -> Optional[ContextSnapshot]:
+        """Récupère un snapshot d'une conversation"""
+        
+        if conversation_id not in self._conversations:
+            return None
+        
+        turns = list(self._conversations[conversation_id])
+        metadata = self._conversation_metadata.get(conversation_id, {})
+        
+        total_tokens = sum(turn.token_count for turn in turns)
+        
+        return ContextSnapshot(
+            conversation_id=conversation_id,
+            user_id=metadata.get("user_id", 0),
+            turns_count=len(turns),
+            total_tokens=total_tokens,
+            compressed_tokens=total_tokens,  # Si pas de compression active
+            compression_ratio=0.0,
+            created_at=metadata.get("created_at", datetime.now()),
+            summary=self._summary_cache.get(conversation_id)
+        )
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Récupère les statistiques du ContextManager"""
+        
+        # Calculs statistiques additionnels
+        total_active_tokens = sum(
+            sum(turn.token_count for turn in turns)
+            for turns in self._conversations.values()
+        )
+        
+        avg_turns_per_conversation = 0.0
+        if self.stats["conversations_active"] > 0:
+            avg_turns_per_conversation = (
+                self.stats["total_turns_stored"] / self.stats["conversations_active"]
+            )
+        
+        return {
+            **self.stats,
+            "total_active_tokens": total_active_tokens,
+            "avg_turns_per_conversation": avg_turns_per_conversation,
+            "cache_size": len(self._summary_cache)
+        }
+    
+    async def clear_conversation(self, conversation_id: str) -> bool:
+        """Supprime complètement une conversation"""
         
         try:
-            # Estimation très approximative basée sur la sérialisation JSON
-            total_size = 0
-            for context in self.session_contexts.values():
-                json_str = json.dumps(context)
-                total_size += len(json_str.encode('utf-8'))
+            if conversation_id in self._conversations:
+                del self._conversations[conversation_id]
+            if conversation_id in self._conversation_metadata:
+                del self._conversation_metadata[conversation_id]
+            if conversation_id in self._summary_cache:
+                del self._summary_cache[conversation_id]
             
-            return total_size / (1024 * 1024)  # Conversion en MB
+            self.stats["conversations_active"] = max(0, self.stats["conversations_active"] - 1)
             
-        except Exception:
-            return 0.0
-
-
-class PersonalizationEngine:
-    """Moteur de personnalisation basé sur le contexte utilisateur"""
-    
-    def __init__(self, context_manager: TemporaryContextManager):
-        self.context_manager = context_manager
-    
-    def personalize_response_generation(self, user_id: int, base_prompt: str) -> str:
-        """Personnalise le prompt de génération selon le contexte utilisateur"""
-        
-        context_summary = self.context_manager.get_context_summary(user_id)
-        
-        personalization_addons = []
-        
-        # Style de communication
-        style = context_summary.get("communication_style", "balanced")
-        if style == "concise":
-            personalization_addons.append("Réponds de manière concise et directe.")
-        elif style == "detailed":
-            personalization_addons.append("Fournis une réponse détaillée avec des explications approfondies.")
-        
-        # Niveau de détail
-        detail_level = context_summary.get("detail_level", "medium")
-        if detail_level == "basic":
-            personalization_addons.append("Utilise un langage simple et évite les termes techniques.")
-        elif detail_level == "advanced":
-            personalization_addons.append("Tu peux utiliser des termes financiers techniques et des analyses avancées.")
-        
-        # Utilisateur récurrent
-        if context_summary.get("is_returning_user"):
-            frequent_merchants = context_summary.get("frequent_merchants", [])
-            if frequent_merchants:
-                merchants_str = ", ".join(frequent_merchants[:3])
-                personalization_addons.append(f"L'utilisateur consulte fréquemment: {merchants_str}.")
-        
-        # Préférences d'intention
-        preferred_intents = context_summary.get("preferred_intents", [])
-        if preferred_intents:
-            intent_str = ", ".join(preferred_intents[:2])
-            personalization_addons.append(f"L'utilisateur s'intéresse souvent à: {intent_str}.")
-        
-        if personalization_addons:
-            personalization_text = " ".join(personalization_addons)
-            return f"{base_prompt}\n\nPersonnalisation: {personalization_text}"
-        
-        return base_prompt
-    
-    def get_personalization_context(self, user_id: int) -> Dict[str, Any]:
-        """Récupère le contexte de personnalisation pour les templates"""
-        
-        return self.context_manager.get_context_summary(user_id)
+            logger.info(f"Conversation {conversation_id} supprimée")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur suppression conversation {conversation_id}: {str(e)}")
+            return False

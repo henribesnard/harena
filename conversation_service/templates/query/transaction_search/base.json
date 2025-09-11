@@ -1,0 +1,26 @@
+{
+  "template_name": "transaction_search_base",
+  "description": "Template de base pour recherche de transactions",
+  "target_intention": "TRANSACTION_SEARCH.base",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "user_id": "{{user_id}}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}}
+    ],
+    "page_size": 10
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    }
+  },
+  "optimizations": {
+    "cache_duration": "10m",
+    "elasticsearch_routing": "user_id"
+  }
+}

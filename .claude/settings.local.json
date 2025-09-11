@@ -113,7 +113,16 @@
       "Read(/C:\\Users\\henri\\Projets\\harena/**)",
       "Read(/C:\\Users\\henri\\Projets\\harena/**)",
       "Bash(cat:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(set PYTHONPATH=C:UsershenriProjetsharena)",
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(mkdir:*)",
+      "Bash(pytest:*)",
+      "Bash(set PYTHONPATH=.)",
+      "Bash(pkill:*)",
+      "Bash(ss:*)",
+      "Bash(set HARENA_STANDALONE=true)"
     ],
     "deny": [],
     "ask": []

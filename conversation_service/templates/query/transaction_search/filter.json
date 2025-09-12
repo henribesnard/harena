@@ -6,8 +6,11 @@
     "user_id": "{{user_id}}",
     "query": "{{merchant_query}}",
     "filters": {
-      "user_id": "{{user_id}}",
-      "merchant_name": "{{merchant_name}}"
+      "merchant_name": "{{merchant_name}}",
+      "transaction_type": "{{transaction_type}}",
+      "amount_abs": "{% if montant %}{{to_es_amount_filter(montant)}}{% else %}null{% endif %}",
+      "date": "{{ date_range if date_range else null }}",
+      "category_name": "{{ categories if categories else null }}"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -30,7 +33,41 @@
       "required": false,
       "type": "merchant_name",
       "source": "entities.merchant"
+    },
+    "montant": {
+      "required": false,
+      "type": "object",
+      "source": "entities.montant",
+      "validation": {
+        "numeric_values": true,
+        "positive_only": true
+      }
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type",
+      "allowed_values": ["debit", "credit"]
+    },
+    "date_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.date_range",
+      "validation": {
+        "keys": ["gte", "lte"],
+        "date_format": "ISO8601"
+      }
+    },
+    "categories": {
+      "required": false,
+      "type": "array",
+      "source": "entities.categories",
+      "description": "Liste des catégories à inclure dans la recherche"
     }
+  },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
   },
   "optimizations": {
     "cache_duration": "30m",

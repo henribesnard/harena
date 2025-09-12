@@ -43,6 +43,11 @@ class TemplateEngine:
         self.templates_dir = templates_dir or Path(__file__).parent.parent / "templates" / "query"
         self.compiled_templates: Dict[str, CompiledTemplate] = {}
         self.jinja_env = Environment()
+        
+        # Ajout de fonctions helpers pour les templates
+        self.jinja_env.globals['to_es_amount_filter'] = self._to_elasticsearch_amount_filter
+        self.jinja_env.globals['is_defined_and_not_none'] = self._is_defined_and_not_none
+        
         self.cache_stats = {
             "hits": 0,
             "misses": 0,
@@ -202,6 +207,10 @@ class TemplateEngine:
         # Parser le chemin source (ex: "entities.periode_temporelle.date")
         value = self._get_nested_value(parameters, source)
         
+        # Transformer les entités de période relative en objets de date
+        if param_config.get("type") == "object" and isinstance(value, str):
+            value = self._transform_date_range(value)
+        
         # Appliquer la valeur par défaut si nécessaire
         if value is None and default_value is not None:
             value = default_value
@@ -262,7 +271,8 @@ class TemplateEngine:
                 # Normalisation pour les noms de marchands (première lettre majuscule)
                 return str(value).strip().title() if value else value
             elif param_type == "object":
-                return value  # Garder tel quel pour les objets
+                # Pour les objets, on garde tel quel - la transformation se fera dans _remove_null_values
+                return value
             else:
                 return value
         except (ValueError, TypeError) as e:
@@ -279,7 +289,154 @@ class TemplateEngine:
             
         if filter_cleanup.get("remove_empty_objects", False):
             query = self._remove_empty_objects(query)
+        
+        # Ajouter automatiquement les agrégations de base si pas déjà présentes
+        query = self._add_default_aggregations(query)
             
+        return query
+
+    def _transform_date_range(self, date_range_string: str) -> Dict[str, str]:
+        """Transforme une période relative en objet de date avec gte/lte"""
+        from datetime import datetime, date
+        from dateutil.relativedelta import relativedelta
+        import calendar
+        
+        today = date.today()
+        
+        if date_range_string == "this_month":
+            # Premier jour du mois courant
+            start_of_month = today.replace(day=1)
+            # Dernier jour du mois courant
+            _, last_day = calendar.monthrange(today.year, today.month)
+            end_of_month = today.replace(day=last_day)
+            
+            return {
+                "gte": start_of_month.isoformat(),
+                "lte": end_of_month.isoformat()
+            }
+        
+        elif date_range_string == "last_month":
+            # Premier jour du mois dernier
+            first_last_month = (today.replace(day=1) - relativedelta(months=1))
+            # Dernier jour du mois dernier
+            _, last_day = calendar.monthrange(first_last_month.year, first_last_month.month)
+            end_last_month = first_last_month.replace(day=last_day)
+            
+            return {
+                "gte": first_last_month.isoformat(),
+                "lte": end_last_month.isoformat()
+            }
+        
+        elif date_range_string == "this_week":
+            # Lundi de cette semaine (début)
+            days_since_monday = today.weekday()
+            start_of_week = today - relativedelta(days=days_since_monday)
+            # Dimanche de cette semaine (fin)
+            end_of_week = start_of_week + relativedelta(days=6)
+            
+            return {
+                "gte": start_of_week.isoformat(),
+                "lte": end_of_week.isoformat()
+            }
+            
+        elif date_range_string == "last_week":
+            # Lundi de la semaine dernière
+            days_since_monday = today.weekday()
+            start_of_last_week = today - relativedelta(days=days_since_monday + 7)
+            # Dimanche de la semaine dernière
+            end_of_last_week = start_of_last_week + relativedelta(days=6)
+            
+            return {
+                "gte": start_of_last_week.isoformat(),
+                "lte": end_of_last_week.isoformat()
+            }
+            
+        elif date_range_string == "today":
+            return {
+                "gte": today.isoformat(),
+                "lte": today.isoformat()
+            }
+        
+        # Gestion des mois spécifiques avec logique contextuelle
+        french_months = {
+            "janvier": 1, "février": 2, "mars": 3, "avril": 4, 
+            "mai": 5, "juin": 6, "juillet": 7, "août": 8,
+            "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12
+        }
+        
+        if date_range_string.lower() in french_months:
+            target_month = french_months[date_range_string.lower()]
+            current_month = today.month
+            current_year = today.year
+            
+            # Logique contextuelle : si le mois demandé est dans le futur 
+            # par rapport au mois courant, alors c'est l'année précédente
+            if target_month > current_month:
+                target_year = current_year - 1
+            else:
+                target_year = current_year
+            
+            # Premier jour du mois cible
+            start_of_target_month = date(target_year, target_month, 1)
+            # Dernier jour du mois cible
+            _, last_day = calendar.monthrange(target_year, target_month)
+            end_of_target_month = date(target_year, target_month, last_day)
+            
+            return {
+                "gte": start_of_target_month.isoformat(),
+                "lte": end_of_target_month.isoformat()
+            }
+        
+        # Si pas de correspondance, retourner tel quel
+        return {"gte": date_range_string, "lte": date_range_string}
+
+    def _add_default_aggregations(self, query: Dict[str, Any]) -> Dict[str, Any]:
+        """Ajoute automatiquement les agrégations de base si pas déjà présentes"""
+        
+        # Ne pas ajouter d'agrégations si déjà présentes ou si user_id absent
+        if "aggregations" in query or "user_id" not in query:
+            return query
+        
+        # Agrégations de base pour toutes les requêtes de transactions
+        default_aggregations = {
+            "transaction_count": {
+                "value_count": {
+                    "field": "transaction_id"
+                }
+            },
+            "total_debit": {
+                "filter": {
+                    "term": {
+                        "transaction_type": "debit"
+                    }
+                },
+                "aggs": {
+                    "sum_amount": {
+                        "sum": {
+                            "field": "amount_abs"
+                        }
+                    }
+                }
+            },
+            "total_credit": {
+                "filter": {
+                    "term": {
+                        "transaction_type": "credit"
+                    }
+                },
+                "aggs": {
+                    "sum_amount": {
+                        "sum": {
+                            "field": "amount_abs"
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Ajouter les agrégations par défaut
+        query["aggregations"] = default_aggregations
+        
         return query
 
     def _remove_null_values(self, obj: Any) -> Any:
@@ -288,8 +445,37 @@ class TemplateEngine:
             result = {}
             for k, v in obj.items():
                 # Exclure les valeurs null ET les chaînes "None" (de Jinja2)
+                # MAIS garder les objets sérialisés qui ressemblent à des dicts Python
                 if v is not None and v != "None" and str(v).strip() != "":
-                    cleaned_value = self._remove_null_values(v)
+                    # Cas spécial : si c'est une string qui ressemble à un dict Python, la parser
+                    if isinstance(v, str) and (v.startswith("{'") and v.endswith("'}")):
+                        try:
+                            # Convertir le dict Python en dict JSON
+                            import ast
+                            parsed_dict = ast.literal_eval(v)
+                            # Si c'est un objet montant, le transformer en filtre Elasticsearch
+                            if isinstance(parsed_dict, dict) and "operator" in parsed_dict:
+                                cleaned_value = self._to_elasticsearch_amount_filter(parsed_dict)
+                            else:
+                                cleaned_value = self._remove_null_values(parsed_dict)
+                        except (ValueError, SyntaxError):
+                            # Si échec de parsing, garder comme string
+                            cleaned_value = self._remove_null_values(v)
+                    # Cas spécial : si c'est une string qui ressemble à une liste Python, la parser
+                    elif isinstance(v, str) and ((v.startswith("['") and v.endswith("']")) or (v.startswith("[\"") and v.endswith("\"]"))):
+                        try:
+                            # Convertir la liste Python en vraie liste
+                            import ast
+                            parsed_list = ast.literal_eval(v)
+                            if isinstance(parsed_list, list):
+                                cleaned_value = self._remove_null_values(parsed_list)
+                            else:
+                                cleaned_value = self._remove_null_values(v)
+                        except (ValueError, SyntaxError):
+                            # Si échec de parsing, garder comme string
+                            cleaned_value = self._remove_null_values(v)
+                    else:
+                        cleaned_value = self._remove_null_values(v)
                     if cleaned_value is not None and cleaned_value != "None":
                         result[k] = cleaned_value
             return result
@@ -456,6 +642,36 @@ class TemplateEngine:
         self.compiled_templates.clear()
         await self._precompile_all_templates()
         logger.info(f"Reloaded {len(self.compiled_templates)} templates")
+    
+    def _to_elasticsearch_amount_filter(self, amount_obj: Any) -> Dict[str, Any]:
+        """Convertit un objet montant en filtre Elasticsearch"""
+        
+        if not amount_obj or not isinstance(amount_obj, dict):
+            return None
+        
+        operator = amount_obj.get('operator', 'eq')
+        
+        if operator == 'gte':
+            return {"gte": amount_obj.get('amount')}
+        elif operator == 'gt':
+            return {"gt": amount_obj.get('amount')}
+        elif operator == 'lte':
+            return {"lte": amount_obj.get('amount')}
+        elif operator == 'lt':
+            return {"lt": amount_obj.get('amount')}
+        elif operator == 'eq':
+            return {"eq": amount_obj.get('amount')}
+        elif operator == 'range':
+            return {
+                "gte": amount_obj.get('min'),
+                "lte": amount_obj.get('max')
+            }
+        else:
+            return {"eq": amount_obj.get('amount', 0)}
+    
+    def _is_defined_and_not_none(self, value: Any) -> bool:
+        """Vérifie si une valeur est définie et non None"""
+        return value is not None and value != "None" and str(value).strip() != ""
 
 # Instance globale
 _template_engine: Optional[TemplateEngine] = None

@@ -1,0 +1,131 @@
+{
+    "user_id": 34,
+    "message": "Mes achats chez Amazon",
+    "timestamp": "2025-09-11T09:15:26.096826+00:00",
+    "request_id": "conv_1757582087481_34",
+    "processing_time_ms": 38615,
+    "status": "completed",
+    "intent": {
+        "type": "transaction_search",
+        "confidence": 0.85,
+        "supported": true,
+        "entities": [
+            {
+                "name": "merchant",
+                "value": "Amazon",
+                "confidence": 0.9,
+                "span": [
+                    15,
+                    21
+                ],
+                "entity_type": "merchant"
+            }
+        ]
+    },
+    "response": {
+        "message": "### 1. Résumé des résultats  \nJ'ai trouvé **3 transactions** chez Amazon, toutes des débits de **13,71 GBP** chacune, datées des **19 mars, 19 avril et 19 mai 2025**. Le total des dépenses sur cette période s'élève à **41,13 GBP**.  \n\n### 2. Transactions détaillées  \nVoici le détail de chaque transaction :  \n- **19/05/2025** : ID 25000210641895 – Débit de 13,71 GBP  \n- **19/04/2025** : ID 25000210642157 – Débit de 13,71 GBP  \n- **19/03/2025** : ID 25000210642147 – Débit de 13,71 GBP  \n\nToutes ces transactions sont libellées en GBP (livre sterling) et proviennent du même compte (ID : 53430188).  \n\n### 3. Patterns observés  \n- **Régularité mensuelle** : Les transactions surviennent exactement le 19 de chaque mois, suggérant un abonnement ou un paiement récurrent (ex. Prime Amazon, service mensuel).  \n- **Montant identique** : Chaque transaction est strictement du même montant (13,71 GBP), ce qui confirme un schéma répétitif.  \n- **Insights automatiques** :  \n  - Une transaction inhabituelle a été détectée : **13,71 GBP représente 3 fois votre moyenne** habituelle pour ce type d'opération.  \n  - Vos dépenses récentes (**41,13 GBP sur 3 mois**) sont **20 % au-dessus de votre moyenne habituelle**.  \n\n**Actions suggérées** :  \n1. Vérifiez si ces débits correspondent à un abonnement actif dont vous avez besoin.  \n2. Si cela semble anormal, contactez Amazon pour confirmer l’origine des transactions.  \n3. Surveillez les prochains prélèvements prévus vers le 19 juin 2025 pour anticiper toute irrégularité.  \n\nN’hésitez pas si vous avez besoin de plus de détails ou d’une analyse sur une période plus étendue !",
+        "structured_data": [
+            {
+                "type": "unusual_transaction",
+                "title": "Transaction inhabituelle detectee",
+                "description": "Transaction de -13.71e chez N/A - 3x votre moyenne",
+                "confidence": 0.8,
+                "data_support": {
+                    "unusual_amount": -13.71,
+                    "avg_amount": -13.71
+                },
+                "actionable": false,
+                "priority": 1
+            },
+            {
+                "type": "spending_pattern",
+                "title": "Depenses elevees detectees",
+                "description": "Vos depenses recentes (-41.13e) sont 20% au-dessus de votre moyenne habituelle",
+                "confidence": 0.75,
+                "data_support": {
+                    "total_amount": -41.13,
+                    "user_avg": -411.3
+                },
+                "actionable": true,
+                "priority": 1
+            }
+        ]
+    },
+    "search_summary": {
+        "found_results": true,
+        "total_results": 0
+    },
+    "performance": {
+        "overall_success": true,
+        "pipeline_stages": 5
+    },
+    "architecture": "v2.0"
+}
+
+
+
+
+
+{
+    "user_id": 34,
+    "message": "Mes dépenses netflix",
+    "timestamp": "2025-09-11T09:20:16.410723+00:00",
+    "request_id": "conv_1757582378808_34",
+    "processing_time_ms": 37602,
+    "status": "completed",
+    "intent": {
+        "type": "transaction_search",
+        "confidence": 0.92,
+        "supported": true,
+        "entities": [
+            {
+                "name": "merchant",
+                "value": "netflix",
+                "confidence": 0.95,
+                "span": [
+                    14,
+                    21
+                ],
+                "entity_type": "merchant"
+            }
+        ]
+    },
+    "response": {
+        "message": "1. **Résumé des résultats**  \nJ'ai trouvé 3 transactions Netflix sur votre compte, toutes d'un montant de 17,99 €. Ces transactions sont récurrentes et datent des 9 avril, 9 mai et 9 juin 2025. Le total des dépenses pour ces 3 mois s'élève à 53,97 €. Des insights automatiques indiquent une activité inhabituelle : ces transactions dépassent votre moyenne habituelle de 300 % et représentent une augmentation de 20 % par rapport à vos dépenses normales.\n\n2. **Transactions détaillées**  \nVoici le détail de chaque transaction :  \n- **9 juin 2025** : Débit de 17,99 € (ID : 25000210641854)  \n- **9 mai 2025** : Débit de 17,99 € (ID : 25000210641783)  \n- **9 avril 2025** : Débit de 17,99 € (ID : 25000210642086)  \n\nToutes les transactions sont en euros et proviennent du même compte (ID : 53430185).\n\n3. **Patterns observés**  \n- **Récurrence mensuelle** : Les transactions ont lieu systématiquement le 9 de chaque mois, ce qui correspond probablement à un abonnement Netflix standard.  \n- **Montant constant** : Le prix est stable à 17,99 €, suggérant un forfait fixe (ex. Premium).  \n- **Anomalie détectée** : Ces dépenses récentes sont significativement plus élevées que votre historique habituel, ce qui peut indiquer un changement récent d'abonnement ou une augmentation de tarif.\n\n**Actions suggérées** :  \n- Vérifiez si votre abonnement Netflix a été mis à jour vers un forfait plus cher récemment.  \n- Comparez ces dépenses avec vos précédentes facturations Netflix pour identifier toute irrégularité.  \n- Si nécessaire, contactez le support Netflix pour confirmer les détails de votre abonnement.  \n\nN'hésitez pas si vous avez besoin de plus de détails ou d'une analyse sur une période plus longue !",
+        "structured_data": [
+            {
+                "type": "unusual_transaction",
+                "title": "Transaction inhabituelle detectee",
+                "description": "Transaction de -17.99e chez N/A - 3x votre moyenne",
+                "confidence": 0.8,
+                "data_support": {
+                    "unusual_amount": -17.99,
+                    "avg_amount": -17.99
+                },
+                "actionable": false,
+                "priority": 1
+            },
+            {
+                "type": "spending_pattern",
+                "title": "Depenses elevees detectees",
+                "description": "Vos depenses recentes (-53.97e) sont 20% au-dessus de votre moyenne habituelle",
+                "confidence": 0.75,
+                "data_support": {
+                    "total_amount": -53.97,
+                    "user_avg": -539.6999999999999
+                },
+                "actionable": true,
+                "priority": 1
+            }
+        ]
+    },
+    "search_summary": {
+        "found_results": true,
+        "total_results": 0
+    },
+    "performance": {
+        "overall_success": true,
+        "pipeline_stages": 5
+    },
+    "architecture": "v2.0"
+}

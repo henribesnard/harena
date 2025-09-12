@@ -261,7 +261,8 @@ class ConversationOrchestrator:
                 
                 response_result = await self._execute_response_generation(
                     request, classification_result, [],  # Pas de résultats de recherche
-                    context_result["context_snapshot"]["recent_turns"]
+                    context_result["context_snapshot"]["recent_turns"],
+                    search_aggregations=None
                 )
                 
                 metrics.stage_timings["response_generation"] = self._get_stage_time(stage_start)
@@ -337,7 +338,8 @@ class ConversationOrchestrator:
             
             response_result = await self._execute_response_generation(
                 request, classification_result, query_execution_result.results if query_execution_result.success else [],
-                context_result["context_snapshot"]["recent_turns"]
+                context_result["context_snapshot"]["recent_turns"],
+                search_aggregations=query_execution_result.aggregations if query_execution_result and query_execution_result.success else None
             )
             
             metrics.stage_timings["response_generation"] = self._get_stage_time(stage_start)
@@ -431,6 +433,7 @@ class ConversationOrchestrator:
             )
             
             search_results = []
+            query_execution_result = None
             if query_build_result.success:
                 query_execution_result = await self._execute_query_execution(query_build_result.query, request)
                 if query_execution_result.success:
@@ -449,7 +452,8 @@ class ConversationOrchestrator:
                 user_id=request.user_id,
                 conversation_id=conversation_id,
                 generate_insights=request.include_insights,
-                stream_response=True
+                stream_response=True,
+                search_aggregations=query_execution_result.aggregations if query_execution_result and query_execution_result.success else None
             )
             
             # Stream de la reponse finale
@@ -563,10 +567,31 @@ class ConversationOrchestrator:
     ) -> Any:  # QueryBuildResult
         """Execute la construction de requete (Stage 3)"""
         
-        # Extraction entites pour injection dans template
+        # Extraction entites pour injection dans template avec normalisation
         entities = {}
+        has_amount_entity = False
+        
         for entity in classification_result.entities:
-            entities[entity.name] = entity.value
+            # Normalisation des noms d'entités anciens -> nouveaux
+            normalized_name = self._normalize_entity_name(entity.name)
+            normalized_value = self._normalize_entity_value(entity.name, entity.value)
+            entities[normalized_name] = normalized_value
+            
+            # Tracker si on a une entité de montant
+            if entity.name in ["amount_threshold", "amount", "montant"]:
+                has_amount_entity = True
+        
+        # Si on a un montant mais pas de transaction_type explicite, inférer debit par défaut
+        if has_amount_entity and "transaction_type" not in entities:
+            # Analyser le message utilisateur pour détecter le contexte
+            user_message = request.user_message.lower()
+            if any(word in user_message for word in ["revenus", "gains", "versements", "salaires", "crédits", "credits"]):
+                entities["transaction_type"] = "credit"
+            else:
+                # Par défaut pour les montants : dépenses (debit)
+                entities["transaction_type"] = "debit"
+            
+            logger.info(f"Ajout automatique transaction_type: {entities['transaction_type']} (inféré du contexte)")
         
         # Log pour debugging
         logger.info(f"Query building - Intent: {classification_result.intent_group}, Subtype: {classification_result.intent_subtype}, Entities: {entities}")
@@ -581,6 +606,54 @@ class ConversationOrchestrator:
         )
         
         return await self.query_builder.build_query(query_build_request)
+    
+    def _normalize_entity_name(self, entity_name: str) -> str:
+        """Normalise les noms d'entités pour compatibilité avec les templates"""
+        
+        # Mapping des anciens noms vers les nouveaux
+        entity_name_mappings = {
+            "amount_threshold": "montant",
+            "amount": "montant", 
+            "amount_min": "montant",
+            "amount_max": "montant",
+            "merchant": "merchant_name",
+            "date_range": "date_range",
+            "category": "category_name",
+            "transaction_type": "transaction_type"  # Pas de changement, mais explicite
+        }
+        
+        return entity_name_mappings.get(entity_name, entity_name)
+    
+    def _normalize_entity_value(self, original_name: str, value: Any) -> Any:
+        """Normalise les valeurs d'entités pour compatibilité avec les templates"""
+        
+        # Cas spécial : amount_threshold (valeur simple) -> montant (objet avec opérateur)
+        if original_name == "amount_threshold":
+            try:
+                amount = float(value) if isinstance(value, str) else value
+                return {
+                    "operator": "gte",  # Par défaut pour amount_threshold (fallback cases)
+                    "amount": amount,
+                    "currency": "EUR"
+                }
+            except (ValueError, TypeError):
+                logger.warning(f"Impossible de convertir amount_threshold: {value}")
+                return value
+        
+        # Cas spécial : amount simple -> objet avec opérateur equal
+        if original_name == "amount" and not isinstance(value, dict):
+            try:
+                amount = float(value) if isinstance(value, str) else value
+                return {
+                    "operator": "eq",
+                    "amount": amount,
+                    "currency": "EUR"
+                }
+            except (ValueError, TypeError):
+                logger.warning(f"Impossible de convertir amount: {value}")
+                return value
+        
+        return value
     
     async def _execute_query_execution(
         self, 
@@ -605,7 +678,8 @@ class ConversationOrchestrator:
         request: ConversationRequest,
         classification_result: Any,  # ClassificationResult
         search_results: List[Dict[str, Any]],
-        conversation_context: List[Dict[str, str]]
+        conversation_context: List[Dict[str, str]],
+        search_aggregations: Optional[Dict[str, Any]] = None
     ) -> Any:  # ResponseGenerationResult
         """Execute la generation de reponse (Stage 5)"""
         
@@ -619,7 +693,8 @@ class ConversationOrchestrator:
             user_id=request.user_id,
             conversation_id=request.conversation_id,
             generate_insights=request.include_insights,
-            stream_response=request.stream_response
+            stream_response=request.stream_response,
+            search_aggregations=search_aggregations
         )
         
         return await self.response_generator.generate_response(response_request)

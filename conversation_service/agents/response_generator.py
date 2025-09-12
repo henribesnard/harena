@@ -243,7 +243,13 @@ Tes capacités principales:
 - Conseils personnalisés selon le profil utilisateur
 - Communication claire et professionnelle
 
-Principe fondamental: Toujours baser tes réponses sur les données réelles fournies."""
+Instructions importantes:
+- UTILISE TOUJOURS les totaux précalculés fournis dans "DONNÉES FINANCIÈRES RÉSUMÉES" au début du contexte
+- Ces totaux sont exacts et calculés automatiquement sur toutes les transactions
+- Ne tente jamais de recalculer ou estimer des montants - utilise directement les totaux fournis
+- Mentionne ces totaux de façon claire et précise dans tes réponses
+
+Principe fondamental: Toujours baser tes réponses sur les données réelles fournies, en particulier les totaux précalculés."""
         
         # Adaptations selon profil
         language = user_profile.preferences.get("language", "fr")
@@ -285,10 +291,12 @@ Principe fondamental: Toujours baser tes réponses sur les données réelles fou
         if not search_results or not search_results.data:
             return "Aucune donnée financière disponible pour cette requête."
         
-        context = f"Données financières trouvées ({search_results.total_hits} résultats au total):\n\n"
+        # Préparer le contexte avec agrégations automatiques en premier
+        context = self._build_aggregations_summary(search_results)
+        context += f"\nDétails des transactions ({search_results.total_hits} résultats au total):\n\n"
         
         # Formatage transactions
-        for i, transaction in enumerate(search_results.data[:10], 1):  # Max 10 pour lisibilité
+        for i, transaction in enumerate(search_results.data[:5], 1):  # Max 5 pour lisibilité, le reste via agrégations
             amount = transaction.get("amount", 0)
             currency = transaction.get("currency", "EUR")
             merchant = transaction.get("merchant_name", "N/A")
@@ -301,10 +309,56 @@ Principe fondamental: Toujours baser tes réponses sur les données réelles fou
             remaining = search_results.total_hits - len(search_results.data)
             context += f"\n... et {remaining} autres transactions.\n"
         
+        # Ajout des agrégations si disponibles
+        if hasattr(search_results, 'aggregations') and search_results.aggregations:
+            context += "\nStatistiques calculées :\n"
+            
+            aggregations = search_results.aggregations
+            if 'total_amount' in aggregations:
+                total_value = aggregations['total_amount'].get('value', 0)
+                context += f"- Montant total : {total_value:.2f} EUR\n"
+            
+            if 'avg_amount' in aggregations:
+                avg_value = aggregations['avg_amount'].get('value', 0)
+                context += f"- Montant moyen : {avg_value:.2f} EUR\n"
+            
+            if 'transaction_count' in aggregations:
+                count_value = aggregations['transaction_count'].get('value', 0)
+                context += f"- Nombre de transactions : {count_value}\n"
+        
         # Métadonnées performance
         context += f"\nRecherche effectuée en {search_results.took_ms}ms.\n"
         
         return context
+
+    def _build_aggregations_summary(self, search_results) -> str:
+        """Construit un résumé automatique des agrégations pour l'agent LLM"""
+        
+        if not hasattr(search_results, 'aggregations') or not search_results.aggregations:
+            return "DONNÉES FINANCIÈRES RÉSUMÉES :\n(Aucune agrégation disponible)"
+        
+        aggregations = search_results.aggregations
+        
+        # Extraire les totaux
+        transaction_count = aggregations.get('transaction_count', {}).get('value', 0)
+        
+        # Extraire total_debit et total_credit (avec structure nested)
+        total_debit = 0
+        total_credit = 0
+        
+        if 'total_debit' in aggregations and 'sum_amount' in aggregations['total_debit']:
+            total_debit = aggregations['total_debit']['sum_amount'].get('value', 0)
+            
+        if 'total_credit' in aggregations and 'sum_amount' in aggregations['total_credit']:
+            total_credit = aggregations['total_credit']['sum_amount'].get('value', 0)
+        
+        # Construire le résumé
+        summary = "DONNÉES FINANCIÈRES RÉSUMÉES :\n"
+        summary += f"• Nombre total de transactions : {transaction_count}\n"
+        summary += f"• Total des débits (dépenses) : {total_debit:.2f} EUR\n" 
+        summary += f"• Total des crédits (revenus) : {total_credit:.2f} EUR\n"
+        
+        return summary
     
     def _format_conversation_context(self, conversation_history: List) -> str:
         """Formatage contexte conversationnel"""

@@ -36,7 +36,7 @@ class QueryBuilder:
         
         # Champs nécessitant .keyword pour filtres exacts (TRANSACTIONS)
         self.transaction_keyword_fields: Set[str] = {
-            'operation_type', 'currency_code', 'transaction_type', 'weekday'
+            'operation_type', 'currency_code', 'transaction_type', 'weekday', 'category_name', 'merchant_name'
         }
         
         # Champs textuels nécessitant une recherche case-insensitive (TRANSACTIONS)
@@ -352,6 +352,12 @@ class QueryBuilder:
         # 1. RANGE FILTER: opérateurs numériques/temporels
         if {"gt", "gte", "lt", "lte"} & set(value.keys()):
             return {"range": {field: value}}
+        
+        # 1.1. EQUALITY FILTER: opérateur 'eq' pour égalité exacte
+        elif "eq" in value:
+            eq_value = value["eq"]
+            field_name = self._get_filter_field_name(field, keyword_fields)
+            return {"term": {field_name: eq_value}}
 
         # 2. EXISTS FILTER: support complet true/false/{}
         elif "exists" in value:

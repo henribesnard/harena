@@ -122,7 +122,8 @@
       "Bash(set PYTHONPATH=.)",
       "Bash(pkill:*)",
       "Bash(ss:*)",
-      "Bash(set HARENA_STANDALONE=true)"
+      "Bash(set HARENA_STANDALONE=true)",
+      "Bash(netstat:*)"
     ],
     "deny": [],
     "ask": []

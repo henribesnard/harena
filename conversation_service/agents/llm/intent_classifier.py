@@ -78,6 +78,10 @@ class IntentClassifier:
         self.llm_manager = llm_manager
         self.few_shot_examples_path = few_shot_examples_path
         
+        # Service de catégories pour l'arbitrage
+        from conversation_service.services.category_service import category_service
+        self.category_service = category_service
+        
         # Cache des examples few-shot
         self._few_shot_examples: List[Dict] = []
         self._examples_loaded = False
@@ -95,8 +99,8 @@ class IntentClassifier:
                 "description": "Gestion des comptes utilisateur"
             },
             "transaction_search": {
-                "subtypes": ["simple", "advanced", "filter", "aggregate"],
-                "entities": ["merchant", "amount_min", "amount_max", "date_start", "date_end", "category"],
+                "subtypes": ["simple", "advanced", "filter", "aggregate", "by_period"],
+                "entities": ["merchant", "amount_min", "amount_max", "date_start", "date_end", "category", "date_range"],
                 "description": "Recherche dans les transactions"
             },
             "CONVERSATIONAL": {
@@ -200,10 +204,14 @@ class IntentClassifier:
             for intent, config in self.supported_intents.items()
         ])
         
+        categories_context = self.category_service.build_categories_context()
+        
         return f"""Tu es un expert en classification d'intentions pour un assistant financier.
 
 INTENTIONS SUPPORTeES:
 {intents_description}
+
+{categories_context}
 
 TeCHE:
 1. Analyser le message utilisateur et son contexte
@@ -379,16 +387,53 @@ ReGLES:
         # Recherche de montants (pattern simple)
         import re
         
-        # Montants en euros
-        amount_pattern = r'(\d+(?:[.,]\d{1,2})?)\s*(?:e|euros?|eur)'
-        for match in re.finditer(amount_pattern, message_lower):
-            entities.append(ExtractedEntity(
-                name="amount",
-                value=match.group(1),
-                confidence=0.8,
-                span=match.span(),
-                entity_type="monetary"
-            ))
+        # Montants avec opérateurs en euros
+        # Recherche "plus de X euros", "supérieur à X €", etc.
+        amount_comparison_patterns = [
+            (r'(?:plus de|supérieur(?:e)?s? à|au-dessus de|>\s*)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)', 'gte'),
+            (r'(?:moins de|inférieur(?:e)?s? à|en-dessous de|<\s*)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)', 'lt'),
+            (r'(?:entre)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:et)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)', 'range')
+        ]
+        
+        for pattern, operator in amount_comparison_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                if operator == 'range':
+                    # Cas spécial pour "entre X et Y euros"
+                    min_amount = float(match.group(1).replace(',', '.'))
+                    max_amount = float(match.group(2).replace(',', '.'))
+                    entities.append(ExtractedEntity(
+                        name="montant",
+                        value={"operator": operator, "min": min_amount, "max": max_amount, "currency": "EUR"},
+                        confidence=0.85,
+                        span=match.span(),
+                        entity_type="amount"
+                    ))
+                else:
+                    # Cas standard pour comparaisons simples
+                    amount = float(match.group(1).replace(',', '.'))
+                    entities.append(ExtractedEntity(
+                        name="montant", 
+                        value={"operator": operator, "amount": amount, "currency": "EUR"},
+                        confidence=0.85,
+                        span=match.span(),
+                        entity_type="amount"
+                    ))
+                break  # Prendre seulement le premier match
+        
+        # Si aucun opérateur trouvé, chercher montant simple
+        if not any(entity.name == "montant" for entity in entities):
+            amount_pattern = r'(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)'
+            match = re.search(amount_pattern, message_lower)
+            if match:
+                amount = float(match.group(1).replace(',', '.'))
+                entities.append(ExtractedEntity(
+                    name="montant",
+                    value={"operator": "eq", "amount": amount, "currency": "EUR"},
+                    confidence=0.7,
+                    span=match.span(),
+                    entity_type="amount"
+                ))
         
         # Dates relatives simples
         date_patterns = [
@@ -459,7 +504,51 @@ ReGLES:
                     entity_type="category"
                 ))
         
-        return entities[:5]  # Limiter à 5 entités
+        # Détection du type de transaction basé sur les mots-clés
+        transaction_type_patterns = [
+            # Mots-clés pour débits (dépenses/sorties)
+            (r'(?:dépenses?|depenses?|sorties?|achats?|paiements?|frais|coûts?|couts?)', 'debit'),
+            # Mots-clés pour crédits (revenus/entrées)  
+            (r'(?:revenus?|gains?|entrées?|entrees?|versements?|salaires?|recettes?|crédits?|credits?)', 'credit'),
+        ]
+        
+        transaction_type_found = False
+        for pattern, tx_type in transaction_type_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                entities.append(ExtractedEntity(
+                    name="transaction_type",
+                    value=tx_type,
+                    confidence=0.9,
+                    span=match.span(),
+                    entity_type="transaction_type"
+                ))
+                transaction_type_found = True
+                break
+        
+        # Si montant détecté mais pas de type explicite, inférer selon le contexte
+        if not transaction_type_found and any(entity.name == "montant" for entity in entities):
+            # Par défaut, si on parle de montants sans contexte, on assume des dépenses
+            # sauf si des mots-clés positifs sont détectés
+            if any(word in message_lower for word in ["reçu", "touché", "gagné", "perçu"]):
+                entities.append(ExtractedEntity(
+                    name="transaction_type",
+                    value="credit",
+                    confidence=0.6,
+                    span=(0, 0),
+                    entity_type="transaction_type"
+                ))
+            else:
+                # Inférence par défaut : montants = dépenses
+                entities.append(ExtractedEntity(
+                    name="transaction_type", 
+                    value="debit",
+                    confidence=0.7,
+                    span=(0, 0),
+                    entity_type="transaction_type"
+                ))
+
+        return entities[:6]  # Limiter à 6 entités (incluant transaction_type)
     
     def _get_confidence_level(self, confidence: float) -> IntentConfidence:
         """Determine le niveau de confiance"""
@@ -493,15 +582,124 @@ ReGLES:
         """Charge les exemples few-shot depuis la configuration"""
         
         # Exemples few-shot integres (en attendant fichier de config)
+        # PRIORITE: Examples d'opérateurs de montant (positions 1-3 pour être dans top 5)
         self._few_shot_examples = [
             {
-                "user": "Quel est mon solde actuel ?",
+                "user": "Mes dépenses de moins de 500 euros", 
                 "assistant": """{
-    "intent_group": "financial_query",
-    "intent_subtype": "balance",
-    "confidence": 0.95,
-    "entities": [],
-    "reasoning": "Demande directe de consultation du solde du compte"
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "montant",
+            "value": {"operator": "lt", "amount": 500, "currency": "EUR"},
+            "confidence": 0.92,
+            "span": [4, 33],
+            "entity_type": "amount"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit", 
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche de dépenses (débit) avec filtre sur montant maximum"
+}"""
+            },
+            {
+                "user": "Mes dépenses de plus de 500 euros",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "montant",
+            "value": {"operator": "gte", "amount": 500, "currency": "EUR"},
+            "confidence": 0.92,
+            "span": [4, 32],
+            "entity_type": "amount"
+        },
+        {
+            "name": "transaction_type", 
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche de dépenses (débit) avec filtre sur montant minimum"
+}"""
+            },
+            {
+                "user": "Transactions de 50 euros exactement",
+                "assistant": """{
+    "intent_group": "transaction_search", 
+    "intent_subtype": "by_amount",
+    "confidence": 0.88,
+    "entities": [
+        {
+            "name": "montant",
+            "value": {"operator": "eq", "amount": 50, "currency": "EUR"},
+            "confidence": 0.90,
+            "span": [14, 30],
+            "entity_type": "amount"
+        }
+    ],
+    "reasoning": "Recherche de transactions avec montant exact"
+}"""
+            },
+            {
+                "user": "Mes dépenses du mois de juin",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_period",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        },
+        {
+            "name": "date_range",
+            "value": "juin",
+            "confidence": 0.90,
+            "span": [19, 23],
+            "entity_type": "temporal"
+        }
+    ],
+    "reasoning": "Recherche de dépenses par période spécifique (mois)"
+}"""
+            },
+            {
+                "user": "Mes achats du mois de mai",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_period",
+    "confidence": 0.88,
+    "entities": [
+        {
+            "name": "categories",
+            "value": ["Supermarkets / Groceries", "Restaurants", "Clothing", "Electronics", "Online Shopping"],
+            "confidence": 0.85,
+            "span": [4, 10],
+            "entity_type": "categories"
+        },
+        {
+            "name": "date_range",
+            "value": "mai",
+            "confidence": 0.90,
+            "span": [19, 22],
+            "entity_type": "temporal"
+        }
+    ],
+    "reasoning": "Recherche d'achats (multiples catégories de dépenses) par période spécifique"
 }"""
             },
             {

@@ -785,7 +785,7 @@ async def global_health():
                         "intent_classification": "operational",
                         "json_output": "enforced",
                         "jwt_auth": "active_compatible",
-                        "autogen_runtime": "operational" if conversation_service_loader.autogen_runtime and conversation_service_loader.autogen_runtime.is_initialized else "fallback_phase1"
+                        "autogen_runtime": "deprecated_phase5_integrated"
                     },
                     "features": conversation_service_loader.service_config["features"]
                 }
@@ -848,7 +848,7 @@ async def metrics_endpoint():
                 "json_output_enforced": conversation_service_loader.service_config["json_output_enforced"],
                 "jwt_compatible": conversation_service_loader.service_config["jwt_compatible"],
                 "autogen_compatible": conversation_service_loader.service_config["autogen_compatible"],
-                "autogen_status": conversation_service_loader.autogen_runtime.get_status() if conversation_service_loader.autogen_runtime else {"available": False}
+                "autogen_status": {"available": False, "status": "deprecated_phase5_integrated"}
             },
             "labels": {
                 "service": "conversation_service",

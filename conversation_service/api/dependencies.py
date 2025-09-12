@@ -77,9 +77,7 @@ class ApplicationState:
             
             # === PHASE 2: TEMPLATE ENGINE ===
             from pathlib import Path
-            self.template_engine = TemplateEngine(
-                templates_dir=Path("conversation_service/templates")
-            )
+            self.template_engine = TemplateEngine()  # Utilise le chemin par défaut avec /query/
             await self.template_engine.initialize()
             logger.info("OK Template Engine initialise")
             

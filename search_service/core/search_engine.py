@@ -261,6 +261,10 @@ class SearchEngine:
                 "aggregations": aggregations,
                 "success": True,
                 "error_message": None,
+                "total_hits": total_results,
+                "returned_results": returned_results,
+                "has_more_results": has_more_results,
+                "total_pages": total_pages,
                 "response_metadata": {
                     "query_id": (request.metadata or {}).get("query_id", "unknown"),
                     "response_timestamp": datetime.utcnow().isoformat(),

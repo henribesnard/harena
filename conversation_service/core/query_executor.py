@@ -232,7 +232,7 @@ class QueryExecutor:
         request: QueryExecutionRequest,
         start_time: datetime
     ) -> QueryExecutionResult:
-        """Exécution d'une seule requête HTTP"""
+        """Exécution d'une requête HTTP avec récupération de toutes les pages"""
         
         if not self._session:
             await self.initialize()
@@ -246,19 +246,35 @@ class QueryExecutor:
             # Transformation du format template vers SearchRequest
             query_data = request.query
             
+            # Vérification : si la query est None (intents conversationnels), retourner résultat vide
+            if query_data is None:
+                return QueryExecutionResult(
+                    success=True,
+                    results=[],
+                    total_hits=0,
+                    aggregations=None,
+                    processing_time_ms=self._get_processing_time(start_time),
+                    search_service_time_ms=0
+                )
+            
             # Extraire les éléments de la query générée par le template
-            payload = {
+            base_payload = {
                 "user_id": request.user_id,
                 "query": "",  # Requête textuelle vide par défaut
                 "filters": query_data.get("filters", {}),
                 "sort": query_data.get("sort", []),
                 "page_size": query_data.get("page_size", 50),
+                "page": 1,  # Commencer à la page 1
                 "metadata": {"source": "conversation_service"}
             }
             
+            # Ajouter les agrégations si présentes dans la query du template
+            if "aggregations" in query_data:
+                base_payload["aggregations"] = query_data["aggregations"]
+            
             # Si il y a une requête textuelle dans le template
             if "query" in query_data and isinstance(query_data["query"], str):
-                payload["query"] = query_data["query"]
+                base_payload["query"] = query_data["query"]
             
             # Headers avec authentification JWT
             headers = {}
@@ -266,37 +282,78 @@ class QueryExecutor:
                 headers["Authorization"] = f"Bearer {request.jwt_token}"
             
             # Log de la query pour debugging
-            logger.info(f"Query envoyée au search service: {json.dumps(payload, indent=2)}")
+            logger.info(f"Query envoyée au search service: {json.dumps(base_payload, indent=2)}")
             
-            # Exécution requête HTTP
-            async with self._session.post(search_url, json=payload, headers=headers) as response:
-                search_time_ms = self._get_processing_time(search_start)
+            # Variables pour collecter tous les résultats
+            all_results = []
+            total_hits = 0
+            aggregations = None
+            current_page = 1
+            total_search_time = 0
+            
+            while True:
+                # Préparer payload pour la page courante
+                current_payload = base_payload.copy()
+                current_payload["page"] = current_page
                 
-                if response.status == 200:
-                    result_data = await response.json()
+                # Exécution requête HTTP pour la page courante
+                async with self._session.post(search_url, json=current_payload, headers=headers) as response:
+                    page_search_time = self._get_processing_time(search_start)
+                    total_search_time += page_search_time
                     
-                    return QueryExecutionResult(
-                        success=True,
-                        results=result_data.get("results", []),
-                        total_hits=result_data.get("total_hits", 0),
-                        aggregations=result_data.get("aggregations"),
-                        processing_time_ms=self._get_processing_time(start_time),
-                        search_service_time_ms=search_time_ms
-                    )
-                
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Search service error {response.status}: {error_text}")
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Search service error {response.status}: {error_text}")
+                        
+                        return QueryExecutionResult(
+                            success=False,
+                            results=[],
+                            total_hits=0,
+                            aggregations=None,
+                            processing_time_ms=self._get_processing_time(start_time),
+                            search_service_time_ms=total_search_time,
+                            error_message=f"Search service error {response.status}: {error_text}"
+                        )
                     
-                    return QueryExecutionResult(
-                        success=False,
-                        results=[],
-                        total_hits=0,
-                        aggregations=None,
-                        processing_time_ms=self._get_processing_time(start_time),
-                        search_service_time_ms=search_time_ms,
-                        error_message=f"Search service error {response.status}: {error_text}"
-                    )
+                    page_data = await response.json()
+                    
+                    # Récupérer les résultats de cette page
+                    page_results = page_data.get("results", [])
+                    all_results.extend(page_results)
+                    logger.info(f"Page {current_page}: {len(page_results)} résultats récupérés, total accumulé: {len(all_results)}")
+                    
+                    # Mettre à jour les métadonnées (seulement à la première page)
+                    if current_page == 1:
+                        total_hits = page_data.get("total_hits", 0)
+                        aggregations = page_data.get("aggregations")
+                    
+                    # Vérifier s'il y a plus de pages
+                    has_more_results = page_data.get("has_more_results", False)
+                    total_pages = page_data.get("total_pages", 1)
+                    total_hits_page = page_data.get("total_hits", 0)
+                    returned_results = page_data.get("returned_results", len(page_results))
+                    
+                    logger.info(f"Page {current_page}/{total_pages}: {len(page_results)} résultats récupérés, has_more: {has_more_results}, total_hits: {total_hits_page}, returned_results: {returned_results}")
+                    
+                    # Si plus de résultats et pas trop de pages (protection contre boucles infinies)
+                    if has_more_results and current_page < total_pages and current_page < 100:  # Max 100 pages
+                        current_page += 1
+                        search_start = datetime.now()  # Reset timer pour la page suivante
+                        logger.info(f"Récupération page suivante: {current_page}")
+                    else:
+                        logger.info(f"Arrêt récupération - has_more: {has_more_results}, current_page: {current_page}, total_pages: {total_pages}")
+                        break
+            
+            logger.info(f"Récupération terminée: {len(all_results)} résultats sur {current_page} pages")
+            
+            return QueryExecutionResult(
+                success=True,
+                results=all_results,
+                total_hits=total_hits,
+                aggregations=aggregations,
+                processing_time_ms=self._get_processing_time(start_time),
+                search_service_time_ms=total_search_time
+            )
         
         except asyncio.TimeoutError:
             raise  # Re-raise pour gestion retry

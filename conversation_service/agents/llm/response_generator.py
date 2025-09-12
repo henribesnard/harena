@@ -33,10 +33,12 @@ class ResponseType(Enum):
 class InsightType(Enum):
     """Types d'insights automatiques"""
     SPENDING_PATTERN = "spending_pattern"
+    INCOME_PATTERN = "income_pattern"
     UNUSUAL_TRANSACTION = "unusual_transaction"
     BUDGET_ALERT = "budget_alert"
     TREND_ANALYSIS = "trend_analysis"
     RECOMMENDATION = "recommendation"
+    FINANCIAL_SUMMARY = "financial_summary"
 
 @dataclass
 class ResponseGenerationRequest:
@@ -51,6 +53,7 @@ class ResponseGenerationRequest:
     conversation_id: Optional[str] = None
     generate_insights: bool = True
     stream_response: bool = False
+    search_aggregations: Optional[Dict[str, Any]] = None
 
 @dataclass
 class GeneratedInsight:
@@ -99,10 +102,12 @@ class ResponseGenerator:
         # Configuration insights automatiques
         self.insight_generators = {
             InsightType.SPENDING_PATTERN: self._generate_spending_pattern_insight,
+            InsightType.INCOME_PATTERN: self._generate_spending_pattern_insight,  # Même méthode, gère les deux
             InsightType.UNUSUAL_TRANSACTION: self._generate_unusual_transaction_insight,
             InsightType.BUDGET_ALERT: self._generate_budget_alert_insight,
             InsightType.TREND_ANALYSIS: self._generate_trend_analysis_insight,
-            InsightType.RECOMMENDATION: self._generate_recommendation_insight
+            InsightType.RECOMMENDATION: self._generate_recommendation_insight,
+            InsightType.FINANCIAL_SUMMARY: self._generate_financial_summary_insight
         }
         
         # Statistiques
@@ -318,6 +323,9 @@ class ResponseGenerator:
         
         insights = []
         
+        # Stocker temporairement request pour que les générateurs puissent accéder aux agrégations
+        self.current_request = request
+        
         # Generation parallele des differents types d'insights
         insight_tasks = []
         
@@ -345,6 +353,10 @@ class ResponseGenerator:
         insights = insights[:3]
         self.stats["insights_generated"] += len(insights)
         
+        # Nettoyer la référence temporaire
+        if hasattr(self, 'current_request'):
+            delattr(self, 'current_request')
+        
         return insights
     
     async def _generate_spending_pattern_insight(
@@ -352,33 +364,136 @@ class ResponseGenerator:
         search_results: List[Dict[str, Any]], 
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
-        """Genere insight sur patterns de depenses"""
+        """Genere insight sur patterns de depenses et revenus selon le type de transaction"""
         
         if not search_results:
             return None
         
         try:
-            # Analyse simple des transactions
-            total_amount = sum(float(tx.get("amount", 0)) for tx in search_results)
-            transaction_count = len(search_results)
-            avg_transaction = total_amount / transaction_count if transaction_count > 0 else 0
+            # Catégoriser par type de transaction
+            debits = [tx for tx in search_results if tx.get("transaction_type") == "debit"]
+            credits = [tx for tx in search_results if tx.get("transaction_type") == "credit"]
             
-            # Comparaison avec moyenne utilisateur (si disponible)
-            user_avg = user_profile.get("avg_monthly_spending", avg_transaction * 30)
+            # Traiter les dépenses (debits)
+            if debits:
+                insight = await self._analyze_expense_pattern(debits, user_profile)
+                if insight:
+                    return insight
             
-            if total_amount > user_avg * 1.2:  # 20% au-dessus de la moyenne
-                return GeneratedInsight(
-                    type=InsightType.SPENDING_PATTERN,
-                    title="Depenses elevees detectees",
-                    description=f"Vos depenses recentes ({total_amount:.2f}e) sont 20% au-dessus de votre moyenne habituelle",
-                    confidence=0.75,
-                    data_support={"total_amount": total_amount, "user_avg": user_avg},
-                    actionable=True,
-                    priority=1
-                )
-            
+            # Traiter les revenus (credits) 
+            if credits:
+                insight = await self._analyze_income_pattern(credits, user_profile)
+                if insight:
+                    return insight
+                    
         except Exception as e:
             logger.warning(f"Erreur calcul spending pattern: {str(e)}")
+        
+        return None
+    
+    async def _analyze_expense_pattern(
+        self, 
+        debit_transactions: List[Dict[str, Any]], 
+        user_profile: Dict[str, Any]
+    ) -> Optional[GeneratedInsight]:
+        """Analyse les patterns de dépenses (debits)"""
+        
+        amounts = [abs(float(tx.get("amount", 0))) for tx in debit_transactions]
+        abs_total_amount = sum(amounts)
+        transaction_count = len(amounts)
+        
+        # Comparaison avec moyenne utilisateur pour les dépenses
+        abs_user_avg = abs(user_profile.get("avg_monthly_spending", abs_total_amount))
+        
+        if abs_total_amount > abs_user_avg * 1.2:  # Dépenses élevées: 20% au-dessus
+            percentage_increase = ((abs_total_amount - abs_user_avg) / abs_user_avg) * 100
+            
+            return GeneratedInsight(
+                type=InsightType.SPENDING_PATTERN,
+                title="Dépenses élevées détectées",
+                description=f"Vos dépenses récentes ({abs_total_amount:.2f}€) sont {percentage_increase:.0f}% au-dessus de votre moyenne habituelle ({abs_user_avg:.2f}€)",
+                confidence=0.75,
+                data_support={
+                    "abs_total_amount": abs_total_amount, 
+                    "abs_user_avg": abs_user_avg, 
+                    "percentage_increase": percentage_increase,
+                    "transaction_type": "debit",
+                    "transaction_count": transaction_count
+                },
+                actionable=True,
+                priority=1
+            )
+        elif abs_total_amount < abs_user_avg * 0.5:  # Dépenses faibles: 50% en dessous
+            percentage_decrease = ((abs_user_avg - abs_total_amount) / abs_user_avg) * 100
+            
+            return GeneratedInsight(
+                type=InsightType.SPENDING_PATTERN,
+                title="Dépenses réduites détectées",
+                description=f"Vos dépenses récentes ({abs_total_amount:.2f}€) sont {percentage_decrease:.0f}% en dessous de votre moyenne habituelle ({abs_user_avg:.2f}€)",
+                confidence=0.70,
+                data_support={
+                    "abs_total_amount": abs_total_amount, 
+                    "abs_user_avg": abs_user_avg, 
+                    "percentage_decrease": percentage_decrease,
+                    "transaction_type": "debit",
+                    "transaction_count": transaction_count
+                },
+                actionable=False,
+                priority=2
+            )
+        
+        return None
+    
+    async def _analyze_income_pattern(
+        self, 
+        credit_transactions: List[Dict[str, Any]], 
+        user_profile: Dict[str, Any]
+    ) -> Optional[GeneratedInsight]:
+        """Analyse les patterns de revenus (credits)"""
+        
+        amounts = [abs(float(tx.get("amount", 0))) for tx in credit_transactions]
+        abs_total_amount = sum(amounts)
+        transaction_count = len(amounts)
+        
+        # Comparaison avec moyenne utilisateur pour les revenus
+        abs_user_avg = abs(user_profile.get("avg_monthly_income", abs_total_amount))
+        
+        if abs_total_amount > abs_user_avg * 1.5:  # Revenus élevés: seuil plus haut (50%)
+            percentage_increase = ((abs_total_amount - abs_user_avg) / abs_user_avg) * 100
+            
+            return GeneratedInsight(
+                type=InsightType.INCOME_PATTERN,
+                title="Revenus exceptionnels détectés",
+                description=f"Vos revenus récents ({abs_total_amount:.2f}€) sont {percentage_increase:.0f}% au-dessus de votre moyenne habituelle ({abs_user_avg:.2f}€)",
+                confidence=0.80,
+                data_support={
+                    "abs_total_amount": abs_total_amount, 
+                    "abs_user_avg": abs_user_avg, 
+                    "percentage_increase": percentage_increase,
+                    "transaction_type": "credit",
+                    "transaction_count": transaction_count
+                },
+                actionable=False,
+                priority=1
+            )
+        elif abs_total_amount < abs_user_avg * 0.3:  # Revenus faibles: seuil plus bas (70%)
+            percentage_decrease = ((abs_user_avg - abs_total_amount) / abs_user_avg) * 100
+            
+            return GeneratedInsight(
+                type=InsightType.INCOME_PATTERN,
+                title="Revenus réduits détectés",
+                description=f"Vos revenus récents ({abs_total_amount:.2f}€) sont {percentage_decrease:.0f}% en dessous de votre moyenne habituelle ({abs_user_avg:.2f}€)",
+                confidence=0.75,
+                data_support={
+                    "abs_total_amount": abs_total_amount, 
+                    "abs_user_avg": abs_user_avg, 
+                    "percentage_decrease": percentage_decrease,
+                    "transaction_type": "credit",
+                    "transaction_count": transaction_count
+                },
+                actionable=True,
+                priority=1
+            )
         
         return None
     
@@ -387,34 +502,116 @@ class ResponseGenerator:
         search_results: List[Dict[str, Any]], 
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
-        """Genere insight sur transactions inhabituelles"""
+        """Genere insight sur transactions inhabituelles selon le type (debit/credit)"""
         
         if not search_results:
             return None
         
         try:
-            # Recherche montants inhabituellement eleves
-            amounts = [float(tx.get("amount", 0)) for tx in search_results]
-            if not amounts:
-                return None
-                
-            avg_amount = sum(amounts) / len(amounts)
-            max_amount = max(amounts)
+            # Séparer par type de transaction
+            debits = [tx for tx in search_results if tx.get("transaction_type") == "debit"]
+            credits = [tx for tx in search_results if tx.get("transaction_type") == "credit"]
             
-            if max_amount > avg_amount * 3:  # 3x la moyenne
-                unusual_tx = next(tx for tx in search_results if float(tx.get("amount", 0)) == max_amount)
-                
-                return GeneratedInsight(
-                    type=InsightType.UNUSUAL_TRANSACTION,
-                    title="Transaction inhabituelle detectee",
-                    description=f"Transaction de {max_amount:.2f}e chez {unusual_tx.get('merchant', 'N/A')} - 3x votre moyenne",
-                    confidence=0.80,
-                    data_support={"unusual_amount": max_amount, "avg_amount": avg_amount},
-                    priority=1
-                )
-                
+            # Analyser les dépenses inhabituelles
+            if debits:
+                insight = await self._analyze_unusual_expenses(debits, user_profile)
+                if insight:
+                    return insight
+            
+            # Analyser les revenus inhabituels  
+            if credits:
+                insight = await self._analyze_unusual_income(credits, user_profile)
+                if insight:
+                    return insight
+                    
         except Exception as e:
             logger.warning(f"Erreur detection transaction inhabituelle: {str(e)}")
+        
+        return None
+    
+    async def _analyze_unusual_expenses(
+        self, 
+        debit_transactions: List[Dict[str, Any]], 
+        user_profile: Dict[str, Any]
+    ) -> Optional[GeneratedInsight]:
+        """Détecte les dépenses inhabituellement élevées"""
+        
+        abs_amounts = [abs(float(tx.get("amount", 0))) for tx in debit_transactions]
+        if not abs_amounts:
+            return None
+        
+        # Supprimer les doublons pour éviter les faux positifs
+        unique_abs_amounts = list(set(abs_amounts))
+        if len(unique_abs_amounts) <= 1:
+            return None
+            
+        abs_avg_amount = sum(abs_amounts) / len(abs_amounts)
+        max_abs_amount = max(abs_amounts)
+        
+        # Seuil plus bas pour les dépenses (2x au lieu de 3x)
+        if max_abs_amount > abs_avg_amount * 2:
+            max_abs_index = abs_amounts.index(max_abs_amount)
+            unusual_tx = debit_transactions[max_abs_index]
+            multiplier = max_abs_amount / abs_avg_amount
+            
+            return GeneratedInsight(
+                type=InsightType.UNUSUAL_TRANSACTION,
+                title="Dépense inhabituelle détectée",
+                description=f"Dépense de {max_abs_amount:.2f}€ chez {unusual_tx.get('merchant_name', unusual_tx.get('merchant', 'N/A'))} - {multiplier:.1f}x votre moyenne ({abs_avg_amount:.2f}€)",
+                confidence=0.85,
+                data_support={
+                    "max_abs_amount": max_abs_amount, 
+                    "abs_avg_amount": abs_avg_amount, 
+                    "multiplier": multiplier,
+                    "transaction_type": "debit",
+                    "merchant": unusual_tx.get('merchant_name', unusual_tx.get('merchant', 'N/A'))
+                },
+                actionable=True,
+                priority=1
+            )
+        
+        return None
+    
+    async def _analyze_unusual_income(
+        self, 
+        credit_transactions: List[Dict[str, Any]], 
+        user_profile: Dict[str, Any]
+    ) -> Optional[GeneratedInsight]:
+        """Détecte les revenus inhabituellement élevés"""
+        
+        abs_amounts = [abs(float(tx.get("amount", 0))) for tx in credit_transactions]
+        if not abs_amounts:
+            return None
+        
+        # Supprimer les doublons pour éviter les faux positifs
+        unique_abs_amounts = list(set(abs_amounts))
+        if len(unique_abs_amounts) <= 1:
+            return None
+            
+        abs_avg_amount = sum(abs_amounts) / len(abs_amounts)
+        max_abs_amount = max(abs_amounts)
+        
+        # Seuil plus élevé pour les revenus (4x)
+        if max_abs_amount > abs_avg_amount * 4:
+            max_abs_index = abs_amounts.index(max_abs_amount)
+            unusual_tx = credit_transactions[max_abs_index]
+            multiplier = max_abs_amount / abs_avg_amount
+            
+            return GeneratedInsight(
+                type=InsightType.UNUSUAL_TRANSACTION,
+                title="Revenu exceptionnel détecté",
+                description=f"Revenu de {max_abs_amount:.2f}€ de {unusual_tx.get('merchant_name', unusual_tx.get('merchant', 'N/A'))} - {multiplier:.1f}x votre moyenne ({abs_avg_amount:.2f}€)",
+                confidence=0.80,
+                data_support={
+                    "max_abs_amount": max_abs_amount, 
+                    "abs_avg_amount": abs_avg_amount, 
+                    "multiplier": multiplier,
+                    "transaction_type": "credit",
+                    "merchant": unusual_tx.get('merchant_name', unusual_tx.get('merchant', 'N/A'))
+                },
+                actionable=False,
+                priority=2
+            )
         
         return None
     
@@ -470,6 +667,49 @@ class ResponseGenerator:
         # Placeholder - e implementer selon regles metier
         return None
     
+    async def _generate_financial_summary_insight(
+        self, 
+        search_results: List[Dict[str, Any]], 
+        user_profile: Dict[str, Any]
+    ) -> Optional[GeneratedInsight]:
+        """Genere un insight avec les totaux financiers basés sur les agrégations"""
+        
+        # Accéder aux agrégations via self.current_request (sera défini dans generate_automatic_insights)
+        if not hasattr(self, 'current_request') or not self.current_request.search_aggregations:
+            return None
+        
+        aggregations = self.current_request.search_aggregations
+        
+        # Extraire les données agrégées (nouvelles agrégations automatiques)
+        transaction_count = aggregations.get('transaction_count', {}).get('value', 0)
+        
+        total_debit = 0
+        total_credit = 0
+        
+        if 'total_debit' in aggregations and 'sum_amount' in aggregations['total_debit']:
+            total_debit = aggregations['total_debit']['sum_amount'].get('value', 0)
+            
+        if 'total_credit' in aggregations and 'sum_amount' in aggregations['total_credit']:
+            total_credit = aggregations['total_credit']['sum_amount'].get('value', 0)
+        
+        if transaction_count == 0:
+            return None
+        
+        return GeneratedInsight(
+            type=InsightType.FINANCIAL_SUMMARY,
+            title=f"Résumé financier : {transaction_count} transactions",
+            description=f"Débits: {total_debit:.2f}€ | Crédits: {total_credit:.2f}€",
+            confidence=1.0,
+            data_support={
+                "transaction_count": transaction_count,
+                "total_debit": total_debit,
+                "total_credit": total_credit,
+                "currency": "EUR"
+            },
+            actionable=False,
+            priority=0  # Priorité élevée pour affichage en premier
+        )
+    
     def _select_response_template(self, request: ResponseGenerationRequest) -> Dict[str, str]:
         """Selectionne le template de reponse approprie"""
         
@@ -480,8 +720,8 @@ class ResponseGenerator:
                 "structure": "1. Reponse directe, 2. Donnees detaillees, 3. Insights si pertinents"
             },
             "transaction_search": {
-                "system": "Tu es un assistant specialise dans l'analyse des transactions. Organise les resultats de maniere logique.",
-                "structure": "1. Resume des resultats, 2. Transactions detaillees, 3. Patterns observes"
+                "system": "Tu es un assistant personnel specialise dans l'analyse de vos transactions financieres. Reponds avec un ton chaleureux et personnel.",
+                "structure": "1. Resume personnel des resultats, 2. Descriptions claires des transactions avec noms de marchands, 3. Observations utiles pour vos finances"
             },
             "account_management": {
                 "system": "Tu es un assistant pour la gestion de comptes. Donne des instructions claires et securisees.",
@@ -515,13 +755,32 @@ ReGLES:
 - Adapte le ton selon le contexte de conversation
 - En cas de donnees manquantes, le signaler clairement
 - Propose des actions concretes quand pertinent
+- Utilise TOUJOURS "vos transactions", "votre compte", "vos depenses" etc. (forme personnelle)
+- JAMAIS mentionner l'ID utilisateur ou les IDs techniques
+- Concentre-toi sur le nom du marchand et la description pour identifier les transactions
 
 PROFIL UTILISATEUR:
-- ID: {request.user_id}
 - Preferences: {request.user_profile.get('preferences', 'Aucune specifiee')}"""
         
         return system_prompt
     
+    def _filter_transaction_data(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
+        """Filtre les donnees de transaction pour ne garder que les champs utiles"""
+        
+        # Champs a garder (user-friendly)
+        user_friendly_fields = {
+            'amount', 'date', 'merchant_name', 'merchant', 'primary_description', 
+            'description', 'category', 'transaction_type', 'currency'
+        }
+        
+        # Filtrer les champs techniques (user_id, IDs, etc.)
+        filtered_transaction = {}
+        for key, value in transaction.items():
+            if key in user_friendly_fields and value is not None:
+                filtered_transaction[key] = value
+        
+        return filtered_transaction
+
     def _build_user_prompt(
         self, 
         request: ResponseGenerationRequest, 
@@ -541,9 +800,10 @@ PROFIL UTILISATEUR:
         if request.search_results:
             results_summary = f"DONNeES TROUVeES ({len(request.search_results)} resultats):"
             
-            # Limiter l'affichage des donnees (eviter surcharge context)
+            # Filtrer et limiter l'affichage des donnees (eviter surcharge context)
             for i, result in enumerate(request.search_results[:5]):
-                result_str = json.dumps(result, ensure_ascii=False)[:200]
+                filtered_result = self._filter_transaction_data(result)
+                result_str = json.dumps(filtered_result, ensure_ascii=False)[:200]
                 results_summary += f"\n{i+1}. {result_str}..."
             
             if len(request.search_results) > 5:
@@ -757,7 +1017,8 @@ PROFIL UTILISATEUR:
                 conversation_context=[],
                 user_profile={},
                 user_id=0,
-                generate_insights=False
+                generate_insights=False,
+                search_aggregations=None
             )
             
             result = await self.generate_response(test_request)

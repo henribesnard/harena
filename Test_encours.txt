@@ -1,0 +1,3 @@
+Questions testées :
+1- Mes dépenses Netflix ? résultat OK
+2- Mes achats Amazon ? Résultat OK 

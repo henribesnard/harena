@@ -1,3 +1,77 @@
 Questions testées :
-1- Mes dépenses Netflix ? résultat OK
-2- Mes achats Amazon ? Résultat OK 
+0- Mes dépenses Netflix ? ==> OK
+1- Mes achats Amazon ? ==> OK 
+2- Mes dépenses de plus de 500 euros ==> OK
+3- Mes dépenses de plus de 1000 euros ==> OK
+4- Mes dépenses de moins de 50 euros ==> OK
+5- Est-ce que j'ai des dépenses d'un montant de 50 euros ? ==> OK
+6- Mes revenus de plus de 500 euros ==> OK
+7- Mes revenus de plus de 500 euros ==> OK
+8- Mes revenus de moins de 500 euros ==> OK 
+
+9. Mes dépenses de ce mois |Mes dépenses du mois de juin| Mes dépenses du mois d'octobre | ==> OK
+10. Mes achats du mois de Mai ==> OK
+11. Mes revenus de ce mois | Mes rentrées d'argent du mois de Mai | Mes rentrées d'argent en décembre | ==> OK
+12. Toutes mes transactions d'hier
+13. Mes dépenses des 30 derniers jours
+14. Mes achats Amazon de décembre
+15. Mes revenus du trimestre
+
+16. Mes dépenses restaurant
+17. Mes frais de transport
+18. Mes achats alimentaires
+19. Mes dépenses santé
+20. Mes sorties loisirs
+21. Mes factures d'énergie
+22. Mes frais bancaires
+
+23. Mes achats Amazon de plus de 100 euros
+24. Mes dépenses restaurant de moins de 30 euros
+25. Mes revenus Netflix supérieurs à 50 euros ce mois
+26. Toutes mes transactions Carrefour de janvier
+27. Mes dépenses essence de plus de 50 euros
+28. Mes achats en ligne inférieurs à 20 euros
+
+29. Mes dépenses de 0 euros
+30. Mes transactions de plus de 10000 euros
+31. Mes achats de moins de 0.01 euro
+32. Mes dépenses exactement égales à 25.50 euros
+33. Mes revenus négatifs (remboursements)
+
+34. Mes achats Amazone (faute de frappe)
+35. Mes dépenses Netflik (faute de frappe)
+36. Restaurant McDonald (recherche partielle)
+37. Mes achats Apple/iTunes
+38. Mes dépenses essence/carburant
+
+
+39. Combien j'ai dépensé ce mois ?
+40. Quel est mon budget restaurant ?
+41. Ma moyenne de dépenses par jour
+42. Mon plus gros achat du mois
+43. Combien je gagne par mois ?
+44. Mes dépenses totales Amazon
+
+
+45. Trouve mes abonnements récurrents
+46. Liste mes virements reçus
+47. Mes prélèvements automatiques
+48. Mes paiements par carte bleue
+49. Mes retraits espèces
+50. Mes virements sortants
+
+51. (question vide)
+52. ????????????????
+53. azerty1234
+54. SELECT * FROM transactions
+55. Mes dépenses de demain (date future)
+56. Mes achats en 1995 (date très ancienne)
+
+
+60. Mes achats sur un site inexistant
+61. Mes dépenses dans une catégorie inexistante
+62. Transactions d'un utilisateur inexistant
+63. Recherche avec caractères spéciaux @#$%
+
+Remarque et TODO :
+- Importance de structured_data[] ? Il est pour l'instant vide est ce nécéssaire de le remplir. 

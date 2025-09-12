@@ -123,7 +123,13 @@
       "Bash(pkill:*)",
       "Bash(ss:*)",
       "Bash(set HARENA_STANDALONE=true)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(tasklist)",
+      "Bash(taskkill:*)",
+      "Bash(env/Scripts/python test_netflix.py:*)",
+      "Bash(env/Scripts/pip install pyjwt requests)",
+      "Bash(tasklist:*)",
+      "Bash(env/Scripts/python:*)"
     ],
     "deny": [],
     "ask": []

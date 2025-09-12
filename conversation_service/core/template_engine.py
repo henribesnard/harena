@@ -303,7 +303,10 @@ class TemplateEngine:
         
         today = date.today()
         
-        if date_range_string == "this_month":
+        # Normaliser le texte (français et anglais)
+        date_range_lower = date_range_string.lower().strip()
+        
+        if date_range_lower in ["this_month", "ce mois", "this month"]:
             # Premier jour du mois courant
             start_of_month = today.replace(day=1)
             # Dernier jour du mois courant
@@ -315,7 +318,7 @@ class TemplateEngine:
                 "lte": end_of_month.isoformat()
             }
         
-        elif date_range_string == "last_month":
+        elif date_range_lower in ["last_month", "mois dernier", "le mois dernier", "last month"]:
             # Premier jour du mois dernier
             first_last_month = (today.replace(day=1) - relativedelta(months=1))
             # Dernier jour du mois dernier
@@ -327,7 +330,7 @@ class TemplateEngine:
                 "lte": end_last_month.isoformat()
             }
         
-        elif date_range_string == "this_week":
+        elif date_range_lower in ["this_week", "cette semaine", "this week"]:
             # Lundi de cette semaine (début)
             days_since_monday = today.weekday()
             start_of_week = today - relativedelta(days=days_since_monday)
@@ -339,7 +342,7 @@ class TemplateEngine:
                 "lte": end_of_week.isoformat()
             }
             
-        elif date_range_string == "last_week":
+        elif date_range_lower in ["last_week", "la semaine dernière", "semaine dernière", "last week"]:
             # Lundi de la semaine dernière
             days_since_monday = today.weekday()
             start_of_last_week = today - relativedelta(days=days_since_monday + 7)
@@ -351,10 +354,17 @@ class TemplateEngine:
                 "lte": end_of_last_week.isoformat()
             }
             
-        elif date_range_string == "today":
+        elif date_range_lower in ["today", "aujourd'hui", "aujourd hui", "ce jour"]:
             return {
                 "gte": today.isoformat(),
                 "lte": today.isoformat()
+            }
+            
+        elif date_range_lower in ["yesterday", "hier"]:
+            yesterday = today - relativedelta(days=1)
+            return {
+                "gte": yesterday.isoformat(),
+                "lte": yesterday.isoformat()
             }
         
         # Gestion des mois spécifiques avec logique contextuelle
@@ -391,20 +401,29 @@ class TemplateEngine:
         return {"gte": date_range_string, "lte": date_range_string}
 
     def _add_default_aggregations(self, query: Dict[str, Any]) -> Dict[str, Any]:
-        """Ajoute automatiquement les agrégations de base si pas déjà présentes"""
+        """Ajoute automatiquement les agrégations dynamiques selon les filtres"""
         
         # Ne pas ajouter d'agrégations si déjà présentes ou si user_id absent
         if "aggregations" in query or "user_id" not in query:
             return query
         
-        # Agrégations de base pour toutes les requêtes de transactions
-        default_aggregations = {
+        # Analyser les filtres pour déterminer les agrégations pertinentes
+        filters = query.get("filters", {})
+        transaction_type_filter = filters.get("transaction_type")
+        
+        # Toujours ajouter le compteur de transactions
+        aggregations = {
             "transaction_count": {
                 "value_count": {
                     "field": "transaction_id"
                 }
-            },
-            "total_debit": {
+            }
+        }
+        
+        # Agrégations dynamiques selon le type de transaction filtré
+        if transaction_type_filter == "debit":
+            # Seulement les débits
+            aggregations["total_debit"] = {
                 "filter": {
                     "term": {
                         "transaction_type": "debit"
@@ -417,8 +436,12 @@ class TemplateEngine:
                         }
                     }
                 }
-            },
-            "total_credit": {
+            }
+            logger.info("🎯 Agrégation dynamique: seulement total_debit")
+            
+        elif transaction_type_filter == "credit":
+            # Seulement les crédits
+            aggregations["total_credit"] = {
                 "filter": {
                     "term": {
                         "transaction_type": "credit"
@@ -432,11 +455,43 @@ class TemplateEngine:
                     }
                 }
             }
-        }
+            logger.info("🎯 Agrégation dynamique: seulement total_credit")
+            
+        else:
+            # Pas de filtre spécifique -> les deux agrégations
+            aggregations.update({
+                "total_debit": {
+                    "filter": {
+                        "term": {
+                            "transaction_type": "debit"
+                        }
+                    },
+                    "aggs": {
+                        "sum_amount": {
+                            "sum": {
+                                "field": "amount_abs"
+                            }
+                        }
+                    }
+                },
+                "total_credit": {
+                    "filter": {
+                        "term": {
+                            "transaction_type": "credit"
+                        }
+                    },
+                    "aggs": {
+                        "sum_amount": {
+                            "sum": {
+                                "field": "amount_abs"
+                            }
+                        }
+                    }
+                }
+            })
+            logger.info("🎯 Agrégation dynamique: total_debit + total_credit (aucun filtre)")
         
-        # Ajouter les agrégations par défaut
-        query["aggregations"] = default_aggregations
-        
+        query["aggregations"] = aggregations
         return query
 
     def _remove_null_values(self, obj: Any) -> Any:

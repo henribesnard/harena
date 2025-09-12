@@ -47,8 +47,8 @@
     },
     "merchant_name": {
       "required": false,
-      "type": "string",
-      "source": "entities.merchant_search.merchant_name"
+      "type": "merchant_name",
+      "source": "entities.merchant_name"
     },
     "category_name": {
       "required": false,

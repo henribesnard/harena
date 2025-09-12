@@ -22,19 +22,18 @@
     "merchant_query": {
       "required": false,
       "type": "string",
-      "source": "entities.merchant_search.query",
-      "condition": "entities.merchant_search.query is not null"
+      "source": "entities.merchant_name",
+      "default": ""
     },
     "merchant_name": {
       "required": false,
-      "type": "string",
-      "source": "entities.merchant_search.merchant_name",
-      "condition": "entities.merchant_search.merchant_name is not null"
+      "type": "merchant_name",
+      "source": "entities.merchant_name"
     }
   },
   "parameter_selection": {
     "merchant_query_or_filter": {
-      "logic": "if entities.merchant_search.merchant_name then use merchant_name filter else use merchant_query"
+      "logic": "if entities.merchant then use merchant_name filter else use merchant_query"
     }
   },
   "optimizations": {

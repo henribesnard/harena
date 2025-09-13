@@ -296,109 +296,291 @@ class TemplateEngine:
         return query
 
     def _transform_date_range(self, date_range_string: str) -> Dict[str, str]:
-        """Transforme une période relative en objet de date avec gte/lte"""
+        """Transforme une période relative ou absolue en objet de date avec gte/lte"""
         from datetime import datetime, date
         from dateutil.relativedelta import relativedelta
         import calendar
-        
+        import re
+
         today = date.today()
-        
+        current_year = today.year
+
         # Normaliser le texte (français et anglais)
         date_range_lower = date_range_string.lower().strip()
-        
+
+        # === PLAGES RELATIVES PRÉDÉFINIES ===
         if date_range_lower in ["this_month", "ce mois", "this month"]:
-            # Premier jour du mois courant
             start_of_month = today.replace(day=1)
-            # Dernier jour du mois courant
             _, last_day = calendar.monthrange(today.year, today.month)
             end_of_month = today.replace(day=last_day)
-            
             return {
                 "gte": start_of_month.isoformat(),
                 "lte": end_of_month.isoformat()
             }
-        
+
         elif date_range_lower in ["last_month", "mois dernier", "le mois dernier", "last month"]:
-            # Premier jour du mois dernier
             first_last_month = (today.replace(day=1) - relativedelta(months=1))
-            # Dernier jour du mois dernier
             _, last_day = calendar.monthrange(first_last_month.year, first_last_month.month)
             end_last_month = first_last_month.replace(day=last_day)
-            
             return {
                 "gte": first_last_month.isoformat(),
                 "lte": end_last_month.isoformat()
             }
-        
+
         elif date_range_lower in ["this_week", "cette semaine", "this week"]:
-            # Lundi de cette semaine (début)
             days_since_monday = today.weekday()
             start_of_week = today - relativedelta(days=days_since_monday)
-            # Dimanche de cette semaine (fin)
             end_of_week = start_of_week + relativedelta(days=6)
-            
             return {
                 "gte": start_of_week.isoformat(),
                 "lte": end_of_week.isoformat()
             }
-            
+
         elif date_range_lower in ["last_week", "la semaine dernière", "semaine dernière", "last week"]:
-            # Lundi de la semaine dernière
             days_since_monday = today.weekday()
             start_of_last_week = today - relativedelta(days=days_since_monday + 7)
-            # Dimanche de la semaine dernière
             end_of_last_week = start_of_last_week + relativedelta(days=6)
-            
             return {
                 "gte": start_of_last_week.isoformat(),
                 "lte": end_of_last_week.isoformat()
             }
-            
+
         elif date_range_lower in ["today", "aujourd'hui", "aujourd hui", "ce jour"]:
             return {
                 "gte": today.isoformat(),
                 "lte": today.isoformat()
             }
-            
+
         elif date_range_lower in ["yesterday", "hier"]:
             yesterday = today - relativedelta(days=1)
             return {
                 "gte": yesterday.isoformat(),
                 "lte": yesterday.isoformat()
             }
-        
-        # Gestion des mois spécifiques avec logique contextuelle
+
+        # === MAPPING DES MOIS ===
         french_months = {
-            "janvier": 1, "février": 2, "mars": 3, "avril": 4, 
+            "janvier": 1, "février": 2, "mars": 3, "avril": 4,
             "mai": 5, "juin": 6, "juillet": 7, "août": 8,
             "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12
         }
-        
-        if date_range_string.lower() in french_months:
-            target_month = french_months[date_range_string.lower()]
-            current_month = today.month
-            current_year = today.year
-            
-            # Logique contextuelle : si le mois demandé est dans le futur 
-            # par rapport au mois courant, alors c'est l'année précédente
-            if target_month > current_month:
-                target_year = current_year - 1
-            else:
-                target_year = current_year
-            
-            # Premier jour du mois cible
+
+        # === DÉTECTION DE PLAGES : "X au Y" ou "X - Y" ===
+        range_patterns = [
+            r'(\d{1,2}|premier|1er|première|1ère)\s+(au|à|-)\s+(\d{1,2})\s+(\w+)(?:\s+(\d{4}))?',  # "14 au 15 mai", "14-15 mai"
+            r'(\d{1,2}|premier|1er|première|1ère)\s*-\s*(\d{1,2})\s+(\w+)(?:\s+(\d{4}))?',  # "02-15 décembre"
+            r'(\d{1,2}|premier|1er|première|1ère)\s+(\w+)\s+(au|à|-)\s+(\d{1,2})\s+(\w+)(?:\s+(\d{4}))?',  # "14 mai au 15 juin"
+            r'(\d{1,2})/(\d{1,2})\s+(au|à|-)\s+(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',  # "10/12 au 15/12"
+            r'(\d{1,2})-(\d{1,2})-(\d{2,4})\s+(au|à|-)\s+(\d{1,2})-(\d{1,2})-(\d{2,4})',  # "10-12-2024 au 15-12-2024"
+        ]
+
+        for pattern in range_patterns:
+            match = re.match(pattern, date_range_lower)
+            if match:
+                return self._parse_date_range_match(match, pattern, french_months, current_year)
+
+        # === DÉTECTION DE DATES SIMPLES ===
+        simple_patterns = [
+            r'(\d{1,2}|premier|1er|première|1ère)\s+(\w+)(?:\s+(\d{4}))?',  # "premier mai", "15 avril"
+            r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',  # "10/12", "10/12/2024"
+            r'(\d{1,2})-(\d{1,2})-(\d{2,4})',  # "10-12-2024"
+            r'(\d{4})-(\d{1,2})-(\d{1,2})',  # "2024-12-10" (ISO)
+        ]
+
+        for pattern in simple_patterns:
+            match = re.match(pattern, date_range_lower)
+            if match:
+                parsed_date = self._parse_single_date_match(match, pattern, french_months, current_year)
+                if parsed_date:
+                    return {
+                        "gte": parsed_date.isoformat(),
+                        "lte": parsed_date.isoformat()
+                    }
+
+        # === MOIS SEUL (fallback) ===
+        if date_range_lower in french_months:
+            target_month = french_months[date_range_lower]
+            # Logique contextuelle : si le mois demandé est dans le futur, c'est l'année précédente
+            target_year = current_year - 1 if target_month > today.month else current_year
             start_of_target_month = date(target_year, target_month, 1)
-            # Dernier jour du mois cible
             _, last_day = calendar.monthrange(target_year, target_month)
             end_of_target_month = date(target_year, target_month, last_day)
-            
             return {
                 "gte": start_of_target_month.isoformat(),
                 "lte": end_of_target_month.isoformat()
             }
-        
-        # Si pas de correspondance, retourner tel quel
+
+        # Si aucun pattern ne correspond, retourner tel quel (will fail in ES, but preserved for debug)
         return {"gte": date_range_string, "lte": date_range_string}
+
+    def _parse_date_range_match(self, match, pattern, french_months, current_year):
+        """Parse un match de plage de dates et retourne gte/lte"""
+        from datetime import date
+        import calendar
+
+        groups = match.groups()
+
+        # Pattern 1: "14 au 15 mai" -> groups = ('14', 'au', '15', 'mai', None)
+        # Pattern 2: "02-15 décembre" -> groups = ('02', '15', 'décembre', None)
+        if len(groups) >= 3:
+            # Pour "02-15 décembre", pas de connector explicite
+            if len(groups) == 4 and groups[2] in french_months:  # "02-15 décembre"
+                day1_str, day2_str, month_str, year_str = groups
+                connector = "-"
+            elif len(groups) >= 4:  # "14 au 15 mai"
+                day1_str, connector, day2_str, month_str = groups[:4]
+                year_str = groups[4] if len(groups) > 4 and groups[4] else None
+            else:
+                return None
+
+            if month_str in french_months:
+                target_month = french_months[month_str]
+                target_year = int(year_str) if year_str else current_year
+
+                # Ajuster l'année avec logique contextuelle si pas explicite
+                if not year_str and target_month > date.today().month:
+                    target_year = current_year - 1
+
+                day1 = 1 if day1_str in ["premier", "1er", "première", "1ère"] else int(day1_str)
+                day2 = int(day2_str)
+
+                # Validation des jours
+                _, last_day = calendar.monthrange(target_year, target_month)
+                day1 = min(day1, last_day)
+                day2 = min(day2, last_day)
+
+                start_date = date(target_year, target_month, day1)
+                end_date = date(target_year, target_month, day2)
+
+                return {
+                    "gte": start_date.isoformat(),
+                    "lte": end_date.isoformat()
+                }
+
+        # Pattern 2: "14 mai au 15 juin" -> groups = ('14', 'mai', 'au', '15', 'juin', None)
+        elif len(groups) >= 5 and groups[1] in french_months and groups[4] in french_months:
+            day1_str, month1_str, connector, day2_str, month2_str = groups[:5]
+            year_str = groups[5] if len(groups) > 5 and groups[5] else None
+
+            target_month1 = french_months[month1_str]
+            target_month2 = french_months[month2_str]
+            target_year = int(year_str) if year_str else current_year
+
+            # Ajuster l'année avec logique contextuelle si pas explicite
+            if not year_str and target_month1 > date.today().month:
+                target_year = current_year - 1
+
+            day1 = 1 if day1_str in ["premier", "1er", "première", "1ère"] else int(day1_str)
+            day2 = int(day2_str)
+
+            # Validation des jours
+            _, last_day1 = calendar.monthrange(target_year, target_month1)
+            _, last_day2 = calendar.monthrange(target_year, target_month2)
+            day1 = min(day1, last_day1)
+            day2 = min(day2, last_day2)
+
+            start_date = date(target_year, target_month1, day1)
+            end_date = date(target_year, target_month2, day2)
+
+            return {
+                "gte": start_date.isoformat(),
+                "lte": end_date.isoformat()
+            }
+
+        # Pattern 3: "10/12 au 15/12" -> groups = ('10', '12', 'au', '15', '12', None)
+        elif '/' in pattern and len(groups) >= 5:
+            day1, month1, connector, day2, month2 = groups[:5]
+            year_str = groups[5] if len(groups) > 5 and groups[5] else None
+            target_year = int(year_str) if year_str else current_year
+
+            # Si année sur 2 chiffres, l'ajuster
+            if year_str and len(year_str) == 2:
+                target_year = 2000 + int(year_str) if int(year_str) < 50 else 1900 + int(year_str)
+
+            start_date = date(target_year, int(month1), int(day1))
+            end_date = date(target_year, int(month2), int(day2))
+
+            return {
+                "gte": start_date.isoformat(),
+                "lte": end_date.isoformat()
+            }
+
+        # Pattern 4: "10-12-2024 au 15-12-2024" -> groups = ('10', '12', '2024', 'au', '15', '12', '2024')
+        elif '-' in pattern and len(groups) >= 7:
+            day1, month1, year1, connector, day2, month2, year2 = groups[:7]
+
+            # Si année sur 2 chiffres, l'ajuster
+            target_year1 = int(year1)
+            target_year2 = int(year2)
+            if len(year1) == 2:
+                target_year1 = 2000 + int(year1) if int(year1) < 50 else 1900 + int(year1)
+            if len(year2) == 2:
+                target_year2 = 2000 + int(year2) if int(year2) < 50 else 1900 + int(year2)
+
+            start_date = date(target_year1, int(month1), int(day1))
+            end_date = date(target_year2, int(month2), int(day2))
+
+            return {
+                "gte": start_date.isoformat(),
+                "lte": end_date.isoformat()
+            }
+
+        return None
+
+    def _parse_single_date_match(self, match, pattern, french_months, current_year):
+        """Parse un match de date simple et retourne un objet date"""
+        from datetime import date
+        import calendar
+
+        groups = match.groups()
+
+        # Pattern 1: "premier mai", "15 avril"
+        if len(groups) >= 2 and groups[1] in french_months:
+            day_str, month_str, year_str = groups[:3]
+            target_month = french_months[month_str]
+            target_year = int(year_str) if year_str else current_year
+
+            # Ajuster l'année avec logique contextuelle si pas explicite
+            if not year_str and target_month > date.today().month:
+                target_year = current_year - 1
+
+            day = 1 if day_str in ["premier", "1er", "première", "1ère"] else int(day_str)
+
+            # Validation du jour
+            _, last_day = calendar.monthrange(target_year, target_month)
+            day = min(day, last_day)
+
+            return date(target_year, target_month, day)
+
+        # Pattern 2: "10/12", "10/12/2024"
+        elif '/' in pattern:
+            if len(groups) == 3:  # jour/mois/année
+                day, month, year = groups
+                target_year = int(year) if year else current_year
+
+                # Si année sur 2 chiffres, l'ajuster
+                if year and len(year) == 2:
+                    target_year = 2000 + int(year) if int(year) < 50 else 1900 + int(year)
+
+                return date(target_year, int(month), int(day))
+
+        # Pattern 3: "10-12-2024"
+        elif pattern.count('-') == 2:
+            day, month, year = groups[:3]
+            target_year = int(year)
+
+            # Si année sur 2 chiffres, l'ajuster
+            if len(year) == 2:
+                target_year = 2000 + int(year) if int(year) < 50 else 1900 + int(year)
+
+            return date(target_year, int(month), int(day))
+
+        # Pattern 4: "2024-12-10" (ISO)
+        elif pattern.startswith(r'(\d{4})'):
+            year, month, day = groups[:3]
+            return date(int(year), int(month), int(day))
+
+        return None
 
     def _add_default_aggregations(self, query: Dict[str, Any]) -> Dict[str, Any]:
         """Ajoute automatiquement les agrégations dynamiques selon les filtres"""

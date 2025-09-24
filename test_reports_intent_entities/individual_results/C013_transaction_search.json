@@ -1,0 +1,11 @@
+{
+  "question_id": "C013",
+  "question": "Mes achats en Bitcoin",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "query": "bitcoin crypto cryptomonnaie",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:59:21.207742"
+}

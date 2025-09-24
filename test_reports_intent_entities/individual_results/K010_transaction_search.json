@@ -1,0 +1,13 @@
+{
+  "question_id": "K010",
+  "question": "Mes remboursements de frais médicaux",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "Health"
+    ],
+    "transaction_type": "credit"
+  },
+  "timestamp": "2025-09-24T07:38:54.520049"
+}

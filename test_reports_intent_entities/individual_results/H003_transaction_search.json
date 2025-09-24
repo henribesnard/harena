@@ -1,0 +1,13 @@
+{
+  "question_id": "H003",
+  "question": "Cherche 'abonnement streaming'",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "Subscriptions"
+    ],
+    "query": "streaming"
+  },
+  "timestamp": "2025-09-24T07:21:57.716837"
+}

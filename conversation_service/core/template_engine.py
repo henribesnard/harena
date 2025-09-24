@@ -47,6 +47,9 @@ class TemplateEngine:
         # Ajout de fonctions helpers pour les templates
         self.jinja_env.globals['to_es_amount_filter'] = self._to_elasticsearch_amount_filter
         self.jinja_env.globals['is_defined_and_not_none'] = self._is_defined_and_not_none
+
+        # Variables globales pour les templates
+        self.jinja_env.globals['all_months'] = self._get_all_months()
         
         self.cache_stats = {
             "hits": 0,
@@ -55,6 +58,22 @@ class TemplateEngine:
         }
         
         logger.info(f"TemplateEngine initialized with directory: {self.templates_dir}")
+
+    def _get_all_months(self) -> Dict[str, int]:
+        """Retourne le mapping combiné des mois français + anglais"""
+        french_months = {
+            "janvier": 1, "février": 2, "mars": 3, "avril": 4,
+            "mai": 5, "juin": 6, "juillet": 7, "août": 8,
+            "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12
+        }
+
+        english_months = {
+            "january": 1, "february": 2, "march": 3, "april": 4,
+            "may": 5, "june": 6, "july": 7, "august": 8,
+            "september": 9, "october": 10, "november": 11, "december": 12
+        }
+
+        return {**french_months, **english_months}
 
     async def initialize(self) -> bool:
         """Initialise le moteur de templates"""
@@ -210,6 +229,10 @@ class TemplateEngine:
         # Transformer les entités de période relative en objets de date
         if param_config.get("type") == "object" and isinstance(value, str):
             value = self._transform_date_range(value)
+
+        # Transformer les objets montant en filtres Elasticsearch
+        if param_config.get("type") == "object" and isinstance(value, dict) and "operator" in value:
+            value = self._to_elasticsearch_amount_filter(value)
         
         # Appliquer la valeur par défaut si nécessaire
         if value is None and default_value is not None:
@@ -290,8 +313,8 @@ class TemplateEngine:
         if filter_cleanup.get("remove_empty_objects", False):
             query = self._remove_empty_objects(query)
         
-        # Ajouter automatiquement les agrégations de base si pas déjà présentes
-        query = self._add_default_aggregations(query)
+        # Ajouter automatiquement les agrégations dynamiques si pas déjà présentes
+        query = self._build_dynamic_aggregations(query)
             
         return query
 
@@ -307,6 +330,27 @@ class TemplateEngine:
 
         # Normaliser le texte (français et anglais)
         date_range_lower = date_range_string.lower().strip()
+
+        # === VALIDATION DES DATES INVALIDES ===
+        # Détecter et corriger les dates ISO invalides comme "2025-02-32"
+        iso_invalid_match = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', date_range_string.strip())
+        if iso_invalid_match:
+            year, month, day = map(int, iso_invalid_match.groups())
+            try:
+                # Tester si la date est valide
+                test_date = date(year, month, day)
+                # Si valide, continuer normalement
+            except ValueError:
+                # Date invalide, corriger automatiquement
+                import calendar
+                _, max_day = calendar.monthrange(year, month)
+                corrected_day = min(day, max_day)
+                corrected_date = date(year, month, corrected_day)
+                logger.warning(f"Date invalide corrigée: {date_range_string} → {corrected_date.isoformat()}")
+                return {
+                    "gte": corrected_date.isoformat(),
+                    "lte": corrected_date.isoformat()
+                }
 
         # === PLAGES RELATIVES PRÉDÉFINIES ===
         if date_range_lower in ["this_month", "ce mois", "this month"]:
@@ -365,6 +409,15 @@ class TemplateEngine:
             "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12
         }
 
+        english_months = {
+            "january": 1, "february": 2, "march": 3, "april": 4,
+            "may": 5, "june": 6, "july": 7, "august": 8,
+            "september": 9, "october": 10, "november": 11, "december": 12
+        }
+
+        # Mapping combiné français + anglais
+        all_months = {**french_months, **english_months}
+
         # === DÉTECTION DE PLAGES : "X au Y" ou "X - Y" ===
         range_patterns = [
             r'(\d{1,2}|premier|1er|première|1ère)\s+(au|à|-)\s+(\d{1,2})\s+(\w+)(?:\s+(\d{4}))?',  # "14 au 15 mai", "14-15 mai"
@@ -377,30 +430,47 @@ class TemplateEngine:
         for pattern in range_patterns:
             match = re.match(pattern, date_range_lower)
             if match:
-                return self._parse_date_range_match(match, pattern, french_months, current_year)
+                return self._parse_date_range_match(match, pattern, french_months, current_year, all_months)
 
         # === DÉTECTION DE DATES SIMPLES ===
         simple_patterns = [
+            r'(\d{4})-(\d{1,2})-(\d{1,2})',  # "2024-12-10" (ISO) - en premier!
             r'(\d{1,2}|premier|1er|première|1ère)\s+(\w+)(?:\s+(\d{4}))?',  # "premier mai", "15 avril"
             r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',  # "10/12", "10/12/2024"
             r'(\d{1,2})-(\d{1,2})-(\d{2,4})',  # "10-12-2024"
-            r'(\d{4})-(\d{1,2})-(\d{1,2})',  # "2024-12-10" (ISO)
         ]
 
         for pattern in simple_patterns:
             match = re.match(pattern, date_range_lower)
             if match:
-                parsed_date = self._parse_single_date_match(match, pattern, french_months, current_year)
+                parsed_date = self._parse_single_date_match(match, pattern, french_months, current_year, all_months)
                 if parsed_date:
                     return {
                         "gte": parsed_date.isoformat(),
                         "lte": parsed_date.isoformat()
                     }
 
+        # === FORMAT YYYY-MM ===
+        if re.match(r'^\d{4}-\d{2}$', date_range_string.strip()):
+            try:
+                year_str, month_str = date_range_string.strip().split('-')
+                target_year = int(year_str)
+                target_month = int(month_str)
+                start_of_target_month = date(target_year, target_month, 1)
+                _, last_day = calendar.monthrange(target_year, target_month)
+                end_of_target_month = date(target_year, target_month, last_day)
+                return {
+                    "gte": start_of_target_month.isoformat(),
+                    "lte": end_of_target_month.isoformat()
+                }
+            except (ValueError, calendar.IllegalMonthError):
+                pass  # Continue vers le fallback
+
         # === MOIS SEUL (fallback) ===
-        if date_range_lower in french_months:
-            target_month = french_months[date_range_lower]
-            # Logique contextuelle : si le mois demandé est dans le futur, c'est l'année précédente
+        if date_range_lower in all_months:
+            target_month = all_months[date_range_lower]
+            # Logique contextuelle : si le mois demandé est dans le futur (après le mois actuel), c'est l'année précédente
+            # Exemple: septembre 2025, "mai" = 2025 (passé), "octobre" = 2024 (éviter futur)
             target_year = current_year - 1 if target_month > today.month else current_year
             start_of_target_month = date(target_year, target_month, 1)
             _, last_day = calendar.monthrange(target_year, target_month)
@@ -413,7 +483,7 @@ class TemplateEngine:
         # Si aucun pattern ne correspond, retourner tel quel (will fail in ES, but preserved for debug)
         return {"gte": date_range_string, "lte": date_range_string}
 
-    def _parse_date_range_match(self, match, pattern, french_months, current_year):
+    def _parse_date_range_match(self, match, pattern, french_months, current_year, all_months):
         """Parse un match de plage de dates et retourne gte/lte"""
         from datetime import date
         import calendar
@@ -424,7 +494,7 @@ class TemplateEngine:
         # Pattern 2: "02-15 décembre" -> groups = ('02', '15', 'décembre', None)
         if len(groups) >= 3:
             # Pour "02-15 décembre", pas de connector explicite
-            if len(groups) == 4 and groups[2] in french_months:  # "02-15 décembre"
+            if len(groups) == 4 and groups[2] in all_months:  # "02-15 décembre"
                 day1_str, day2_str, month_str, year_str = groups
                 connector = "-"
             elif len(groups) >= 4:  # "14 au 15 mai"
@@ -433,8 +503,8 @@ class TemplateEngine:
             else:
                 return None
 
-            if month_str in french_months:
-                target_month = french_months[month_str]
+            if month_str in all_months:
+                target_month = all_months[month_str]
                 target_year = int(year_str) if year_str else current_year
 
                 # Ajuster l'année avec logique contextuelle si pas explicite
@@ -458,12 +528,12 @@ class TemplateEngine:
                 }
 
         # Pattern 2: "14 mai au 15 juin" -> groups = ('14', 'mai', 'au', '15', 'juin', None)
-        elif len(groups) >= 5 and groups[1] in french_months and groups[4] in french_months:
+        elif len(groups) >= 5 and groups[1] in all_months and groups[4] in all_months:
             day1_str, month1_str, connector, day2_str, month2_str = groups[:5]
             year_str = groups[5] if len(groups) > 5 and groups[5] else None
 
-            target_month1 = french_months[month1_str]
-            target_month2 = french_months[month2_str]
+            target_month1 = all_months[month1_str]
+            target_month2 = all_months[month2_str]
             target_year = int(year_str) if year_str else current_year
 
             # Ajuster l'année avec logique contextuelle si pas explicite
@@ -527,17 +597,22 @@ class TemplateEngine:
 
         return None
 
-    def _parse_single_date_match(self, match, pattern, french_months, current_year):
+    def _parse_single_date_match(self, match, pattern, french_months, current_year, all_months):
         """Parse un match de date simple et retourne un objet date"""
         from datetime import date
         import calendar
 
         groups = match.groups()
 
+        # Pattern ISO: "2024-12-10" (doit être testé en premier)
+        if pattern == r'(\d{4})-(\d{1,2})-(\d{1,2})':
+            year, month, day = groups[:3]
+            return date(int(year), int(month), int(day))
+
         # Pattern 1: "premier mai", "15 avril"
-        if len(groups) >= 2 and groups[1] in french_months:
+        elif len(groups) >= 2 and groups[1] in all_months:
             day_str, month_str, year_str = groups[:3]
-            target_month = french_months[month_str]
+            target_month = all_months[month_str]
             target_year = int(year_str) if year_str else current_year
 
             # Ajuster l'année avec logique contextuelle si pas explicite
@@ -575,106 +650,306 @@ class TemplateEngine:
 
             return date(target_year, int(month), int(day))
 
-        # Pattern 4: "2024-12-10" (ISO)
-        elif pattern.startswith(r'(\d{4})'):
-            year, month, day = groups[:3]
-            return date(int(year), int(month), int(day))
 
         return None
 
-    def _add_default_aggregations(self, query: Dict[str, Any]) -> Dict[str, Any]:
-        """Ajoute automatiquement les agrégations dynamiques selon les filtres"""
-        
+    def _build_dynamic_aggregations(self, query: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Construit des agrégations dynamiques intelligentes selon les spécifications Harena.
+
+        Logique de priorisation :
+        1. Analyse du contenu des résultats → Détermine les types de transactions présents
+        2. Filtre transaction_type → Limite les types d'agrégation (si appliqué)
+        3. Filtre temporel → Détermine la segmentation temporelle
+        4. Autres filtres → Définissent les dimensions d'agrégation
+        """
+
         # Ne pas ajouter d'agrégations si déjà présentes ou si user_id absent
         if "aggregations" in query or "user_id" not in query:
             return query
-        
-        # Analyser les filtres pour déterminer les agrégations pertinentes
+
         filters = query.get("filters", {})
-        transaction_type_filter = filters.get("transaction_type")
-        
+
+        # === ÉTAPE 1: ANALYSE DES FILTRES ===
+        aggregation_context = self._analyze_aggregation_context(filters)
+
+        # === ÉTAPE 2: CONSTRUCTION DES AGRÉGATIONS ===
+        aggregations = {}
+
         # Toujours ajouter le compteur de transactions
-        aggregations = {
-            "transaction_count": {
-                "value_count": {
-                    "field": "transaction_id"
-                }
-            }
+        aggregations["transaction_count"] = {
+            "value_count": {"field": "transaction_id"}
         }
-        
-        # Agrégations dynamiques selon le type de transaction filtré
+
+        # === ÉTAPE 3: AGRÉGATIONS PAR TYPE DE TRANSACTION ===
+        self._add_transaction_type_aggregations(aggregations, aggregation_context)
+
+        # === ÉTAPE 4: AGRÉGATIONS PAR CATÉGORIE (si applicable) ===
+        if aggregation_context["categories"]:
+            self._add_category_aggregations(aggregations, aggregation_context)
+
+        # === ÉTAPE 5: SEGMENTATION TEMPORELLE (si applicable) ===
+        if aggregation_context["temporal_segmentation"]:
+            self._add_temporal_aggregations(aggregations, aggregation_context)
+
+        # === ÉTAPE 6: OPTIMISATIONS ET LIMITATIONS ===
+        aggregations = self._optimize_aggregations(aggregations)
+
+        query["aggregations"] = aggregations
+
+        # Log pour debugging
+        agg_summary = list(aggregations.keys())
+        logger.info(f"🎯 Agrégation dynamique: {', '.join(agg_summary)} ({len(agg_summary)} total)")
+
+        return query
+
+    def _analyze_aggregation_context(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyse les filtres pour déterminer le contexte d'agrégation"""
+        from datetime import datetime, date
+        from dateutil.relativedelta import relativedelta
+
+        context = {
+            "transaction_type_filter": filters.get("transaction_type"),
+            "categories": [],
+            "temporal_segmentation": False,
+            "temporal_period_months": 0,
+            "date_range": None,
+            "requires_both_types": False  # Sera déterminé plus tard par l'analyse des résultats
+        }
+
+        # Analyse des catégories
+        category_filter = filters.get("category_name")
+        if category_filter:
+            if isinstance(category_filter, list):
+                context["categories"] = category_filter
+            elif isinstance(category_filter, str):
+                context["categories"] = [category_filter]
+
+        # Analyse temporelle
+        date_filter = filters.get("date")
+        if date_filter and isinstance(date_filter, dict):
+            gte_str = date_filter.get("gte")
+            lte_str = date_filter.get("lte")
+
+            if gte_str and lte_str:
+                try:
+                    # Parser les dates ISO
+                    start_date = datetime.fromisoformat(gte_str).date()
+                    end_date = datetime.fromisoformat(lte_str).date()
+
+                    # Calculer la différence en mois
+                    months_diff = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+
+                    context["date_range"] = {
+                        "start": start_date,
+                        "end": end_date,
+                        "months_diff": months_diff
+                    }
+                    context["temporal_period_months"] = months_diff
+
+                    # Segmentation temporelle si >= 2 mois
+                    context["temporal_segmentation"] = months_diff >= 2
+
+                except (ValueError, TypeError):
+                    # Si parsing échoue, pas de segmentation temporelle
+                    pass
+
+        return context
+
+    def _add_transaction_type_aggregations(self, aggregations: Dict[str, Any], context: Dict[str, Any]):
+        """Ajoute les agrégations par type de transaction selon le contexte"""
+
+        transaction_type_filter = context["transaction_type_filter"]
+
         if transaction_type_filter == "debit":
             # Seulement les débits
             aggregations["total_debit"] = {
-                "filter": {
-                    "term": {
-                        "transaction_type": "debit"
-                    }
-                },
-                "aggs": {
-                    "sum_amount": {
-                        "sum": {
-                            "field": "amount_abs"
-                        }
-                    }
-                }
+                "filter": {"term": {"transaction_type": "debit"}},
+                "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
             }
-            logger.info("🎯 Agrégation dynamique: seulement total_debit")
-            
+
         elif transaction_type_filter == "credit":
             # Seulement les crédits
             aggregations["total_credit"] = {
-                "filter": {
-                    "term": {
-                        "transaction_type": "credit"
-                    }
+                "filter": {"term": {"transaction_type": "credit"}},
+                "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+            }
+
+        else:
+            # Pas de filtre spécifique → les deux types (sera optimisé plus tard selon les résultats)
+            aggregations.update({
+                "total_debit": {
+                    "filter": {"term": {"transaction_type": "debit"}},
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
                 },
-                "aggs": {
-                    "sum_amount": {
-                        "sum": {
-                            "field": "amount_abs"
+                "total_credit": {
+                    "filter": {"term": {"transaction_type": "credit"}},
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+            })
+
+    def _add_category_aggregations(self, aggregations: Dict[str, Any], context: Dict[str, Any]):
+        """Ajoute les agrégations par catégorie"""
+
+        categories = context["categories"]
+        transaction_type_filter = context["transaction_type_filter"]
+
+        for category in categories:
+            category_key = category.lower().replace(" ", "_").replace("-", "_")
+
+            if transaction_type_filter == "debit":
+                aggregations[f"{category_key}_debit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "debit"}},
+                                {"term": {"category_name.keyword": category}}
+                            ]
                         }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+            elif transaction_type_filter == "credit":
+                aggregations[f"{category_key}_credit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "credit"}},
+                                {"term": {"category_name.keyword": category}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+            else:
+                # Les deux types pour cette catégorie
+                aggregations[f"{category_key}_debit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "debit"}},
+                                {"term": {"category_name.keyword": category}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+                aggregations[f"{category_key}_credit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "credit"}},
+                                {"term": {"category_name.keyword": category}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+    def _add_temporal_aggregations(self, aggregations: Dict[str, Any], context: Dict[str, Any]):
+        """Ajoute la segmentation temporelle pour les périodes >= 2 mois"""
+        from dateutil.relativedelta import relativedelta
+        from datetime import date
+        import calendar
+
+        if not context["temporal_segmentation"] or not context["date_range"]:
+            return
+
+        date_range = context["date_range"]
+        transaction_type_filter = context["transaction_type_filter"]
+
+        # Générer les mois de la période
+        current_date = date_range["start"].replace(day=1)  # Premier jour du mois
+        end_date = date_range["end"]
+
+        while current_date <= end_date:
+            month_key = current_date.strftime("%Y_%m")  # 2024_05
+            month_name = current_date.strftime("%B_%Y").lower()  # mai_2024
+
+            # Calculer les bornes du mois
+            _, last_day = calendar.monthrange(current_date.year, current_date.month)
+            month_end = current_date.replace(day=last_day)
+
+            month_filter = {
+                "range": {
+                    "date": {
+                        "gte": current_date.isoformat(),
+                        "lte": min(month_end, end_date).isoformat()
                     }
                 }
             }
-            logger.info("🎯 Agrégation dynamique: seulement total_credit")
-            
-        else:
-            # Pas de filtre spécifique -> les deux agrégations
-            aggregations.update({
-                "total_debit": {
+
+            if transaction_type_filter == "debit":
+                aggregations[f"monthly_debit_{month_key}"] = {
                     "filter": {
-                        "term": {
-                            "transaction_type": "debit"
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "debit"}},
+                                month_filter
+                            ]
                         }
                     },
-                    "aggs": {
-                        "sum_amount": {
-                            "sum": {
-                                "field": "amount_abs"
-                            }
-                        }
-                    }
-                },
-                "total_credit": {
-                    "filter": {
-                        "term": {
-                            "transaction_type": "credit"
-                        }
-                    },
-                    "aggs": {
-                        "sum_amount": {
-                            "sum": {
-                                "field": "amount_abs"
-                            }
-                        }
-                    }
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
                 }
-            })
-            logger.info("🎯 Agrégation dynamique: total_debit + total_credit (aucun filtre)")
-        
-        query["aggregations"] = aggregations
-        return query
+
+            elif transaction_type_filter == "credit":
+                aggregations[f"monthly_credit_{month_key}"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "credit"}},
+                                month_filter
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+            else:
+                # Les deux types pour ce mois
+                aggregations[f"monthly_debit_{month_key}"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "debit"}},
+                                month_filter
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+                aggregations[f"monthly_credit_{month_key}"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "credit"}},
+                                month_filter
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+            # Passer au mois suivant
+            current_date = current_date + relativedelta(months=1)
+
+    def _optimize_aggregations(self, aggregations: Dict[str, Any]) -> Dict[str, Any]:
+        """Applique les optimisations et limitations sur les agrégations"""
+
+        # Limitation à 50 agrégations max
+        if len(aggregations) > 50:
+            logger.warning(f"Trop d'agrégations ({len(aggregations)}), limitation à 50")
+            # Garder les plus importantes : transaction_count + total_* en priorité
+            priority_keys = [k for k in aggregations.keys() if k.startswith(('transaction_count', 'total_'))]
+            other_keys = [k for k in aggregations.keys() if not k.startswith(('transaction_count', 'total_'))]
+
+            # Garder priorités + compléter jusqu'à 50
+            keep_keys = priority_keys + other_keys[:50-len(priority_keys)]
+            aggregations = {k: aggregations[k] for k in keep_keys}
+
+        return aggregations
 
     def _remove_null_values(self, obj: Any) -> Any:
         """Supprime les valeurs null récursivement"""
@@ -685,7 +960,7 @@ class TemplateEngine:
                 # MAIS garder les objets sérialisés qui ressemblent à des dicts Python
                 if v is not None and v != "None" and str(v).strip() != "":
                     # Cas spécial : si c'est une string qui ressemble à un dict Python, la parser
-                    if isinstance(v, str) and (v.startswith("{'") and v.endswith("'}")):
+                    if isinstance(v, str) and (v.startswith("{'") and v.endswith("}")):
                         try:
                             # Convertir le dict Python en dict JSON
                             import ast
@@ -693,7 +968,11 @@ class TemplateEngine:
                             # Si c'est un objet montant, le transformer en filtre Elasticsearch
                             if isinstance(parsed_dict, dict) and "operator" in parsed_dict:
                                 cleaned_value = self._to_elasticsearch_amount_filter(parsed_dict)
+                            # Si c'est déjà un objet transformé amount (ex: {"gt": 500}), le garder tel quel
+                            elif isinstance(parsed_dict, dict) and any(op in parsed_dict for op in ["gt", "gte", "lt", "lte", "eq"]):
+                                cleaned_value = parsed_dict
                             else:
+                                # Si c'est déjà un objet transformé (ex: {"gt": 500}), le garder tel quel
                                 cleaned_value = self._remove_null_values(parsed_dict)
                         except (ValueError, SyntaxError):
                             # Si échec de parsing, garder comme string

@@ -1,0 +1,12 @@
+{
+  "question_id": "G012",
+  "question": "Mes 5 plus grosses dépenses",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "transaction_type": "debit",
+    "amount": 5,
+    "operator": "gt"
+  },
+  "timestamp": "2025-09-24T07:20:38.403881"
+}

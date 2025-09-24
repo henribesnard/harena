@@ -1,0 +1,130 @@
+{
+  "category": "K_metier",
+  "timestamp": "2025-09-24T07:59:46.455675",
+  "total_questions": 12,
+  "detailed_results": [
+    {
+      "question_id": "K001",
+      "question": "Mes courses alimentaires de la semaine",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "categories": [
+          "Groceries"
+        ],
+        "date_range": "this_week",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "K002",
+      "question": "Budget sorties du mois",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "categories": [
+          "Entertainment"
+        ],
+        "month": "mai",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "K003",
+      "question": "Frais professionnels à rembourser",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.8,
+      "entities_structured": {
+        "query": "professionnel travail remboursement frais business",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "K004",
+      "question": "Dépenses vacances de juillet",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "categories": [
+          "Travel"
+        ],
+        "date_range": "2025-07",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "K005",
+      "question": "Mon ratio dépenses/revenus ce mois",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "this_month"
+      }
+    },
+    {
+      "question_id": "K006",
+      "question": "Mes économies potentielles sur les abonnements",
+      "intent_detected": "CONVERSATIONAL",
+      "intent_confidence": 0.7,
+      "entities_structured": {}
+    },
+    {
+      "question_id": "K007",
+      "question": "Optimisation budget alimentaire",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "query": "alimentaire supermarche groceries courses nourriture"
+      }
+    },
+    {
+      "question_id": "K008",
+      "question": "Suivi objectifs épargne",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {}
+    },
+    {
+      "question_id": "K009",
+      "question": "Toutes mes factures d'énergie",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "query": "energie electricite gaz edf engie utilities",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "K010",
+      "question": "Mes remboursements de frais médicaux",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "categories": [
+          "Health"
+        ],
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "K011",
+      "question": "Historique des virements reçus",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "K012",
+      "question": "Dépenses déductibles fiscalement",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.8,
+      "entities_structured": {
+        "query": "déductible fiscal impôt déduction crédit d'impôt frais professionnel",
+        "transaction_type": "debit"
+      }
+    }
+  ]
+}

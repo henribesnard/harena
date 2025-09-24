@@ -1,0 +1,11 @@
+{
+  "question_id": "D020",
+  "question": "Mes achats cette semaine",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "date_range": "this_week",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:22:04.489656"
+}

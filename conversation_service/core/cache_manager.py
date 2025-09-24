@@ -137,10 +137,10 @@ class CacheManager:
                 
                 self._initialized = True
                 self._health_status = "healthy"
-                logger.info("✅ Cache Manager Redis initialisé avec succès")
+                logger.info(" Cache Manager Redis initialisé avec succès")
                 
             except Exception as e:
-                logger.error(f"❌ Erreur initialisation Redis: {str(e)}")
+                logger.error(f"ERROR Erreur initialisation Redis: {str(e)}")
                 await self._cleanup_failed_initialization()
                 raise
     
@@ -227,10 +227,10 @@ class CacheManager:
             if check is not None:
                 raise Exception("Clé non supprimée après DELETE")
             
-            logger.debug("✅ Test connexion Redis complet réussi")
+            logger.debug(" Test connexion Redis complet réussi")
             
         except Exception as e:
-            logger.error(f"❌ Test connexion Redis échoué: {str(e)}")
+            logger.error(f"ERROR Test connexion Redis échoué: {str(e)}")
             raise
     
     async def _cleanup_failed_initialization(self) -> None:
@@ -257,7 +257,7 @@ class CacheManager:
             try:
                 # Log métriques finales
                 logger.info(
-                    f"📊 Fermeture cache - Hits: {self._metrics.hits}, "
+                    f" Fermeture cache - Hits: {self._metrics.hits}, "
                     f"Misses: {self._metrics.misses}, Errors: {self._metrics.errors}, "
                     f"Hit Rate: {self._metrics.hit_rate:.2f}%"
                 )
@@ -271,7 +271,7 @@ class CacheManager:
                     await self._connection_pool.disconnect()
                     
             except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture Redis: {str(e)}")
+                logger.warning(f" Erreur fermeture Redis: {str(e)}")
             finally:
                 self.redis_client = None
                 self._connection_pool = None
@@ -341,7 +341,7 @@ class CacheManager:
             self._health_status = "healthy"
             
         except Exception as e:
-            logger.error(f"❌ Health check échoué: {str(e)}")
+            logger.error(f"ERROR Health check échoué: {str(e)}")
             health_data.update({
                 "healthy": False,
                 "error": str(e)
@@ -430,21 +430,21 @@ class CacheManager:
             
             if not result:
                 self._metrics.misses += 1
-                logger.debug(f"🔍 Cache miss: {key[:50]}...")
+                logger.debug(f" Cache miss: {key[:50]}...")
                 return None
             
             # Parsing sécurisé
             try:
                 cached_data = json.loads(result)
             except json.JSONDecodeError as e:
-                logger.warning(f"⚠️ Données cache JSON invalides: {str(e)}")
+                logger.warning(f" Données cache JSON invalides: {str(e)}")
                 await self.redis_client.delete(cache_key)
                 self._metrics.errors += 1
                 return None
             
             # Validation structure
             if not isinstance(cached_data, dict):
-                logger.warning("⚠️ Structure cache invalide")
+                logger.warning(" Structure cache invalide")
                 await self.redis_client.delete(cache_key)
                 self._metrics.errors += 1
                 return None
@@ -465,13 +465,13 @@ class CacheManager:
             cache_version = cached_data.get("version", "1.0")
             if cache_version != "2.0":
                 # Migration ou invalidation cache ancienne version
-                logger.debug(f"🔄 Cache version obsolète: {cache_version}")
+                logger.debug(f" Cache version obsolète: {cache_version}")
                 await self.redis_client.delete(cache_key)
                 self._metrics.misses += 1
                 return None
             
             self._metrics.hits += 1
-            logger.debug(f"✅ Cache hit: {key[:50]}...")
+            logger.debug(f" Cache hit: {key[:50]}...")
             return cached_data.get("data", cached_data)
             
         except asyncio.TimeoutError:
@@ -479,7 +479,7 @@ class CacheManager:
             self._metrics.errors += 1
             return None
         except Exception as e:
-            logger.error(f"❌ Erreur récupération cache: {str(e)}")
+            logger.error(f"ERROR Erreur récupération cache: {str(e)}")
             self._metrics.errors += 1
             return None
     
@@ -507,7 +507,7 @@ class CacheManager:
         
         # Validation données avant traitement
         if not self._validate_cache_data(data):
-            logger.warning(f"⚠️ Données invalides pour cache: {key[:50]}...")
+            logger.warning(f" Données invalides pour cache: {key[:50]}...")
             return False
         
         try:
@@ -540,7 +540,7 @@ class CacheManager:
                 timeout=3.0
             )
             
-            logger.debug(f"💾 Cache set: {key[:50]}... (TTL: {cache_ttl}s, Size: {len(serialized)}b)")
+            logger.debug(f" Cache set: {key[:50]}... (TTL: {cache_ttl}s, Size: {len(serialized)}b)")
             return True
             
         except asyncio.TimeoutError:
@@ -548,7 +548,7 @@ class CacheManager:
             self._metrics.errors += 1
             return False
         except Exception as e:
-            logger.error(f"❌ Erreur sauvegarde cache: {str(e)}")
+            logger.error(f"ERROR Erreur sauvegarde cache: {str(e)}")
             self._metrics.errors += 1
             return False
     
@@ -570,7 +570,7 @@ class CacheManager:
             return bool(result)
             
         except Exception as e:
-            logger.error(f"❌ Erreur suppression cache: {str(e)}")
+            logger.error(f"ERROR Erreur suppression cache: {str(e)}")
             return False
     
     async def clear_all_cache(self, cache_type: Optional[str] = None) -> Dict[str, Any]:
@@ -603,7 +603,7 @@ class CacheManager:
             }
             
         except Exception as e:
-            logger.error(f"❌ Erreur nettoyage cache: {str(e)}")
+            logger.error(f"ERROR Erreur nettoyage cache: {str(e)}")
             return {"success": False, "error": str(e)}
     
     async def get_cache_info(self, cache_type: Optional[str] = None) -> Dict[str, Any]:
@@ -668,7 +668,7 @@ class CacheManager:
             }
             
         except Exception as e:
-            logger.error(f"❌ Erreur info cache: {str(e)}")
+            logger.error(f"ERROR Erreur info cache: {str(e)}")
             return {
                 "status": "error", 
                 "error": str(e),
@@ -685,7 +685,7 @@ class CacheManager:
         )
         
         self._metrics = CacheMetrics()
-        logger.info("🔄 Métriques cache réinitialisées")
+        logger.info(" Métriques cache réinitialisées")
         return old_metrics
     
     async def warm_up_cache(self, sample_data: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -712,7 +712,7 @@ class CacheManager:
             
             duration = (datetime.now() - start_time).total_seconds()
             
-            logger.info(f"🔥 Cache warmed up: {warmed_count} items, {error_count} errors, {duration:.2f}s")
+            logger.info(f" Cache warmed up: {warmed_count} items, {error_count} errors, {duration:.2f}s")
             
             return {
                 "success": True,
@@ -723,7 +723,7 @@ class CacheManager:
             }
             
         except Exception as e:
-            logger.error(f"❌ Erreur warm-up cache: {str(e)}")
+            logger.error(f"ERROR Erreur warm-up cache: {str(e)}")
             return {"success": False, "error": str(e)}
     
     # Context manager pour utilisation propre
@@ -736,4 +736,4 @@ class CacheManager:
         """Context manager exit avec fermeture propre"""
         await self.close()
         if exc_type:
-            logger.error(f"❌ Exception dans context manager cache: {exc_val}")
+            logger.error(f"ERROR Exception dans context manager cache: {exc_val}")

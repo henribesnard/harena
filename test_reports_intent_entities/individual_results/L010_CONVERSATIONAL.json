@@ -1,0 +1,8 @@
+{
+  "question_id": "L010",
+  "question": "tel:0123456789 mes achats",
+  "intent_detected": "CONVERSATIONAL",
+  "intent_confidence": 0.7,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T07:42:28.791447"
+}

@@ -1,0 +1,14 @@
+{
+  "question_id": "K002",
+  "question": "Budget sorties du mois",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "Entertainment"
+    ],
+    "month": "mai",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T07:36:02.423262"
+}

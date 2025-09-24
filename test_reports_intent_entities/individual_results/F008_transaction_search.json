@@ -1,0 +1,16 @@
+{
+  "question_id": "F008",
+  "question": "Mes dépenses restaurant de plus de 40 euros ce mois",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "categories": [
+      "Restaurants"
+    ],
+    "amount": 40,
+    "operator": "gt",
+    "date_range": "this_month",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:53:50.541340"
+}

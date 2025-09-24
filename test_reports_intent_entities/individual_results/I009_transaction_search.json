@@ -1,0 +1,10 @@
+{
+  "question_id": "I009",
+  "question": "Transactions importantes",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.7,
+  "entities_structured": {
+    "query": "important significatif gros montant"
+  },
+  "timestamp": "2025-09-24T07:28:27.327296"
+}

@@ -1,0 +1,14 @@
+{
+  "question_id": "F007",
+  "question": "Mes achats Amazon entre 50 et 100 euros en juin",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "Amazon",
+    "amount_min": 50,
+    "amount_max": 100,
+    "date_range": "2025-06",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:53:11.378285"
+}

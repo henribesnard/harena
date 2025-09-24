@@ -1,0 +1,159 @@
+{
+  "category": "E_transaction",
+  "timestamp": "2025-09-24T13:20:31.499594",
+  "total_questions": 15,
+  "detailed_results": [
+    {
+      "question_id": "E001",
+      "question": "Trouve mes abonnements récurrents",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E002",
+      "question": "Liste mes virements reçus",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "E003",
+      "question": "Mes prélèvements automatiques",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E004",
+      "question": "Mes paiements par carte bleue",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E005",
+      "question": "Mes retraits espèces",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "withdrawal",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E006",
+      "question": "Mes virements sortants",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E007",
+      "question": "Mes paiements par carte",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E008",
+      "question": "Mes chèques émis",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "operation_type": "unknown",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E009",
+      "question": "Mes virements SEPA",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E010",
+      "question": "Mes paiements contactless",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E011",
+      "question": "Mes virements bancaires automatiques de plus de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "amount": 500,
+        "operator": "gt",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E012",
+      "question": "Mes opérations de débit direct",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E013",
+      "question": "Mes cartes à débit différé",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "deferred_debit_card",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E014",
+      "question": "Mes paiements par carte de crédit",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "E015",
+      "question": "Mes opérations non identifiées",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "unknown",
+        "transaction_type": "all"
+      }
+    }
+  ]
+}

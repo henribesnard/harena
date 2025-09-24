@@ -47,6 +47,7 @@ class LLMRequest:
     system_prompt: Optional[str] = None
     user_id: Optional[int] = None
     conversation_id: Optional[str] = None
+    response_format: Optional[Dict[str, str]] = None  # Pour JSON OUTPUT DeepSeek
 
 @dataclass 
 class LLMResponse:
@@ -191,9 +192,13 @@ class DeepSeekProvider(BaseLLMProvider):
                 "temperature": request.temperature,
                 "stream": False
             }
-            
+
             if request.max_tokens:
                 payload["max_tokens"] = request.max_tokens
+
+            # Support JSON OUTPUT natif DeepSeek
+            if request.response_format:
+                payload["response_format"] = request.response_format
             
             # Requete HTTP
             headers = {"Authorization": f"Bearer {self.config.api_key}"}

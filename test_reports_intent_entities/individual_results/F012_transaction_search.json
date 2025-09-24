@@ -1,0 +1,14 @@
+{
+  "question_id": "F012",
+  "question": "Mes dépenses restaurants avec des pourboires",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "Restaurants"
+    ],
+    "query": "pourboires tips",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:56:04.726969"
+}

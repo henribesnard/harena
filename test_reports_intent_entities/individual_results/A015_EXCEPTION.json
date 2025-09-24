@@ -1,0 +1,8 @@
+{
+  "question_id": "A015",
+  "question": "Mes revenus négatifs",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-23T16:11:57.719770"
+}

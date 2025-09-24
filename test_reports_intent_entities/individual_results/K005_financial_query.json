@@ -1,0 +1,10 @@
+{
+  "question_id": "K005",
+  "question": "Mon ratio dépenses/revenus ce mois",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "date_range": "this_month"
+  },
+  "timestamp": "2025-09-24T07:37:09.485585"
+}

@@ -1,0 +1,11 @@
+{
+  "question_id": "D021",
+  "question": "Mes revenus cette année",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "date_range": "this_year",
+    "transaction_type": "credit"
+  },
+  "timestamp": "2025-09-24T12:22:27.405575"
+}

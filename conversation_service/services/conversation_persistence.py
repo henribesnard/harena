@@ -41,12 +41,12 @@ class ConversationPersistenceService:
             self.db.commit()
             self.db.refresh(conversation)
             
-            logger.info(f"✅ Conversation créée - ID: {conversation.id}, User: {user_id}")
+            logger.info(f" Conversation créée - ID: {conversation.id}, User: {user_id}")
             return conversation
             
         except SQLAlchemyError as e:
             self.db.rollback()
-            logger.error(f"❌ Erreur création conversation - User: {user_id}, Error: {e}")
+            logger.error(f"ERROR Erreur création conversation - User: {user_id}, Error: {e}")
             raise
     
     def add_conversation_turn(
@@ -89,7 +89,7 @@ class ConversationPersistenceService:
             
         except SQLAlchemyError as e:
             self.db.rollback()
-            logger.error(f"❌ Erreur ajout tour - Conversation: {conversation_id}, Error: {e}")
+            logger.error(f"ERROR Erreur ajout tour - Conversation: {conversation_id}, Error: {e}")
             raise
     
     def get_user_conversations(
@@ -114,7 +114,7 @@ class ConversationPersistenceService:
             return conversations
             
         except SQLAlchemyError as e:
-            logger.error(f"❌ Erreur récupération conversations - User: {user_id}, Error: {e}")
+            logger.error(f"ERROR Erreur récupération conversations - User: {user_id}, Error: {e}")
             raise
     
     def get_conversation_with_turns(
@@ -137,7 +137,7 @@ class ConversationPersistenceService:
             return conversation
             
         except SQLAlchemyError as e:
-            logger.error(f"❌ Erreur récupération conversation - ID: {conversation_id}, Error: {e}")
+            logger.error(f"ERROR Erreur récupération conversation - ID: {conversation_id}, Error: {e}")
             raise
     
     def update_conversation_title(
@@ -157,15 +157,15 @@ class ConversationPersistenceService:
             self.db.commit()
             
             if result > 0:
-                logger.info(f"✅ Titre mis à jour - Conversation: {conversation_id}")
+                logger.info(f" Titre mis à jour - Conversation: {conversation_id}")
                 return True
             else:
-                logger.warning(f"⚠️ Conversation non trouvée - ID: {conversation_id}, User: {user_id}")
+                logger.warning(f" Conversation non trouvée - ID: {conversation_id}, User: {user_id}")
                 return False
                 
         except SQLAlchemyError as e:
             self.db.rollback()
-            logger.error(f"❌ Erreur mise à jour titre - Conversation: {conversation_id}, Error: {e}")
+            logger.error(f"ERROR Erreur mise à jour titre - Conversation: {conversation_id}, Error: {e}")
             raise
     
     def archive_conversation(
@@ -187,12 +187,12 @@ class ConversationPersistenceService:
                 logger.info(f"📦 Conversation archivée - ID: {conversation_id}")
                 return True
             else:
-                logger.warning(f"⚠️ Conversation non trouvée - ID: {conversation_id}, User: {user_id}")
+                logger.warning(f" Conversation non trouvée - ID: {conversation_id}, User: {user_id}")
                 return False
                 
         except SQLAlchemyError as e:
             self.db.rollback()
-            logger.error(f"❌ Erreur archivage - Conversation: {conversation_id}, Error: {e}")
+            logger.error(f"ERROR Erreur archivage - Conversation: {conversation_id}, Error: {e}")
             raise
     
     def get_or_create_active_conversation(
@@ -211,7 +211,7 @@ class ConversationPersistenceService:
             )
             
             if active_conversation:
-                logger.debug(f"🔄 Conversation active trouvée - ID: {active_conversation.id}")
+                logger.debug(f" Conversation active trouvée - ID: {active_conversation.id}")
                 return active_conversation
             else:
                 # Créer une nouvelle conversation
@@ -219,7 +219,7 @@ class ConversationPersistenceService:
                 return self.create_conversation(user_id, conversation_title)
                 
         except SQLAlchemyError as e:
-            logger.error(f"❌ Erreur récupération/création conversation - User: {user_id}, Error: {e}")
+            logger.error(f"ERROR Erreur récupération/création conversation - User: {user_id}, Error: {e}")
             raise
 
 

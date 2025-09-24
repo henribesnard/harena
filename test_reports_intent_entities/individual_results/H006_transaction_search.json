@@ -1,0 +1,11 @@
+{
+  "question_id": "H006",
+  "question": "Mes dépenses inhabituelles",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.75,
+  "entities_structured": {
+    "transaction_type": "debit",
+    "query": "inhabituelles anormales exceptionnelles irrégulières"
+  },
+  "timestamp": "2025-09-24T07:23:19.550783"
+}

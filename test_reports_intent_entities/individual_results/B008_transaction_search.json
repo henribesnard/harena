@@ -1,0 +1,11 @@
+{
+  "question_id": "B008",
+  "question": "Restaurant McDonald",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "merchant": "McDonald's",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:06:17.970177"
+}

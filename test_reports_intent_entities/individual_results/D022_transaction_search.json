@@ -1,0 +1,11 @@
+{
+  "question_id": "D022",
+  "question": "Mes transactions de l'année dernière",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "date_range": "last_year",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T12:22:59.259418"
+}

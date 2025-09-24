@@ -1,0 +1,17 @@
+{
+  "question_id": "C005",
+  "question": "Mes sorties loisirs",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "categories": [
+      "Movies & Cinema",
+      "Concerts & Shows",
+      "Gaming",
+      "Sports Events",
+      "Streaming Services"
+    ],
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:55:07.295885"
+}

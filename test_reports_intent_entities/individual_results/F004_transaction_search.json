@@ -1,0 +1,12 @@
+{
+  "question_id": "F004",
+  "question": "Toutes mes transactions Carrefour de janvier",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "Carrefour",
+    "date_range": "2025-01",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T12:51:26.353014"
+}

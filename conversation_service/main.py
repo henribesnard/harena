@@ -74,22 +74,22 @@ class ConversationServiceLoader:
         Initialise conversation service avec validation JWT compatible user_service
         """
         try:
-            logger.info("🚀 Initialisation Conversation Service - Compatible user_service JWT")
+            logger.info(" Initialisation Conversation Service - Compatible user_service JWT")
             
             # Configuration AutoGen - Définir OPENAI_API_KEY dummy pour éviter erreur initialisation
             if not os.getenv('OPENAI_API_KEY'):
                 os.environ['OPENAI_API_KEY'] = 'dummy-key-for-autogen-compatibility'
-                logger.debug("🔧 OPENAI_API_KEY dummy défini pour compatibilité AutoGen")
+                logger.debug(" OPENAI_API_KEY dummy défini pour compatibilité AutoGen")
             
             # Vérification configuration service
             if not getattr(settings, 'CONVERSATION_SERVICE_ENABLED', True):
-                logger.info("⚠️ Conversation Service désactivé par configuration")
+                logger.info(" Conversation Service désactivé par configuration")
                 return False
             
             # Validation configuration JWT CRITIQUE
             jwt_validation = await self._validate_jwt_configuration()
             if not jwt_validation:
-                logger.error("❌ Configuration JWT incompatible avec user_service")
+                logger.error("ERROR Configuration JWT incompatible avec user_service")
                 return False
             
             # Validation configuration complète
@@ -105,19 +105,19 @@ class ConversationServiceLoader:
             # Validation JSON Output fonctionnelle
             json_validation = await self._validate_json_output_functionality()
             if not json_validation:
-                logger.error("❌ Validation JSON Output échouée")
+                logger.error("ERROR Validation JSON Output échouée")
                 return False
             
             # Health check initial complet
             health_ok = await self._comprehensive_health_check()
             if not health_ok:
-                logger.error("❌ Health check initial échoué")
+                logger.error("ERROR Health check initial échoué")
                 return False
             
             # Test JWT end-to-end
             jwt_test_ok = await self._test_jwt_end_to_end()
             if not jwt_test_ok:
-                logger.error("❌ Test JWT end-to-end échoué")
+                logger.error("ERROR Test JWT end-to-end échoué")
                 return False
             
             # Injection services dans app state
@@ -127,7 +127,7 @@ class ConversationServiceLoader:
             self._configure_app_middleware_and_routes(app)
             
             # Phase 5 : Workflow complet intégré - Plus besoin d'AutoGen Runtime
-            logger.info("✅ Phase 5 workflow intégré activé - AutoGen Runtime remplacé")
+            logger.info(" Phase 5 workflow intégré activé - AutoGen Runtime remplacé")
             
             # Warm-up optionnel du cache
             await self._optional_cache_warmup()
@@ -136,50 +136,50 @@ class ConversationServiceLoader:
             self.service_healthy = True
             uptime = (datetime.now(timezone.utc) - self.service_start_time).total_seconds()
             
-            logger.info("✅ Conversation Service initialisé avec succès")
-            logger.info(f"📊 Configuration: {len(self.service_config['features'])} fonctionnalités actives")
-            logger.info(f"🤖 DeepSeek: {self.service_config['deepseek_model']} avec JSON Output forcé")
-            logger.info(f"🔐 JWT: Compatible user_service")
+            logger.info(" Conversation Service initialisé avec succès")
+            logger.info(f" Configuration: {len(self.service_config['features'])} fonctionnalités actives")
+            logger.info(f" DeepSeek: {self.service_config['deepseek_model']} avec JSON Output forcé")
+            logger.info(f" JWT: Compatible user_service")
             cache_status = "activé" if self.cache_manager else "désactivé"
-            logger.info(f"💾 Cache: Redis sémantique {cache_status}")
-            logger.info(f"⏱️ Temps initialisation: {uptime:.2f}s")
+            logger.info(f" Cache: Redis sémantique {cache_status}")
+            logger.info(f"Temps initialisation: {uptime:.2f}s")
             
             return True
             
         except Exception as e:
             self.initialization_error = str(e)
             self.service_healthy = False
-            logger.error(f"❌ Erreur critique initialisation: {str(e)}", exc_info=True)
+            logger.error(f"ERROR Erreur critique initialisation: {str(e)}", exc_info=True)
             return False
     
     async def _validate_jwt_configuration(self) -> bool:
         """Validation spécifique configuration JWT compatible user_service"""
         try:
-            logger.info("🔐 Validation configuration JWT user_service...")
+            logger.info(" Validation configuration JWT user_service...")
             
             # Vérification SECRET_KEY
             secret_key = getattr(settings, 'SECRET_KEY', None)
             if not secret_key:
-                logger.error("❌ SECRET_KEY manquant - requis pour JWT")
+                logger.error("ERROR SECRET_KEY manquant - requis pour JWT")
                 return False
             
             if len(secret_key) < 32:
-                logger.error(f"❌ SECRET_KEY trop court: {len(secret_key)} chars (minimum 32)")
+                logger.error(f"ERROR SECRET_KEY trop court: {len(secret_key)} chars (minimum 32)")
                 return False
             
             # Vérification algorithme JWT
             algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
             if algorithm not in ['HS256', 'HS384', 'HS512']:
-                logger.error(f"❌ Algorithme JWT non supporté: {algorithm}")
+                logger.error(f"ERROR Algorithme JWT non supporté: {algorithm}")
                 return False
             
-            logger.info(f"✅ Configuration JWT validée - Algorithme: {algorithm}")
-            logger.info(f"✅ SECRET_KEY: {len(secret_key)} caractères")
+            logger.info(f" Configuration JWT validée - Algorithme: {algorithm}")
+            logger.info(f" SECRET_KEY: {len(secret_key)} caractères")
             
             return True
             
         except Exception as e:
-            logger.error(f"❌ Erreur validation JWT: {str(e)}")
+            logger.error(f"ERROR Erreur validation JWT: {str(e)}")
             return False
     
     async def _validate_comprehensive_configuration(self) -> bool:
@@ -214,25 +214,25 @@ class ConversationServiceLoader:
             
             # Log résultats validation
             if validation_errors:
-                logger.error(f"❌ Erreurs configuration: {', '.join(validation_errors)}")
+                logger.error(f"ERROR Erreurs configuration: {', '.join(validation_errors)}")
                 return False
             
             if validation_warnings:
                 for warning in validation_warnings:
-                    logger.warning(f"⚠️ Configuration: {warning}")
+                    logger.warning(f" Configuration: {warning}")
             
-            logger.info("✅ Configuration générale validée")
+            logger.info(" Configuration générale validée")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Erreur validation configuration: {str(e)}")
+            logger.error(f"ERROR Erreur validation configuration: {str(e)}")
             return False
     
     async def _initialize_external_clients_with_retry(self) -> bool:
         """Initialisation clients externes avec retry intelligent"""
         try:
             # Initialisation DeepSeek client avec retry
-            logger.info("🤖 Initialisation client DeepSeek...")
+            logger.info(" Initialisation client DeepSeek...")
             
             for attempt in range(3):
                 try:
@@ -245,21 +245,21 @@ class ConversationServiceLoader:
                         raise
                     await asyncio.sleep(2 ** attempt)
             
-            # ✅ CORRECTION: Test connexion DeepSeek - méthode synchrone
+            #  CORRECTION: Test connexion DeepSeek - méthode synchrone
             deepseek_healthy = self.deepseek_client.health_check()  # Pas de await
             if not deepseek_healthy:
-                logger.error("❌ DeepSeek API non accessible")
+                logger.error("ERROR DeepSeek API non accessible")
                 return False
             
             logger.debug("DeepSeek client ready")
             
             # Initialisation Cache Manager (non critique)
-            logger.info("💾 Initialisation cache Redis...")
+            logger.info(" Initialisation cache Redis...")
             try:
                 self.cache_manager = CacheManager()
                 await self.cache_manager.initialize()
                 
-                # ✅ CORRECTION: Test connexion Redis - méthode synchrone ou gestion async
+                #  CORRECTION: Test connexion Redis - méthode synchrone ou gestion async
                 try:
                     if hasattr(self.cache_manager, 'health_check'):
                         # Vérifier si la méthode est async ou sync
@@ -275,29 +275,29 @@ class ConversationServiceLoader:
                     if cache_healthy:
                         logger.debug("Redis cache ready")
                     else:
-                        logger.warning("⚠️ Redis indisponible - cache désactivé")
+                        logger.warning(" Redis indisponible - cache désactivé")
                         self.cache_manager = None
                 except Exception as health_error:
-                    logger.warning(f"⚠️ Erreur health check Redis: {str(health_error)}")
+                    logger.warning(f" Erreur health check Redis: {str(health_error)}")
                     # Garder le cache manager même si health check échoue
                         
             except Exception as e:
-                logger.warning(f"⚠️ Cache Redis non disponible: {str(e)}")
+                logger.warning(f" Cache Redis non disponible: {str(e)}")
                 self.cache_manager = None
             
             return True
             
         except Exception as e:
-            logger.error(f"❌ Erreur initialisation clients: {str(e)}")
+            logger.error(f"ERROR Erreur initialisation clients: {str(e)}")
             return False
     
     async def _validate_json_output_functionality(self) -> bool:
         """Validation fonctionnelle JSON Output DeepSeek"""
         try:
-            logger.info("🔍 Validation JSON Output fonctionnalité...")
+            logger.info(" Validation JSON Output fonctionnalité...")
             
             if not self.deepseek_client:
-                logger.error("❌ DeepSeek client non disponible pour validation JSON")
+                logger.error("ERROR DeepSeek client non disponible pour validation JSON")
                 return False
             
             # Test JSON Output avec prompt simple
@@ -316,7 +316,7 @@ class ConversationServiceLoader:
             
             # Validation réponse
             if not test_response or "choices" not in test_response:
-                logger.error("❌ Test JSON Output: réponse invalide")
+                logger.error("ERROR Test JSON Output: réponse invalide")
                 return False
             
             content = test_response["choices"][0]["message"]["content"]
@@ -326,19 +326,19 @@ class ConversationServiceLoader:
             try:
                 parsed_json = json.loads(content)
                 if not isinstance(parsed_json, dict):
-                    logger.error("❌ Test JSON Output: format non-objet")
+                    logger.error("ERROR Test JSON Output: format non-objet")
                     return False
                     
-                logger.info(f"✅ JSON Output fonctionnel: {parsed_json}")
+                logger.info(f" JSON Output fonctionnel: {parsed_json}")
                 return True
                 
             except json.JSONDecodeError as e:
-                logger.error(f"❌ Test JSON Output: parsing échoué - {str(e)}")
+                logger.error(f"ERROR Test JSON Output: parsing échoué - {str(e)}")
                 logger.error(f"Contenu reçu: {content}")
                 return False
             
         except Exception as e:
-            logger.error(f"❌ Erreur validation JSON Output: {str(e)}")
+            logger.error(f"ERROR Erreur validation JSON Output: {str(e)}")
             return False
     
     # Note: Les méthodes _initialize_autogen_runtime et _initialize_multi_agent_team
@@ -347,7 +347,7 @@ class ConversationServiceLoader:
     async def _comprehensive_health_check(self) -> bool:
         """Health check complet multi-services avec diagnostic"""
         try:
-            logger.info("🏥 Health check complet...")
+            logger.info(" Health check complet...")
             
             health_results = {
                 "deepseek": {"status": False, "details": ""},
@@ -356,7 +356,7 @@ class ConversationServiceLoader:
                 "configuration": {"status": True, "details": "OK"}
             }
             
-            # ✅ CORRECTION: Test DeepSeek - méthode synchrone
+            #  CORRECTION: Test DeepSeek - méthode synchrone
             if self.deepseek_client:
                 try:
                     deepseek_health = self.deepseek_client.health_check()  # Pas de await
@@ -365,7 +365,7 @@ class ConversationServiceLoader:
                 except Exception as e:
                     health_results["deepseek"]["details"] = f"Erreur: {str(e)}"
             
-            # ✅ CORRECTION: Test Cache - gestion async/sync
+            #  CORRECTION: Test Cache - gestion async/sync
             if self.cache_manager:
                 try:
                     if hasattr(self.cache_manager, 'health_check'):
@@ -394,31 +394,31 @@ class ConversationServiceLoader:
             
             # Log détaillé
             for service, result in health_results.items():
-                status_icon = "✅" if result["status"] else "❌"
+                status_icon = "" if result["status"] else "ERROR"
                 logger.info(f"{status_icon} {service.title()}: {result['details']}")
             
             if critical_ok:
                 logger.debug("Health check: critical services operational")
             else:
-                logger.error("🏥 Health check global: ❌ Services critiques défaillants")
+                logger.error(" Health check global: ERROR Services critiques défaillants")
             
             return critical_ok
             
         except Exception as e:
-            logger.error(f"❌ Erreur health check: {str(e)}")
+            logger.error(f"ERROR Erreur health check: {str(e)}")
             return False
     
     async def _test_jwt_end_to_end(self) -> bool:
         """Test JWT end-to-end pour valider la compatibilité user_service"""
         try:
-            logger.info("🔐 Test JWT end-to-end user_service...")
+            logger.info(" Test JWT end-to-end user_service...")
             
             # Import dynamique pour éviter les dépendances circulaires
             try:
                 from user_service.core.security import create_access_token
                 from conversation_service.api.middleware.auth_middleware import JWTValidator
             except ImportError as e:
-                logger.warning(f"⚠️ Cannot import user_service modules: {e}")
+                logger.warning(f" Cannot import user_service modules: {e}")
                 # Mode dégradé - test basique uniquement
                 return await self._test_jwt_basic()
             
@@ -430,21 +430,21 @@ class ConversationServiceLoader:
             result = validator.validate_token(test_token)
             
             if result.success:
-                logger.info(f"✅ JWT end-to-end OK - User ID: {result.user_id}")
-                logger.info(f"✅ Payload validé: {list(result.token_payload.keys())}")
+                logger.info(f" JWT end-to-end OK - User ID: {result.user_id}")
+                logger.info(f" Payload validé: {list(result.token_payload.keys())}")
                 return True
             else:
-                logger.error(f"❌ JWT end-to-end échoué: {result.error_message}")
+                logger.error(f"ERROR JWT end-to-end échoué: {result.error_message}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Erreur test JWT end-to-end: {str(e)}")
+            logger.error(f"ERROR Erreur test JWT end-to-end: {str(e)}")
             return False
     
     async def _test_jwt_basic(self) -> bool:
         """Test JWT basique en cas d'impossibilité de test end-to-end"""
         try:
-            logger.info("🔐 Test JWT basique (mode dégradé)...")
+            logger.info(" Test JWT basique (mode dégradé)...")
             
             from conversation_service.api.middleware.auth_middleware import JWTValidator
             from jose import jwt
@@ -464,14 +464,14 @@ class ConversationServiceLoader:
             result = validator.validate_token(test_token)
             
             if result.success:
-                logger.info("✅ JWT basique OK")
+                logger.info(" JWT basique OK")
                 return True
             else:
-                logger.error(f"❌ JWT basique échoué: {result.error_message}")
+                logger.error(f"ERROR JWT basique échoué: {result.error_message}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Erreur test JWT basique: {str(e)}")
+            logger.error(f"ERROR Erreur test JWT basique: {str(e)}")
             return False
     
     def _inject_services_into_app_state(self, app: FastAPI) -> None:
@@ -498,7 +498,7 @@ class ConversationServiceLoader:
             "jwt_compatible": True
         }
         
-        logger.info("✅ Services injectés dans app state")
+        logger.info(" Services injectés dans app state")
     
     def _configure_app_middleware_and_routes(self, app: FastAPI) -> None:
         """Configuration middleware et routes avec gestion intégration"""
@@ -527,13 +527,13 @@ class ConversationServiceLoader:
         except RuntimeError as e:
             if "Cannot add middleware after an application has started" in str(e):
                 can_add_middleware = False
-                logger.info("ℹ️ Application déjà démarrée - middleware géré par l'app parent (mode intégration)")
+                logger.info(" Application déjà démarrée - middleware géré par l'app parent (mode intégration)")
             else:
                 raise e
         
         # Configuration selon le mode
         if can_add_middleware:
-            logger.info("🔧 Mode standalone - Configuration complète des middlewares")
+            logger.info(" Mode standalone - Configuration complète des middlewares")
             
             # CORS en premier
             cors_origins = self._get_cors_origins()
@@ -545,37 +545,37 @@ class ConversationServiceLoader:
                 allow_headers=["*"],
                 max_age=3600
             )
-            logger.info(f"🌐 CORS configuré - Origins: {len(cors_origins)} autorisées")
+            logger.info(f" CORS configuré - Origins: {len(cors_origins)} autorisées")
             
             # Middleware JWT
             app.add_middleware(JWTAuthMiddleware)
-            logger.info("🔐 Middleware JWT configuré - Compatible user_service")
+            logger.info(" Middleware JWT configuré - Compatible user_service")
             
             # Routes conversation v1 (legacy) avec préfixe API
             app.include_router(conversation_router, prefix="/api/v1")
-            logger.info("🔗 Routes conversation v1 configurées (Phase 5 intégrée)")
+            logger.info(" Routes conversation v1 configurées (Phase 5 intégrée)")
             
             # Routes conversation v2.0 (nouvelle architecture)
             try:
                 from conversation_service.api.routes.conversation_v2 import router as conversation_v2_router
                 app.include_router(conversation_v2_router)
-                logger.info("🚀 Routes conversation v2.0 configurées (Architecture hybride IA + Pure Logic)")
+                logger.info(" Routes conversation v2.0 configurées (Architecture hybride IA + Pure Logic)")
             except ImportError as e:
-                logger.warning(f"⚠️ Routes v2.0 non disponibles: {e}")
+                logger.warning(f" Routes v2.0 non disponibles: {e}")
             
             # Routes de santé globales
             self._add_global_health_routes(app)
-            logger.info("🏥 Routes santé configurées")
+            logger.info(" Routes santé configurées")
             
         else:
-            logger.info("🔧 Mode intégration - Routes uniquement (middleware géré par app parent)")
+            logger.info(" Mode intégration - Routes uniquement (middleware géré par app parent)")
             
             # En mode intégration, on assume que l'app parent gère les middlewares
             # On ne charge que les routes sans préfixe (sera géré par local_app)
-            logger.info("🔗 Routes conversation configurées en mode intégration")
+            logger.info(" Routes conversation configurées en mode intégration")
             
             # Pas de routes santé globales en mode intégration
-            logger.info("🏥 Routes santé skippées (gérées par app parent)")
+            logger.info(" Routes santé skippées (gérées par app parent)")
     
     def _get_cors_origins(self) -> list:
         """Configuration CORS sécurisée selon environnement"""
@@ -602,7 +602,7 @@ class ConversationServiceLoader:
         @app.get("/health/ready") 
         async def readiness_probe():
             """Probe readiness pour Kubernetes/Docker"""
-            # ✅ CORRECTION: Health check synchrone pour DeepSeek
+            #  CORRECTION: Health check synchrone pour DeepSeek
             try:
                 deepseek_ready = (
                     self.deepseek_client and
@@ -653,7 +653,7 @@ class ConversationServiceLoader:
             if hasattr(self.cache_manager, 'warm_up_cache'):
                 warmed = await self.cache_manager.warm_up_cache(warmup_data)
                 if warmed > 0:
-                    logger.info(f"💾 Cache warm-up: {warmed} entrées préchargées")
+                    logger.info(f" Cache warm-up: {warmed} entrées préchargées")
             else:
                 logger.debug("Cache warm-up non supporté par ce cache manager")
                 
@@ -670,31 +670,31 @@ class ConversationServiceLoader:
                 uptime = (cleanup_start - self.service_start_time).total_seconds()
                 final_metrics = metrics_collector.get_all_metrics()
                 
-                logger.info(f"📊 Métriques finales - Uptime: {uptime:.1f}s")
-                logger.info(f"📊 Requêtes totales: {final_metrics.get('counters', {}).get('conversation.requests.total', 0)}")
-                logger.info(f"📊 Taux succès: {100 - (final_metrics.get('counters', {}).get('conversation.errors.technical', 0) / max(final_metrics.get('counters', {}).get('conversation.requests.total', 1), 1) * 100):.1f}%")
+                logger.info(f" Métriques finales - Uptime: {uptime:.1f}s")
+                logger.info(f" Requêtes totales: {final_metrics.get('counters', {}).get('conversation.requests.total', 0)}")
+                logger.info(f" Taux succès: {100 - (final_metrics.get('counters', {}).get('conversation.errors.technical', 0) / max(final_metrics.get('counters', {}).get('conversation.requests.total', 1), 1) * 100):.1f}%")
             
             # Fermeture clients
             if self.deepseek_client:
                 await self.deepseek_client.close()
-                logger.info("🤖 DeepSeek client fermé")
+                logger.info(" DeepSeek client fermé")
             
             if self.cache_manager:
                 await self.cache_manager.close()
-                logger.info("💾 Cache manager fermé")
+                logger.info(" Cache manager fermé")
             
             # if self.autogen_runtime:  # Supprimé - Phase 5
             #     await self.autogen_runtime.shutdown()
-            #     logger.info("🤖 AutoGen Runtime arrêté")
+            #     logger.info(" AutoGen Runtime arrêté")
             
             # if self.multi_agent_team:  # Supprimé - Phase 5 
-            #     logger.info("🤖 Équipe multi-agents déchargée")
+            #     logger.info(" Équipe multi-agents déchargée")
             
             cleanup_time = (datetime.now(timezone.utc) - cleanup_start).total_seconds()
-            logger.info(f"✅ Nettoyage terminé en {cleanup_time:.2f}s")
+            logger.info(f" Nettoyage terminé en {cleanup_time:.2f}s")
             
         except Exception as e:
-            logger.error(f"❌ Erreur nettoyage: {str(e)}")
+            logger.error(f"ERROR Erreur nettoyage: {str(e)}")
 
 # Instance globale service loader
 conversation_service_loader = ConversationServiceLoader()
@@ -705,7 +705,7 @@ async def lifespan(app: FastAPI):
     startup_start = datetime.now(timezone.utc)
     
     # Startup
-    logger.info("🚀 Démarrage application conversation service - JWT compatible")
+    logger.info(" Démarrage application conversation service - JWT compatible")
     
     try:
         # Initialisation service avec timeout
@@ -717,32 +717,32 @@ async def lifespan(app: FastAPI):
         startup_time = (datetime.now(timezone.utc) - startup_start).total_seconds()
         
         if initialization_success:
-            logger.info(f"🎉 Service démarré avec succès en {startup_time:.2f}s")
+            logger.info(f" Service démarré avec succès en {startup_time:.2f}s")
         else:
-            logger.error(f"❌ Échec initialisation en {startup_time:.2f}s - service dégradé")
+            logger.error(f"ERROR Échec initialisation en {startup_time:.2f}s - service dégradé")
             # App démarre quand même pour exposer health checks
         
         yield  # Application running
         
     except asyncio.TimeoutError:
-        logger.error("❌ Timeout initialisation service (90s)")
+        logger.error("ERROR Timeout initialisation service (90s)")
         yield  # App démarre en mode dégradé
         
     except Exception as e:
-        logger.error(f"❌ Erreur critique startup: {str(e)}", exc_info=True)
+        logger.error(f"ERROR Erreur critique startup: {str(e)}", exc_info=True)
         yield  # App démarre en mode dégradé
     
     finally:
         # Shutdown
         shutdown_start = datetime.now(timezone.utc)
-        logger.info("🔄 Arrêt application conversation service")
+        logger.info(" Arrêt application conversation service")
         
         try:
             await conversation_service_loader.cleanup()
             shutdown_time = (datetime.now(timezone.utc) - shutdown_start).total_seconds()
-            logger.info(f"✅ Arrêt propre terminé en {shutdown_time:.2f}s")
+            logger.info(f" Arrêt propre terminé en {shutdown_time:.2f}s")
         except Exception as e:
-            logger.error(f"❌ Erreur arrêt: {str(e)}")
+            logger.error(f"ERROR Erreur arrêt: {str(e)}")
 
 # Application FastAPI avec configuration JWT compatible
 app = FastAPI(
@@ -812,7 +812,7 @@ async def global_health():
             )
             
     except Exception as e:
-        logger.error(f"❌ Erreur health check global: {str(e)}")
+        logger.error(f"ERROR Erreur health check global: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
@@ -860,7 +860,7 @@ async def metrics_endpoint():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur export métriques: {str(e)}")
+        logger.error(f"ERROR Erreur export métriques: {str(e)}")
         raise HTTPException(status_code=500, detail="Erreur métriques")
 
 # Handler erreurs globales optimisé
@@ -870,7 +870,7 @@ async def global_exception_handler(request, exc):
     error_id = f"err_{int(datetime.now(timezone.utc).timestamp())}"
     
     logger.error(
-        f"❌ [{error_id}] Erreur non gérée: {exc.__class__.__name__}: {str(exc)} | "
+        f"ERROR [{error_id}] Erreur non gérée: {exc.__class__.__name__}: {str(exc)} | "
         f"Path: {getattr(request, 'url', {}).path if hasattr(request, 'url') else 'unknown'} | "
         f"Method: {getattr(request, 'method', 'unknown')}",
         exc_info=True
@@ -893,7 +893,7 @@ async def global_exception_handler(request, exc):
 if __name__ == "__main__":
     import uvicorn
     
-    logger.info("🚀 Démarrage direct conversation service - JWT compatible")
+    logger.info(" Démarrage direct conversation service - JWT compatible")
     
     # Configuration uvicorn
     uvicorn_config = {
@@ -908,5 +908,5 @@ if __name__ == "__main__":
         "date_header": False,    # Sécurité
     }
     
-    logger.info(f"⚙️ Configuration: {uvicorn_config}")
+    logger.info(f" Configuration: {uvicorn_config}")
     uvicorn.run(**uvicorn_config)

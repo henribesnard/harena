@@ -1,0 +1,8 @@
+{
+  "question_id": "D024",
+  "question": "Mes dépenses du 15 septembre",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T10:29:09.710855"
+}

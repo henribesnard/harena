@@ -1,0 +1,15 @@
+{
+  "question_id": "F005",
+  "question": "Mes dépenses essence de plus de 50 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "categories": [
+      "Fuel"
+    ],
+    "amount": 50,
+    "operator": "gt",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:52:02.860616"
+}

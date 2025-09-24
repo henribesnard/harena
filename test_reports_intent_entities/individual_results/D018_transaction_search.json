@@ -1,0 +1,10 @@
+{
+  "question_id": "D018",
+  "question": "Mes achats du 32 février",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.7,
+  "entities_structured": {
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:21:21.375088"
+}

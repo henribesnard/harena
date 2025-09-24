@@ -1,0 +1,12 @@
+{
+  "question_id": "A005",
+  "question": "Est-ce que j'ai des dépenses d'un montant de 50 euros ?",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "amount": 50,
+    "operator": "eq",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T08:56:14.166632"
+}

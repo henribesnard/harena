@@ -99,7 +99,7 @@ class IntentClassifier:
                 "description": "Gestion des comptes utilisateur"
             },
             "transaction_search": {
-                "subtypes": ["simple", "advanced", "filter", "aggregate", "by_period"],
+                "subtypes": ["simple", "advanced", "filter", "aggregate", "by_period", "by_category", "by_date", "by_merchant", "by_amount", "by_type_and_date"],
                 "entities": ["merchant", "amount_min", "amount_max", "date_start", "date_end", "category", "date_range"],
                 "description": "Recherche dans les transactions"
             },
@@ -151,7 +151,7 @@ class IntentClassifier:
             system_prompt = self._build_system_prompt()
             classification_prompt = self._build_classification_prompt(request)
             
-            # 2. Requete LLM avec few-shot
+            # 2. Requete LLM avec few-shot ET JSON OUTPUT NATIF DeepSeek
             llm_request = LLMRequest(
                 messages=[{
                     "role": "user",
@@ -160,7 +160,8 @@ class IntentClassifier:
                 system_prompt=system_prompt,
                 few_shot_examples=self._few_shot_examples[:5],  # Top 5 examples
                 temperature=0.1,  # Faible pour classification deterministe
-                max_tokens=500,
+                max_tokens=1000,  # Plus de tokens pour les entités complètes
+                response_format={"type": "json_object"},  # FORCER JSON OUTPUT natif DeepSeek
                 user_id=request.user_id,
                 conversation_id=request.conversation_id
             )
@@ -206,42 +207,200 @@ class IntentClassifier:
         
         categories_context = self.category_service.build_categories_context()
         
-        return f"""Tu es un expert en classification d'intentions pour un assistant financier.
+        return f"""Tu es un agent LLM expert en classification d'intentions et extraction d'entités pour un assistant financier personnel.
 
-INTENTIONS SUPPORTeES:
+🚨 RÈGLE PRIORITAIRE ABSOLUE : "categories" EST BANNI 🚨
+- NE JAMAIS utiliser "categories" dans les réponses JSON
+- TOUJOURS utiliser "query" pour les recherches textuelles
+- INTERDICTION TOTALE de categories: [...]
+
+=== INTENTIONS SUPPORTÉES ===
 {intents_description}
+
+=== LOGIQUE D'EXTRACTION D'ENTITÉS ===
+
+🚨 RÈGLE CRITIQUE: STRUCTURE entities_structured OBLIGATOIRE 🚨
+- Toujours inclure transaction_type même si non explicite
+- Utiliser les opérateurs standardisés: gt, lt, gte, lte, eq
+- Structure cohérente: simple (amount+operator) OU plage (amount_min+amount_max)
+
+1. MONTANTS ET OPÉRATEURS :
+   - "plus de 100 euros" → amount: 100, operator: "gt", transaction_type: "debit"
+   - "moins de 50€" → amount: 50, operator: "lt", transaction_type: "debit"
+   - "exactement 200 euros" → amount: 200, operator: "eq", transaction_type: "debit"
+   - "entre 50 et 100 euros" → amount_min: 50, amount_max: 100, transaction_type: "all"
+   - "au moins 500€" → amount: 500, operator: "gte", transaction_type: "debit"
+   - "maximum 1000 euros" → amount: 1000, operator: "lte", transaction_type: "all"
+   - "500 euros ou plus" → amount: 500, operator: "gte", transaction_type: "all"
+   - "jusqu'à 300€" → amount: 300, operator: "lte", transaction_type: "all"
+   - "à partir de 150 euros" → amount: 150, operator: "gte", transaction_type: "all"
+
+2. DATES ET PÉRIODES (FORMAT date_range UNIQUEMENT) :
+
+   🗓️ DATES RELATIVES (priorité haute) :
+   - "cette semaine" → date_range: "this_week"
+   - "le mois dernier" → date_range: "last_month"
+   - "aujourd'hui" → date_range: "today"
+   - "demain" → date_range: "tomorrow"
+   - "hier" → date_range: "yesterday"
+   - "cette année" → date_range: "this_year"
+   - "l'année dernière" → date_range: "last_year"
+   - "du weekend" → date_range: "weekend"
+   - "ce mois" → date_range: "this_month"
+   - "des 30 derniers jours" → date_range: "last_30_days"
+
+   📅 MOIS SPÉCIFIQUES :
+   - "de mai" → date_range: "2025-05"
+   - "en janvier 2025" → date_range: "2025-01"
+   - "en décembre" → date_range: "2025-12"
+   - "d'octobre" → date_range: "2025-10"
+
+   📍 DATES SPÉCIFIQUES (problématiques - renforcées) :
+   - "du 1er mai" → date_range: "2025-05-01"
+   - "du 5 mars" → date_range: "2025-03-05"
+   - "du 15 septembre" → date_range: "2025-09-15"
+   - "du 20 juin" → date_range: "2025-06-20"
+   - "du 31 décembre" → date_range: "2025-12-31"
+
+   📊 PLAGES DE DATES :
+   - "du 14 au 15 mai" → date_range: "2025-05-14_2025-05-15"
+   - "du 1er au 15 octobre" → date_range: "2025-10-01_2025-10-15"
+   - "du 10 au 20 mars" → date_range: "2025-03-10_2025-03-20"
+
+   🎯 ANNÉES SPÉCIFIQUES :
+   - "de 1995" → date_range: "1995"
+   - "en 2030" → date_range: "2030"
+   - "d'avril 2024" → date_range: "2024-04"
+
+   ⚠️ RÈGLES CRITIQUES :
+   - TOUJOURS utiliser 'date_range' - JAMAIS month, year, date_specific
+   - Format strict: YYYY-MM-DD, YYYY-MM, YYYY
+   - Dates françaises : "1er" = "01", "5" = "05"
+   - Année par défaut 2025 sauf si spécifiée
+   - Plages avec underscore : "YYYY-MM-DD_YYYY-MM-DD"
+
+3. MARCHANDS ET COMMERÇANTS :
+   - UN SEUL marchand : "Mes achats Tesla" → merchant: "Tesla", transaction_type: "debit"
+   - PLUSIEURS marchands : "Amazon Prime Video Netflix Disney+" → merchants: ["Amazon Prime Video", "Netflix", "Disney+"], transaction_type: "debit"
+   - Corriger automatiquement les fautes de frappe : "Netflik" → "Netflix", "Amazone" → "Amazon"
+   - Détecter les marques connues : "Tesla", "Amazon", "McDonald's", "Uber", "Google"
+   - Normaliser : "mcdo" → "McDonald's", "Apple/iTunes" → "Apple/iTunes"
+   - OBLIGATOIRE: Toujours ajouter transaction_type même pour marchands
+
+4. CATÉGORIES → PRIORITÉ AUX CATÉGORIES DE BASE :
+   🎯 RÈGLE CORRIGÉE : Utiliser "categories" pour les catégories EXISTANTES en base, "query" pour le reste
+
+   🏆 CATÉGORIES DE BASE DISPONIBLES (utiliser categories):
+   - "dépenses restaurant" → categories: ["Restaurants"], transaction_type: "debit"
+   - "frais de transport" → categories: ["Public Transportation", "Taxi/Uber", "Fuel", "Car Maintenance", "Parking"], transaction_type: "debit"
+   - "achats alimentaires" → categories: ["Supermarkets / Groceries", "Restaurants", "Fast foods", "Coffee shop", "Food - Others"], transaction_type: "debit"
+   - "dépenses santé" → categories: ["Doctor Visits", "Dentist", "Pharmacy", "Medical Equipment", "Medical Insurance"], transaction_type: "debit"
+   - "sorties loisirs" → categories: ["Movies & Cinema", "Concerts & Shows", "Gaming", "Sports Events", "Streaming Services"], transaction_type: "debit"
+   - "factures d'énergie" → categories: ["Electricity", "Water"], transaction_type: "debit"
+   - "frais bancaires" → categories: ["Bank Fees"], transaction_type: "debit"
+   - "achats vêtements" → categories: ["Clothing"], transaction_type: "debit"
+   - "dépenses électronique" → categories: ["Electronics"], transaction_type: "debit"
+   - "achats en ligne" → categories: ["Online Shopping"], transaction_type: "debit"
+   - "abonnements" → categories: ["Streaming Services", "Internet/Phone"], transaction_type: "debit"
+
+   🔎 CAS NÉCESSITANT QUERY (pas de catégorie en base):
+   - "dépenses spatial" → query: "spatial espace astronomie", transaction_type: "debit"
+   - "achats Bitcoin" → query: "bitcoin crypto cryptomonnaie", transaction_type: "debit"
+
+   ✅ RÈGLE CORRIGÉE : "categories" pour catégories de BASE, "query" pour termes non mappés + transaction_type OBLIGATOIRE
+
+5. OPERATION_TYPE (SEULEMENT 6 VALEURS AUTORISÉES) :
+   - "paiements par carte" → operation_type: "card"
+   - "retraits espèces" → operation_type: "withdrawal"
+   - "cartes à débit différé" → operation_type: "deferred_debit_card"
+   - "prélèvements automatiques" → operation_type: "direct_debit"
+   - "virements" → operation_type: "transfer"
+   - "opérations non identifiées" → operation_type: "unknown"
+   - "abonnements récurrents" → operation_type: "direct_debit"
+   - "paiements contactless" → operation_type: "card"
+   - "virements SEPA" → operation_type: "transfer"
+   - "chèques" → operation_type: "unknown"
+   - RÈGLE : NE PAS INVENTER - utiliser seulement: card, withdrawal, deferred_debit_card, unknown, direct_debit, transfer
+
+=== RÈGLES IMPORTANTES ===
+
+• LOGIQUE PRIORITÉE CORRIGÉE :
+  1. MARCHAND spécifique mentionné → merchant: "Nom"
+  2. CATÉGORIE de BASE disponible → categories: ["Nom Base"]
+  3. TERME non mappé → query: "mots clés"
+
+  EXEMPLES CORRIGÉS:
+  - "Mes achats Tesla" → merchant: "Tesla" (marchand spécifique)
+  - "Mes achats alimentaires" → categories: ["Supermarkets / Groceries", "Restaurants"] (catégories de base)
+  - "Mes frais de transport" → categories: ["Public Transportation", "Taxi/Uber"] (catégories de base)
+  - "Mes dépenses santé" → categories: ["Doctor Visits", "Dentist", "Pharmacy"] (catégories de base)
+  - "Mes dépenses spatiales" → query: "spatial espace" (pas de catégorie en base)
+
+✅ RAPPEL CORRIGÉ : "categories" AUTORISÉ pour les 57 catégories de BASE uniquement
+
+✅ CAS CORRIGÉS AVEC VRAIES CATÉGORIES :
+- "Mes frais de transport" → categories: ["Public Transportation", "Taxi/Uber", "Fuel", "Parking"]
+- "Mes dépenses santé" → categories: ["Doctor Visits", "Dentist", "Pharmacy", "Medical Insurance"]
+- "Mes factures d'énergie" → categories: ["Electricity", "Water"]
+
+✅ RÈGLE FINALE : categories AUTORISÉ pour les 57 catégories officielles de PostgreSQL
+
+• ACHATS GÉNÉRIQUES (INTERDICTION categories) :
+  - "Mes achats" seul → transaction_type: "debit" SEULEMENT (pas de categories, pas de query)
+  - "Mes achats" + spécificité → extraire avec 'query', JAMAIS 'categories'
+  - INTERDIT: categories: [...]
+  - OBLIGATOIRE: query: "mots clés synonymes"
+
+• NORMALISATION AUTOMATIQUE :
+  - Corriger les fautes de frappe des marchands
+  - Convertir "2024-05" → "mai"
+  - Standardiser les montants en euros
 
 {categories_context}
 
-TeCHE:
-1. Analyser le message utilisateur et son contexte
-2. Identifier l'intention principale (intent_group) et sous-type (intent_subtype)
-3. Extraire toutes les entites pertinentes avec leur position
-4. Fournir un score de confiance (0.0 e 1.0)
-5. Expliquer ton raisonnement brievement
+=== FORMAT DE RÉPONSE ===
+OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
 
-FORMAT RePONSE (JSON strict):
 {{
-    "intent_group": "financial_query",
-    "intent_subtype": "transactions",
-    "confidence": 0.85,
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.90,
     "entities": [
         {{
-            "name": "date_range",
-            "value": "last week",
-            "confidence": 0.9,
+            "name": "amount",
+            "value": 100,
+            "confidence": 0.95,
             "span": [15, 25],
-            "entity_type": "temporal"
+            "entity_type": "amount"
+        }},
+        {{
+            "name": "operator",
+            "value": "gt",
+            "confidence": 0.90,
+            "span": [10, 17],
+            "entity_type": "operator"
+        }},
+        {{
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
         }}
     ],
-    "reasoning": "L'utilisateur demande des informations sur ses transactions recentes"
+    "reasoning": "Recherche de dépenses supérieures à 100 euros"
 }}
 
-ReGLES:
-- Toujours repondre en JSON valide
+🚨 OBLIGATOIRE: transaction_type TOUJOURS présent dans entities
+
+=== RÈGLES STRICTES ===
+- TOUJOURS répondre en JSON valide
 - Confidence entre 0.0 et 1.0
-- Si incertain, utiliser intent_group="CONVERSATIONAL"
-- Extraire maximum 10 entites les plus pertinentes"""
+- Maximum 10 entités les plus pertinentes
+- Si incertain → intent_group: "CONVERSATIONAL"
+- Être intelligent et autonome, pas de regex interne
+- Comprendre le contexte naturel français
+- Corriger automatiquement les erreurs utilisateur"""
     
     def _build_classification_prompt(self, request: ClassificationRequest) -> str:
         """Construit le prompt de classification avec contexte"""
@@ -312,7 +471,10 @@ ReGLES:
         
         # Determination niveau de confiance
         confidence_level = self._get_confidence_level(confidence)
-        
+
+        # ENRICHISSEMENT: Ajouter logique achats/catégories même après succès LLM
+        entities = self._enrich_entities_with_purchase_logic(entities, request.user_message)
+
         return ClassificationResult(
             success=True,
             intent_group=intent_group,
@@ -342,10 +504,20 @@ ReGLES:
             intent_group = "financial_query"
             intent_subtype = "balance"
             confidence = 0.6
-        elif any(word in message_lower for word in ["transaction", "achat", "depense", "paiement"]):
+        elif any(word in message_lower for word in ["transaction", "achat", "achats", "depense", "dépense", "dépenses", "paiement", "euro", "euros", "montant"]):
             intent_group = "transaction_search"
-            intent_subtype = "simple"
-            confidence = 0.5
+            # Détecter si c'est une requête avec montant
+            if any(op in message_lower for op in ["plus de", "moins de", "supérieur", "inférieur", "entre", "€", "euros", "euro"]):
+                intent_subtype = "by_amount"
+                confidence = 0.7
+            else:
+                intent_subtype = "simple"
+                confidence = 0.5
+        elif any(merchant in message_lower for merchant in ["amazon", "carrefour", "leclerc", "mcdo", "mcdonald", "netflix", "restaurant", "uber", "fnac", "sncf"]):
+            # Si un marchand connu est mentionné, c'est probablement une recherche de transaction
+            intent_group = "transaction_search"
+            intent_subtype = "by_merchant"
+            confidence = 0.8
         elif any(word in message_lower for word in ["bonjour", "salut", "hello", "hi"]):
             intent_group = "CONVERSATIONAL"
             intent_subtype = "greeting"
@@ -379,177 +551,28 @@ ReGLES:
         )
     
     def _extract_basic_entities(self, message: str) -> List[ExtractedEntity]:
-        """Extraction d'entites basique sans LLM"""
-        
-        entities = []
-        message_lower = message.lower()
-        
-        # Recherche de montants (pattern simple)
-        import re
-        
-        # Montants avec opérateurs en euros
-        # Recherche "plus de X euros", "supérieur à X €", etc.
-        amount_comparison_patterns = [
-            (r'(?:plus de|supérieur(?:e)?s? à|au-dessus de|>\s*)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)', 'gte'),
-            (r'(?:moins de|inférieur(?:e)?s? à|en-dessous de|<\s*)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)', 'lt'),
-            (r'(?:entre)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:et)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)', 'range')
-        ]
-        
-        for pattern, operator in amount_comparison_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                if operator == 'range':
-                    # Cas spécial pour "entre X et Y euros"
-                    min_amount = float(match.group(1).replace(',', '.'))
-                    max_amount = float(match.group(2).replace(',', '.'))
-                    entities.append(ExtractedEntity(
-                        name="montant",
-                        value={"operator": operator, "min": min_amount, "max": max_amount, "currency": "EUR"},
-                        confidence=0.85,
-                        span=match.span(),
-                        entity_type="amount"
-                    ))
-                else:
-                    # Cas standard pour comparaisons simples
-                    amount = float(match.group(1).replace(',', '.'))
-                    entities.append(ExtractedEntity(
-                        name="montant", 
-                        value={"operator": operator, "amount": amount, "currency": "EUR"},
-                        confidence=0.85,
-                        span=match.span(),
-                        entity_type="amount"
-                    ))
-                break  # Prendre seulement le premier match
-        
-        # Si aucun opérateur trouvé, chercher montant simple
-        if not any(entity.name == "montant" for entity in entities):
-            amount_pattern = r'(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|eur)'
-            match = re.search(amount_pattern, message_lower)
-            if match:
-                amount = float(match.group(1).replace(',', '.'))
-                entities.append(ExtractedEntity(
-                    name="montant",
-                    value={"operator": "eq", "amount": amount, "currency": "EUR"},
-                    confidence=0.7,
-                    span=match.span(),
-                    entity_type="amount"
-                ))
-        
-        # Dates relatives simples
-        date_patterns = [
-            (r'hier', 'yesterday'),
-            (r'aujourd\'hui', 'today'),
-            (r'demain', 'tomorrow'),
-            (r'la semaine derniere', 'last_week'),
-            (r'le mois dernier', 'last_month'),
-            (r'ce mois', 'this_month'),
-            (r'cette semaine', 'this_week')
-        ]
-        
-        for pattern, value in date_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                entities.append(ExtractedEntity(
-                    name="date_range",
-                    value=value,
-                    confidence=0.7,
-                    span=match.span(),
-                    entity_type="temporal"
-                ))
-        
-        # Marchands connus (patterns simples)
-        merchant_patterns = [
-            (r'amazon', 'Amazon'),
-            (r'carrefour', 'Carrefour'),
-            (r'leclerc', 'Leclerc'),
-            (r'auchan', 'Auchan'),
-            (r'fnac', 'Fnac'),
-            (r'uber', 'Uber'),
-            (r'mcdo|mcdonald', 'McDonald\'s'),
-            (r'sncf', 'SNCF'),
-            (r'total|esso|shell', 'Station Service'),
-            (r'restaurant', 'Restaurant'),
-            (r'pharmacie', 'Pharmacie')
-        ]
-        
-        for pattern, merchant_name in merchant_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                entities.append(ExtractedEntity(
-                    name="merchant",
-                    value=merchant_name,
-                    confidence=0.8,
-                    span=match.span(),
-                    entity_type="merchant"
-                ))
-        
-        # Catégories de dépenses
-        category_patterns = [
-            (r'alimentaire|courses|bouffe|nourriture', 'Alimentation'),
-            (r'restaurant|resto|café|bar', 'Restaurants'),
-            (r'essence|carburant|station', 'Transport'),
-            (r'vêtement|fringue|mode', 'Vêtements'),
-            (r'santé|médecin|pharmacie', 'Santé'),
-            (r'loisir|cinéma|sport', 'Loisirs')
-        ]
-        
-        for pattern, category_name in category_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                entities.append(ExtractedEntity(
-                    name="category",
-                    value=category_name,
-                    confidence=0.6,
-                    span=match.span(),
-                    entity_type="category"
-                ))
-        
-        # Détection du type de transaction basé sur les mots-clés
-        transaction_type_patterns = [
-            # Mots-clés pour débits (dépenses/sorties)
-            (r'(?:dépenses?|depenses?|sorties?|achats?|paiements?|frais|coûts?|couts?)', 'debit'),
-            # Mots-clés pour crédits (revenus/entrées)  
-            (r'(?:revenus?|gains?|entrées?|entrees?|versements?|salaires?|recettes?|crédits?|credits?)', 'credit'),
-        ]
-        
-        transaction_type_found = False
-        for pattern, tx_type in transaction_type_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                entities.append(ExtractedEntity(
-                    name="transaction_type",
-                    value=tx_type,
-                    confidence=0.9,
-                    span=match.span(),
-                    entity_type="transaction_type"
-                ))
-                transaction_type_found = True
-                break
-        
-        # Si montant détecté mais pas de type explicite, inférer selon le contexte
-        if not transaction_type_found and any(entity.name == "montant" for entity in entities):
-            # Par défaut, si on parle de montants sans contexte, on assume des dépenses
-            # sauf si des mots-clés positifs sont détectés
-            if any(word in message_lower for word in ["reçu", "touché", "gagné", "perçu"]):
-                entities.append(ExtractedEntity(
-                    name="transaction_type",
-                    value="credit",
-                    confidence=0.6,
-                    span=(0, 0),
-                    entity_type="transaction_type"
-                ))
-            else:
-                # Inférence par défaut : montants = dépenses
-                entities.append(ExtractedEntity(
-                    name="transaction_type", 
-                    value="debit",
-                    confidence=0.7,
-                    span=(0, 0),
-                    entity_type="transaction_type"
-                ))
+        """Extraction d'entites basique sans LLM - DÉSACTIVÉE au profit de l'agent LLM intelligent"""
 
-        return entities[:6]  # Limiter à 6 entités (incluant transaction_type)
-    
+        # PLUS AUCUNE EXTRACTION REGEX - TOUT géré par l'agent LLM
+        # L'agent LLM doit être assez intelligent pour comprendre :
+        # - "Mes achats alimentaires" → catégories alimentaires
+        # - "Plus de 500 euros" → montant avec opérateur
+        # - "Tesla" → marchand Tesla
+        # - etc.
+
+        return []  # Retourner une liste vide - tout géré par LLM
+
+    def _enrich_entities_with_purchase_logic(self, entities: List[ExtractedEntity], message: str) -> List[ExtractedEntity]:
+        """Enrichissement désactivé - tout géré par l'agent LLM intelligent"""
+
+        # PLUS AUCUN ENRICHISSEMENT REGEX - TOUT géré par l'agent LLM
+        # L'agent LLM doit être assez intelligent pour comprendre directement :
+        # - "Mes achats alimentaires" → catégories alimentaires spécifiques
+        # - "Mes achats" → catégories multiples automatiques
+        # - Normalisation des dates, etc.
+
+        return entities  # Retourner les entités telles que générées par le LLM
+
     def _get_confidence_level(self, confidence: float) -> IntentConfidence:
         """Determine le niveau de confiance"""
         if confidence >= 0.8:
@@ -582,202 +605,359 @@ ReGLES:
         """Charge les exemples few-shot depuis la configuration"""
         
         # Exemples few-shot integres (en attendant fichier de config)
-        # PRIORITE: Examples d'opérateurs de montant (positions 1-3 pour être dans top 5)
+        # PRIORITE: Examples cas problématiques temporels en positions 1-2 pour être dans top 5
         self._few_shot_examples = [
             {
-                "user": "Mes dépenses de moins de 500 euros", 
-                "assistant": """{
-    "intent_group": "transaction_search",
-    "intent_subtype": "by_amount",
-    "confidence": 0.90,
-    "entities": [
-        {
-            "name": "montant",
-            "value": {"operator": "lt", "amount": 500, "currency": "EUR"},
-            "confidence": 0.92,
-            "span": [4, 33],
-            "entity_type": "amount"
-        },
-        {
-            "name": "transaction_type",
-            "value": "debit", 
-            "confidence": 0.95,
-            "span": [4, 12],
-            "entity_type": "transaction_type"
-        }
-    ],
-    "reasoning": "Recherche de dépenses (débit) avec filtre sur montant maximum"
-}"""
-            },
-            {
-                "user": "Mes dépenses de plus de 500 euros",
-                "assistant": """{
-    "intent_group": "transaction_search",
-    "intent_subtype": "by_amount",
-    "confidence": 0.90,
-    "entities": [
-        {
-            "name": "montant",
-            "value": {"operator": "gte", "amount": 500, "currency": "EUR"},
-            "confidence": 0.92,
-            "span": [4, 32],
-            "entity_type": "amount"
-        },
-        {
-            "name": "transaction_type", 
-            "value": "debit",
-            "confidence": 0.95,
-            "span": [4, 12],
-            "entity_type": "transaction_type"
-        }
-    ],
-    "reasoning": "Recherche de dépenses (débit) avec filtre sur montant minimum"
-}"""
-            },
-            {
-                "user": "Transactions de 50 euros exactement",
-                "assistant": """{
-    "intent_group": "transaction_search", 
-    "intent_subtype": "by_amount",
-    "confidence": 0.88,
-    "entities": [
-        {
-            "name": "montant",
-            "value": {"operator": "eq", "amount": 50, "currency": "EUR"},
-            "confidence": 0.90,
-            "span": [14, 30],
-            "entity_type": "amount"
-        }
-    ],
-    "reasoning": "Recherche de transactions avec montant exact"
-}"""
-            },
-            {
-                "user": "Mes dépenses du mois de juin",
+                "user": "Mes achats du mois de Mai",
                 "assistant": """{
     "intent_group": "transaction_search",
     "intent_subtype": "by_period",
     "confidence": 0.90,
     "entities": [
         {
-            "name": "transaction_type",
-            "value": "debit",
-            "confidence": 0.95,
-            "span": [4, 12],
-            "entity_type": "transaction_type"
-        },
-        {
-            "name": "date_range",
-            "value": "juin",
-            "confidence": 0.90,
-            "span": [19, 23],
-            "entity_type": "temporal"
-        }
-    ],
-    "reasoning": "Recherche de dépenses par période spécifique (mois)"
-}"""
-            },
-            {
-                "user": "Mes achats du mois de mai",
-                "assistant": """{
-    "intent_group": "transaction_search",
-    "intent_subtype": "by_period",
-    "confidence": 0.88,
-    "entities": [
-        {
-            "name": "categories",
-            "value": ["Supermarkets / Groceries", "Restaurants", "Clothing", "Electronics", "Online Shopping"],
-            "confidence": 0.85,
-            "span": [4, 10],
-            "entity_type": "categories"
-        },
-        {
-            "name": "date_range",
+            "name": "month",
             "value": "mai",
-            "confidence": 0.90,
+            "confidence": 0.95,
             "span": [19, 22],
             "entity_type": "temporal"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
         }
     ],
-    "reasoning": "Recherche d'achats (multiples catégories de dépenses) par période spécifique"
+    "reasoning": "Recherche d'achats dans un mois spécifique - mai"
 }"""
             },
             {
-                "user": "Montre-moi mes achats chez Carrefour la semaine derniere",
+                "user": "Toutes mes dépenses du 5 mars",
                 "assistant": """{
     "intent_group": "transaction_search",
-    "intent_subtype": "filter",
+    "intent_subtype": "by_date",
     "confidence": 0.90,
     "entities": [
         {
-            "name": "merchant",
-            "value": "Carrefour",
+            "name": "date_specific",
+            "value": "5 mars",
             "confidence": 0.95,
-            "span": [20, 29],
-            "entity_type": "merchant"
+            "span": [23, 29],
+            "entity_type": "temporal"
         },
         {
-            "name": "date_range",
-            "value": "last_week",
-            "confidence": 0.85,
-            "span": [30, 45],
-            "entity_type": "temporal"
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [10, 18],
+            "entity_type": "transaction_type"
         }
     ],
-    "reasoning": "Recherche specifique de transactions avec filtre marchand et periode"
+    "reasoning": "Recherche de dépenses pour une date spécifique"
 }"""
             },
             {
-                "user": "Comment puis-je creer un nouveau compte epargne ?",
+                "user": "Mes achats en ligne",
                 "assistant": """{
-    "intent_group": "account_management",
-    "intent_subtype": "create",
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
     "confidence": 0.85,
     "entities": [
         {
-            "name": "account_type",
-            "value": "epargne",
-            "confidence": 0.90,
-            "span": [35, 42],
-            "entity_type": "account_type"
-        }
-    ],
-    "reasoning": "Demande de creation d'un nouveau compte avec type specifie"
-}"""
-            },
-            {
-                "user": "Bonjour, j'ai besoin d'aide",
-                "assistant": """{
-    "intent_group": "CONVERSATIONAL",
-    "intent_subtype": "help",
-    "confidence": 0.80,
-    "entities": [],
-    "reasoning": "Salutation avec demande d'assistance generale"
-}"""
-            },
-            {
-                "user": "Combien j'ai depense en restaurants ce mois-ci ?",
-                "assistant": """{
-    "intent_group": "transaction_search",
-    "intent_subtype": "aggregate",
-    "confidence": 0.88,
-    "entities": [
-        {
-            "name": "category",
-            "value": "restaurants",
-            "confidence": 0.90,
-            "span": [19, 30],
-            "entity_type": "category"
+            "name": "categories",
+            "value": ["Online Shopping"],
+            "confidence": 0.95,
+            "span": [10, 19],
+            "entity_type": "categories"
         },
         {
-            "name": "date_range",
-            "value": "this_month",
-            "confidence": 0.85,
-            "span": [31, 41],
-            "entity_type": "temporal"
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
         }
     ],
-    "reasoning": "Demande d'agregation des depenses par categorie et periode"
+    "reasoning": "Achats en ligne - catégorie 'Online Shopping' disponible en base"
+}"""
+            },
+            {
+                "user": "Mes achats Amazon Prime Video Netflix Disney+ Apple TV",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_merchant",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "merchants",
+            "value": ["Amazon Prime Video", "Netflix", "Disney+", "Apple TV"],
+            "confidence": 0.95,
+            "span": [10, 52],
+            "entity_type": "merchant_list"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche d'achats chez plusieurs marchands spécifiques - services de streaming"
+}"""
+            },
+            {
+                "user": "Mes virements de 500 euros ou plus",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "operation_type",
+            "value": "transfer",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "operation_type"
+        },
+        {
+            "name": "amount",
+            "value": 500,
+            "confidence": 0.95,
+            "span": [16, 25],
+            "entity_type": "amount"
+        },
+        {
+            "name": "operator",
+            "value": "gte",
+            "confidence": 0.95,
+            "span": [26, 34],
+            "entity_type": "operator"
+        }
+    ],
+    "reasoning": "Recherche de virements avec montant supérieur ou égal à 500 euros"
+}"""
+            },
+            {
+                "user": "Mes dépenses de plus de 100 euros",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "amount",
+            "value": 100,
+            "confidence": 0.95,
+            "span": [17, 27],
+            "entity_type": "amount"
+        },
+        {
+            "name": "operator",
+            "value": "gt",
+            "confidence": 0.95,
+            "span": [13, 16],
+            "entity_type": "operator"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche de dépenses avec montant supérieur à 100 euros"
+}"""
+            },
+            {
+                "user": "Mes achats alimentaires",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "categories",
+            "value": ["Supermarkets / Groceries", "Restaurants", "Fast foods", "Coffee shop", "Food - Others"],
+            "confidence": 0.95,
+            "span": [10, 22],
+            "entity_type": "categories"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche d'achats alimentaires - utilisation des catégories spécifiques de base"
+}"""
+            },
+            {
+                "user": "Mes transactions de 75 euros ou moins",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "amount",
+            "value": 75,
+            "confidence": 0.95,
+            "span": [17, 19],
+            "entity_type": "amount"
+        },
+        {
+            "name": "operator",
+            "value": "lte",
+            "confidence": 0.95,
+            "span": [20, 29],
+            "entity_type": "operator"
+        },
+        {
+            "name": "transaction_type",
+            "value": "all",
+            "confidence": 0.90,
+            "span": [4, 16],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche de toutes transactions avec montant inférieur ou égal à 75 euros"
+}"""
+            },
+            {
+                "user": "Mes transactions entre 25 et 75 euros",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_amount",
+    "confidence": 0.95,
+    "entities": [
+        {
+            "name": "amount_min",
+            "value": 25,
+            "confidence": 0.95,
+            "span": [20, 22],
+            "entity_type": "amount"
+        },
+        {
+            "name": "amount_max",
+            "value": 75,
+            "confidence": 0.95,
+            "span": [26, 28],
+            "entity_type": "amount"
+        },
+        {
+            "name": "transaction_type",
+            "value": "all",
+            "confidence": 0.90,
+            "span": [4, 16],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche de transactions dans une plage de montants - structure amount_min/amount_max"
+}"""
+            },
+            {
+                "user": "Mes dépenses Amazone",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_merchant",
+    "confidence": 0.85,
+    "entities": [
+        {
+            "name": "merchant",
+            "value": "Amazon",
+            "confidence": 0.95,
+            "span": [13, 20],
+            "entity_type": "merchant"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Dépenses chez marchand spécifique - normalisation de faute de frappe 'Amazone' vers 'Amazon'"
+}"""
+            },
+            {
+                "user": "Mes dépenses spatiales",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
+    "confidence": 0.80,
+    "entities": [
+        {
+            "name": "query",
+            "value": "spatial espace astronomie cosmos",
+            "confidence": 0.85,
+            "span": [13, 22],
+            "entity_type": "query"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Dépenses spatiales - aucune catégorie spécifique en base, utilisation de query"
+}"""
+            },
+            {
+                "user": "Mes dépenses du 15 septembre",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_date",
+    "confidence": 0.95,
+    "entities": [
+        {
+            "name": "date_range",
+            "value": "2025-09-15",
+            "confidence": 0.95,
+            "span": [13, 27],
+            "entity_type": "temporal"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Date spécifique avec jour et mois - format YYYY-MM-DD"
+}"""
+            },
+            {
+                "user": "Mes transactions du 1er au 15 octobre",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_date",
+    "confidence": 0.95,
+    "entities": [
+        {
+            "name": "date_range",
+            "value": "2025-10-01_2025-10-15",
+            "confidence": 0.95,
+            "span": [17, 35],
+            "entity_type": "temporal"
+        },
+        {
+            "name": "transaction_type",
+            "value": "all",
+            "confidence": 0.90,
+            "span": [4, 16],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Plage de dates spécifiques - format YYYY-MM-DD_YYYY-MM-DD"
 }"""
             }
         ]

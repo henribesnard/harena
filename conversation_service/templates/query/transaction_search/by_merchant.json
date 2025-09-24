@@ -6,7 +6,8 @@
     "user_id": "{{user_id}}",
     "query": "{{merchant_query}}",
     "filters": {
-      "merchant_name": "{{merchant_name}}"
+      "merchant_name": "{{merchant_name}}",
+      "transaction_type": "{{transaction_type}}"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -29,12 +30,23 @@
       "required": false,
       "type": "merchant_name",
       "source": "entities.merchant_name"
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type",
+      "allowed_values": ["debit", "credit"],
+      "default": ""
     }
   },
   "parameter_selection": {
     "merchant_query_or_filter": {
       "logic": "if entities.merchant then use merchant_name filter else use merchant_query"
     }
+  },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
   },
   "optimizations": {
     "cache_duration": "30m",

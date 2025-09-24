@@ -1,0 +1,8 @@
+{
+  "question_id": "A011",
+  "question": "Mes achats compris entre 100€ et 200€",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-23T16:09:10.306846"
+}

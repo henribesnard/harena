@@ -47,7 +47,8 @@
       "required": false,
       "type": "string",
       "source": "entities.transaction_type",
-      "allowed_values": ["debit", "credit"]
+      "allowed_values": ["debit", "credit"],
+      "default": ""
     },
     "date_range": {
       "required": false,

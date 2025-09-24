@@ -1,0 +1,12 @@
+{
+  "question_id": "G009",
+  "question": "Mes revenus Netflix supérieurs à ma moyenne mensuelle",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "merchant": "Netflix",
+    "operator": "gt",
+    "transaction_type": "credit"
+  },
+  "timestamp": "2025-09-24T07:18:32.565405"
+}

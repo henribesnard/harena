@@ -6,7 +6,7 @@
     "user_id": "{{user_id}}",
     "filters": {
       "transaction_type": "{{transaction_type}}",
-      "amount_abs": "{{montant}}"
+      "amount_abs": "{{amount}}"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -19,8 +19,8 @@
       "type": "integer",
       "source": "context.user_id"
     },
-    "montant": {
-      "required": true,
+    "amount": {
+      "required": false,
       "type": "object",
       "source": "entities.montant",
       "validation": {
@@ -32,7 +32,8 @@
       "required": false,
       "type": "string",
       "source": "entities.transaction_type",
-      "allowed_values": ["debit", "credit"]
+      "allowed_values": ["debit", "credit"],
+      "default": ""
     }
   },
   "filter_cleanup": {

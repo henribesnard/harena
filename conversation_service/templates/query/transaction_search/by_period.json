@@ -33,7 +33,8 @@
       "required": false,
       "type": "string",
       "source": "entities.transaction_type",
-      "allowed_values": ["debit", "credit"]
+      "allowed_values": ["debit", "credit"],
+      "default": ""
     },
     "categories": {
       "required": false,

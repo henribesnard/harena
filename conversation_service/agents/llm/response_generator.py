@@ -668,44 +668,64 @@ class ResponseGenerator:
         return None
     
     async def _generate_financial_summary_insight(
-        self, 
-        search_results: List[Dict[str, Any]], 
+        self,
+        search_results: List[Dict[str, Any]],
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
         """Genere un insight avec les totaux financiers basés sur les agrégations"""
-        
+
         # Accéder aux agrégations via self.current_request (sera défini dans generate_automatic_insights)
         if not hasattr(self, 'current_request') or not self.current_request.search_aggregations:
             return None
-        
+
         aggregations = self.current_request.search_aggregations
-        
+
         # Extraire les données agrégées (nouvelles agrégations automatiques)
         transaction_count = aggregations.get('transaction_count', {}).get('value', 0)
-        
+
         total_debit = 0
         total_credit = 0
-        
+        has_debit = False
+        has_credit = False
+
         if 'total_debit' in aggregations and 'sum_amount' in aggregations['total_debit']:
             total_debit = aggregations['total_debit']['sum_amount'].get('value', 0)
-            
+            has_debit = True
+
         if 'total_credit' in aggregations and 'sum_amount' in aggregations['total_credit']:
             total_credit = aggregations['total_credit']['sum_amount'].get('value', 0)
-        
+            has_credit = True
+
         if transaction_count == 0:
             return None
-        
+
+        # Construire data_support dynamiquement selon les agrégations disponibles
+        data_support = {
+            "transaction_count": transaction_count,
+            "currency": "EUR"
+        }
+
+        # N'inclure que les totaux présents dans les agrégations
+        if has_debit:
+            data_support["total_debit"] = total_debit
+        if has_credit:
+            data_support["total_credit"] = total_credit
+
+        # Construire description dynamique
+        description_parts = []
+        if has_debit:
+            description_parts.append(f"Débits: {total_debit:.2f}€")
+        if has_credit:
+            description_parts.append(f"Crédits: {total_credit:.2f}€")
+
+        description = " | ".join(description_parts) if description_parts else f"{transaction_count} transactions"
+
         return GeneratedInsight(
             type=InsightType.FINANCIAL_SUMMARY,
             title=f"Résumé financier : {transaction_count} transactions",
-            description=f"Débits: {total_debit:.2f}€ | Crédits: {total_credit:.2f}€",
+            description=description,
             confidence=1.0,
-            data_support={
-                "transaction_count": transaction_count,
-                "total_debit": total_debit,
-                "total_credit": total_credit,
-                "currency": "EUR"
-            },
+            data_support=data_support,
             actionable=False,
             priority=0  # Priorité élevée pour affichage en premier
         )

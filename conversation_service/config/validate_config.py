@@ -36,25 +36,25 @@ async def validate_configs():
     entities_file = config_dir / "entities_v2.yaml"
     
     if not intentions_file.exists():
-        print(f"❌ Fichier manquant: {intentions_file}")
+        print(f"ERROR Fichier manquant: {intentions_file}")
         return False
     
     if not entities_file.exists():
-        print(f"❌ Fichier manquant: {entities_file}")
+        print(f"ERROR Fichier manquant: {entities_file}")
         return False
     
     intentions_config = await load_config_file(intentions_file)
     entities_config = await load_config_file(entities_file)
     
     if not intentions_config or not entities_config:
-        print("❌ Erreur lors du chargement des configurations")
+        print("ERROR Erreur lors du chargement des configurations")
         return False
     
-    print(f"✅ Intentions chargées: {len(intentions_config.get('intent_groups', {}))} groupes")
-    print(f"✅ Entités chargées: {len(entities_config.get('search_service_fields', {}))} catégories de champs")
+    print(f" Intentions chargées: {len(intentions_config.get('intent_groups', {}))} groupes")
+    print(f" Entités chargées: {len(entities_config.get('search_service_fields', {}))} catégories de champs")
     
     # Validation complète
-    print("\n🔍 Validation complète en cours...")
+    print("\n Validation complète en cours...")
     is_valid, results = await validate_full_configuration(intentions_config, entities_config)
     
     # Analyser les résultats
@@ -62,11 +62,11 @@ async def validate_configs():
     warning_count = sum(1 for r in results if r.level == ValidationLevel.WARNING)
     info_count = sum(1 for r in results if r.level == ValidationLevel.INFO)
     
-    print(f"\n📊 Résultats de validation:")
+    print(f"\n Résultats de validation:")
     print(f"   🔴 Erreurs critiques: {critical_count}")
     print(f"   🟡 Avertissements: {warning_count}")
     print(f"   🔵 Informations: {info_count}")
-    print(f"   ✅ Configuration valide: {'OUI' if is_valid else 'NON'}")
+    print(f"    Configuration valide: {'OUI' if is_valid else 'NON'}")
     
     # Afficher les détails
     if results:
@@ -76,7 +76,7 @@ async def validate_configs():
             print("\n🔴 ERREURS CRITIQUES:")
             for result in results:
                 if result.level == ValidationLevel.CRITICAL:
-                    print(f"   ❌ {result.category}: {result.message}")
+                    print(f"   ERROR {result.category}: {result.message}")
                     if result.field_path:
                         print(f"      📍 Chemin: {result.field_path}")
                     if result.suggestion:
@@ -86,7 +86,7 @@ async def validate_configs():
             print("\n🟡 AVERTISSEMENTS:")
             for result in results:
                 if result.level == ValidationLevel.WARNING:
-                    print(f"   ⚠️ {result.category}: {result.message}")
+                    print(f"    {result.category}: {result.message}")
                     if result.field_path:
                         print(f"      📍 Chemin: {result.field_path}")
         
@@ -94,7 +94,7 @@ async def validate_configs():
             print("\n🔵 INFORMATIONS:")
             for result in results:
                 if result.level == ValidationLevel.INFO:
-                    print(f"   ℹ️ {result.category}: {result.message}")
+                    print(f"    {result.category}: {result.message}")
     
     return is_valid
 
@@ -108,7 +108,7 @@ async def test_specific_validation():
     # Test 1: Champs Elasticsearch connus
     print("\n🔬 Test 1: Vérification des champs Elasticsearch...")
     known_fields = validator.known_elasticsearch_fields
-    print(f"   📊 Champs connus: {len(known_fields)}")
+    print(f"    Champs connus: {len(known_fields)}")
     print(f"   📝 Exemples: {list(known_fields)[:10]}...")
     
     # Test 2: Validation d'exemple temporel
@@ -116,7 +116,7 @@ async def test_specific_validation():
     temporal_example = {
         "date": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-01-31T23:59:59Z"}
     }
-    print(f"   ✅ Exemple temporel valide: {temporal_example}")
+    print(f"    Exemple temporel valide: {temporal_example}")
     
     # Test 3: Validation d'agrégation
     print("\n🔬 Test 3: Syntaxe d'agrégation...")
@@ -126,7 +126,7 @@ async def test_specific_validation():
             "aggs": {"total": {"sum": {"field": "amount_abs"}}}
         }
     }
-    print(f"   ✅ Exemple d'agrégation: structure valide")
+    print(f"    Exemple d'agrégation: structure valide")
     
     return True
 
@@ -138,9 +138,9 @@ async def generate_compatibility_report():
     validator = ConfigValidator()
     
     # Compatibilité enrichment_service
-    print("\n🔗 Compatibilité enrichment_service:")
+    print("\n Compatibilité enrichment_service:")
     enrichment_fields = validator.known_elasticsearch_fields
-    print(f"   ✅ {len(enrichment_fields)} champs disponibles dans StructuredTransaction")
+    print(f"    {len(enrichment_fields)} champs disponibles dans StructuredTransaction")
     
     # Champs critiques pour les intentions financières
     critical_fields = [
@@ -150,20 +150,20 @@ async def generate_compatibility_report():
     
     print(f"\n🎯 Champs critiques pour intentions financières:")
     for field in critical_fields:
-        status = "✅" if field in enrichment_fields else "❌"
+        status = "" if field in enrichment_fields else "ERROR"
         print(f"   {status} {field}")
     
     # Compatibilité search_service
-    print(f"\n🔍 Compatibilité search_service:")
-    print(f"   ✅ Interface SearchRequest supportée")
-    print(f"   ✅ Filtres, agrégations et tri disponibles")
-    print(f"   ✅ Pagination et métadonnées gérées")
+    print(f"\n Compatibilité search_service:")
+    print(f"    Interface SearchRequest supportée")
+    print(f"    Filtres, agrégations et tri disponibles")
+    print(f"    Pagination et métadonnées gérées")
     
     return True
 
 async def main():
     """Fonction principale"""
-    print("🚀 Lancement de la validation des configurations")
+    print(" Lancement de la validation des configurations")
     
     try:
         # Validation principale
@@ -178,12 +178,12 @@ async def main():
         # Résultat final
         print("\n" + "=" * 60)
         if is_valid:
-            print("🎉 SUCCÈS: Configuration prête pour la Phase 1")
-            print("✅ Peut procéder aux phases suivantes")
+            print(" SUCCÈS: Configuration prête pour la Phase 1")
+            print(" Peut procéder aux phases suivantes")
             return 0
         else:
-            print("❌ ÉCHEC: Configuration nécessite des corrections")
-            print("🔧 Corrigez les erreurs critiques avant de continuer")
+            print("ERROR ÉCHEC: Configuration nécessite des corrections")
+            print(" Corrigez les erreurs critiques avant de continuer")
             return 1
             
     except Exception as e:

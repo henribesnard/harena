@@ -203,9 +203,9 @@ async def test_template_performance(engine: TemplateEngine):
             
             # Critère Phase 2: < 50ms
             if cold_compile_time < 50:
-                print("✅ Performance compilation OK (< 50ms)")
+                print(" Performance compilation OK (< 50ms)")
             else:
-                print("❌ Performance compilation trop lente (>= 50ms)")
+                print("ERROR Performance compilation trop lente (>= 50ms)")
     
     # Statistiques de cache
     stats = engine.get_cache_stats()
@@ -222,7 +222,7 @@ def print_validation_results(results: List[TemplateValidationResult]):
     total_compilation_time = 0
     
     for result in results:
-        status = "✅" if result.compilation_success and result.search_service_compatible else "❌"
+        status = "" if result.compilation_success and result.search_service_compatible else "ERROR"
         print(f"{status} {result.template_name}")
         
         if result.compilation_success:
@@ -252,8 +252,8 @@ def print_validation_results(results: List[TemplateValidationResult]):
     
     # Critères Phase 2
     print(f"\nCriteres Phase 2:")
-    print(f"  ✅ Templates génèrent requêtes JSON valides: {success_count > 0}")
-    print(f"  ✅ 100% templates testés contre search_service: {success_count == len(results)}")
+    print(f"   Templates génèrent requêtes JSON valides: {success_count > 0}")
+    print(f"   100% templates testés contre search_service: {success_count == len(results)}")
     
     return success_count == len(results)
 
@@ -263,12 +263,12 @@ async def main():
         success = await validate_all_templates()
         
         if success:
-            print("\n🎉 SUCCES: Tous les templates sont valides")
-            print("✅ Phase 2 peut être validée")
+            print("\n SUCCES: Tous les templates sont valides")
+            print(" Phase 2 peut être validée")
             return 0
         else:
-            print("\n❌ ECHEC: Certains templates ont des erreurs")
-            print("🔧 Corrigez les erreurs avant de continuer")
+            print("\nERROR ECHEC: Certains templates ont des erreurs")
+            print(" Corrigez les erreurs avant de continuer")
             return 1
             
     except Exception as e:

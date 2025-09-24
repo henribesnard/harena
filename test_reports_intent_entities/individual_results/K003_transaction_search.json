@@ -1,0 +1,11 @@
+{
+  "question_id": "K003",
+  "question": "Frais professionnels à rembourser",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.8,
+  "entities_structured": {
+    "query": "professionnel travail remboursement frais business",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T07:36:25.485476"
+}

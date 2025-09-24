@@ -1,0 +1,12 @@
+{
+  "question_id": "A012",
+  "question": "Mes dépenses de 0 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "amount": 0,
+    "operator": "eq",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T08:59:25.625097"
+}

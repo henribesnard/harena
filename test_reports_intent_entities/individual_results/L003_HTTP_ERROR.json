@@ -1,0 +1,8 @@
+{
+  "question_id": "L003",
+  "question": "<script>alert('hack')</script> mes dépenses",
+  "intent_detected": "HTTP_ERROR",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T07:39:51.688052"
+}

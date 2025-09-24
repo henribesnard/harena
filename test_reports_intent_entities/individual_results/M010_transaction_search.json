@@ -1,0 +1,11 @@
+{
+  "question_id": "M010",
+  "question": "Mes/dépenses/slashes/Amazon",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "merchant": "Amazon",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T07:57:43.292323"
+}

@@ -1,0 +1,11 @@
+{
+  "question_id": "K012",
+  "question": "Dépenses déductibles fiscalement",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.8,
+  "entities_structured": {
+    "query": "déductible fiscal impôt déduction crédit d'impôt frais professionnel",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T07:39:50.171151"
+}

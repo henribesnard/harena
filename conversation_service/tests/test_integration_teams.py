@@ -266,7 +266,7 @@ def main():
         print("   - Métriques fonctionnelles")
         print("   - Logique métier cohérente")
     else:
-        print(f"\n⚠️  {total - successful} tests échoués - Corrections nécessaires")
+        print(f"\n  {total - successful} tests échoués - Corrections nécessaires")
 
 if __name__ == "__main__":
     main()

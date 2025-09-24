@@ -1,0 +1,17 @@
+{
+  "question_id": "C004",
+  "question": "Mes dépenses santé",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "categories": [
+      "Doctor Visits",
+      "Dentist",
+      "Pharmacy",
+      "Medical Equipment",
+      "Medical Insurance"
+    ],
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:54:24.082057"
+}

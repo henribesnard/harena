@@ -1,0 +1,8 @@
+{
+  "question_id": "D022",
+  "question": "Mes transactions de l'année dernière",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-23T18:39:53.257996"
+}

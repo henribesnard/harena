@@ -1,0 +1,10 @@
+{
+  "question_id": "H004",
+  "question": "Toutes les transactions contenant 'voyage'",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "query": "voyage"
+  },
+  "timestamp": "2025-09-24T07:22:18.861471"
+}

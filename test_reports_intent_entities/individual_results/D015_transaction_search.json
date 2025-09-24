@@ -1,0 +1,11 @@
+{
+  "question_id": "D015",
+  "question": "Mes dépenses demain",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "date_range": "tomorrow",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:20:07.496834"
+}

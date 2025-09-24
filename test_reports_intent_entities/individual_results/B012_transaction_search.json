@@ -1,0 +1,11 @@
+{
+  "question_id": "B012",
+  "question": "Mes achats chez Google",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "Google",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:07:59.278567"
+}

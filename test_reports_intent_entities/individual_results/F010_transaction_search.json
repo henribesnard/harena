@@ -1,0 +1,12 @@
+{
+  "question_id": "F010",
+  "question": "Toutes mes transactions Uber du dernier trimestre",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "merchant": "Uber",
+    "date_range": "last_quarter",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T12:55:00.361964"
+}

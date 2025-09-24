@@ -1,0 +1,12 @@
+{
+  "question_id": "A019",
+  "question": "Mes transactions de 75 euros ou moins",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 75,
+    "operator": "lte",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T09:02:39.708205"
+}

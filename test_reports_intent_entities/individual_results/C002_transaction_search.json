@@ -1,0 +1,17 @@
+{
+  "question_id": "C002",
+  "question": "Mes frais de transport",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "categories": [
+      "Public Transportation",
+      "Taxi/Uber",
+      "Fuel",
+      "Car Maintenance",
+      "Parking"
+    ],
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:53:20.503421"
+}

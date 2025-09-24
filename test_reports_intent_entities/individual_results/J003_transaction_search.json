@@ -1,0 +1,11 @@
+{
+  "question_id": "J003",
+  "question": "Combien est-ce que j'ai dépensé chez McDonald's ?",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "McDonald's",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T07:30:56.571623"
+}

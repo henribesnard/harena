@@ -1,0 +1,11 @@
+{
+  "question_id": "D025",
+  "question": "Mes transactions du 1er au 15 octobre",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "date_range": "2025-10-01_2025-10-15",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T12:24:17.314541"
+}

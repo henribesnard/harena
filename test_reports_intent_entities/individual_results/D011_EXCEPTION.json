@@ -1,0 +1,8 @@
+{
+  "question_id": "D011",
+  "question": "Mes revenus ce trimestre",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T09:22:45.048525"
+}

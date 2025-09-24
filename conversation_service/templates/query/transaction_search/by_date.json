@@ -5,7 +5,9 @@
   "parameters": {
     "user_id": "{{user_id}}",
     "filters": {
-      "date": "{{date_range}}"
+      "date": "{{date_range}}",
+      "transaction_type": "{{transaction_type}}",
+      "category_name": "{{ categories if categories else null }}"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -21,12 +23,29 @@
     "date_range": {
       "required": true,
       "type": "object",
-      "source": "entities.periode_temporelle",
+      "source": "entities.date_range",
       "validation": {
         "keys": ["gte", "lte"],
         "date_format": "ISO8601"
       }
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type",
+      "allowed_values": ["debit", "credit"],
+      "default": ""
+    },
+    "categories": {
+      "required": false,
+      "type": "array",
+      "source": "entities.categories",
+      "description": "Liste des catégories à inclure dans la recherche"
     }
+  },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
   },
   "optimizations": {
     "cache_duration": "1h",

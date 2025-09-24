@@ -1,0 +1,14 @@
+{
+  "question_id": "C011",
+  "question": "Mes abonnements",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "Streaming Services",
+      "Internet/Phone"
+    ],
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:58:16.015359"
+}

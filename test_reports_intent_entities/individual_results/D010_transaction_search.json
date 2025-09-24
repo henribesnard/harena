@@ -1,0 +1,12 @@
+{
+  "question_id": "D010",
+  "question": "Mes achats Amazon en décembre",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "merchant": "Amazon",
+    "date_range": "2025-12",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:17:53.939362"
+}

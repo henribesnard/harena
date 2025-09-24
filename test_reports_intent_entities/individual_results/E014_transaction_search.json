@@ -1,0 +1,11 @@
+{
+  "question_id": "E014",
+  "question": "Mes paiements par carte de crédit",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "operation_type": "card",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T13:19:57.823231"
+}

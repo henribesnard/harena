@@ -1,0 +1,12 @@
+{
+  "question_id": "A009",
+  "question": "Mes dépenses exactement égales à 25.50 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "amount": 25.5,
+    "operator": "eq",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T08:57:58.138643"
+}

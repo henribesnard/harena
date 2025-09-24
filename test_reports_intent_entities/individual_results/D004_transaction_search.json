@@ -1,0 +1,11 @@
+{
+  "question_id": "D004",
+  "question": "Toutes mes transactions d'hier",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "date_range": "yesterday",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T12:15:09.915623"
+}

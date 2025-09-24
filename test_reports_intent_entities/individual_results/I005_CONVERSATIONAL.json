@@ -1,0 +1,8 @@
+{
+  "question_id": "I005",
+  "question": "Mes dépenses dans une catégorie inexistante",
+  "intent_detected": "CONVERSATIONAL",
+  "intent_confidence": 0.7,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T07:26:01.954441"
+}

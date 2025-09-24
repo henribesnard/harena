@@ -1,0 +1,15 @@
+{
+  "question_id": "M014",
+  "question": "Mes achats de plus de 100 euros ou de moins de 10 euros en juin",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "transaction_type": "debit",
+    "amount_min": 10,
+    "operator_min": "lt",
+    "amount_max": 100,
+    "operator_max": "gt",
+    "date_range": "2025-06"
+  },
+  "timestamp": "2025-09-24T07:59:21.428495"
+}

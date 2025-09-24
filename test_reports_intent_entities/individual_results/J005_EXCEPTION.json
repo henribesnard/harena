@@ -1,0 +1,8 @@
+{
+  "question_id": "J005",
+  "question": "Est-ce que j'ai beaucoup dépensé cette semaine ?",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T07:32:57.590761"
+}

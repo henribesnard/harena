@@ -1,0 +1,11 @@
+{
+  "question_id": "D016",
+  "question": "Mes achats de 1995",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "date_range": "1995",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:20:32.470021"
+}

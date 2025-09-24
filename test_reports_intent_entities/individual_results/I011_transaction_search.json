@@ -1,0 +1,12 @@
+{
+  "question_id": "I011",
+  "question": "Mes gros montants",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.75,
+  "entities_structured": {
+    "amount": 1000,
+    "operator": "gt",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T07:29:24.184441"
+}

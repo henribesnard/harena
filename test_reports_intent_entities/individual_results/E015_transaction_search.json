@@ -1,0 +1,11 @@
+{
+  "question_id": "E015",
+  "question": "Mes opérations non identifiées",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "operation_type": "unknown",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T13:20:30.988354"
+}

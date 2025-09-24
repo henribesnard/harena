@@ -1,0 +1,8 @@
+{
+  "question_id": "D006",
+  "question": "Mes dépenses du 1er mai",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T10:21:57.480199"
+}

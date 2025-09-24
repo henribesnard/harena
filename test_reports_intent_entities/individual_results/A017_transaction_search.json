@@ -1,0 +1,12 @@
+{
+  "question_id": "A017",
+  "question": "Mes achats de 50 euros maximum",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 50,
+    "operator": "lte",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:01:48.307139"
+}

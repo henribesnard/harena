@@ -1,0 +1,13 @@
+{
+  "question_id": "F001",
+  "question": "Mes achats Amazon de plus de 100 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "Amazon",
+    "amount": 100,
+    "operator": "gt",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:49:46.405482"
+}

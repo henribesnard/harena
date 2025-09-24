@@ -1,0 +1,125 @@
+{
+  "category": "G_analyse",
+  "timestamp": "2025-09-24T07:59:46.452499",
+  "total_questions": 12,
+  "detailed_results": [
+    {
+      "question_id": "G001",
+      "question": "Combien j'ai dépensé ce mois ?",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "date_range": "this_month",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "G002",
+      "question": "Quel est mon budget restaurant ?",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "query": "restaurant budget depenses alimentation sorties"
+      }
+    },
+    {
+      "question_id": "G003",
+      "question": "Ma moyenne de dépenses par jour",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "debit",
+        "period": "daily"
+      }
+    },
+    {
+      "question_id": "G004",
+      "question": "Mon plus gros achat du mois",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "debit",
+        "operator": "max",
+        "date_range": "this_month"
+      }
+    },
+    {
+      "question_id": "G005",
+      "question": "Combien je gagne par mois ?",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.95,
+      "entities_structured": {}
+    },
+    {
+      "question_id": "G006",
+      "question": "Mes dépenses totales Amazon",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "merchant": "Amazon",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "G007",
+      "question": "Compare mes achats de mai à ceux de juin",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "2025-06",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "G008",
+      "question": "Compare mes revenus de mai à ceux de juin",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "2025-06",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "G009",
+      "question": "Mes revenus Netflix supérieurs à ma moyenne mensuelle",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "merchant": "Netflix",
+        "operator": "gt",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "G010",
+      "question": "Combien j'ai économisé par rapport au mois dernier",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "last_month"
+      }
+    },
+    {
+      "question_id": "G011",
+      "question": "Ma progression de dépenses depuis janvier",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "2025-01",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "G012",
+      "question": "Mes 5 plus grosses dépenses",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "debit",
+        "amount": 5,
+        "operator": "gt"
+      }
+    }
+  ]
+}

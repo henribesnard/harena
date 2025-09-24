@@ -1,0 +1,11 @@
+{
+  "question_id": "B003",
+  "question": "Mes transactions chez Carrefour",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "Carrefour",
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T09:03:57.706197"
+}

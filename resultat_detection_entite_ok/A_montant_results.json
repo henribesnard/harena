@@ -1,0 +1,216 @@
+{
+  "category": "A_montant",
+  "timestamp": "2025-09-24T09:02:40.209226",
+  "total_questions": 19,
+  "detailed_results": [
+    {
+      "question_id": "A001",
+      "question": "Mes dépenses de plus de 100 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 100,
+        "operator": "gt",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A002",
+      "question": "Mes dépenses de plus de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "gt",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A003",
+      "question": "Mes dépenses de plus de 1000 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 1000,
+        "operator": "gt",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A004",
+      "question": "Mes dépenses de moins de 50 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 50,
+        "operator": "lt",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A005",
+      "question": "Est-ce que j'ai des dépenses d'un montant de 50 euros ?",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 50,
+        "operator": "eq",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A006",
+      "question": "Mes revenus de plus de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "gt",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "A007",
+      "question": "Mes revenus de plus de 1500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 1500,
+        "operator": "gt",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "A008",
+      "question": "Mes revenus de moins de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "lt",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "A009",
+      "question": "Mes dépenses exactement égales à 25.50 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 25.5,
+        "operator": "eq",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A010",
+      "question": "Mes transactions entre 25 et 75 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount_min": 25,
+        "amount_max": 75,
+        "transaction_type": "all"
+      }
+    },
+    {
+      "question_id": "A011",
+      "question": "Mes achats compris entre 100€ et 200€",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount_min": 100,
+        "amount_max": 200,
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A012",
+      "question": "Mes dépenses de 0 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "amount": 0,
+        "operator": "eq",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A013",
+      "question": "Mes transactions de plus de 10000 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 10000,
+        "operator": "gt",
+        "transaction_type": "all"
+      }
+    },
+    {
+      "question_id": "A014",
+      "question": "Mes achats de moins de 0.01 euro",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 0.01,
+        "operator": "lt",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A015",
+      "question": "Mes revenus négatifs",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "amount": 0,
+        "operator": "lt",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "A016",
+      "question": "Mes dépenses de 100 euros et plus",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 100,
+        "operator": "gte",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A017",
+      "question": "Mes achats de 50 euros maximum",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 50,
+        "operator": "lte",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "A018",
+      "question": "Mes revenus d'au moins 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "transaction_type": "credit",
+        "amount": 500,
+        "operator": "gte"
+      }
+    },
+    {
+      "question_id": "A019",
+      "question": "Mes transactions de 75 euros ou moins",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 75,
+        "operator": "lte",
+        "transaction_type": "all"
+      }
+    }
+  ]
+}

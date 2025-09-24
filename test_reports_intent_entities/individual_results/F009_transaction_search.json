@@ -1,0 +1,20 @@
+{
+  "question_id": "F009",
+  "question": "Mes achats alimentaires inférieurs à 25 euros en mai",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "categories": [
+      "Supermarkets / Groceries",
+      "Restaurants",
+      "Fast foods",
+      "Coffee shop",
+      "Food - Others"
+    ],
+    "amount": 25,
+    "operator": "lt",
+    "date_range": "2025-05",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:54:24.833678"
+}

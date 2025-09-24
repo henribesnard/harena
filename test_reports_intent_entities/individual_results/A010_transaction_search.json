@@ -1,0 +1,12 @@
+{
+  "question_id": "A010",
+  "question": "Mes transactions entre 25 et 75 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "amount_min": 25,
+    "amount_max": 75,
+    "transaction_type": "all"
+  },
+  "timestamp": "2025-09-24T08:58:26.105217"
+}

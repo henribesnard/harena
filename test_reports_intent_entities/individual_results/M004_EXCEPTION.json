@@ -1,0 +1,8 @@
+{
+  "question_id": "M004",
+  "question": "MES DÉPENSES EN MAJUSCULES NETFLIX",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "timestamp": "2025-09-24T07:55:19.304232"
+}

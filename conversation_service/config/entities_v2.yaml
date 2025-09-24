@@ -69,30 +69,88 @@ temporal_entities:
     
     few_shot_examples:
       - input: "le mois dernier"
-        output: {"date": {"gte": "2024-12-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}}
-        explanation: "Range complet du mois précédent"
-        
+        output: {"date_range": "last_month"}
+        explanation: "Période standard normalisée"
+
       - input: "ces 30 derniers jours"
-        output: {"date": {"gte": "2025-01-16T00:00:00Z"}}
-        explanation: "Range depuis 30 jours (date calculée dynamiquement)"
-        
-      - input: "en janvier 2024"
-        output: {"date": {"gte": "2024-01-01T00:00:00Z", "lte": "2024-01-31T23:59:59Z"}}
-        explanation: "Mois spécifique d'une année"
-        
-      - input: "depuis le 15 mars"
-        output: {"date": {"gte": "2025-03-15T00:00:00Z"}}
-        explanation: "Range ouvert depuis une date"
-        
+        output: {"date_range": "last_30_days"}
+        explanation: "Période relative standard"
+
+      - input: "de mai"
+        output: {"date_range": "2025-05"}
+        explanation: "Mois avec année courante"
+
+      - input: "en janvier 2025"
+        output: {"date_range": "2025-01"}
+        explanation: "Mois avec année spécifique"
+
+      - input: "du 1er mai"
+        output: {"date_range": "2025-05-01"}
+        explanation: "Date spécifique avec année courante"
+
+      - input: "du 5 mars"
+        output: {"date_range": "2025-03-05"}
+        explanation: "Date spécifique format ISO"
+
+      - input: "du 14 au 15 mai"
+        output: {"date_range": "2025-05-14_2025-05-15"}
+        explanation: "Range de dates avec séparateur underscore"
+
+      - input: "en décembre"
+        output: {"date_range": "2025-12"}
+        explanation: "Mois avec année courante"
+
       - input: "cette semaine"
-        output: {"date": {"gte": "2025-01-13T00:00:00Z", "lte": "2025-01-19T23:59:59Z"}}
-        explanation: "Semaine en cours (calculée dynamiquement)"
+        output: {"date_range": "this_week"}
+        explanation: "Période relative standard"
+
+      - input: "ce trimestre"
+        output: {"date_range": "this_quarter"}
+        explanation: "Période trimestrielle"
+
+      - input: "aujourd'hui"
+        output: {"date_range": "today"}
+        explanation: "Jour actuel"
+
+      - input: "demain"
+        output: {"date_range": "tomorrow"}
+        explanation: "Jour suivant"
+
+      - input: "cette année"
+        output: {"date_range": "this_year"}
+        explanation: "Année courante"
+
+      - input: "de l'année dernière"
+        output: {"date_range": "last_year"}
+        explanation: "Année précédente"
+
+      - input: "du weekend"
+        output: {"date_range": "weekend"}
+        explanation: "Weekend courant"
+
+      - input: "du 15 septembre"
+        output: {"date_range": "2025-09-15"}
+        explanation: "Date avec année courante implicite"
+
+      - input: "du 1er au 15 octobre"
+        output: {"date_range": "2025-10-01_2025-10-15"}
+        explanation: "Range avec dates explicites"
+
+      - input: "de 1995"
+        output: {"date_range": "1995"}
+        explanation: "Année spécifique complète"
+
+      - input: "en 2030"
+        output: {"date_range": "2030"}
+        explanation: "Année future"
 
     extraction_guidance:
-      - "Utiliser toujours le champ 'date' (principal) pour les filtres temporels"
-      - "Format ISO 8601 avec timezone UTC"
-      - "Expressions relatives calculées depuis la date actuelle"
-      - "Ranges fermés pour périodes complètes (mois, semaines)"
+      - "TOUJOURS utiliser 'date_range' au lieu de 'date', 'month', 'year'"
+      - "Format standard: YYYY-MM-DD pour dates, YYYY-MM pour mois, YYYY pour années"
+      - "Ranges avec underscore: 2025-05-14_2025-05-15"
+      - "Périodes relatives: this_month, last_week, today, etc."
+      - "Année courante implicite si non spécifiée (2025)"
+      - "Distinguer années (1995, 2030) des montants par contexte"
 
   granularite_temporelle:
     description: "Granularité pour agrégations date_histogram"
@@ -173,27 +231,68 @@ textual_entities:
       - "Le champ merchant_name peut être null (pas tous les enrichissements)"
 
   category_search:
-    description: "Recherche par catégorie via category_name"
+    description: "Recherche par catégorie via query textuelle (priorité)"
     type: "category_filter"
-    target_fields: ["category_name", "category_id"]
-    
+    target_fields: ["query", "category_name"]
+
     few_shot_examples:
-      - input: "mes dépenses alimentaires"
-        output: {"query": "alimentation food"}
-        explanation: "Recherche textuelle sur category_name + synonymes"
-        
+      - input: "mes dépenses restaurant"
+        output: {"query": "restaurant"}
+        explanation: "Recherche textuelle prioritaire"
+
       - input: "frais de transport"
-        output: {"query": "transport mobilité"}
-        explanation: "Recherche avec termes liés"
-        
-      - input: "catégorie restaurant"
-        output: {"category_name": "restaurant"}
-        explanation: "Filtre exact sur nom de catégorie"
+        output: {"query": "transport taxi uber carburant parking"}
+        explanation: "Recherche avec mots-clés multiples"
+
+      - input: "mes achats alimentaires"
+        output: {"query": "alimentaire supermarche groceries courses nourriture"}
+        explanation: "Recherche étendue avec synonymes"
+
+      - input: "mes dépenses santé"
+        output: {"query": "sante medecin dentiste pharmacie medical"}
+        explanation: "Recherche santé avec termes médicaux"
+
+      - input: "mes sorties loisirs"
+        output: {"query": "loisirs cinema concert sport voyage hobby"}
+        explanation: "Recherche loisirs avec activités"
+
+      - input: "mes factures d'énergie"
+        output: {"query": "energie electricite gaz edf engie utilities"}
+        explanation: "Recherche énergie avec fournisseurs"
+
+      - input: "mes frais bancaires"
+        output: {"query": "bancaire banque frais commission agios"}
+        explanation: "Recherche bancaire avec types de frais"
+
+      - input: "mes achats vêtements"
+        output: {"query": "vetements clothing mode fashion magasin"}
+        explanation: "Recherche vêtements avec termes mode"
+
+      - input: "mes dépenses électronique"
+        output: {"query": "electronique electronics informatique telephone ordinateur"}
+        explanation: "Recherche électronique avec appareils"
+
+      - input: "mes achats en ligne"
+        output: {"query": "en ligne online internet ecommerce shopping"}
+        explanation: "Recherche commerce électronique"
+
+      - input: "mes abonnements"
+        output: {"query": "abonnement subscription mensuel recurrent"}
+        explanation: "Recherche abonnements avec périodicité"
+
+      - input: "mes dépenses spatial"
+        output: {"query": "spatial espace nasa spacex fusee satellite"}
+        explanation: "Recherche spatiale avec termes spécialisés"
+
+      - input: "mes achats en Bitcoin"
+        output: {"query": "bitcoin crypto cryptocurrency ethereum binance"}
+        explanation: "Recherche crypto avec monnaies et plateformes"
 
     extraction_guidance:
-      - "Le champ category_name est synchronisé depuis PostgreSQL"
-      - "Utiliser 'query' pour flexibilité (synonymes, variations)"
-      - "category_id disponible mais category_name plus naturel"
+      - "TOUJOURS privilégier 'query' pour les catégories"
+      - "Inclure plusieurs mots-clés synonymes dans query"
+      - "Utiliser 'query' au lieu de 'categories' ou 'category_name'"
+      - "Combiner termes français et anglais dans query"
 
   description_search:
     description: "Recherche dans les descriptions"
@@ -218,33 +317,98 @@ business_entities:
     type: "enum_filter"
     target_field: "transaction_type"
     allowed_values: ["credit", "debit"]
-    
+
     few_shot_examples:
       - input: "mes dépenses"
         output: {"transaction_type": "debit"}
         explanation: "Débit = argent qui sort"
-        
+
+      - input: "mes achats"
+        output: {"transaction_type": "debit"}
+        explanation: "Achats = dépenses = débit"
+
       - input: "mes revenus"
         output: {"transaction_type": "credit"}
         explanation: "Crédit = argent qui rentre"
-        
+
       - input: "mes virements reçus"
         output: {"transaction_type": "credit"}
+
+      - input: "mes opérations"
+        output: {}
+        explanation: "Opérations = tous types de transactions"
 
     extraction_guidance:
       - "Débit: achats, dépenses, retraits, virements sortants"
       - "Crédit: salaires, virements entrants, remboursements"
 
+  operation_type:
+    description: "Type d'opération bancaire (valeurs réelles en base)"
+    type: "enum_filter"
+    target_field: "operation_type"
+    allowed_values: ["card", "withdrawal", "deferred_debit_card", "unknown", "direct_debit", "transfer"]
+
+    few_shot_examples:
+      - input: "mes paiements par carte"
+        output: {"operation_type": "card"}
+        explanation: "Paiements carte standard"
+
+      - input: "mes retraits espèces"
+        output: {"operation_type": "withdrawal"}
+        explanation: "Retraits d'argent = withdrawal (PAS cash)"
+
+      - input: "mes cartes à débit différé"
+        output: {"operation_type": "deferred_debit_card"}
+        explanation: "Débit différé = deferred_debit_card (PAS card_payment)"
+
+      - input: "mes prélèvements automatiques"
+        output: {"operation_type": "direct_debit"}
+        explanation: "Prélèvements directs"
+
+      - input: "mes virements"
+        output: {"operation_type": "transfer"}
+        explanation: "Virements entrants et sortants"
+
+      - input: "mes opérations non identifiées"
+        output: {"operation_type": "unknown"}
+        explanation: "Non identifiées = unknown (PAS unidentified)"
+
+      - input: "mes chèques"
+        output: {"operation_type": "unknown"}
+        explanation: "Chèques = unknown (pas de type spécifique)"
+
+      - input: "mes abonnements récurrents"
+        output: {"operation_type": "direct_debit"}
+        explanation: "Abonnements = prélèvements"
+
+      - input: "mes paiements contactless"
+        output: {"operation_type": "card"}
+        explanation: "Sans contact = carte"
+
+      - input: "mes virements SEPA"
+        output: {"operation_type": "transfer"}
+        explanation: "SEPA = virement"
+
+    extraction_guidance:
+      - "SEULEMENT 6 VALEURS AUTORISÉES: card, withdrawal, deferred_debit_card, unknown, direct_debit, transfer"
+      - "withdrawal: retraits espèces (PAS cash, PAS retrait_especes)"
+      - "deferred_debit_card: débit différé (PAS card_payment, PAS carte_credit)"
+      - "unknown: non identifiées (PAS unidentified, PAS inconnu)"
+      - "card: paiements carte standard (PAS carte_bancaire)"
+      - "direct_debit: prélèvements auto (PAS prelevement)"
+      - "transfer: tous virements (PAS virement, PAS virement_sepa)"
+      - "NE PAS INVENTER de nouvelles valeurs - utiliser seulement les 6 officielles"
+
   account_reference:
     description: "Référence à un compte spécifique"
     type: "account_filter"
     target_field: "account_id"
-    
+
     few_shot_examples:
       - input: "compte 12345"
         output: {"account_id": 12345}
         explanation: "Filtre par ID numérique exact"
-        
+
       - input: "mon compte principal"
         output: {}
         explanation: "Pas d'info suffisante → pas de filtre (laisser tous comptes)"
@@ -341,7 +505,7 @@ validation_rules:
     transaction_type: {"enum": ["credit", "debit"]}
     
 performance_settings:
-  cache_entity_patterns: true
+  cache_entity_patterns: false
   adaptive_field_selection: true
   field_popularity_tracking: true
 

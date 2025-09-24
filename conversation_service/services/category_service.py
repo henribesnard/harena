@@ -150,7 +150,8 @@ class CategoryService:
         context += f"• Revenus ({len(self.INCOME_CATEGORIES)}): {', '.join(self.INCOME_CATEGORIES)}\n\n"
         
         context += "LOGIQUE D'ARBITRAGE:\n"
-        context += "• 'achats' = TOUTES les catégories de dépenses (sauf revenus)\n"
+        context += "• 'achats' seul = NE PAS générer de catégorie (ajoutée automatiquement par le système)\n"
+        context += "• 'achats' + spécificité = catégorie exacte (ex: 'achats alimentaires' = alimentation)\n"
         context += "• 'alimentation' = Supermarkets, Restaurants, Fast foods, etc.\n"
         context += "• Terme spécifique = catégorie exacte correspondante\n"
         

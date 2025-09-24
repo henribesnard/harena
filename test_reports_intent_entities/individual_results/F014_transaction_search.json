@@ -1,0 +1,16 @@
+{
+  "question_id": "F014",
+  "question": "Mes dépenses restaurant de 25 euros maximum ce mois",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "categories": [
+      "Restaurants"
+    ],
+    "amount": 25,
+    "operator": "lte",
+    "date_range": "this_month",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T12:57:15.848182"
+}

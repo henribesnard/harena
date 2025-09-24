@@ -1,0 +1,257 @@
+{
+  "category": "D_temporel",
+  "timestamp": "2025-09-24T12:24:17.828744",
+  "total_questions": 25,
+  "detailed_results": [
+    {
+      "question_id": "D001",
+      "question": "Mes dépenses de ce mois",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "this_month",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D002",
+      "question": "Mes achats de mai",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "2025-05",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D003",
+      "question": "Mes revenus de ce mois",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "this_month",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "D004",
+      "question": "Toutes mes transactions d'hier",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "date_range": "yesterday",
+        "transaction_type": "all"
+      }
+    },
+    {
+      "question_id": "D005",
+      "question": "Toutes mes dépenses de la semaine dernière",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "last_week",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D006",
+      "question": "Mes dépenses du 1er mai",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "2025-05-01",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D007",
+      "question": "Mes dépenses du 5 mars",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "2025-03-05",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D008",
+      "question": "Mes dépenses du 14 au 15 mai",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "date_range": "2025-05-14_2025-05-15",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D009",
+      "question": "Mes dépenses des 30 derniers jours",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "last_30_days",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D010",
+      "question": "Mes achats Amazon en décembre",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "merchant": "Amazon",
+        "date_range": "2025-12",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D011",
+      "question": "Mes revenus ce trimestre",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "this_quarter",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "D012",
+      "question": "Mes achats de la semaine dernière",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "last_week",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D013",
+      "question": "Mes transactions le mois dernier",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "last_month",
+        "transaction_type": "all"
+      }
+    },
+    {
+      "question_id": "D014",
+      "question": "Mes achats en janvier 2025",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "2025-01",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D015",
+      "question": "Mes dépenses demain",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "tomorrow",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D016",
+      "question": "Mes achats de 1995",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "1995",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D017",
+      "question": "Mes transactions en 2030",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "2030",
+        "transaction_type": "all"
+      }
+    },
+    {
+      "question_id": "D018",
+      "question": "Mes achats du 32 février",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.7,
+      "entities_structured": {
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D019",
+      "question": "Mes dépenses aujourd'hui",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "date_range": "today",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D020",
+      "question": "Mes achats cette semaine",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "this_week",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D021",
+      "question": "Mes revenus cette année",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "this_year",
+        "transaction_type": "credit"
+      }
+    },
+    {
+      "question_id": "D022",
+      "question": "Mes transactions de l'année dernière",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "last_year",
+        "transaction_type": "all"
+      }
+    },
+    {
+      "question_id": "D023",
+      "question": "Mes achats du weekend",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "weekend",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D024",
+      "question": "Mes dépenses du 15 septembre",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "date_range": "2025-09-15",
+        "transaction_type": "debit"
+      }
+    },
+    {
+      "question_id": "D025",
+      "question": "Mes transactions du 1er au 15 octobre",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "date_range": "2025-10-01_2025-10-15",
+        "transaction_type": "all"
+      }
+    }
+  ]
+}

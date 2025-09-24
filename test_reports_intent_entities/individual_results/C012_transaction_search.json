@@ -1,0 +1,11 @@
+{
+  "question_id": "C012",
+  "question": "Mes dépenses spatial",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "query": "spatial espace astronomie",
+    "transaction_type": "debit"
+  },
+  "timestamp": "2025-09-24T09:58:44.420216"
+}

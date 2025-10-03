@@ -46,8 +46,8 @@ class MetricCalculator:
                         rt.id,
                         rt.transaction_date,
                         rt.amount,
-                        rt.description,
-                        rt.merchant_name,
+                        rt.clean_description,
+                        rt.provider_description,
                         c.category_name
                     FROM raw_transactions rt
                     LEFT JOIN categories c ON rt.category_id = c.category_id
@@ -78,8 +78,7 @@ class MetricCalculator:
                         "id": row.id,
                         "transaction_date": row.transaction_date,
                         "amount": float(row.amount),
-                        "description": row.description,
-                        "merchant_name": row.merchant_name,
+                        "description": row.clean_description or row.provider_description,
                         "category_name": row.category_name
                     })
 
@@ -101,9 +100,11 @@ class MetricCalculator:
             db = next(get_db())
             try:
                 result = db.execute(text("""
-                    SELECT balance
-                    FROM accounts
-                    WHERE user_id = :user_id
+                    SELECT sa.balance
+                    FROM sync_accounts sa
+                    JOIN sync_items si ON sa.item_id = si.id
+                    WHERE si.user_id = :user_id
+                    ORDER BY sa.balance DESC
                     LIMIT 1
                 """), {"user_id": user_id})
 

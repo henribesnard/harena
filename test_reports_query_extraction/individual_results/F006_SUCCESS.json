@@ -1,0 +1,99 @@
+{
+  "question_id": "F006",
+  "category": "F_complexe",
+  "question": "Mes achats en ligne inférieurs à 20 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "categories": [
+      "achats en ligne"
+    ],
+    "amount": 20,
+    "operator": "lt",
+    "transaction_type": "debit"
+  },
+  "entities_count": 4,
+  "entity_confidence": 0.9375,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "debit",
+      "category_name": [
+        "achats en ligne"
+      ]
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "achats_en_ligne_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "achats en ligne"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 577,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 2,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: amount, operator"
+    ],
+    "details": {
+      "entities_translated": "2/4"
+    }
+  },
+  "latency_ms": 33050.19730003551,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:11:13.463106"
+}

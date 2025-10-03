@@ -1,0 +1,70 @@
+{
+  "question_id": "F017",
+  "category": "F_complexe",
+  "question": "Mes retraits d'espèces d'au minimum 50 euros cette semaine",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 50,
+    "operator": "gte",
+    "date_range": "this_week",
+    "transaction_type": "debit",
+    "operation_type": "withdrawal"
+  },
+  "entities_count": 5,
+  "entity_confidence": 0.9400000000000001,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "debit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 325,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 2,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Mauvaise traduction entités->query. Manquantes: amount, operator, date_range, operation_type"
+    ],
+    "details": {
+      "entities_translated": "1/5"
+    }
+  },
+  "latency_ms": 29213.832100154832,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:17:37.947592"
+}

@@ -2,91 +2,215 @@
 Category Service pour le Conversation Service
 
 Fournit la logique d'arbitrage des catégories pour l'extraction d'entités.
-Basé sur les vraies catégories récupérées depuis PostgreSQL.
+Récupère dynamiquement les catégories depuis PostgreSQL.
 """
 
-from typing import List, Set, Optional
+from typing import List, Set, Optional, Dict
 import logging
+import os
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 class CategoryService:
     """Service pour gérer les catégories de transactions"""
-    
-    # Catégories récupérées depuis PostgreSQL (via enrichment_service)
-    CATEGORIES = [
-        "Bank Fees",
-        "Beauty care", 
-        "Books & Media",
-        "Car Maintenance",
-        "Clothing",
-        "Coffee shop",
-        "Concerts & Shows",
-        "Cosmetics",
-        "Dentist",
-        "Doctor Visits",
-        "Electricity",
-        "Electronics",
-        "Fast foods",
-        "Food - Others",
-        "Freelance",
-        "Fuel",
-        "Gaming",
-        "Government Benefits",
-        "Hairdresser",
-        "Home & Garden",
-        "Insurance",
-        "Internet/Phone",
-        "Investment Returns",
-        "Medical Equipment",
-        "Medical Insurance",
-        "Movies & Cinema",
-        "Online Shopping",
-        "Other Income",
-        "Parking",
-        "Personal care - Others",
-        "Pharmacy",
-        "Public Transportation",
-        "Restaurants",
-        "Salary",
-        "Spa & Massage",
-        "Sports Events",
-        "Streaming Services",
-        "Supermarkets / Groceries",
-        "Taxi/Uber",
-        "Water"
-    ]
-    
-    # Groupes logiques pour l'arbitrage
-    EXPENSE_CATEGORIES = [
-        "Bank Fees", "Beauty care", "Books & Media", "Car Maintenance", "Clothing",
-        "Coffee shop", "Concerts & Shows", "Cosmetics", "Dentist", "Doctor Visits",
-        "Electricity", "Electronics", "Fast foods", "Food - Others", "Fuel",
-        "Gaming", "Hairdresser", "Home & Garden", "Insurance", "Internet/Phone",
-        "Medical Equipment", "Medical Insurance", "Movies & Cinema", "Online Shopping",
-        "Parking", "Personal care - Others", "Pharmacy", "Public Transportation",
-        "Restaurants", "Spa & Massage", "Sports Events", "Streaming Services",
-        "Supermarkets / Groceries", "Taxi/Uber", "Water"
-    ]
-    
-    INCOME_CATEGORIES = [
-        "Freelance", "Government Benefits", "Investment Returns", "Other Income", "Salary"
-    ]
-    
-    # Mapping des termes ambigus vers catégories
-    TERM_MAPPINGS = {
-        "achats": EXPENSE_CATEGORIES,  # "achats" = toutes les dépenses
-        "courses": ["Supermarkets / Groceries"],
-        "alimentation": ["Supermarkets / Groceries", "Restaurants", "Fast foods", "Coffee shop", "Food - Others"],
-        "restaurants": ["Restaurants"],
-        "transport": ["Public Transportation", "Taxi/Uber", "Fuel", "Car Maintenance", "Parking"],
-        "santé": ["Doctor Visits", "Dentist", "Pharmacy", "Medical Equipment", "Medical Insurance"],
-        "divertissement": ["Movies & Cinema", "Concerts & Shows", "Gaming", "Sports Events", "Streaming Services"],
-        "beauté": ["Beauty care", "Cosmetics", "Hairdresser", "Spa & Massage"],
-        "maison": ["Home & Garden", "Electricity", "Water", "Internet/Phone", "Insurance"],
-        "revenus": INCOME_CATEGORIES
-    }
-    
+
+    def __init__(self):
+        """Initialise le service avec cache des catégories"""
+        self._categories_cache: Optional[List[str]] = None
+        self._expense_categories_cache: Optional[List[str]] = None
+        self._income_categories_cache: Optional[List[str]] = None
+        self._categories_by_group: Optional[Dict[str, List[str]]] = None
+        self._cache_timestamp: Optional[datetime] = None
+        self._cache_duration = timedelta(hours=1)  # Rafraîchir toutes les heures
+
+    def _is_cache_valid(self) -> bool:
+        """Vérifie si le cache est encore valide"""
+        if self._cache_timestamp is None:
+            return False
+        return (datetime.now() - self._cache_timestamp) < self._cache_duration
+
+    def _fetch_categories_from_db(self) -> tuple[List[str], Dict[str, List[str]]]:
+        """Récupère les catégories depuis PostgreSQL avec leurs groupes"""
+        try:
+            from sqlalchemy import text
+            from db_service.session import get_db
+
+            db = next(get_db())
+            try:
+                # Récupérer toutes les catégories avec leurs groupes via JOIN
+                result = db.execute(text("""
+                    SELECT c.category_name, cg.group_name
+                    FROM categories c
+                    LEFT JOIN category_groups cg ON c.group_id = cg.group_id
+                    ORDER BY cg.group_name, c.category_name
+                """))
+
+                all_categories = []
+                categories_by_group = {}
+
+                for row in result:
+                    category_name = row.category_name
+                    group_name = row.group_name if row.group_name else "Sans groupe"
+
+                    all_categories.append(category_name)
+
+                    if group_name not in categories_by_group:
+                        categories_by_group[group_name] = []
+                    categories_by_group[group_name].append(category_name)
+
+                logger.info(f"Catégories chargées depuis DB: {len(all_categories)} catégories, {len(categories_by_group)} groupes")
+
+                return all_categories, categories_by_group
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"Erreur récupération catégories depuis DB: {e}")
+            # Fallback sur les catégories par défaut
+            return self._get_fallback_categories()
+
+    def _get_fallback_categories(self) -> tuple[List[str], Dict[str, List[str]]]:
+        """Catégories de fallback si la DB n'est pas accessible - Version française"""
+        logger.warning("Utilisation des catégories de fallback (françaises)")
+
+        # Catégories françaises de la base harena_sync
+        fallback_categories = [
+            "Achats en ligne",
+            "Aide sociale/CAF",
+            "Alimentation/Supermarché",
+            "Assurance/Mutuelle",
+            "Culture/Loisirs",
+            "Dons/Charité",
+            "Eau/Gaz/Électricité",
+            "Enseignement/Formation",
+            "Épargne/Investissement",
+            "Frais bancaires",
+            "Impôts/Taxes",
+            "Loyer/Charges",
+            "Logement/Équipement",
+            "Loisirs/Divertissement",
+            "Prêts/Crédits",
+            "Restaurants/Sorties",
+            "Salaire/Revenus",
+            "Santé/Pharmacie",
+            "Sport/Bien-être",
+            "Télécom/Internet",
+            "Transport/Carburant",
+            "Vêtements/Mode",
+            "Voyages/Vacances"
+        ]
+
+        fallback_groups = {
+            "Revenus": ["Salaire/Revenus", "Aide sociale/CAF"],
+            "Alimentation": ["Alimentation/Supermarché", "Restaurants/Sorties"],
+            "Transport": ["Transport/Carburant"],
+            "Santé": ["Santé/Pharmacie", "Assurance/Mutuelle"],
+            "Loisirs": ["Loisirs/Divertissement", "Culture/Loisirs", "Sport/Bien-être", "Voyages/Vacances"],
+            "Shopping": ["Vêtements/Mode", "Achats en ligne", "Logement/Équipement"],
+            "Logement": ["Loyer/Charges", "Eau/Gaz/Électricité"],
+            "Services": ["Télécom/Internet", "Frais bancaires", "Impôts/Taxes"],
+            "Autres": ["Enseignement/Formation", "Épargne/Investissement", "Prêts/Crédits", "Dons/Charité"]
+        }
+
+        return fallback_categories, fallback_groups
+
+    def _load_categories(self):
+        """Charge les catégories (depuis cache ou DB)"""
+        if self._is_cache_valid():
+            return
+
+        all_categories, categories_by_group = self._fetch_categories_from_db()
+
+        self._categories_cache = all_categories
+        self._categories_by_group = categories_by_group
+
+        # Identifier les catégories de revenus et dépenses
+        income_groups = ["Income", "Revenus"]
+        self._income_categories_cache = []
+        self._expense_categories_cache = []
+
+        for group_name, cats in categories_by_group.items():
+            if group_name in income_groups:
+                self._income_categories_cache.extend(cats)
+            else:
+                self._expense_categories_cache.extend(cats)
+
+        self._cache_timestamp = datetime.now()
+
+        logger.info(f"Cache mis à jour: {len(self._categories_cache)} catégories "
+                   f"({len(self._expense_categories_cache)} dépenses, "
+                   f"{len(self._income_categories_cache)} revenus)")
+
+    @property
+    def CATEGORIES(self) -> List[str]:
+        """Retourne toutes les catégories (compatibilité avec ancien code)"""
+        self._load_categories()
+        return self._categories_cache or []
+
+    @property
+    def EXPENSE_CATEGORIES(self) -> List[str]:
+        """Retourne les catégories de dépenses (compatibilité avec ancien code)"""
+        self._load_categories()
+        return self._expense_categories_cache or []
+
+    @property
+    def INCOME_CATEGORIES(self) -> List[str]:
+        """Retourne les catégories de revenus (compatibilité avec ancien code)"""
+        self._load_categories()
+        return self._income_categories_cache or []
+
+    # Mapping des termes ambigus vers catégories (basé sur les groupes dynamiques)
+    @property
+    def TERM_MAPPINGS(self) -> Dict[str, List[str]]:
+        """Mapping des termes vers catégories"""
+        self._load_categories()
+
+        # Mapping basique
+        mappings = {
+            "achats": self.EXPENSE_CATEGORIES,
+            "alimentation": [],
+            "restaurants": [],
+            "transport": [],
+            "santé": [],
+            "divertissement": [],
+            "beauté": [],
+            "maison": [],
+            "revenus": self.INCOME_CATEGORIES
+        }
+
+        # Enrichir avec les groupes dynamiques
+        if self._categories_by_group:
+            food_groups = ["Food & Dining", "Vie quotidienne"]
+            transport_groups = ["Transportation", "Transport"]
+            health_groups = ["Health & Medicine", "Santé"]
+            entertainment_groups = ["Entertainment", "Loisirs", "Divertissement"]
+            personal_care_groups = ["Personal care"]
+            home_groups = ["Bills & Utilities", "Charges fixes", "Maison"]
+
+            for group_name, cats in self._categories_by_group.items():
+                if group_name in food_groups:
+                    mappings["alimentation"].extend(cats)
+                    if "Restaurant" in group_name or any("Restaurant" in c for c in cats):
+                        mappings["restaurants"].extend([c for c in cats if "Restaurant" in c])
+                if group_name in transport_groups:
+                    mappings["transport"].extend(cats)
+                if group_name in health_groups:
+                    mappings["santé"].extend(cats)
+                if group_name in entertainment_groups:
+                    mappings["divertissement"].extend(cats)
+                if group_name in personal_care_groups:
+                    mappings["beauté"].extend(cats)
+                if group_name in home_groups:
+                    mappings["maison"].extend(cats)
+
+            # Dédupliquer
+            for key in mappings:
+                mappings[key] = list(set(mappings[key]))
+
+        return mappings
+
     def get_all_categories(self) -> List[str]:
         """Retourne toutes les catégories disponibles"""
         return self.CATEGORIES.copy()
@@ -144,17 +268,51 @@ class CategoryService:
         return any(cat in self.INCOME_CATEGORIES for cat in categories)
     
     def build_categories_context(self) -> str:
-        """Construit le contexte des catégories pour le prompt LLM"""
-        context = "CATÉGORIES DISPONIBLES:\n"
-        context += f"• Dépenses ({len(self.EXPENSE_CATEGORIES)}): {', '.join(self.EXPENSE_CATEGORIES[:10])}...\n"
-        context += f"• Revenus ({len(self.INCOME_CATEGORIES)}): {', '.join(self.INCOME_CATEGORIES)}\n\n"
-        
-        context += "LOGIQUE D'ARBITRAGE:\n"
-        context += "• 'achats' seul = NE PAS générer de catégorie (ajoutée automatiquement par le système)\n"
-        context += "• 'achats' + spécificité = catégorie exacte (ex: 'achats alimentaires' = alimentation)\n"
-        context += "• 'alimentation' = Supermarkets, Restaurants, Fast foods, etc.\n"
-        context += "• Terme spécifique = catégorie exacte correspondante\n"
-        
+        """Construit le contexte des catégories pour le prompt LLM avec groupes"""
+        self._load_categories()
+
+        # Nouvelles définitions des achats et abonnements
+        purchase_categories = [
+            "Carburant", "Transport", "Loisirs", "Entretien maison",
+            "achats en ligne", "Alimentation", "Vêtements"
+        ]
+
+        subscription_categories = [
+            "streaming", "Téléphones/internet", "Services", "Abonnements"
+        ]
+
+        # Construire le contexte avec groupes
+        context = "=== CATÉGORIES DISPONIBLES EN BASE (avec leurs groupes) ===\n\n"
+
+        # Afficher par groupe
+        if self._categories_by_group:
+            for group_name, categories in sorted(self._categories_by_group.items()):
+                context += f"📂 Groupe: {group_name}\n"
+                context += f"   Catégories: {', '.join(categories)}\n\n"
+
+        context += f"\n💡 TOTAL: {len(self.CATEGORIES)} catégories réparties en {len(self._categories_by_group)} groupes\n\n"
+
+        context += "=== RÈGLES IMPORTANTES ===\n\n"
+
+        context += "🎯 RÈGLE MARCHANDS vs CATÉGORIES:\n"
+        context += "• Si un MARCHAND précis est mentionné → utiliser merchant: '[nom]' (PAS de categories)\n"
+        context += "• Si la requête est VAGUE → utiliser categories: [liste]\n\n"
+
+        context += "🛍️ RÈGLES POUR 'ACHATS':\n"
+        context += f"• 'Mes achats' (sans marchand) → categories: {purchase_categories}\n"
+        context += "• Ces catégories regroupent: Carburant, Transport, Loisirs, Entretien maison, achats en ligne, Alimentation, Vêtements\n"
+        context += "• EXCEPTION: 'Mes achats chez [marchand]' → merchant: '[marchand]' (PAS de categories)\n\n"
+
+        context += "📺 RÈGLES POUR 'ABONNEMENTS':\n"
+        context += f"• 'Mes abonnements' (sans marchand) → categories: {subscription_categories}\n"
+        context += "• Ces catégories regroupent: streaming, Téléphones/internet, Services, Abonnements\n"
+        context += "• EXCEPTION: 'Mes abonnements Netflix' → merchant: 'Netflix' (PAS de categories)\n\n"
+
+        context += "⚠️ IMPORTANT:\n"
+        context += "• Les GROUPES sont informatifs (ex: 'Vie quotidienne') mais ce sont les CATÉGORIES qui doivent être retournées\n"
+        context += "• Parfois les groupes sont plus parlants mais TOUJOURS retourner les catégories, pas les groupes\n"
+        context += "• Utiliser UNIQUEMENT les catégories listées ci-dessus\n"
+
         return context
 
 

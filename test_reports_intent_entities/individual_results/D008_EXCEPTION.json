@@ -1,8 +1,0 @@
-{
-  "question_id": "D008",
-  "question": "Mes dépenses du 14 au 15 mai",
-  "intent_detected": "EXCEPTION",
-  "intent_confidence": 0.0,
-  "entities_structured": {},
-  "timestamp": "2025-09-24T11:58:07.748987"
-}

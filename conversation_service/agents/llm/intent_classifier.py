@@ -209,11 +209,6 @@ class IntentClassifier:
         
         return f"""Tu es un agent LLM expert en classification d'intentions et extraction d'entités pour un assistant financier personnel.
 
-🚨 RÈGLE PRIORITAIRE ABSOLUE : "categories" EST BANNI 🚨
-- NE JAMAIS utiliser "categories" dans les réponses JSON
-- TOUJOURS utiliser "query" pour les recherches textuelles
-- INTERDICTION TOTALE de categories: [...]
-
 === INTENTIONS SUPPORTÉES ===
 {intents_description}
 
@@ -280,12 +275,13 @@ class IntentClassifier:
    - Plages avec underscore : "YYYY-MM-DD_YYYY-MM-DD"
 
 3. MARCHANDS ET COMMERÇANTS :
-   - UN SEUL marchand : "Mes achats Tesla" → merchant: "Tesla", transaction_type: "debit"
-   - PLUSIEURS marchands : "Amazon Prime Video Netflix Disney+" → merchants: ["Amazon Prime Video", "Netflix", "Disney+"], transaction_type: "debit"
+   - "Mes achats [marchand]" → merchant: "[marchand]", transaction_type: "debit"
+   - "Mes transactions [marchand]" → merchant: "[marchand]", transaction_type: "all" (ou ne pas mettre)
+   - PLUSIEURS marchands : "Amazon Prime Video Netflix Disney+" → merchants: ["Amazon Prime Video", "Netflix", "Disney+"]
    - Corriger automatiquement les fautes de frappe : "Netflik" → "Netflix", "Amazone" → "Amazon"
    - Détecter les marques connues : "Tesla", "Amazon", "McDonald's", "Uber", "Google"
    - Normaliser : "mcdo" → "McDonald's", "Apple/iTunes" → "Apple/iTunes"
-   - OBLIGATOIRE: Toujours ajouter transaction_type même pour marchands
+   - ⚠️ RÈGLE: transaction_type dépend du contexte (achats→debit, transactions→all, dépenses→debit, revenus→credit)
 
 4. CATÉGORIES → PRIORITÉ AUX CATÉGORIES DE BASE :
    🎯 RÈGLE CORRIGÉE : Utiliser "categories" pour les catégories EXISTANTES en base, "query" pour le reste
@@ -345,11 +341,14 @@ class IntentClassifier:
 
 ✅ RÈGLE FINALE : categories AUTORISÉ pour les 57 catégories officielles de PostgreSQL
 
-• ACHATS GÉNÉRIQUES (INTERDICTION categories) :
-  - "Mes achats" seul → transaction_type: "debit" SEULEMENT (pas de categories, pas de query)
-  - "Mes achats" + spécificité → extraire avec 'query', JAMAIS 'categories'
-  - INTERDIT: categories: [...]
-  - OBLIGATOIRE: query: "mots clés synonymes"
+• ACHATS GÉNÉRIQUES :
+  - "Mes achats" SEUL (sans marchand/catégorie) → categories: [toutes catégories d'achats], transaction_type: "debit"
+  - "Mes achats [marchand]" → merchant: "[marchand]", transaction_type: "debit" (PAS de categories)
+  - "Mes achats [catégorie]" → categories: [catégories correspondantes], transaction_type: "debit"
+
+• TRANSACTIONS NEUTRES :
+  - "Mes transactions [marchand]" → merchant: "[marchand]" (PAS de transaction_type ou transaction_type: "all")
+  - "Mes transactions" → transaction_type: "all" (toutes transactions)
 
 • NORMALISATION AUTOMATIQUE :
   - Corriger les fautes de frappe des marchands
@@ -563,15 +562,62 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
         return []  # Retourner une liste vide - tout géré par LLM
 
     def _enrich_entities_with_purchase_logic(self, entities: List[ExtractedEntity], message: str) -> List[ExtractedEntity]:
-        """Enrichissement désactivé - tout géré par l'agent LLM intelligent"""
+        """
+        Enrichit les entités avec la logique métier pour les achats et abonnements
 
-        # PLUS AUCUN ENRICHISSEMENT REGEX - TOUT géré par l'agent LLM
-        # L'agent LLM doit être assez intelligent pour comprendre directement :
-        # - "Mes achats alimentaires" → catégories alimentaires spécifiques
-        # - "Mes achats" → catégories multiples automatiques
-        # - Normalisation des dates, etc.
+        Règles:
+        - "Mes achats" (sans marchand) → catégories d'achats
+        - "Mes abonnements" (sans marchand) → catégories d'abonnements
+        """
+        message_lower = message.lower()
 
-        return entities  # Retourner les entités telles que générées par le LLM
+        # Nouvelles définitions des achats et abonnements
+        purchase_categories = [
+            "Carburant", "Transport", "Loisirs", "Entretien maison",
+            "achats en ligne", "Alimentation", "Vêtements"
+        ]
+
+        subscription_categories = [
+            "streaming", "Téléphones/internet", "Services", "Abonnements"
+        ]
+
+        # Détecter si c'est une requête "achats" ou "abonnements"
+        is_purchase_query = "achat" in message_lower
+        is_subscription_query = "abonnement" in message_lower
+
+        if not is_purchase_query and not is_subscription_query:
+            return entities
+
+        # Vérifier si un marchand est déjà mentionné dans les entités
+        has_merchant = any(e.name in ["merchant", "merchants"] for e in entities)
+        if has_merchant:
+            return entities  # Si marchand présent, ne pas ajouter de catégories
+
+        # Vérifier si des catégories sont déjà présentes
+        has_categories = any(e.name == "categories" for e in entities)
+        if has_categories:
+            return entities  # Catégories déjà présentes, ne rien faire
+
+        # Choisir les catégories appropriées
+        if is_purchase_query:
+            target_categories = purchase_categories
+            keyword = "achat"
+            logger.info(f"Enrichissement 'achats' générique: ajout de {len(target_categories)} catégories: {target_categories}")
+        else:  # is_subscription_query
+            target_categories = subscription_categories
+            keyword = "abonnement"
+            logger.info(f"Enrichissement 'abonnements' générique: ajout de {len(target_categories)} catégories: {target_categories}")
+
+        # Ajouter l'entité categories
+        categories_entity = ExtractedEntity(
+            name="categories",
+            value=target_categories,
+            confidence=0.90,
+            span=(message_lower.find(keyword), message_lower.find(keyword) + len(keyword)),
+            entity_type="category"
+        )
+
+        return entities + [categories_entity]
 
     def _get_confidence_level(self, confidence: float) -> IntentConfidence:
         """Determine le niveau de confiance"""
@@ -666,9 +712,9 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
     "entities": [
         {
             "name": "categories",
-            "value": ["Online Shopping"],
+            "value": ["achats en ligne"],
             "confidence": 0.95,
-            "span": [10, 19],
+            "span": [4, 19],
             "entity_type": "categories"
         },
         {
@@ -679,7 +725,32 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
             "entity_type": "transaction_type"
         }
     ],
-    "reasoning": "Achats en ligne - catégorie 'Online Shopping' disponible en base"
+    "reasoning": "Achats en ligne - catégorie 'achats en ligne' disponible en base (groupe Vie quotidienne)"
+}"""
+            },
+            {
+                "user": "Mes abonnements",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "categories",
+            "value": ["streaming", "Téléphones/internet", "Services", "Abonnements"],
+            "confidence": 0.95,
+            "span": [4, 15],
+            "entity_type": "categories"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 15],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Abonnements génériques - regroupe streaming, téléphonie/internet, services et abonnements divers"
 }"""
             },
             {
@@ -772,6 +843,31 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
 }"""
             },
             {
+                "user": "Mes achats",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "categories",
+            "value": ["Carburant", "Transport", "Loisirs", "Entretien maison", "achats en ligne", "Alimentation", "Vêtements"],
+            "confidence": 0.90,
+            "span": [4, 10],
+            "entity_type": "categories"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Achats génériques - regroupe Carburant, Transport, Loisirs, Entretien maison, achats en ligne, Alimentation et Vêtements"
+}"""
+            },
+            {
                 "user": "Mes achats alimentaires",
                 "assistant": """{
     "intent_group": "transaction_search",
@@ -780,7 +876,7 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
     "entities": [
         {
             "name": "categories",
-            "value": ["Supermarkets / Groceries", "Restaurants", "Fast foods", "Coffee shop", "Food - Others"],
+            "value": ["Alimentation"],
             "confidence": 0.95,
             "span": [10, 22],
             "entity_type": "categories"
@@ -793,7 +889,7 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
             "entity_type": "transaction_type"
         }
     ],
-    "reasoning": "Recherche d'achats alimentaires - utilisation des catégories spécifiques de base"
+    "reasoning": "Achats alimentaires - catégorie spécifique Alimentation du groupe Vie quotidienne"
 }"""
             },
             {

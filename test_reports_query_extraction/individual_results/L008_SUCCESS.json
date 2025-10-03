@@ -1,0 +1,92 @@
+{
+  "question_id": "L008",
+  "category": "L_securite",
+  "question": "#netflix mes achats",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "merchant": "Netflix",
+    "transaction_type": "debit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.95,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "query": "Netflix",
+    "filters": {
+      "merchant_name": "Netflix",
+      "transaction_type": "debit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "netflix_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Netflix"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 571,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 2,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "HIGH",
+    "issues": [],
+    "details": {
+      "entities_translated": "2/2"
+    }
+  },
+  "latency_ms": 28583.729299949482,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:40:03.675536"
+}

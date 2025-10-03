@@ -1,0 +1,81 @@
+{
+  "question_id": "E011",
+  "category": "E_transaction",
+  "question": "Mes virements bancaires automatiques de plus de 500 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 500,
+    "operator": "gt",
+    "operation_type": "direct_debit",
+    "transaction_type": "all"
+  },
+  "entities_count": 4,
+  "entity_confidence": 0.9125,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 411,
+  "has_filters": false,
+  "has_aggregations": true,
+  "filter_count": 0,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Mauvaise traduction entités->query. Manquantes: amount, operator, operation_type",
+      "Intent transaction_search mais aucun filtre dans query"
+    ],
+    "details": {
+      "entities_translated": "1/4"
+    }
+  },
+  "latency_ms": 29836.519199889153,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:06:07.084529"
+}

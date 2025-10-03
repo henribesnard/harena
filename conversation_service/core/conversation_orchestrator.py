@@ -84,9 +84,10 @@ class ConversationResult:
     data_visualizations: List[Dict[str, Any]]
     metrics: PipelineMetrics
     error_message: Optional[str] = None
-    
+
     # Donnees intermediaires pour debug/monitoring
     classified_intent: Optional[Dict[str, Any]] = None
+    built_query: Optional[Dict[str, Any]] = None
     search_results: Optional[List[Dict[str, Any]]] = None
     search_total_hits: int = 0
     context_snapshot: Optional[Dict[str, Any]] = None
@@ -297,6 +298,7 @@ class ConversationOrchestrator:
                         "confidence": classification_result.confidence,
                         "entities": [entity.__dict__ for entity in classification_result.entities]
                     },
+                    built_query=None,  # Pas de recherche effectuée
                     search_results=[],  # Pas de recherche effectuée
                     search_total_hits=0,  # Pas de recherche effectuée
                     context_snapshot=context_result["context_snapshot"]
@@ -379,6 +381,7 @@ class ConversationOrchestrator:
                     "confidence": classification_result.confidence,
                     "entities": [entity.__dict__ for entity in classification_result.entities]
                 },
+                built_query=query_build_result.query if query_build_result.success else None,
                 search_results=query_execution_result.results if query_execution_result.success else [],
                 search_total_hits=query_execution_result.total_hits if query_execution_result.success else 0,
                 context_snapshot=context_result["context_snapshot"]
@@ -570,35 +573,95 @@ class ConversationOrchestrator:
         # Extraction entites pour injection dans template avec normalisation
         entities = {}
         has_amount_entity = False
-        
+        amount_value = None
+        operator_value = None
+        amount_min_value = None
+        amount_max_value = None
+
         for entity in classification_result.entities:
+            # Collecter amount et operator séparément pour les fusionner
+            if entity.name == "amount":
+                amount_value = entity.value
+                has_amount_entity = True
+                continue
+            elif entity.name == "operator":
+                operator_value = entity.value
+                continue
+            elif entity.name == "amount_min":
+                amount_min_value = entity.value
+                has_amount_entity = True
+                continue
+            elif entity.name == "amount_max":
+                amount_max_value = entity.value
+                has_amount_entity = True
+                continue
+
             # Normalisation des noms d'entités anciens -> nouveaux
             normalized_name = self._normalize_entity_name(entity.name)
             normalized_value = self._normalize_entity_value(entity.name, entity.value)
             entities[normalized_name] = normalized_value
-            
-            # Tracker si on a une entité de montant
-            if entity.name in ["amount_threshold", "amount", "montant"]:
+
+            # Tracker si on a une entité de montant (autres formes)
+            if entity.name in ["amount_threshold", "montant"]:
                 has_amount_entity = True
-        
+
+        # FUSION amount_min + amount_max en objet montant avec range
+        if amount_min_value is not None and amount_max_value is not None:
+            montant_obj = {
+                "operator": "range",
+                "min": float(amount_min_value) if isinstance(amount_min_value, str) else amount_min_value,
+                "max": float(amount_max_value) if isinstance(amount_max_value, str) else amount_max_value,
+                "currency": "EUR"
+            }
+            entities["montant"] = montant_obj
+            logger.info(f"Fusion amount_min + amount_max (range): {montant_obj}")
+        # FUSION amount + operator en objet montant
+        elif amount_value is not None:
+            montant_obj = {
+                "amount": float(amount_value) if isinstance(amount_value, str) else amount_value,
+                "operator": operator_value if operator_value else "eq",  # eq par défaut
+                "currency": "EUR"
+            }
+            entities["montant"] = montant_obj
+            logger.info(f"Fusion amount + operator: {montant_obj}")
+
         # Si on a un montant mais pas de transaction_type explicite, inférer debit par défaut
         if has_amount_entity and "transaction_type" not in entities:
             # Analyser le message utilisateur pour détecter le contexte
-            user_message = request.user_message.lower()
-            if any(word in user_message for word in ["revenus", "gains", "versements", "salaires", "crédits", "credits"]):
+            user_message = (request.user_message or "").lower()
+            if user_message and any(word in user_message for word in ["revenus", "gains", "versements", "salaires", "crédits", "credits"]):
                 entities["transaction_type"] = "credit"
             else:
                 # Par défaut pour les montants : dépenses (debit)
                 entities["transaction_type"] = "debit"
-            
+
             logger.info(f"Ajout automatique transaction_type: {entities['transaction_type']} (inféré du contexte)")
         
         # Log pour debugging
         logger.info(f"Query building - Intent: {classification_result.intent_group}, Subtype: {classification_result.intent_subtype}, Entities: {entities}")
-        
+
+        # Sélection intelligente du template basé sur les entités
+        intent_group_upper = classification_result.intent_group.upper()
+        intent_subtype = classification_result.intent_subtype
+
+        # Mapping financial_query -> transaction_search avec subtype "filter"
+        if intent_group_upper == "FINANCIAL_QUERY":
+            intent_subtype = "filter"  # Utiliser le template filter de transaction_search
+            logger.info(f"Mapping FINANCIAL_QUERY -> TRANSACTION_SEARCH with subtype 'filter'")
+
+        # Pour transaction_search sans subtype mais avec des entités de filtrage, utiliser "filter"
+        elif intent_group_upper == "TRANSACTION_SEARCH" and not intent_subtype:
+            # Vérifier si on a des entités qui nécessitent le template filter
+            filter_entities = ["merchant", "montant", "categories", "date_range", "operation_type"]
+            has_filter_entities = any(entity_key in entities for entity_key in filter_entities)
+
+            if has_filter_entities:
+                intent_subtype = "filter"
+                logger.info(f"Auto-selecting 'filter' template for TRANSACTION_SEARCH with entities: {list(entities.keys())}")
+
         query_build_request = QueryBuildRequest(
-            intent_group=classification_result.intent_group.upper(),
-            intent_subtype=classification_result.intent_subtype,
+            intent_group=intent_group_upper,
+            intent_subtype=intent_subtype,
             entities=entities,
             user_context=user_context,
             user_id=request.user_id,
@@ -750,7 +813,8 @@ class ConversationOrchestrator:
             insights=[],
             data_visualizations=[],
             metrics=metrics,
-            error_message=error_message
+            error_message=error_message,
+            built_query=None
         )
     
     async def _update_conversation_stats(self, metrics: PipelineMetrics, success: bool):

@@ -1,0 +1,28 @@
+{
+  "question_id": "D018",
+  "category": "D_temporel",
+  "question": "Mes achats du 32 février",
+  "intent_detected": "CONVERSATIONAL",
+  "intent_confidence": 0.7,
+  "entities_structured": {},
+  "entities_count": 0,
+  "entity_confidence": 0.0,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 12962.322399951518,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-09-30T21:21:57.984731"
+}

@@ -1,0 +1,36 @@
+{
+  "question_id": "K006",
+  "category": "K_metier",
+  "question": "Mes économies potentielles sur les abonnements",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "streaming",
+      "Téléphones/internet",
+      "Services",
+      "Abonnements"
+    ],
+    "transaction_type": "debit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.9,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 19636.917000170797,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:36:05.507618"
+}

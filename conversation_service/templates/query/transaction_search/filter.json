@@ -8,6 +8,7 @@
     "filters": {
       "merchant_name": "{{merchant_name}}",
       "transaction_type": "{{transaction_type}}",
+      "operation_type": "{{operation_type}}",
       "amount_abs": "{% if montant %}{{to_es_amount_filter(montant)}}{% else %}null{% endif %}",
       "date": "{{ date_range if date_range else null }}",
       "category_name": "{{ categories if categories else null }}"
@@ -25,14 +26,15 @@
     },
     "merchant_query": {
       "required": false,
-      "type": "string", 
+      "type": "string",
       "source": "entities.merchant",
       "default": ""
     },
     "merchant_name": {
       "required": false,
-      "type": "merchant_name",
-      "source": "entities.merchant"
+      "type": "array",
+      "source": "entities.merchants",
+      "description": "Liste des marchands (prioritaire sur merchant)"
     },
     "montant": {
       "required": false,
@@ -48,6 +50,13 @@
       "type": "string",
       "source": "entities.transaction_type",
       "allowed_values": ["debit", "credit"],
+      "default": ""
+    },
+    "operation_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.operation_type",
+      "allowed_values": ["direct_debit", "transfer", "card_payment", "check", "cash_withdrawal", "standing_order"],
       "default": ""
     },
     "date_range": {

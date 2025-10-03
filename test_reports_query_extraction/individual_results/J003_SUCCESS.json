@@ -1,0 +1,92 @@
+{
+  "question_id": "J003",
+  "category": "J_langage_naturel",
+  "question": "Combien est-ce que j'ai dépensé chez McDonald's ?",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "McDonald's",
+    "transaction_type": "debit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.965,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "query": "McDonald's",
+    "filters": {
+      "merchant_name": "Mcdonald'S",
+      "transaction_type": "debit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "mcdonald's_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Mcdonald'S"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 583,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 2,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "HIGH",
+    "issues": [],
+    "details": {
+      "entities_translated": "2/2"
+    }
+  },
+  "latency_ms": 20222.39949996583,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:31:43.368654"
+}

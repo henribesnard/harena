@@ -1,0 +1,130 @@
+{
+  "question_id": "B003",
+  "category": "B_vendeur",
+  "question": "Mes transactions chez Carrefour",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "merchant": "Carrefour",
+    "transaction_type": "all"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.8999999999999999,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "query": "Carrefour",
+    "filters": {
+      "merchant_name": "Carrefour"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "carrefour_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Carrefour"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "carrefour_credit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Carrefour"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 882,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 5,
+  "coherence_analysis": {
+    "coherence_score": "HIGH",
+    "issues": [],
+    "details": {
+      "entities_translated": "2/2"
+    }
+  },
+  "latency_ms": 29233.951499918476,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T10:38:45.227307"
+}

@@ -1,0 +1,22 @@
+{
+  "question_id": "M001",
+  "category": "M_robustesse",
+  "question": "Mes dépenses en chinois: 我的网飞支出",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "entities_count": 0,
+  "entity_confidence": 0.0,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": null,
+  "latency_ms": 60012.097500031814,
+  "api_success": false,
+  "error_message": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=60)",
+  "timestamp": "2025-09-30T22:42:58.936263"
+}

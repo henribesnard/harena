@@ -1,0 +1,31 @@
+{
+  "question_id": "D021",
+  "category": "D_temporel",
+  "question": "Mes revenus cette année",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "date_range": "this_year",
+    "transaction_type": "credit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.95,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 16884.667800040916,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-01T07:07:56.884082"
+}

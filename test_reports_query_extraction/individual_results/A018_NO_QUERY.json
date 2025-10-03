@@ -1,0 +1,32 @@
+{
+  "question_id": "A018",
+  "category": "A_montant",
+  "question": "Mes revenus d'au moins 500 euros",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 500,
+    "operator": "gte",
+    "transaction_type": "credit"
+  },
+  "entities_count": 3,
+  "entity_confidence": 0.9333333333333332,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 23314.773899968714,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-01T13:53:23.170333"
+}

@@ -1,0 +1,69 @@
+{
+  "question_id": "D021",
+  "category": "D_temporel",
+  "question": "Mes revenus cette année",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "date_range": "this_year",
+    "transaction_type": "credit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.95,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "credit",
+      "date": {
+        "gte": "this_year",
+        "lte": "this_year"
+      }
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 378,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 2,
+  "aggregation_count": 2,
+  "coherence_analysis": {
+    "coherence_score": "HIGH",
+    "issues": [],
+    "details": {
+      "entities_translated": "2/2"
+    }
+  },
+  "latency_ms": 30503.674699924886,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T10:58:56.536677"
+}

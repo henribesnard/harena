@@ -422,7 +422,7 @@ class HarenaAnalyzer:
         if is_balance_query:
             # Schéma spécifique pour les requêtes de solde
             query = {
-                "user_id": 34,
+                "user_id": 100,
                 "filters": {},
                 "_source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"]
             }
@@ -436,7 +436,7 @@ class HarenaAnalyzer:
         else:
             # Schéma standard pour les requêtes de transactions
             query = {
-                "user_id": 34,
+                "user_id": 100,
                 "filters": {},
                 "sort": [{"date": {"order": "desc"}}],
                 "page_size": 50,
@@ -930,6 +930,10 @@ class HarenaAnalyzer:
 
         print(f"Démarrage analyse de {len(questions)} questions...")
 
+        # Créer le dossier de rapports dès le début
+        output_dir = Path("test_results")
+        output_dir.mkdir(exist_ok=True)
+
         for i, (question_id, question) in enumerate(questions, 1):
             print(f"[{i}/{len(questions)}] Q{question_id}: {question[:50]}...")
 
@@ -948,6 +952,15 @@ class HarenaAnalyzer:
 
             # Sauvegarde individuelle pour debug
             self._save_individual_result(result)
+
+            # SAUVEGARDE IMMÉDIATE du rapport global après chaque question
+            # Toutes les 10 questions ou en cas d'erreur
+            if i % 10 == 0 or not result.success:
+                try:
+                    self.generate_global_report()
+                    print(f"   -> Rapport global mis à jour ({i}/{len(questions)} questions)")
+                except Exception as e:
+                    print(f"   WARN: Erreur génération rapport: {e}")
 
             # Pause pour ne pas surcharger (augmentée pour les requêtes complexes)
             time.sleep(0.5)
@@ -996,8 +1009,8 @@ class HarenaAnalyzer:
             print("ERREUR Aucun resultat a reporter")
             return
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        report_file = f"harena_analysis_report_{timestamp}.md"
+        # Fichier rapport fixe (pas de timestamp pour mise à jour continue)
+        report_file = Path("test_results") / "GLOBAL_ANALYSIS_REPORT.md"
 
         # Statistiques globales
         total = len(self.results)
@@ -1062,7 +1075,6 @@ class HarenaAnalyzer:
         try:
             with open(report_file, 'w', encoding='utf-8') as f:
                 f.write(report_content)
-            print(f"OK Rapport global genere: {report_file}")
         except Exception as e:
             print(f"ERREUR generation rapport: {e}")
 
@@ -1074,8 +1086,8 @@ def main():
 
     # Configuration
     BASE_URL = "http://localhost:8000/api/v1"
-    USERNAME = "test2@example.com"
-    PASSWORD = "password123"
+    USERNAME = "henri@example.com"
+    PASSWORD = "hounwanou"
 
     # Initialisation
     analyzer = HarenaAnalyzer(BASE_URL)
@@ -1094,12 +1106,15 @@ def main():
     # Analyse complète
     analyzer.run_analysis_suite()
 
-    # Génération rapport global
+    # Génération rapport global final
+    print("\n" + "="*60)
+    print("GÉNÉRATION RAPPORT GLOBAL FINAL")
+    print("="*60)
     analyzer.generate_global_report()
 
     print("\nAnalyse terminée ! Consultez :")
     print("📁 test_results/ - Résultats individuels JSON")
-    print("📄 harena_analysis_report_*.md - Rapport global")
+    print("📄 test_results/GLOBAL_ANALYSIS_REPORT.md - Rapport global")
 
 
 if __name__ == "__main__":

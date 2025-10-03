@@ -48,8 +48,8 @@ class IntentEntityTester:
         self.user_id: Optional[int] = None
 
         # Configuration d'authentification (identique à test_harena_chat_direct.py)
-        self.username = "test2@example.com"
-        self.password = "password123"
+        self.username = "henri@example.com"
+        self.password = "hounwanou"
 
         # Résultats par catégorie
         self.results_by_category: Dict[str, List[IntentEntityResult]] = defaultdict(list)

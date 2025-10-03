@@ -1,0 +1,70 @@
+{
+  "question_id": "F015",
+  "category": "F_complexe",
+  "question": "Mes virements de 1000 euros et plus en juin",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 1000,
+    "operator": "gte",
+    "date_range": "2025-06",
+    "transaction_type": "credit",
+    "operation_type": "transfer"
+  },
+  "entities_count": 5,
+  "entity_confidence": 0.9400000000000001,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "credit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 328,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 2,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Mauvaise traduction entités->query. Manquantes: amount, operator, date_range, operation_type"
+    ],
+    "details": {
+      "entities_translated": "1/5"
+    }
+  },
+  "latency_ms": 33236.01939994842,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:16:38.795976"
+}

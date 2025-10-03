@@ -517,29 +517,31 @@ def _convert_orchestrator_to_api_response(
         "request_id": request_id,
         "processing_time_ms": processing_time_ms,
         "status": "completed" if result.success else "error",
-        
+
         "intent": {
             "type": result.classified_intent.get("intent_group") if result.classified_intent else "UNKNOWN",
             "confidence": result.classified_intent.get("confidence", 0.0) if result.classified_intent else 0.0,
             "supported": True,  # Si on arrive ici, c'est que c'est supporté
             "entities": result.classified_intent.get("entities", []) if result.classified_intent else []
         } if result.classified_intent else None,
-        
+
+        "query": result.built_query if hasattr(result, 'built_query') and result.built_query else None,
+
         "response": {
             "message": result.response_text,
             "structured_data": result.insights
         },
-        
+
         "search_summary": {
             "found_results": bool(result.search_results and len(result.search_results) > 0),
             "total_results": result.search_total_hits
         },
-        
+
         "performance": {
             "overall_success": result.success,
             "pipeline_stages": len(result.pipeline_metrics) if hasattr(result, 'pipeline_metrics') else 5
         },
-        
+
         "architecture": "v2.0"
     }
 

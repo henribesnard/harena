@@ -1,0 +1,38 @@
+{
+  "question_id": "M002",
+  "category": "M_robustesse",
+  "question": "Mes achats with English words mixed",
+  "intent_detected": "CONVERSATIONAL",
+  "intent_confidence": 0.7,
+  "entities_structured": {
+    "categories": [
+      "Carburant",
+      "Transport",
+      "Loisirs",
+      "Entretien maison",
+      "achats en ligne",
+      "Alimentation",
+      "Vêtements"
+    ]
+  },
+  "entities_count": 1,
+  "entity_confidence": 0.9,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 12825.015399837866,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:42:00.939566"
+}

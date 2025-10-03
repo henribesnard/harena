@@ -1,0 +1,22 @@
+{
+  "question_id": "A013",
+  "category": "A_montant",
+  "question": "Mes transactions de plus de 10000 euros",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "entities_count": 0,
+  "entity_confidence": 0.0,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": null,
+  "latency_ms": 987.925199791789,
+  "api_success": false,
+  "error_message": "argument of type 'NoneType' is not iterable",
+  "timestamp": "2025-10-01T18:48:05.529888"
+}

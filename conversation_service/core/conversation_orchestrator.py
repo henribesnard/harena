@@ -12,6 +12,7 @@ Responsabilite : Orchestration complete du pipeline conversation
 
 import logging
 import asyncio
+import json
 from typing import Dict, List, Optional, Any, AsyncIterator
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -402,19 +403,19 @@ class ConversationOrchestrator:
             )
     
     async def process_conversation_stream(
-        self, 
+        self,
         request: ConversationRequest
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[Dict[str, Any]]:
         """
         Traite une conversation en mode streaming
-        
-        Yields des chunks de reponse au fur et e mesure de la generation
+
+        Yields des dictionnaires (pas des strings SSE) pour que la route puisse les formatter
         """
         try:
             # etapes pre-streaming (rapides)
             conversation_id = request.conversation_id or f"stream_{request.user_id}_{int(datetime.now().timestamp())}"
-            
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyse du contexte...', 'conversation_id': conversation_id})}\n\n"
+
+            yield {'type': 'status', 'message': 'Analyse du contexte...', 'conversation_id': conversation_id}
             
             # Context + Classification (parallel pour speed)
             context_task = self._execute_context_analysis(request, conversation_id)
@@ -423,16 +424,30 @@ class ConversationOrchestrator:
             context_result, classification_result = await asyncio.gather(
                 context_task, classification_task, return_exceptions=True
             )
-            
-            if isinstance(classification_result, Exception) or not classification_result.success:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Classification failed'})}\n\n"
+
+            # Debug logging
+            logger.error(f"DEBUG - context_result type: {type(context_result)}, value: {str(context_result)[:200]}")
+            logger.error(f"DEBUG - classification_result type: {type(classification_result)}")
+
+            if isinstance(classification_result, Exception):
+                logger.error(f"Classification exception: {classification_result}")
+                yield {'type': 'error', 'message': f'Classification failed: {str(classification_result)}'}
                 return
-            
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Construction de la requete...', 'intent': classification_result.intent_group})}\n\n"
+
+            if not hasattr(classification_result, 'success') or not classification_result.success:
+                logger.error(f"Classification failed or missing success attribute")
+                yield {'type': 'error', 'message': 'Classification failed'}
+                return
+
+            yield {'type': 'status', 'message': 'Construction de la requete...', 'intent': classification_result.intent_group}
             
             # Query building + execution
+            user_context = {}
+            if not isinstance(context_result, Exception) and isinstance(context_result, dict):
+                user_context = context_result.get("user_context", {})
+
             query_build_result = await self._execute_query_building(
-                classification_result, request, context_result.get("user_context", {}) if not isinstance(context_result, Exception) else {}
+                classification_result, request, user_context
             )
             
             search_results = []
@@ -442,15 +457,21 @@ class ConversationOrchestrator:
                 if query_execution_result.success:
                     search_results = query_execution_result.results
             
-            yield f"data: {json.dumps({'type': 'status', 'message': f'Generation de la reponse... ({len(search_results)} resultats trouves)'})}\n\n"
-            
+            yield {'type': 'status', 'message': f'Generation de la reponse... ({len(search_results)} resultats trouves)'}
+
             # Streaming response generation
+            conversation_context = []
+            if not isinstance(context_result, Exception) and isinstance(context_result, dict):
+                context_snapshot = context_result.get("context_snapshot", {})
+                if isinstance(context_snapshot, dict):
+                    conversation_context = context_snapshot.get("recent_turns", [])
+
             response_request = ResponseGenerationRequest(
                 intent_group=classification_result.intent_group,
                 intent_subtype=classification_result.intent_subtype,
                 user_message=request.user_message,
                 search_results=search_results,
-                conversation_context=context_result.get("context_snapshot", {}).get("recent_turns", []) if not isinstance(context_result, Exception) else [],
+                conversation_context=conversation_context,
                 user_profile={"user_id": request.user_id},
                 user_id=request.user_id,
                 conversation_id=conversation_id,
@@ -458,21 +479,21 @@ class ConversationOrchestrator:
                 stream_response=True,
                 search_aggregations=query_execution_result.aggregations if query_execution_result and query_execution_result.success else None
             )
-            
+
             # Stream de la reponse finale
-            yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
-            
+            yield {'type': 'response_start'}
+
             async for chunk in self.response_generator.generate_streaming_response(response_request):
-                yield f"data: {json.dumps({'type': 'response_chunk', 'content': chunk})}\n\n"
-            
-            yield f"data: {json.dumps({'type': 'response_end', 'conversation_id': conversation_id})}\n\n"
+                yield {'type': 'response_chunk', 'content': chunk}
+
+            yield {'type': 'response_end', 'conversation_id': conversation_id}
             
             # Statistiques
             self.stats["streaming_conversations"] += 1
             
         except Exception as e:
             logger.error(f"Erreur streaming conversation: {str(e)}")
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Streaming error: {str(e)}'})}\n\n"
+            yield {'type': 'error', 'message': f'Streaming error: {str(e)}'}
     
     async def _execute_context_analysis(
         self, 

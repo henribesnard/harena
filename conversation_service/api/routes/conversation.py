@@ -197,14 +197,12 @@ async def analyze_conversation_stream(
                 
                 # Stream de la reponse
                 async for chunk in app_state.conversation_orchestrator.process_conversation_stream(orchestrator_request):
-                    if chunk.get("type") == "response_chunk":
-                        yield f"data: {json.dumps({'chunk': chunk['content']})}\n\n"
-                    elif chunk.get("type") == "error":
-                        yield f"data: {json.dumps({'error': chunk['message']})}\n\n"
-                        return
-                
-                # Signal fin
-                yield f"data: {json.dumps({'done': True})}\n\n"
+                    # chunk est maintenant un dictionnaire, on le serialise en SSE
+                    yield f"data: {json.dumps(chunk)}\n\n"
+
+                    # Si c'est une erreur ou la fin, on arrête
+                    if chunk.get("type") in ["error", "response_end"]:
+                        break
             
             else:
                 # Fallback: pas de streaming pour legacy

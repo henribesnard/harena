@@ -414,12 +414,19 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next):
         """Traitement authentification pour chaque requête"""
-        
+
         self.requests_processed += 1
         start_time = time.time()
         path = request.url.path
-        
+
         try:
+            # Allow OPTIONS requests (CORS preflight) without authentication
+            if request.method == "OPTIONS":
+                logger.debug(f"OPTIONS request for {path} - skipping authentication")
+                response = await call_next(request)
+                SecurityHeaders.add_security_headers(response)
+                return response
+
             # Vérification si path nécessite authentification
             if not self._requires_authentication(path):
                 logger.debug(f"Path public: {path}")

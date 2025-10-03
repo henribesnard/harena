@@ -1,8 +1,0 @@
-{
-  "question_id": "D020",
-  "question": "Mes achats cette semaine",
-  "intent_detected": "EXCEPTION",
-  "intent_confidence": 0.0,
-  "entities_structured": {},
-  "timestamp": "2025-09-24T06:52:35.603034"
-}

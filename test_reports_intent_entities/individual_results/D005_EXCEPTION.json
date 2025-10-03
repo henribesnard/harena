@@ -1,8 +1,0 @@
-{
-  "question_id": "D005",
-  "question": "Toutes mes dépenses de la semaine dernière",
-  "intent_detected": "EXCEPTION",
-  "intent_confidence": 0.0,
-  "entities_structured": {},
-  "timestamp": "2025-09-23T18:41:54.375757"
-}

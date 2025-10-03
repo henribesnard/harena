@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from user_service.api.endpoints import users
+from user_service.api.endpoints import users, metrics
 from config_service.config import settings
 
 # Configuration du logging
@@ -64,6 +64,9 @@ def create_app() -> FastAPI:
     
     # Inclusion des routes utilisateur
     app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["users"])
+
+    # Inclusion des routes métriques
+    app.include_router(metrics.router, prefix=f"{settings.API_V1_STR}/metrics", tags=["metrics"])
     
     # Ajout de l'endpoint de santé
     @app.get("/health")

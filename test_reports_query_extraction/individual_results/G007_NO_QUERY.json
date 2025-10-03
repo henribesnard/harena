@@ -1,0 +1,31 @@
+{
+  "question_id": "G007",
+  "category": "G_analyse",
+  "question": "Compare mes achats de mai à ceux de juin",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "date_range": "2025-06",
+    "transaction_type": "debit"
+  },
+  "entities_count": 3,
+  "entity_confidence": 0.9166666666666666,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 18276.136100059375,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-01T07:29:04.956279"
+}

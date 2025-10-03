@@ -1,0 +1,100 @@
+{
+  "question_id": "F005",
+  "category": "F_complexe",
+  "question": "Mes dépenses essence de plus de 50 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount": 50,
+    "operator": "gt",
+    "categories": [
+      "Carburant"
+    ],
+    "transaction_type": "debit"
+  },
+  "entities_count": 4,
+  "entity_confidence": 0.9375,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "debit",
+      "amount_abs": {
+        "gt": 50
+      },
+      "category_name": [
+        "Carburant"
+      ]
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "carburant_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Carburant"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 585,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 3,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "HIGH",
+    "issues": [],
+    "details": {
+      "entities_translated": "4/4"
+    }
+  },
+  "latency_ms": 34893.115000100806,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:10:39.907337"
+}

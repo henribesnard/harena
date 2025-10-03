@@ -1,0 +1,83 @@
+{
+  "question_id": "A010",
+  "category": "A_montant",
+  "question": "Mes transactions entre 25 et 75 euros",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "amount_min": 25,
+    "amount_max": 75,
+    "transaction_type": "all"
+  },
+  "entities_count": 3,
+  "entity_confidence": 0.9333333333333332,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "amount_abs": {
+        "gte": 25,
+        "lte": 75
+      }
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 462,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "HIGH",
+    "issues": [],
+    "details": {
+      "entities_translated": "3/3"
+    }
+  },
+  "latency_ms": 36821.38300011866,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T10:32:48.986385"
+}

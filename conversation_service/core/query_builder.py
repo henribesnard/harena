@@ -179,12 +179,25 @@ class QueryBuilder:
             )
     
     async def _select_template(
-        self, 
-        intent_group: str, 
+        self,
+        intent_group: str,
         intent_subtype: Optional[str]
     ) -> Tuple[bool, Optional[CompiledTemplate]]:
         """Sélectionne le template approprié pour une intention"""
-        
+
+        # Mapping des intents vers les templates appropriés
+        # financial_query -> transaction_search avec aggregations
+        intent_mapping = {
+            "FINANCIAL_QUERY": "TRANSACTION_SEARCH"
+        }
+
+        # Appliquer le mapping si nécessaire
+        original_intent = intent_group
+        intent_group = intent_mapping.get(intent_group, intent_group)
+
+        if original_intent != intent_group:
+            logger.info(f"Mapping intent {original_intent} -> {intent_group}")
+
         # Clé de cache pour mapping intention  template
         cache_key = f"{intent_group}.{intent_subtype or 'default'}"
         

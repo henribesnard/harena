@@ -1,0 +1,79 @@
+{
+  "question_id": "H008",
+  "category": "H_recherche",
+  "question": "Mes transactions suspectes",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.8,
+  "entities_structured": {
+    "query": "suspectes frauduleuses anomalies",
+    "transaction_type": "all"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.875,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 411,
+  "has_filters": false,
+  "has_aggregations": true,
+  "filter_count": 0,
+  "aggregation_count": 3,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Entités manquantes dans query: query",
+      "Intent transaction_search mais aucun filtre dans query"
+    ],
+    "details": {
+      "entities_translated": "1/2"
+    }
+  },
+  "latency_ms": 24805.46629987657,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:25:55.212881"
+}

@@ -1,0 +1,70 @@
+{
+  "question_id": "F003",
+  "category": "F_complexe",
+  "question": "Mes revenus Netflix supérieurs à 50 euros ce mois",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "merchant": "Netflix",
+    "amount": 50,
+    "operator": "gt",
+    "date_range": "this_month",
+    "transaction_type": "credit"
+  },
+  "entities_count": 5,
+  "entity_confidence": 0.9199999999999999,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "credit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 328,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 2,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Mauvaise traduction entités->query. Manquantes: merchant, amount, operator, date_range"
+    ],
+    "details": {
+      "entities_translated": "1/5"
+    }
+  },
+  "latency_ms": 30317.127799848095,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:09:36.754386"
+}

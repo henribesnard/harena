@@ -1,0 +1,70 @@
+{
+  "question_id": "F007",
+  "category": "F_complexe",
+  "question": "Mes achats Amazon entre 50 et 100 euros en juin",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "merchant": "Amazon",
+    "amount_min": 50,
+    "amount_max": 100,
+    "date_range": "2025-06",
+    "transaction_type": "debit"
+  },
+  "entities_count": 5,
+  "entity_confidence": 0.95,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "debit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 325,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 2,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Mauvaise traduction entités->query. Manquantes: merchant, amount_min, amount_max, date_range"
+    ],
+    "details": {
+      "entities_translated": "1/5"
+    }
+  },
+  "latency_ms": 31429.065800039098,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:11:45.396817"
+}

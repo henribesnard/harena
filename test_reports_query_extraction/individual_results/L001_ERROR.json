@@ -1,0 +1,22 @@
+{
+  "question_id": "L001",
+  "category": "L_securite",
+  "question": "SELECT * FROM transactions",
+  "intent_detected": "HTTP_ERROR",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "entities_count": 0,
+  "entity_confidence": 0.0,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": null,
+  "latency_ms": 4.827299853786826,
+  "api_success": false,
+  "error_message": "HTTP 422: {\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"message\"],\"msg\":\"Value error, Pattern non autorisé détecté: contenu potentiellement malveillant\",\"input\":\"SELECT * FROM transactions\",\"ctx\":{\"error\":{}}}]}",
+  "timestamp": "2025-10-03T11:38:29.149828"
+}

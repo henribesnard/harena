@@ -1,0 +1,67 @@
+{
+  "question_id": "E005",
+  "category": "E_transaction",
+  "question": "Mes retraits espèces",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.95,
+  "entities_structured": {
+    "operation_type": "withdrawal",
+    "transaction_type": "debit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.95,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "filters": {
+      "transaction_type": "debit"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 325,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 2,
+  "coherence_analysis": {
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: operation_type"
+    ],
+    "details": {
+      "entities_translated": "1/2"
+    }
+  },
+  "latency_ms": 27114.199599949643,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:03:15.365963"
+}

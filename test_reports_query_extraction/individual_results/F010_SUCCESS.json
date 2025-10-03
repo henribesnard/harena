@@ -1,0 +1,133 @@
+{
+  "question_id": "F010",
+  "category": "F_complexe",
+  "question": "Toutes mes transactions Uber du dernier trimestre",
+  "intent_detected": "transaction_search",
+  "intent_confidence": 0.9,
+  "entities_structured": {
+    "merchant": "Uber",
+    "date_range": "last_quarter",
+    "transaction_type": "all"
+  },
+  "entities_count": 3,
+  "entity_confidence": 0.9166666666666666,
+  "query_found": true,
+  "query_data": {
+    "user_id": 100,
+    "query": "Uber",
+    "filters": {
+      "merchant_name": "Uber"
+    },
+    "sort": [
+      {
+        "date": {
+          "order": "desc"
+        }
+      }
+    ],
+    "page_size": 50,
+    "aggregations": {
+      "transaction_count": {
+        "value_count": {
+          "field": "transaction_id"
+        }
+      },
+      "total_debit": {
+        "filter": {
+          "term": {
+            "transaction_type": "debit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "total_credit": {
+        "filter": {
+          "term": {
+            "transaction_type": "credit"
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "uber_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Uber"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "uber_credit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Uber"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "query_size": 852,
+  "has_filters": true,
+  "has_aggregations": true,
+  "filter_count": 1,
+  "aggregation_count": 5,
+  "coherence_analysis": {
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: date_range"
+    ],
+    "details": {
+      "entities_translated": "2/3"
+    }
+  },
+  "latency_ms": 21044.860299909487,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-02T07:17:21.625924"
+}

@@ -688,6 +688,10 @@ class TemplateEngine:
         if aggregation_context["categories"]:
             self._add_category_aggregations(aggregations, aggregation_context)
 
+        # === ÉTAPE 4bis: AGRÉGATIONS PAR MARCHAND (si applicable) ===
+        if aggregation_context["merchants"]:
+            self._add_merchant_aggregations(aggregations, aggregation_context)
+
         # === ÉTAPE 5: SEGMENTATION TEMPORELLE (si applicable) ===
         if aggregation_context["temporal_segmentation"]:
             self._add_temporal_aggregations(aggregations, aggregation_context)
@@ -711,6 +715,7 @@ class TemplateEngine:
         context = {
             "transaction_type_filter": filters.get("transaction_type"),
             "categories": [],
+            "merchants": [],
             "temporal_segmentation": False,
             "temporal_period_months": 0,
             "date_range": None,
@@ -724,6 +729,14 @@ class TemplateEngine:
                 context["categories"] = category_filter
             elif isinstance(category_filter, str):
                 context["categories"] = [category_filter]
+
+        # Analyse des marchands
+        merchant_filter = filters.get("merchant_name")
+        if merchant_filter:
+            if isinstance(merchant_filter, list):
+                context["merchants"] = merchant_filter
+            elif isinstance(merchant_filter, str):
+                context["merchants"] = [merchant_filter]
 
         # Analyse temporelle
         date_filter = filters.get("date")
@@ -842,6 +855,66 @@ class TemplateEngine:
                             "must": [
                                 {"term": {"transaction_type": "credit"}},
                                 {"term": {"category_name.keyword": category}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+    def _add_merchant_aggregations(self, aggregations: Dict[str, Any], context: Dict[str, Any]):
+        """Ajoute les agrégations par marchand"""
+
+        merchants = context["merchants"]
+        transaction_type_filter = context["transaction_type_filter"]
+
+        for merchant in merchants:
+            merchant_key = merchant.lower().replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "_")
+
+            if transaction_type_filter == "debit":
+                aggregations[f"{merchant_key}_debit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "debit"}},
+                                {"term": {"merchant_name.keyword": merchant}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+            elif transaction_type_filter == "credit":
+                aggregations[f"{merchant_key}_credit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "credit"}},
+                                {"term": {"merchant_name.keyword": merchant}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+
+            else:
+                # Les deux types pour ce marchand
+                aggregations[f"{merchant_key}_debit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "debit"}},
+                                {"term": {"merchant_name.keyword": merchant}}
+                            ]
+                        }
+                    },
+                    "aggs": {"sum_amount": {"sum": {"field": "amount_abs"}}}
+                }
+                aggregations[f"{merchant_key}_credit"] = {
+                    "filter": {
+                        "bool": {
+                            "must": [
+                                {"term": {"transaction_type": "credit"}},
+                                {"term": {"merchant_name.keyword": merchant}}
                             ]
                         }
                     },

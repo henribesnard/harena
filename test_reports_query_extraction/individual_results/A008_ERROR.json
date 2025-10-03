@@ -1,0 +1,22 @@
+{
+  "question_id": "A008",
+  "category": "A_montant",
+  "question": "Mes revenus de moins de 500 euros",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "entities_count": 0,
+  "entity_confidence": 0.0,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": null,
+  "latency_ms": 539.6553999744356,
+  "api_success": false,
+  "error_message": "argument of type 'NoneType' is not iterable",
+  "timestamp": "2025-10-01T18:47:59.578871"
+}

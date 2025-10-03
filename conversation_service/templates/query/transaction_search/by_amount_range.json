@@ -6,7 +6,8 @@
     "user_id": "{{user_id}}",
     "filters": {
       "transaction_type": "{{transaction_type}}",
-      "amount_abs": "{{amount_range}}"
+      "amount_abs": "{{amount_range}}",
+      "category_name": "{{ categories if categories else null }}"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -34,6 +35,12 @@
       "source": "entities.transaction_type",
       "allowed_values": ["debit", "credit"],
       "default": ""
+    },
+    "categories": {
+      "required": false,
+      "type": "array",
+      "source": "entities.categories",
+      "description": "Liste des catégories à inclure dans la recherche"
     }
   },
   "filter_cleanup": {

@@ -1,0 +1,1215 @@
+{
+  "category": "M_robustesse",
+  "timestamp": "2025-10-03T11:47:48.142478",
+  "total_questions": 15,
+  "api_successful": 15,
+  "queries_found": 11,
+  "success_rate": 73.33333333333333,
+  "detailed_results": [
+    {
+      "question_id": "M001",
+      "question": "Mes dépenses en chinois: 我的网飞支出",
+      "intent_detected": "CONVERSATIONAL",
+      "intent_confidence": 0.7,
+      "entities_structured": {},
+      "entities_count": 0,
+      "entity_confidence": 0.0,
+      "query_found": false,
+      "query_data": null,
+      "query_size": 0,
+      "has_filters": false,
+      "has_aggregations": false,
+      "filter_count": 0,
+      "aggregation_count": 0,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Aucune query générée malgré intent et entités détectées"
+        ],
+        "details": {}
+      },
+      "latency_ms": 10713.40260002762,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M002",
+      "question": "Mes achats with English words mixed",
+      "intent_detected": "CONVERSATIONAL",
+      "intent_confidence": 0.7,
+      "entities_structured": {
+        "categories": [
+          "Carburant",
+          "Transport",
+          "Loisirs",
+          "Entretien maison",
+          "achats en ligne",
+          "Alimentation",
+          "Vêtements"
+        ]
+      },
+      "entities_count": 1,
+      "entity_confidence": 0.9,
+      "query_found": false,
+      "query_data": null,
+      "query_size": 0,
+      "has_filters": false,
+      "has_aggregations": false,
+      "filter_count": 0,
+      "aggregation_count": 0,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Aucune query générée malgré intent et entités détectées"
+        ],
+        "details": {}
+      },
+      "latency_ms": 12825.015399837866,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M003",
+      "question": "Mes dépenses avec des €m0jis 💰🛒",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "debit"
+      },
+      "entities_count": 1,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "1/1"
+        }
+      },
+      "latency_ms": 28786.613899981603,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M004",
+      "question": "MES DÉPENSES EN MAJUSCULES NETFLIX",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "merchant": "Netflix",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "query": "Netflix",
+        "filters": {
+          "merchant_name": "Netflix",
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "netflix_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Netflix"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 571,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 26687.586600193754,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M005",
+      "question": "mes dépenses en minuscules amazon",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "merchant": "Amazon",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "query": "Amazon",
+        "filters": {
+          "merchant_name": "Amazon",
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "amazon_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Amazon"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 567,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 23664.59949989803,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M006",
+      "question": "(question avec des espaces multiples)    Mes dépenses    Netflix",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "merchant": "Netflix",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "query": "Netflix",
+        "filters": {
+          "merchant_name": "Netflix",
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "netflix_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Netflix"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 571,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 24863.303400110453,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M007",
+      "question": "Mes dépenses Netflix?????",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "merchant": "Netflix",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "query": "Netflix",
+        "filters": {
+          "merchant_name": "Netflix",
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "netflix_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Netflix"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 571,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 25531.42400016077,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M008",
+      "question": "!!!! Mes achats Amazon !!!!",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "merchant": "Amazon",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "query": "Amazon",
+        "filters": {
+          "merchant_name": "Amazon",
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "amazon_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Amazon"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 567,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 25971.28890012391,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M009",
+      "question": "mes...dépenses...points...de...suspension",
+      "intent_detected": "CONVERSATIONAL",
+      "intent_confidence": 0.5,
+      "entities_structured": {},
+      "entities_count": 0,
+      "entity_confidence": 0.0,
+      "query_found": false,
+      "query_data": null,
+      "query_size": 0,
+      "has_filters": false,
+      "has_aggregations": false,
+      "filter_count": 0,
+      "aggregation_count": 0,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Aucune query générée malgré intent et entités détectées"
+        ],
+        "details": {}
+      },
+      "latency_ms": 14320.526800118387,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M010",
+      "question": "Mes/dépenses/slashes/Amazon",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "merchant": "Amazon",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "query": "Amazon",
+        "filters": {
+          "merchant_name": "Amazon",
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "amazon_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Amazon"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 567,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 25645.551200024784,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M011",
+      "question": "Mes dépenses et mes revenus et mes virements et mes prélèvements",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "all",
+        "operation_type": "direct_debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.8333333333333334,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 411,
+      "has_filters": false,
+      "has_aggregations": true,
+      "filter_count": 0,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Entités manquantes dans query: operation_type",
+          "Intent transaction_search mais aucun filtre dans query"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 29284.39240017906,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M012",
+      "question": "Combien j'ai dépensé chez Amazon versus Netflix versus Carrefour",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "merchants": [
+          "Amazon",
+          "Netflix",
+          "Carrefour"
+        ],
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: merchants"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 24741.30479991436,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M013",
+      "question": "Toutes mes transactions du 1er janvier au 31 décembre avec catégories",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "date_range": "2025-01-01_2025-12-31",
+        "transaction_type": "all"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 411,
+      "has_filters": false,
+      "has_aggregations": true,
+      "filter_count": 0,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Entités manquantes dans query: date_range",
+          "Intent transaction_search mais aucun filtre dans query"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 37369.63829980232,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M014",
+      "question": "Mes achats de plus de 100 euros ou de moins de 10 euros en juin",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 10,
+        "operator": "lt",
+        "date_range": "2025-06",
+        "transaction_type": "debit",
+        "categories": [
+          "Carburant",
+          "Transport",
+          "Loisirs",
+          "Entretien maison",
+          "achats en ligne",
+          "Alimentation",
+          "Vêtements"
+        ]
+      },
+      "entities_count": 7,
+      "entity_confidence": 0.9285714285714286,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "lt": 10
+          },
+          "category_name": [
+            "Carburant",
+            "Transport",
+            "Loisirs",
+            "Entretien maison",
+            "achats en ligne",
+            "Alimentation",
+            "Vêtements"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "carburant_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Carburant"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "transport_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Transport"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "loisirs_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Loisirs"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "entretien_maison_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Entretien maison"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "achats_en_ligne_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "achats en ligne"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "alimentation_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Alimentation"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "vêtements_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Vêtements"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 1932,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 3,
+      "aggregation_count": 9,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: date_range"
+        ],
+        "details": {
+          "entities_translated": "4/5"
+        }
+      },
+      "latency_ms": 34491.49759998545,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "M015",
+      "question": "Analyse prédictive de mes dépenses pour les 6 prochains mois",
+      "intent_detected": "financial_query",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "debit",
+        "date_range": "next_6_months"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.8500000000000001,
+      "query_found": false,
+      "query_data": null,
+      "query_size": 0,
+      "has_filters": false,
+      "has_aggregations": false,
+      "filter_count": 0,
+      "aggregation_count": 0,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Aucune query générée malgré intent et entités détectées"
+        ],
+        "details": {}
+      },
+      "latency_ms": 18791.31400003098,
+      "api_success": true,
+      "error_message": null
+    }
+  ]
+}

@@ -1,8 +1,0 @@
-{
-  "question_id": "L011",
-  "question": "email@test.com mes transactions",
-  "intent_detected": "transaction_search",
-  "intent_confidence": 0.8,
-  "entities_structured": {},
-  "timestamp": "2025-09-24T07:42:55.532823"
-}

@@ -5,22 +5,47 @@
   "parameters": {
     "user_id": "{{user_id}}",
     "filters": {
-      "user_id": "{{user_id}}"
+      "transaction_type": "{{transaction_type}}",
+      "merchant_name": "{{ merchants if merchants else null }}",
+      "category_name": "{{ categories if categories else null }}"
     },
     "sort": [
       {"date": {"order": "desc"}}
     ],
-    "page_size": 20
+    "page_size": 50
   },
   "parameter_mappings": {
     "user_id": {
       "required": true,
       "type": "integer",
       "source": "context.user_id"
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type",
+      "allowed_values": ["debit", "credit"],
+      "default": ""
+    },
+    "merchants": {
+      "required": false,
+      "type": "array",
+      "source": "entities.merchants",
+      "description": "Liste des marchands"
+    },
+    "categories": {
+      "required": false,
+      "type": "array",
+      "source": "entities.categories",
+      "description": "Liste des catégories"
     }
   },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
+  },
   "optimizations": {
-    "cache_duration": "15m",
+    "cache_duration": "30m",
     "elasticsearch_routing": "user_id"
   }
 }

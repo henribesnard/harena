@@ -1,0 +1,33 @@
+{
+  "question_id": "G002",
+  "category": "G_analyse",
+  "question": "Quel est mon budget restaurant ?",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "categories": [
+      "Restaurant"
+    ],
+    "transaction_type": "debit"
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.8500000000000001,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 17740.361700067297,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:18:13.737698"
+}

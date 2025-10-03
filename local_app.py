@@ -8,6 +8,7 @@ OK SERVICES DISPONIBLES:
 - Enrichment Service: Elasticsearch uniquement (v2.0)
 - Search Service: Recherche lexicale simplifiée
 - Conversation Service: IA conversationnelle (phase 1)
+- Metric Service: Métriques et analytics financiers (Prophet ML)
 """
 
 import logging
@@ -130,6 +131,8 @@ class ServiceLoader:
         self.search_service_error = None
         self.conversation_service_initialized = False
         self.conversation_service_error = None
+        self.metric_service_initialized = False
+        self.metric_service_error = None
 
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
         """Charge et enregistre un router de service"""
@@ -220,6 +223,7 @@ def create_app():
             ("sync_service", "sync_service"),
             ("enrichment_service", "enrichment_service"),
             ("conversation_service", "conversation_service"),
+            ("metric_service", "metric_service"),
         ]
         
         for service_name, module_path in services_health:
@@ -415,15 +419,64 @@ def create_app():
                 logger.info("OK conversation_service v2.0: Pipeline complet initialise (5 stages)")
             else:
                 logger.warning(f"WARNING conversation_service v2.0: Echec initialisation - {app_state.initialization_error}")
-                
+
         except Exception as e:
             logger.error(f"ERROR conversation_service v2.0: {e}")
             loader.conversation_service_initialized = False
             loader.conversation_service_error = str(e)
             loader.services_status["conversation_service"] = {
-                "status": "error", 
+                "status": "error",
                 "error": str(e),
                 "architecture": "v2.0"
+            }
+
+        # 6. Metric Service
+        logger.info("📊 Chargement et initialisation du metric_service...")
+        try:
+            # Initialiser Redis cache pour metric_service
+            from metric_service.core.cache import cache_manager
+
+            # Connecter Redis
+            await cache_manager.connect()
+            logger.info("OK Metric Service: Redis cache connecté")
+
+            # Note: Router metric_service inclus dans create_app()
+            routes_count = 9  # Trends (2) + Health (4) + Patterns (1) + Forecasts (2)
+
+            loader.metric_service_initialized = True
+            loader.metric_service_error = None
+
+            loader.services_status["metric_service"] = {
+                "status": "ok",
+                "routes": routes_count,
+                "prefix": "/api/v1/metrics",
+                "initialized": True,
+                "architecture": "prophet_ml",
+                "version": "1.0.0",
+                "features": [
+                    "MoM/YoY Trends",
+                    "Savings Rate",
+                    "Expense Ratios",
+                    "Burn Rate & Runway",
+                    "Balance Forecast (Prophet)",
+                    "Recurring Expenses Detection"
+                ]
+            }
+
+            logger.info("OK metric_service: Initialisé avec Prophet ML forecasting")
+
+        except Exception as e:
+            error_msg = f"Erreur initialisation metric_service: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"❌ Stacktrace: ", exc_info=True)
+
+            loader.metric_service_initialized = False
+            loader.metric_service_error = error_msg
+
+            loader.services_status["metric_service"] = {
+                "status": "error",
+                "error": error_msg,
+                "architecture": "prophet_ml"
             }
 
         # Compter les services réussis (INCHANGÉ)
@@ -547,6 +600,22 @@ def create_app():
     except Exception as e:
         logger.error(f"ERROR Conversation Service v2.0 router: {e}")
 
+    # 6. Metric Service - Trends, Health, Patterns
+    metric_modules = [
+        ("metric_service.api.routes.trends", "/api/v1/metrics/trends", "metrics-trends"),
+        ("metric_service.api.routes.health", "/api/v1/metrics/health", "metrics-health"),
+        ("metric_service.api.routes.patterns", "/api/v1/metrics/patterns", "metrics-patterns"),
+    ]
+
+    for module_path, prefix, tag in metric_modules:
+        try:
+            module = __import__(module_path, fromlist=["router"])
+            router = getattr(module, "router")
+            app.include_router(router, prefix=prefix, tags=[tag])
+            logger.info(f"OK {module_path.split('.')[-1]} router included")
+        except Exception as e:
+            logger.error(f"❌ {module_path}: {e}")
+
     @app.get("/health")
     async def health():
         """Health check global (INCHANGÉ)"""
@@ -555,10 +624,11 @@ def create_app():
         degraded_services = [name for name, status in loader.services_status.items() 
                            if status.get("status") == "degraded"]
         
-        # Détails spéciaux pour search_service, enrichment_service et conversation_service
+        # Détails spéciaux pour search_service, enrichment_service, conversation_service et metric_service
         search_status = loader.services_status.get("search_service", {})
         enrichment_status = loader.services_status.get("enrichment_service", {})
         conversation_status = loader.services_status.get("conversation_service", {})
+        metric_status = loader.services_status.get("metric_service", {})
         
         return {
             "status": "healthy" if ok_services else ("degraded" if degraded_services else "unhealthy"),
@@ -587,6 +657,12 @@ def create_app():
                 "status": conversation_status.get("status"),
                 "initialized": conversation_status.get("initialized", False),
                 "error": conversation_status.get("error"),
+            },
+            "metric_service": {
+                "status": metric_status.get("status"),
+                "initialized": metric_status.get("initialized", False),
+                "error": metric_status.get("error"),
+                "architecture": metric_status.get("architecture")
             }
         }
 
@@ -616,7 +692,13 @@ def create_app():
                 "initialized": loader.conversation_service_initialized,
                 "error": loader.conversation_service_error,
             },
-
+            "metric_service_details": {
+                "initialized": loader.metric_service_initialized,
+                "error": loader.metric_service_error,
+                "architecture": "prophet_ml",
+                "version": "1.0.0",
+                "features": loader.services_status.get("metric_service", {}).get("features", [])
+            }
         }
 
     @app.get("/")
@@ -631,6 +713,7 @@ def create_app():
                 "enrichment_service - Enrichissement Elasticsearch (v2.0)",
                 "search_service - Recherche lexicale (Architecture finale corrigée)",
                 "conversation_service - IA conversationnelle",
+                "metric_service - Métriques et analytics financiers (Prophet ML)",
             ],
             "endpoints": {
                 "/health": "Contrôle santé",
@@ -650,7 +733,7 @@ if __name__ == "__main__":
     logger.info("Acces: http://localhost:8000")
     logger.info("Docs: http://localhost:8000/docs")
     logger.info("Status: http://localhost:8000/status")
-    logger.info("Services Core: User, Sync, Enrichment, Search, Conversation")
+    logger.info("Services Core: User, Sync, Enrichment, Search, Conversation, Metrics")
     logger.info("Architecture allegee pour developpement core avec securite JWT")
 
     # Configuration explicite de logging pour Uvicorn (console + fichier)

@@ -1,0 +1,31 @@
+{
+  "question_id": "G008",
+  "category": "G_analyse",
+  "question": "Compare mes revenus de mai à ceux de juin",
+  "intent_detected": "financial_query",
+  "intent_confidence": 0.85,
+  "entities_structured": {
+    "date_range": "2025-06",
+    "transaction_type": "credit"
+  },
+  "entities_count": 3,
+  "entity_confidence": 0.9166666666666666,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": {
+    "coherence_score": "LOW",
+    "issues": [
+      "Aucune query générée malgré intent et entités détectées"
+    ],
+    "details": {}
+  },
+  "latency_ms": 20092.548000160605,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-03T11:20:30.032638"
+}

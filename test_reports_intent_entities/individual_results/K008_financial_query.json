@@ -1,8 +1,0 @@
-{
-  "question_id": "K008",
-  "question": "Suivi objectifs épargne",
-  "intent_detected": "financial_query",
-  "intent_confidence": 0.85,
-  "entities_structured": {},
-  "timestamp": "2025-09-24T07:38:08.525709"
-}

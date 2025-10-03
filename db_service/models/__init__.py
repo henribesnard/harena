@@ -9,7 +9,7 @@ from db_service.models.user import User, BridgeConnection, UserPreference
 
 # Import modèles de synchronisation
 from db_service.models.sync import (
-    SyncItem, SyncAccount, LoanDetail, RawTransaction, Category,
+    SyncItem, SyncAccount, LoanDetail, RawTransaction, CategoryGroup, Category,
     RawStock, AccountInformation, BridgeInsight, SyncTask, SyncStat
 )
 
@@ -19,15 +19,25 @@ from db_service.models.conversation import (
     ConversationTurn
 )
 
+# Import modèles métriques
+from db_service.models.metrics import (
+    MetricsCache,
+    MetricsHistory,
+    UserMetricsConfig
+)
+
 # Exporter seulement les modèles qui existent réellement
 __all__ = [
     # Modèles utilisateur
     'User', 'BridgeConnection', 'UserPreference',
-    
+
     # Modèles de synchronisation
-    'SyncItem', 'SyncAccount', 'LoanDetail', 'RawTransaction', 'Category',
+    'SyncItem', 'SyncAccount', 'LoanDetail', 'RawTransaction', 'CategoryGroup', 'Category',
     'RawStock', 'AccountInformation', 'BridgeInsight', 'SyncTask', 'SyncStat',
-    
+
     # Modèles conversation SIMPLES (seulement ceux qui existent)
-    'Conversation', 'ConversationTurn'
+    'Conversation', 'ConversationTurn',
+
+    # Modèles métriques
+    'MetricsCache', 'MetricsHistory', 'UserMetricsConfig'
 ]

@@ -1,0 +1,1175 @@
+{
+  "category": "E_transaction",
+  "timestamp": "2025-10-03T11:08:16.940271",
+  "total_questions": 15,
+  "api_successful": 15,
+  "queries_found": 15,
+  "success_rate": 100.0,
+  "detailed_results": [
+    {
+      "question_id": "E001",
+      "question": "Trouve mes abonnements récurrents",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "transaction_type": "debit",
+        "categories": [
+          "streaming",
+          "Téléphones/internet",
+          "Services",
+          "Abonnements"
+        ]
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "category_name": [
+            "streaming",
+            "Téléphones/internet",
+            "Services",
+            "Abonnements"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "streaming_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "streaming"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "téléphones/internet_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Téléphones/internet"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "services_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Services"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "abonnements_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Abonnements"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 1267,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 6,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "2/3"
+        }
+      },
+      "latency_ms": 27197.438000002876,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E002",
+      "question": "Liste mes virements reçus",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "credit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 328,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 42045.1025001239,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E003",
+      "question": "Mes prélèvements automatiques",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 34108.93590003252,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E004",
+      "question": "Mes paiements par carte bleue",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 28214.61550006643,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E005",
+      "question": "Mes retraits espèces",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "withdrawal",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 27114.199599949643,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E006",
+      "question": "Mes virements sortants",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 24481.13110009581,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E007",
+      "question": "Mes paiements par carte",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 27473.617899930105,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E008",
+      "question": "Mes chèques émis",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "categories": [
+          "Chèques émis"
+        ],
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "category_name": [
+            "Chèques émis"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "chèques_émis_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Chèques émis"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 598,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 26179.60419994779,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E009",
+      "question": "Mes virements SEPA",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "transfer",
+        "transaction_type": "all"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.8999999999999999,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 411,
+      "has_filters": false,
+      "has_aggregations": true,
+      "filter_count": 0,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Entités manquantes dans query: operation_type",
+          "Intent transaction_search mais aucun filtre dans query"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 34469.51469988562,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E010",
+      "question": "Mes paiements contactless",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 26253.84459993802,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E011",
+      "question": "Mes virements bancaires automatiques de plus de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "gt",
+        "operation_type": "direct_debit",
+        "transaction_type": "all"
+      },
+      "entities_count": 4,
+      "entity_confidence": 0.9125,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 411,
+      "has_filters": false,
+      "has_aggregations": true,
+      "filter_count": 0,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Mauvaise traduction entités->query. Manquantes: amount, operator, operation_type",
+          "Intent transaction_search mais aucun filtre dans query"
+        ],
+        "details": {
+          "entities_translated": "1/4"
+        }
+      },
+      "latency_ms": 29836.519199889153,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E012",
+      "question": "Mes opérations de débit direct",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "direct_debit",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 25016.104700043797,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E013",
+      "question": "Mes cartes à débit différé",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "deferred_debit_card",
+        "transaction_type": "all"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 411,
+      "has_filters": false,
+      "has_aggregations": true,
+      "filter_count": 0,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Entités manquantes dans query: operation_type",
+          "Intent transaction_search mais aucun filtre dans query"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 26524.71370017156,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E014",
+      "question": "Mes paiements par carte de crédit",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "operation_type": "card",
+        "transaction_type": "debit"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.95,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit"
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 325,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: operation_type"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 34224.654300138354,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "E015",
+      "question": "Mes opérations non identifiées",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "operation_type": "unknown",
+        "transaction_type": "all"
+      },
+      "entities_count": 2,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 411,
+      "has_filters": false,
+      "has_aggregations": true,
+      "filter_count": 0,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "LOW",
+        "issues": [
+          "Entités manquantes dans query: operation_type",
+          "Intent transaction_search mais aucun filtre dans query"
+        ],
+        "details": {
+          "entities_translated": "1/2"
+        }
+      },
+      "latency_ms": 41576.406199950725,
+      "api_success": true,
+      "error_message": null
+    }
+  ]
+}

@@ -1,8 +1,0 @@
-{
-  "question_id": "L004",
-  "question": "Peux-tu me dire exactement le solde de mon compte en banque",
-  "intent_detected": "financial_query",
-  "intent_confidence": 0.95,
-  "entities_structured": {},
-  "timestamp": "2025-09-24T07:40:08.593487"
-}

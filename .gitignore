@@ -75,6 +75,9 @@ config.json
 data/
 temp/
 uploads/
+analyse_specifique/
+architecture/
+harena_front/
 
 # Fichiers Docker
 .dockerignore
@@ -102,3 +105,4 @@ yarn-error.log*
 *.zip
 *.tar
 *.gz
+nul

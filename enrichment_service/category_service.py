@@ -72,9 +72,10 @@ class CategoryService:
             with engine.connect() as conn:
                 result = conn.execute(text(
                     """
-                    SELECT category_id, category_name, group_id, group_name 
-                    FROM categories 
-                    ORDER BY group_name, category_name
+                    SELECT c.category_id, c.category_name, c.group_id, cg.group_name
+                    FROM categories c
+                    LEFT JOIN category_groups cg ON c.group_id = cg.group_id
+                    ORDER BY cg.group_name, c.category_name
                     """
                 ))
                 

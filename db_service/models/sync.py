@@ -116,16 +116,28 @@ class RawTransaction(Base, TimestampMixin):
     user = relationship("User", back_populates="raw_transactions")
     category = relationship("Category", foreign_keys="RawTransaction.category_id", primaryjoin="RawTransaction.category_id == Category.category_id")
 
+class CategoryGroup(Base, TimestampMixin):
+    """Groupes de catégories de transactions"""
+    __tablename__ = "category_groups"
+
+    group_id = Column(Integer, primary_key=True, comment="Category group ID")
+    group_name = Column(String(255), nullable=False, comment="Category group name")
+    description = Column(Text, nullable=True, comment="Group description")
+
+    # Relation vers catégories
+    categories = relationship("Category", back_populates="group")
+
 class Category(Base, TimestampMixin):
     """Catégories de transactions au format Bridge API (remplace BridgeCategory)"""
     __tablename__ = "categories"
-    
+
     category_id = Column(Integer, primary_key=True, comment="Bridge API category ID")
     category_name = Column(String(255), nullable=False, comment="Bridge API category name")
-    group_id = Column(Integer, nullable=False, comment="Bridge API category group ID")  
-    group_name = Column(String(255), nullable=False, comment="Bridge API category group name")
-    
-    # Relation vers transactions
+    description = Column(Text, nullable=True, comment="Category description")
+    group_id = Column(Integer, ForeignKey("category_groups.group_id"), nullable=False, comment="Bridge API category group ID")
+
+    # Relations
+    group = relationship("CategoryGroup", back_populates="categories")
     # Note: RawTransaction.category_id → Category.category_id (via foreign key)
 
 class RawStock(Base, TimestampMixin):

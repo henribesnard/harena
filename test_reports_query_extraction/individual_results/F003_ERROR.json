@@ -1,0 +1,22 @@
+{
+  "question_id": "F003",
+  "category": "F_complexe",
+  "question": "Mes revenus Netflix supérieurs à 50 euros ce mois",
+  "intent_detected": "EXCEPTION",
+  "intent_confidence": 0.0,
+  "entities_structured": {},
+  "entities_count": 0,
+  "entity_confidence": 0.0,
+  "query_found": false,
+  "query_data": null,
+  "query_size": 0,
+  "has_filters": false,
+  "has_aggregations": false,
+  "filter_count": 0,
+  "aggregation_count": 0,
+  "coherence_analysis": null,
+  "latency_ms": 1286574.5385999326,
+  "api_success": false,
+  "error_message": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=60)",
+  "timestamp": "2025-10-01T00:19:07.751383"
+}

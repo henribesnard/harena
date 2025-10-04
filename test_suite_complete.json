@@ -189,18 +189,18 @@
         },
         {
           "id": "B015",
-          "question": "Mes achats Amazon Prime Video Netflix Disney+ Apple TV",
-          "expected_entities": {"merchant_names": ["Amazon", "Netflix", "Disney", "Apple"], "transaction_type": "debit"}
+          "question": "Mes achats Auchan Supermarc St Lidl Netflix Com Paris",
+          "expected_entities": {"merchant_names": ["Auchan Supermarc St", "Lidl", "Netflix Com Paris"], "transaction_type": "debit"}
         },
         {
           "id": "B016",
-          "question": "Mes dépenses chez Carrefour Leclerc Intermarché",
-          "expected_entities": {"merchant_names": ["Carrefour", "Leclerc", "Intermarché"], "transaction_type": "debit"}
+          "question": "Mes dépenses chez Carrefour Market CR Centre Leclerc Amboi Cdiscount Bordeaux",
+          "expected_entities": {"merchant_names": ["Carrefour Market CR", "Centre Leclerc Amboi", "Cdiscount Bordeaux"], "transaction_type": "debit"}
         },
         {
           "id": "B017",
-          "question": "Mes transactions McDonald's KFC Burger King",
-          "expected_entities": {"merchant_names": ["McDonald", "KFC", "Burger King"], "transaction_type": "all"}
+          "question": "Mes transactions Bouygues Telecom Canal Sat Issy Les M Paypal Luxembourg",
+          "expected_entities": {"merchant_names": ["Bouygues Telecom", "Canal Sat Issy Les M", "Paypal Luxembourg"], "transaction_type": "all"}
         }
       ]
     },

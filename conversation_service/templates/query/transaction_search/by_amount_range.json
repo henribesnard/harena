@@ -23,7 +23,7 @@
     "amount_range": {
       "required": false,
       "type": "object",
-      "source": "entities.montant_range",
+      "source": "entities.montant",
       "validation": {
         "numeric_values": true,
         "positive_only": true

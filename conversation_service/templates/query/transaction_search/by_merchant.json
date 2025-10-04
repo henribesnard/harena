@@ -6,7 +6,7 @@
     "user_id": "{{user_id}}",
     "query": "{{merchant_query}}",
     "filters": {
-      "merchant_name": "{{merchant_name}}",
+      "merchant_name": "{% if merchants %}{{merchants}}{% elif merchant_name %}{{merchant_name}}{% else %}null{% endif %}",
       "transaction_type": "{{transaction_type}}"
     },
     "sort": [
@@ -23,13 +23,20 @@
     "merchant_query": {
       "required": false,
       "type": "string",
-      "source": "entities.merchant_name",
+      "source": "entities.merchant_query",
       "default": ""
+    },
+    "merchants": {
+      "required": false,
+      "type": "array",
+      "source": "entities.merchants",
+      "description": "Liste des marchands (cas pluriel)"
     },
     "merchant_name": {
       "required": false,
-      "type": "merchant_name",
-      "source": "entities.merchant_name"
+      "type": "string",
+      "source": "entities.merchant_name",
+      "description": "Un seul marchand (cas singulier normalisé)"
     },
     "transaction_type": {
       "required": false,

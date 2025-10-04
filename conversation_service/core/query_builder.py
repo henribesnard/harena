@@ -129,6 +129,7 @@ class QueryBuilder:
                 )
             
             # 4. Rendu du template avec paramètres
+            logger.info(f"🎯 Using template: {template.name} for intent {request.intent_group}.{request.intent_subtype}")
             try:
                 query = await self.template_engine.render_template(template, template_parameters)
             except Exception as e:

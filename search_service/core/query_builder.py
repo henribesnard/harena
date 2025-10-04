@@ -318,10 +318,22 @@ class QueryBuilder:
                     if filter_result:
                         filter_list.append(filter_result)
 
-                # LISTE: terms filter
+                # LISTE: bool + should pour recherche partielle sur merchant_name, sinon terms exact
                 elif isinstance(value, list):
-                    field_name = self._get_filter_field_name(field, keyword_fields)
-                    filter_list.append({"terms": {field_name: value}})
+                    # Cas spécial merchant_name: recherche partielle (contains)
+                    if field == "merchant_name":
+                        # Créer un bool/should avec match pour chaque marchand
+                        should_clauses = [{"match": {field: merchant}} for merchant in value]
+                        filter_list.append({
+                            "bool": {
+                                "should": should_clauses,
+                                "minimum_should_match": 1
+                            }
+                        })
+                    else:
+                        # Autres champs: terms exact avec .keyword
+                        field_name = self._get_filter_field_name(field, keyword_fields)
+                        filter_list.append({"terms": {field_name: value}})
 
                 # VALEUR SIMPLE: term filter ou match pour case-insensitive
                 else:

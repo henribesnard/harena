@@ -659,7 +659,7 @@ class ConversationOrchestrator:
             logger.info(f"Ajout automatique transaction_type: {entities['transaction_type']} (inféré du contexte)")
         
         # Log pour debugging
-        logger.info(f"Query building - Intent: {classification_result.intent_group}, Subtype: {classification_result.intent_subtype}, Entities: {entities}")
+        logger.info(f"Query building - Intent: {classification_result.intent_group}, Subtype: {classification_result.intent_subtype}, Entities: {json.dumps(entities, ensure_ascii=False, default=str)}")
 
         # Sélection intelligente du template basé sur les entités
         intent_group_upper = classification_result.intent_group.upper()
@@ -673,7 +673,7 @@ class ConversationOrchestrator:
         # Pour transaction_search sans subtype mais avec des entités de filtrage, utiliser "filter"
         elif intent_group_upper == "TRANSACTION_SEARCH" and not intent_subtype:
             # Vérifier si on a des entités qui nécessitent le template filter
-            filter_entities = ["merchant", "montant", "categories", "date_range", "operation_type"]
+            filter_entities = ["merchant", "merchants", "montant", "categories", "date_range", "operation_type"]
             has_filter_entities = any(entity_key in entities for entity_key in filter_entities)
 
             if has_filter_entities:

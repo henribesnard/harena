@@ -739,20 +739,75 @@ if __name__ == "__main__":
 
     tester = QueryExtractionTester()
 
-    # Option pour tester seulement certaines catégories
-    # Usage: python test_query_extraction_complete.py A_base B_avancees
-    # Ou: python test_query_extraction_complete.py A_base,B_avancees
+    # Option pour tester une seule question par ID ou des catégories
+    # Usage:
+    #   python test_query_extraction_complete.py B016           # Une seule question
+    #   python test_query_extraction_complete.py A_base         # Une catégorie
+    #   python test_query_extraction_complete.py A_base B_avancees  # Plusieurs catégories
     if len(sys.argv) > 1:
-        # Support de deux formats:
-        # 1. python script.py A_base B_avancees C_temporelles
-        # 2. python script.py A_base,B_avancees,C_temporelles
-        if "," in sys.argv[1]:
-            categories_to_test = sys.argv[1].split(",")
-        else:
-            categories_to_test = sys.argv[1:]
+        arg = sys.argv[1]
 
-        print(f"Categories demandees: {categories_to_test}")
-        tester.run_all_tests(categories_to_test)
+        # Si l'argument ressemble à un ID de question (ex: A001, B016)
+        if len(arg) <= 4 and arg[0].isalpha() and arg[1:].isdigit():
+            print(f"Test de la question unique: {arg}")
+            if not tester.authenticate():
+                print("Echec d'authentification")
+                sys.exit(1)
+
+            # Charger toutes les questions pour trouver celle demandée
+            questions_file = Path("test_suite_complete.json")
+            with open(questions_file, 'r', encoding='utf-8') as f:
+                test_suite = json.load(f)
+
+            all_questions = test_suite.get("categories", {})
+
+            # Trouver la question
+            question_found = None
+            category_found = None
+            for category_key, category_data in all_questions.items():
+                questions = category_data.get("questions", [])
+                for q in questions:
+                    if q.get("id") == arg:
+                        question_found = q
+                        category_found = category_key
+                        break
+                if question_found:
+                    break
+
+            if not question_found:
+                print(f"Question {arg} non trouvée")
+                sys.exit(1)
+
+            print(f"Question trouvée dans la catégorie {category_found}")
+            print(f"Question: {question_found['question']}")
+
+            # Tester cette question
+            result = tester.test_single_question(category_found, question_found)
+
+            # Afficher le résultat
+            print(f"\n{'='*60}")
+            print(f"RÉSULTAT POUR {arg}")
+            print(f"{'='*60}")
+            print(f"Intent: {result.intent_detected} (confidence: {result.intent_confidence})")
+            print(f"Entités: {result.entities_structured}")
+            print(f"Query trouvée: {result.query_found}")
+            if result.query_found:
+                print(f"Query ({result.query_size} chars):")
+                print(json.dumps(result.query_data, indent=2, ensure_ascii=False))
+            if result.coherence_analysis:
+                print(f"\nCohérence: {result.coherence_analysis['coherence_score']}")
+                if result.coherence_analysis.get('issues'):
+                    print(f"Issues: {result.coherence_analysis['issues']}")
+
+        # Sinon, c'est une liste de catégories
+        else:
+            if "," in arg:
+                categories_to_test = arg.split(",")
+            else:
+                categories_to_test = sys.argv[1:]
+
+            print(f"Categories demandees: {categories_to_test}")
+            tester.run_all_tests(categories_to_test)
     else:
         print("Test de toutes les categories...")
         tester.run_all_tests()

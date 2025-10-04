@@ -278,7 +278,7 @@ class TemplateEngine:
         """Cast une valeur vers le type spécifié"""
         if value is None or value == "None":
             return None
-            
+
         try:
             if param_type == "integer":
                 return int(value)
@@ -289,9 +289,16 @@ class TemplateEngine:
                     return value.lower() in ("true", "1", "yes", "on")
                 return bool(value)
             elif param_type == "string":
+                # Si la valeur est déjà une liste ou un dict, ne pas la convertir en string
+                if isinstance(value, (list, dict)):
+                    logger.info(f"⚠️ Type mismatch: param_type is 'string' but value is {type(value).__name__}, keeping original type")
+                    return value
                 return str(value)
             elif param_type == "merchant_name":
                 # Normalisation pour les noms de marchands (première lettre majuscule)
+                # Mais ne pas casser les listes !
+                if isinstance(value, list):
+                    return value
                 return str(value).strip().title() if value else value
             elif param_type == "object":
                 # Pour les objets, on garde tel quel - la transformation se fera dans _remove_null_values
@@ -306,16 +313,24 @@ class TemplateEngine:
         """Post-traite la requête générée"""
         # Nettoyage selon les règles du template
         filter_cleanup = template.template_data.get("filter_cleanup", {})
-        
+
         if filter_cleanup.get("remove_null_values", False):
             query = self._remove_null_values(query)
-            
+
         if filter_cleanup.get("remove_empty_objects", False):
             query = self._remove_empty_objects(query)
-        
+
+        # Parsing forcé des strings Python en objets natifs (listes, dicts)
+        query = self._parse_python_strings(query)
+
+        # Log pour debugging
+        if "filters" in query and "merchant_name" in query["filters"]:
+            merchant_value = query["filters"]["merchant_name"]
+            logger.info(f"🔍 After parsing - merchant_name type: {type(merchant_value).__name__}, value: {merchant_value}")
+
         # Ajouter automatiquement les agrégations dynamiques si pas déjà présentes
         query = self._build_dynamic_aggregations(query)
-            
+
         return query
 
     def _transform_date_range(self, date_range_string: str) -> Dict[str, str]:
@@ -733,10 +748,12 @@ class TemplateEngine:
         # Analyse des marchands
         merchant_filter = filters.get("merchant_name")
         if merchant_filter:
+            logger.info(f"🔎 _analyze_aggregation_context - merchant_filter type: {type(merchant_filter).__name__}, value: {merchant_filter}")
             if isinstance(merchant_filter, list):
                 context["merchants"] = merchant_filter
             elif isinstance(merchant_filter, str):
                 context["merchants"] = [merchant_filter]
+                logger.warning(f"⚠️ merchant_filter is a string, not a list! Converting to list: {[merchant_filter]}")
 
         # Analyse temporelle
         date_filter = filters.get("date")
@@ -1024,6 +1041,36 @@ class TemplateEngine:
 
         return aggregations
 
+    def _parse_python_strings(self, obj: Any) -> Any:
+        """Parse récursivement les strings Python (listes/dicts) en objets natifs"""
+        import ast
+
+        if isinstance(obj, dict):
+            result = {}
+            for k, v in obj.items():
+                parsed_v = self._parse_python_strings(v)
+                if k == "merchant_name" and isinstance(v, str) and v != parsed_v:
+                    logger.info(f"✅ Parsed merchant_name: '{v}' -> {parsed_v}")
+                result[k] = parsed_v
+            return result
+        elif isinstance(obj, list):
+            return [self._parse_python_strings(item) for item in obj]
+        elif isinstance(obj, str):
+            # Tenter de parser les strings qui ressemblent à des listes ou dicts Python
+            v = obj.strip()
+            if (v.startswith('[') and v.endswith(']')) or (v.startswith('{') and v.endswith('}')):
+                try:
+                    parsed = ast.literal_eval(v)
+                    logger.info(f"🔄 Parsed Python string: {v[:80]}... -> {type(parsed).__name__} with {len(parsed) if isinstance(parsed, (list, dict)) else '?'} items")
+                    return parsed
+                except (ValueError, SyntaxError) as e:
+                    # Si échec de parsing, retourner la string telle quelle
+                    logger.warning(f"❌ Could not parse Python string: {v[:80]}..., error: {e}")
+                    return obj
+            return obj
+        else:
+            return obj
+
     def _remove_null_values(self, obj: Any) -> Any:
         """Supprime les valeurs null récursivement"""
         if isinstance(obj, dict):
@@ -1057,11 +1104,13 @@ class TemplateEngine:
                             import ast
                             parsed_list = ast.literal_eval(v)
                             if isinstance(parsed_list, list):
+                                logger.debug(f"Parsed Python list string: {v} -> {parsed_list}")
                                 cleaned_value = self._remove_null_values(parsed_list)
                             else:
                                 cleaned_value = self._remove_null_values(v)
-                        except (ValueError, SyntaxError):
+                        except (ValueError, SyntaxError) as e:
                             # Si échec de parsing, garder comme string
+                            logger.warning(f"Failed to parse Python list string: {v}, error: {e}")
                             cleaned_value = self._remove_null_values(v)
                     else:
                         cleaned_value = self._remove_null_values(v)

@@ -6,8 +6,7 @@
   "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
-      "Transport",
-      "Transport/Carburant"
+      "Transport"
     ],
     "transaction_type": "debit"
   },
@@ -19,8 +18,7 @@
     "filters": {
       "transaction_type": "debit",
       "category_name": [
-        "Transport",
-        "Transport/Carburant"
+        "Transport"
       ]
     },
     "sort": [
@@ -75,39 +73,14 @@
             }
           }
         }
-      },
-      "transport/carburant_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Transport/Carburant"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
       }
     }
   },
-  "query_size": 804,
+  "query_size": 559,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
-  "aggregation_count": 4,
+  "aggregation_count": 3,
   "coherence_analysis": {
     "coherence_score": "HIGH",
     "issues": [],
@@ -115,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26041.212500073016,
+  "latency_ms": 27038.589999996475,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:45:18.689132"
+  "timestamp": "2025-10-05T12:22:37.137395"
 }

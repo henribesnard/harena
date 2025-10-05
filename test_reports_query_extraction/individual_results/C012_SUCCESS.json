@@ -13,6 +13,7 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "spatial espace astronomie",
     "filters": {
       "transaction_type": "debit"
     },
@@ -46,7 +47,7 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 363,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -60,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 34709.6188000869,
+  "latency_ms": 27178.421899996465,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:50:13.596872"
+  "timestamp": "2025-10-05T12:27:51.141104"
 }

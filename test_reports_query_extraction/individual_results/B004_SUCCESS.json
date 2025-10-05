@@ -13,7 +13,6 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Apple",
     "filters": {
       "merchant_name": "Apple",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 563,
+  "query_size": 545,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18968.727100174874,
+  "latency_ms": 19295.413599989843,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:39:04.697644"
+  "timestamp": "2025-10-05T11:54:01.211701"
 }

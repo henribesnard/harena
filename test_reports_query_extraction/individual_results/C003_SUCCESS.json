@@ -6,13 +6,7 @@
   "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
-      "Alimentation",
-      "Alimentation/Supermarché",
-      "Restaurant",
-      "Restaurants/Sortie",
-      "Fast foods",
-      "Coffee shop",
-      "Food - Others"
+      "Alimentation"
     ],
     "transaction_type": "debit"
   },
@@ -24,13 +18,7 @@
     "filters": {
       "transaction_type": "debit",
       "category_name": [
-        "Alimentation",
-        "Alimentation/Supermarché",
-        "Restaurant",
-        "Restaurants/Sortie",
-        "Fast foods",
-        "Coffee shop",
-        "Food - Others"
+        "Alimentation"
       ]
     },
     "sort": [
@@ -85,164 +73,14 @@
             }
           }
         }
-      },
-      "alimentation/supermarché_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Alimentation/Supermarché"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "restaurant_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Restaurant"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "restaurants/sortie_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Restaurants/Sortie"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "fast_foods_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Fast foods"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "coffee_shop_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Coffee shop"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "food___others_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Food - Others"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
       }
     }
   },
-  "query_size": 1969,
+  "query_size": 568,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
-  "aggregation_count": 9,
+  "aggregation_count": 3,
   "coherence_analysis": {
     "coherence_score": "HIGH",
     "issues": [],
@@ -250,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26260.764200007543,
+  "latency_ms": 36012.82459999493,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:45:45.451979"
+  "timestamp": "2025-10-05T12:23:13.653396"
 }

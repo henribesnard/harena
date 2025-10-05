@@ -22,6 +22,7 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "bitcoin crypto cryptomonnaie",
     "filters": {
       "transaction_type": "debit",
       "category_name": [
@@ -239,7 +240,7 @@
       }
     }
   },
-  "query_size": 1906,
+  "query_size": 1947,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -253,8 +254,8 @@
       "entities_translated": "2/3"
     }
   },
-  "latency_ms": 28899.83560005203,
+  "latency_ms": 19457.474800001364,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:50:42.998897"
+  "timestamp": "2025-10-05T12:28:11.102575"
 }

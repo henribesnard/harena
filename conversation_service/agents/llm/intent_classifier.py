@@ -283,27 +283,18 @@ class IntentClassifier:
    - Normaliser : "mcdo" → "McDonald's", "Apple/iTunes" → "Apple/iTunes"
    - ⚠️ RÈGLE: transaction_type dépend du contexte (achats→debit, transactions→all, dépenses→debit, revenus→credit)
 
-4. CATÉGORIES → PRIORITÉ AUX CATÉGORIES DE BASE :
-   🎯 RÈGLE CORRIGÉE : Utiliser "categories" pour les catégories EXISTANTES en base, "query" pour le reste
+4. CATÉGORIES → UTILISER LES CATÉGORIES DYNAMIQUES DE LA BASE :
+   🎯 RÈGLE PRINCIPALE : Les catégories disponibles sont listées ci-dessous dans le contexte dynamique
 
-   🏆 CATÉGORIES DE BASE DISPONIBLES (utiliser categories):
-   - "dépenses restaurant" → categories: ["Restaurants"], transaction_type: "debit"
-   - "frais de transport" → categories: ["Public Transportation", "Taxi/Uber", "Fuel", "Car Maintenance", "Parking"], transaction_type: "debit"
-   - "achats alimentaires" → categories: ["Supermarkets / Groceries", "Restaurants", "Fast foods", "Coffee shop", "Food - Others"], transaction_type: "debit"
-   - "dépenses santé" → categories: ["Doctor Visits", "Dentist", "Pharmacy", "Medical Equipment", "Medical Insurance"], transaction_type: "debit"
-   - "sorties loisirs" → categories: ["Movies & Cinema", "Concerts & Shows", "Gaming", "Sports Events", "Streaming Services"], transaction_type: "debit"
-   - "factures d'énergie" → categories: ["Electricity", "Water"], transaction_type: "debit"
-   - "frais bancaires" → categories: ["Bank Fees"], transaction_type: "debit"
-   - "achats vêtements" → categories: ["Clothing"], transaction_type: "debit"
-   - "dépenses électronique" → categories: ["Electronics"], transaction_type: "debit"
-   - "achats en ligne" → categories: ["Online Shopping"], transaction_type: "debit"
-   - "abonnements" → categories: ["Streaming Services", "Internet/Phone"], transaction_type: "debit"
+   ⚠️ RÈGLES CRITIQUES :
+   - Utiliser "categories" UNIQUEMENT pour les catégories listées dans le contexte ci-dessous
+   - Pour les termes NON listés dans les catégories → utiliser "query" avec des mots-clés pertinents
+   - TOUJOURS inclure transaction_type (debit, credit, ou all)
 
-   🔎 CAS NÉCESSITANT QUERY (pas de catégorie en base):
-   - "dépenses spatial" → query: "spatial espace astronomie", transaction_type: "debit"
-   - "achats Bitcoin" → query: "bitcoin crypto cryptomonnaie", transaction_type: "debit"
-
-   ✅ RÈGLE CORRIGÉE : "categories" pour catégories de BASE, "query" pour termes non mappés + transaction_type OBLIGATOIRE
+   📝 EXEMPLES :
+   - Si "électronique" N'EST PAS dans les catégories → query: "électronique électro", transaction_type: "debit"
+   - Si "Bitcoin" N'EST PAS dans les catégories → query: "bitcoin crypto cryptomonnaie", transaction_type: "debit"
+   - Si "spatial" N'EST PAS dans les catégories → query: "spatial espace astronomie", transaction_type: "debit"
 
 5. OPERATION_TYPE (SEULEMENT 6 VALEURS AUTORISÉES) :
    - "paiements par carte" → operation_type: "card"
@@ -320,31 +311,27 @@ class IntentClassifier:
 
 === RÈGLES IMPORTANTES ===
 
-• LOGIQUE PRIORITÉE CORRIGÉE :
+• LOGIQUE PRIORITÉE :
   1. MARCHAND spécifique mentionné → merchant: "Nom"
-  2. CATÉGORIE de BASE disponible → categories: ["Nom Base"]
-  3. TERME non mappé → query: "mots clés"
+  2. CATÉGORIE listée dans le contexte ci-dessous → categories: ["Nom Catégorie"]
+  3. TERME non mappé/non listé → query: "mots clés pertinents"
 
-  EXEMPLES CORRIGÉS:
+  EXEMPLES:
   - "Mes achats Tesla" → merchant: "Tesla" (marchand spécifique)
-  - "Mes achats alimentaires" → categories: ["Supermarkets / Groceries", "Restaurants"] (catégories de base)
-  - "Mes frais de transport" → categories: ["Public Transportation", "Taxi/Uber"] (catégories de base)
-  - "Mes dépenses santé" → categories: ["Doctor Visits", "Dentist", "Pharmacy"] (catégories de base)
-  - "Mes dépenses spatiales" → query: "spatial espace" (pas de catégorie en base)
+  - "Mes dépenses spatiales" → query: "spatial espace" (terme non listé dans les catégories)
+  - "Mes achats Bitcoin" → query: "bitcoin crypto" (terme non listé dans les catégories)
 
-✅ RAPPEL CORRIGÉ : "categories" AUTORISÉ pour les 57 catégories de BASE uniquement
-
-✅ CAS CORRIGÉS AVEC VRAIES CATÉGORIES :
-- "Mes frais de transport" → categories: ["Public Transportation", "Taxi/Uber", "Fuel", "Parking"]
-- "Mes dépenses santé" → categories: ["Doctor Visits", "Dentist", "Pharmacy", "Medical Insurance"]
-- "Mes factures d'énergie" → categories: ["Electricity", "Water"]
-
-✅ RÈGLE FINALE : categories AUTORISÉ pour les 57 catégories officielles de PostgreSQL
+✅ RAPPEL : Utiliser UNIQUEMENT les catégories listées dans le contexte dynamique ci-dessous
 
 • ACHATS GÉNÉRIQUES :
-  - "Mes achats" SEUL (sans marchand/catégorie) → categories: [toutes catégories d'achats], transaction_type: "debit"
+  - "Mes achats" SEUL (sans marchand/catégorie/produit spécifique) → categories: [catégories d'achats listées dans le contexte], transaction_type: "debit"
   - "Mes achats [marchand]" → merchant: "[marchand]", transaction_type: "debit" (PAS de categories)
-  - "Mes achats [catégorie]" → categories: [catégories correspondantes], transaction_type: "debit"
+  - "Mes achats [produit spécifique]" → query: "[produit] [mots-clés]", transaction_type: "debit" (PAS de categories)
+
+  ⚠️ ATTENTION PRODUITS SPÉCIFIQUES :
+  - "Mes achats Bitcoin" → query: "bitcoin crypto" (Bitcoin n'est PAS une catégorie, c'est un produit spécifique)
+  - "Mes achats Tesla" → merchant: "Tesla" (Tesla est un marchand connu)
+  - "Mes achats iPhone" → query: "iphone apple smartphone" (iPhone n'est pas une catégorie)
 
 • TRANSACTIONS NEUTRES :
   - "Mes transactions [marchand]" → merchant: "[marchand]" (PAS de transaction_type ou transaction_type: "all")

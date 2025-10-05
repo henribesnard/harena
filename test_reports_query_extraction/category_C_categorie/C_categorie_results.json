@@ -1,6 +1,6 @@
 {
   "category": "C_categorie",
-  "timestamp": "2025-10-03T10:50:43.504051",
+  "timestamp": "2025-10-05T12:28:11.606212",
   "total_questions": 13,
   "api_successful": 13,
   "queries_found": 13,
@@ -95,7 +95,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25750.607200199738,
+      "latency_ms": 36086.0432000045,
       "api_success": true,
       "error_message": null
     },
@@ -106,8 +106,7 @@
       "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Transport",
-          "Transport/Carburant"
+          "Transport"
         ],
         "transaction_type": "debit"
       },
@@ -119,8 +118,7 @@
         "filters": {
           "transaction_type": "debit",
           "category_name": [
-            "Transport",
-            "Transport/Carburant"
+            "Transport"
           ]
         },
         "sort": [
@@ -175,39 +173,14 @@
                 }
               }
             }
-          },
-          "transport/carburant_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Transport/Carburant"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
           }
         }
       },
-      "query_size": 804,
+      "query_size": 559,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
-      "aggregation_count": 4,
+      "aggregation_count": 3,
       "coherence_analysis": {
         "coherence_score": "HIGH",
         "issues": [],
@@ -215,7 +188,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26041.212500073016,
+      "latency_ms": 27038.589999996475,
       "api_success": true,
       "error_message": null
     },
@@ -226,13 +199,7 @@
       "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Alimentation",
-          "Alimentation/Supermarché",
-          "Restaurant",
-          "Restaurants/Sortie",
-          "Fast foods",
-          "Coffee shop",
-          "Food - Others"
+          "Alimentation"
         ],
         "transaction_type": "debit"
       },
@@ -244,13 +211,7 @@
         "filters": {
           "transaction_type": "debit",
           "category_name": [
-            "Alimentation",
-            "Alimentation/Supermarché",
-            "Restaurant",
-            "Restaurants/Sortie",
-            "Fast foods",
-            "Coffee shop",
-            "Food - Others"
+            "Alimentation"
           ]
         },
         "sort": [
@@ -305,164 +266,14 @@
                 }
               }
             }
-          },
-          "alimentation/supermarché_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Alimentation/Supermarché"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "restaurant_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Restaurant"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "restaurants/sortie_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Restaurants/Sortie"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "fast_foods_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Fast foods"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "coffee_shop_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Coffee shop"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "food___others_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Food - Others"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
           }
         }
       },
-      "query_size": 1969,
+      "query_size": 568,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
-      "aggregation_count": 9,
+      "aggregation_count": 3,
       "coherence_analysis": {
         "coherence_score": "HIGH",
         "issues": [],
@@ -470,7 +281,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26260.764200007543,
+      "latency_ms": 36012.82459999493,
       "api_success": true,
       "error_message": null
     },
@@ -481,8 +292,7 @@
       "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Santé/pharmacie",
-          "Santé/Pharmacie"
+          "Santé/pharmacie"
         ],
         "transaction_type": "debit"
       },
@@ -494,8 +304,7 @@
         "filters": {
           "transaction_type": "debit",
           "category_name": [
-            "Santé/pharmacie",
-            "Santé/Pharmacie"
+            "Santé/pharmacie"
           ]
         },
         "sort": [
@@ -537,7 +346,7 @@
                   },
                   {
                     "term": {
-                      "category_name.keyword": "Santé/Pharmacie"
+                      "category_name.keyword": "Santé/pharmacie"
                     }
                   }
                 ]
@@ -553,7 +362,7 @@
           }
         }
       },
-      "query_size": 616,
+      "query_size": 592,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -565,7 +374,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 34928.984500002116,
+      "latency_ms": 32127.141000004485,
       "api_success": true,
       "error_message": null
     },
@@ -576,11 +385,7 @@
       "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Movies & Cinema",
-          "Concerts & Shows",
-          "Gaming",
-          "Sports Events",
-          "Streaming Services"
+          "Loisirs"
         ],
         "transaction_type": "debit"
       },
@@ -592,11 +397,7 @@
         "filters": {
           "transaction_type": "debit",
           "category_name": [
-            "Movies & Cinema",
-            "Concerts & Shows",
-            "Gaming",
-            "Sports Events",
-            "Streaming Services"
+            "Loisirs"
           ]
         },
         "sort": [
@@ -627,7 +428,7 @@
               }
             }
           },
-          "movies_&_cinema_debit": {
+          "loisirs_debit": {
             "filter": {
               "bool": {
                 "must": [
@@ -638,107 +439,7 @@
                   },
                   {
                     "term": {
-                      "category_name.keyword": "Movies & Cinema"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "concerts_&_shows_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Concerts & Shows"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "gaming_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Gaming"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "sports_events_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Sports Events"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "streaming_services_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Streaming Services"
+                      "category_name.keyword": "Loisirs"
                     }
                   }
                 ]
@@ -754,11 +455,11 @@
           }
         }
       },
-      "query_size": 1488,
+      "query_size": 553,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
-      "aggregation_count": 7,
+      "aggregation_count": 3,
       "coherence_analysis": {
         "coherence_score": "HIGH",
         "issues": [],
@@ -766,7 +467,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 21661.218299996108,
+      "latency_ms": 29308.46179999935,
       "api_success": true,
       "error_message": null
     },
@@ -859,7 +560,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25106.34130006656,
+      "latency_ms": 26709.47359999991,
       "api_success": true,
       "error_message": null
     },
@@ -952,7 +653,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 37739.551400067285,
+      "latency_ms": 30519.291399992653,
       "api_success": true,
       "error_message": null
     },
@@ -1045,7 +746,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 30231.19580000639,
+      "latency_ms": 43991.14639998879,
       "api_success": true,
       "error_message": null
     },
@@ -1061,7 +762,7 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -1138,7 +839,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 19025.337800150737,
+      "latency_ms": 18828.632300006575,
       "api_success": true,
       "error_message": null
     },
@@ -1231,7 +932,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 33669.409200083464,
+      "latency_ms": 31148.702500009676,
       "api_success": true,
       "error_message": null
     },
@@ -1405,7 +1106,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26546.1012001615,
+      "latency_ms": 33123.91249999928,
       "api_success": true,
       "error_message": null
     },
@@ -1423,6 +1124,7 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "spatial espace astronomie",
         "filters": {
           "transaction_type": "debit"
         },
@@ -1456,7 +1158,7 @@
           }
         }
       },
-      "query_size": 325,
+      "query_size": 363,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -1470,7 +1172,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 34709.6188000869,
+      "latency_ms": 27178.421899996465,
       "api_success": true,
       "error_message": null
     },
@@ -1497,6 +1199,7 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "bitcoin crypto cryptomonnaie",
         "filters": {
           "transaction_type": "debit",
           "category_name": [
@@ -1714,7 +1417,7 @@
           }
         }
       },
-      "query_size": 1906,
+      "query_size": 1947,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -1728,7 +1431,7 @@
           "entities_translated": "2/3"
         }
       },
-      "latency_ms": 28899.83560005203,
+      "latency_ms": 19457.474800001364,
       "api_success": true,
       "error_message": null
     }

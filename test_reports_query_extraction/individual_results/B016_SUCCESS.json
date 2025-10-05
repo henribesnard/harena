@@ -1,14 +1,15 @@
 {
   "question_id": "B016",
   "category": "B_vendeur",
-  "question": "Mes dépenses chez Carrefour Leclerc Intermarché",
+  "question": "Mes dépenses chez Carrefour Market CR Centre Leclerc Amboi Cdiscount Bordeaux",
   "intent_detected": "transaction_search",
   "intent_confidence": 0.9,
   "entities_structured": {
     "merchants": [
-      "Carrefour",
+      "Carrefour Market",
+      "CR Centre",
       "Leclerc",
-      "Intermarché"
+      "Cdiscount"
     ],
     "transaction_type": "debit"
   },
@@ -18,6 +19,12 @@
   "query_data": {
     "user_id": 100,
     "filters": {
+      "merchant_name": [
+        "Carrefour Market",
+        "CR Centre",
+        "Leclerc",
+        "Cdiscount"
+      ],
       "transaction_type": "debit"
     },
     "sort": [
@@ -47,14 +54,114 @@
             }
           }
         }
+      },
+      "carrefour_market_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Carrefour Market"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "cr_centre_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "CR Centre"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "leclerc_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Leclerc"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "cdiscount_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Cdiscount"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 1219,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 2,
+  "aggregation_count": 6,
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
@@ -64,8 +171,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 27931.387400021777,
+  "latency_ms": 39627.90349998977,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:43:53.276424"
+  "timestamp": "2025-10-05T11:58:58.537640"
 }

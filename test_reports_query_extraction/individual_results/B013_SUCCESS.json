@@ -13,7 +13,6 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Uber",
     "filters": {
       "merchant_name": "Uber",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 559,
+  "query_size": 542,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18033.14649988897,
+  "latency_ms": 18364.389500013203,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:42:31.302368"
+  "timestamp": "2025-10-05T11:57:27.208239"
 }

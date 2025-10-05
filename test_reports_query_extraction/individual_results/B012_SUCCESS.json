@@ -3,17 +3,16 @@
   "category": "B_vendeur",
   "question": "Mes achats chez Google",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "merchant": "Google",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.965,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Google",
     "filters": {
       "merchant_name": "Google",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 567,
+  "query_size": 548,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 32503.165300004184,
+  "latency_ms": 32283.663700000034,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:42:12.767401"
+  "timestamp": "2025-10-05T11:57:08.341050"
 }

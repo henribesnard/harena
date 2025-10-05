@@ -6,9 +6,10 @@
     "user_id": "{{user_id}}",
     "query": "{% if query %}{{query}}{% else %}{% endif %}",
     "filters": {
-      "transaction_type": "{{transaction_type}}",
-      "merchant_name": "{{ merchants if merchants else null }}",
-      "category_name": "{{ categories if categories else null }}"
+      "transaction_type": "{{transaction_type}}"{% if merchants or merchant_name %},
+      "merchant_name": "{% if merchants %}{{merchants}}{% else %}['{{merchant_name}}']{% endif %}"{% endif %}{% if categories %},
+      "category_name": "{{ categories }}"{% endif %}{% if date_range %},
+      "date": "{{ date_range }}"{% endif %}
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -35,17 +36,29 @@
       "allowed_values": ["debit", "credit"],
       "default": ""
     },
+    "merchant_name": {
+      "required": false,
+      "type": "string",
+      "source": "entities.merchant_name",
+      "description": "Marchand unique (normalisé depuis merchant)"
+    },
     "merchants": {
       "required": false,
       "type": "array",
       "source": "entities.merchants",
-      "description": "Liste des marchands"
+      "description": "Liste des marchands (pluriel)"
     },
     "categories": {
       "required": false,
       "type": "array",
       "source": "entities.categories",
       "description": "Liste des catégories"
+    },
+    "date_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.date_range",
+      "description": "Plage de dates pour filtrer les transactions"
     }
   },
   "filter_cleanup": {

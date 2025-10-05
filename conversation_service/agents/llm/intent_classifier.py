@@ -244,35 +244,46 @@ class IntentClassifier:
    - "ce mois" → date_range: "this_month"
    - "des 30 derniers jours" → date_range: "last_30_days"
 
-   📅 MOIS SPÉCIFIQUES :
-   - "de mai" → date_range: "2025-05"
+   📅 MOIS SPÉCIFIQUES (on est en octobre 2025) :
+   - "de mai" → date_range: "2025-05" (mai 2025, dans le passé)
    - "en janvier 2025" → date_range: "2025-01"
-   - "en décembre" → date_range: "2025-12"
-   - "d'octobre" → date_range: "2025-10"
+   - "en décembre" → date_range: "2024-12" (décembre dans le futur → année précédente)
+   - "d'octobre" → date_range: "2025-10" (mois actuel)
+   - "de septembre" → date_range: "2025-09" (mois passé)
+   - "de novembre" → date_range: "2024-11" (mois futur → année précédente)
 
-   📍 DATES SPÉCIFIQUES (problématiques - renforcées) :
-   - "du 1er mai" → date_range: "2025-05-01"
-   - "du 5 mars" → date_range: "2025-03-05"
-   - "du 15 septembre" → date_range: "2025-09-15"
-   - "du 20 juin" → date_range: "2025-06-20"
-   - "du 31 décembre" → date_range: "2025-12-31"
+   📍 DATES SPÉCIFIQUES (on est en octobre 2025) :
+   - "du 1er mai" → date_range: "2025-05-01" (dans le passé)
+   - "du 5 mars" → date_range: "2025-03-05" (dans le passé)
+   - "du 15 septembre" → date_range: "2025-09-15" (dans le passé)
+   - "du 20 juin" → date_range: "2025-06-20" (dans le passé)
+   - "du 31 décembre" → date_range: "2024-12-31" (mois futur → année précédente)
 
-   📊 PLAGES DE DATES :
-   - "du 14 au 15 mai" → date_range: "2025-05-14_2025-05-15"
-   - "du 1er au 15 octobre" → date_range: "2025-10-01_2025-10-15"
-   - "du 10 au 20 mars" → date_range: "2025-03-10_2025-03-20"
+   📊 PLAGES DE DATES (on est en octobre 2025) :
+   - "du 14 au 15 mai" → date_range: "2025-05-14_2025-05-15" (dans le passé)
+   - "du 1er au 15 octobre" → date_range: "2025-10-01_2025-10-15" (mois actuel)
+   - "du 10 au 20 mars" → date_range: "2025-03-10_2025-03-20" (dans le passé)
 
    🎯 ANNÉES SPÉCIFIQUES :
    - "de 1995" → date_range: "1995"
    - "en 2030" → date_range: "2030"
    - "d'avril 2024" → date_range: "2024-04"
 
-   ⚠️ RÈGLES CRITIQUES :
+   ⚠️ RÈGLES CRITIQUES ANNÉE CONTEXTUELLE :
    - TOUJOURS utiliser 'date_range' - JAMAIS month, year, date_specific
    - Format strict: YYYY-MM-DD, YYYY-MM, YYYY
    - Dates françaises : "1er" = "01", "5" = "05"
-   - Année par défaut 2025 sauf si spécifiée
    - Plages avec underscore : "YYYY-MM-DD_YYYY-MM-DD"
+   - 🎯 LOGIQUE ANNÉE (on est en octobre 2025) :
+     * Si ANNÉE EXPLICITE dans la question → utiliser cette année
+     * Si MOIS FUTUR (novembre, décembre) SANS année → utiliser 2024 (année précédente)
+     * Si MOIS PASSÉ OU ACTUEL (janvier-octobre) SANS année → utiliser 2025 (année actuelle)
+     * Exemples : "décembre" = 2024-12, "septembre" = 2025-09, "novembre" = 2024-11
+   - 🚨 DATES INVALIDES (ex: 32 février, 31 avril) :
+     * Corriger automatiquement au dernier jour valide du mois
+     * "32 février" → date_range: "2025-02-28" (ou 29 si bissextile)
+     * "31 avril" → date_range: "2025-04-30"
+     * NE PAS classifier comme CONVERSATIONAL si c'est clairement une requête de transaction
 
 3. MARCHANDS ET COMMERÇANTS :
    - "Mes achats [marchand]" → merchant: "[marchand]", transaction_type: "debit"
@@ -324,9 +335,10 @@ class IntentClassifier:
 ✅ RAPPEL : Utiliser UNIQUEMENT les catégories listées dans le contexte dynamique ci-dessous
 
 • ACHATS GÉNÉRIQUES :
-  - "Mes achats" SEUL (sans marchand/catégorie/produit spécifique) → categories: [catégories d'achats listées dans le contexte], transaction_type: "debit"
-  - "Mes achats [marchand]" → merchant: "[marchand]", transaction_type: "debit" (PAS de categories)
-  - "Mes achats [produit spécifique]" → query: "[produit] [mots-clés]", transaction_type: "debit" (PAS de categories)
+  - "Mes achats" SEUL (sans marchand/catégorie/produit/filtre temporel ou autre) → categories: [catégories d'achats listées dans le contexte], transaction_type: "debit"
+  - SI période temporelle présente ("du weekend", "de mai", "d'hier", etc.) → NE JAMAIS extraire categories ! Retourner UNIQUEMENT: transaction_type: "debit", date_range: [période]
+  - SI marchand présent → merchant: "[marchand]", transaction_type: "debit" (PAS de categories)
+  - SI produit spécifique présent → query: "[produit] [mots-clés]", transaction_type: "debit" (PAS de categories)
 
   ⚠️ ATTENTION PRODUITS SPÉCIFIQUES :
   - "Mes achats Bitcoin" → query: "bitcoin crypto" (Bitcoin n'est PAS une catégorie, c'est un produit spécifique)
@@ -640,6 +652,31 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
         # Exemples few-shot integres (en attendant fichier de config)
         # PRIORITE: Examples cas problématiques temporels en positions 1-2 pour être dans top 5
         self._few_shot_examples = [
+            {
+                "user": "Mes achats du weekend",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_period",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "date_range",
+            "value": "weekend",
+            "confidence": 0.95,
+            "span": [15, 22],
+            "entity_type": "temporal"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Recherche d'achats du weekend - SANS categories car période temporelle présente"
+}"""
+            },
             {
                 "user": "Mes achats du mois de Mai",
                 "assistant": """{

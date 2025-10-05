@@ -4,9 +4,9 @@
   "target_intention": "TRANSACTION_SEARCH.filter",
   "parameters": {
     "user_id": "{{user_id}}",
-    "query": "{% if query %}{{query}}{% elif merchant_query %}{{merchant_query}}{% else %}{% endif %}",
+    "query": "{% if query %}{{query}}{% else %}{% endif %}",
     "filters": {
-      "merchant_name": "{{merchant_name}}",
+      "merchant_name": "{% if merchants %}{{merchants}}{% elif merchant_name %}['{{merchant_name}}']{% endif %}",
       "transaction_type": "{{transaction_type}}",
       "operation_type": "{{operation_type}}",
       "amount_abs": "{% if montant %}{{to_es_amount_filter(montant)}}{% else %}null{% endif %}",
@@ -31,17 +31,23 @@
       "description": "Termes de recherche textuelle pour filtrer les transactions",
       "default": ""
     },
-    "merchant_query": {
+    "merchant_name": {
       "required": false,
       "type": "string",
-      "source": "entities.merchant",
-      "default": ""
+      "source": "entities.merchant_name",
+      "description": "Marchand unique (normalisé depuis merchant)"
+    },
+    "merchants": {
+      "required": false,
+      "type": "array",
+      "source": "entities.merchants",
+      "description": "Liste des marchands (pluriel)"
     },
     "merchant_name": {
       "required": false,
       "type": "array",
       "source": "entities.merchants",
-      "description": "Liste des marchands (prioritaire sur merchant)"
+      "description": "DEPRECATED: utiliser merchants ou merchant"
     },
     "montant": {
       "required": false,

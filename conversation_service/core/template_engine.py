@@ -346,6 +346,16 @@ class TemplateEngine:
         # Normaliser le texte (français et anglais)
         date_range_lower = date_range_string.lower().strip()
 
+        # === FORMAT PLAGE ISO AVEC UNDERSCORE (priorité haute) ===
+        # Format généré par le LLM : "2025-05-14_2025-05-15"
+        underscore_range_match = re.match(r'^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$', date_range_string.strip())
+        if underscore_range_match:
+            start_date_str, end_date_str = underscore_range_match.groups()
+            return {
+                "gte": start_date_str,
+                "lte": end_date_str
+            }
+
         # === VALIDATION DES DATES INVALIDES ===
         # Détecter et corriger les dates ISO invalides comme "2025-02-32"
         iso_invalid_match = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', date_range_string.strip())
@@ -362,10 +372,8 @@ class TemplateEngine:
                 corrected_day = min(day, max_day)
                 corrected_date = date(year, month, corrected_day)
                 logger.warning(f"Date invalide corrigée: {date_range_string} → {corrected_date.isoformat()}")
-                return {
-                    "gte": corrected_date.isoformat(),
-                    "lte": corrected_date.isoformat()
-                }
+                # Date exacte corrigée : utiliser eq
+                return {"eq": corrected_date.isoformat()}
 
         # === PLAGES RELATIVES PRÉDÉFINIES ===
         if date_range_lower in ["this_month", "ce mois", "this month"]:
@@ -405,16 +413,100 @@ class TemplateEngine:
             }
 
         elif date_range_lower in ["today", "aujourd'hui", "aujourd hui", "ce jour"]:
+            # Période relative "aujourd'hui" : utiliser eq pour date exacte
+            return {"eq": today.isoformat()}
+
+        elif date_range_lower in ["yesterday", "hier"]:
+            # Période relative "hier" : utiliser eq pour date exacte
+            yesterday = today - relativedelta(days=1)
+            return {"eq": yesterday.isoformat()}
+
+        elif date_range_lower in ["tomorrow", "demain"]:
+            # Période relative "demain" : utiliser eq pour date exacte
+            tomorrow = today + relativedelta(days=1)
+            return {"eq": tomorrow.isoformat()}
+
+        elif date_range_lower in ["last_30_days", "30 derniers jours", "derniers 30 jours"]:
+            start_date = today - relativedelta(days=30)
             return {
-                "gte": today.isoformat(),
+                "gte": start_date.isoformat(),
                 "lte": today.isoformat()
             }
 
-        elif date_range_lower in ["yesterday", "hier"]:
-            yesterday = today - relativedelta(days=1)
+        elif date_range_lower in ["last_7_days", "7 derniers jours", "derniers 7 jours"]:
+            start_date = today - relativedelta(days=7)
             return {
-                "gte": yesterday.isoformat(),
-                "lte": yesterday.isoformat()
+                "gte": start_date.isoformat(),
+                "lte": today.isoformat()
+            }
+
+        elif date_range_lower in ["this_quarter", "ce trimestre", "this quarter"]:
+            # Calculer le trimestre actuel
+            current_quarter = (today.month - 1) // 3 + 1
+            first_month_of_quarter = (current_quarter - 1) * 3 + 1
+            start_of_quarter = today.replace(month=first_month_of_quarter, day=1)
+
+            # Dernier mois du trimestre
+            last_month_of_quarter = first_month_of_quarter + 2
+            _, last_day = calendar.monthrange(today.year, last_month_of_quarter)
+            end_of_quarter = date(today.year, last_month_of_quarter, last_day)
+
+            return {
+                "gte": start_of_quarter.isoformat(),
+                "lte": end_of_quarter.isoformat()
+            }
+
+        elif date_range_lower in ["last_quarter", "le trimestre dernier", "trimestre dernier", "last quarter"]:
+            # Calculer le trimestre précédent
+            current_quarter = (today.month - 1) // 3 + 1
+            last_quarter = current_quarter - 1 if current_quarter > 1 else 4
+            target_year = today.year if current_quarter > 1 else today.year - 1
+
+            first_month_of_quarter = (last_quarter - 1) * 3 + 1
+            start_of_quarter = date(target_year, first_month_of_quarter, 1)
+
+            last_month_of_quarter = first_month_of_quarter + 2
+            _, last_day = calendar.monthrange(target_year, last_month_of_quarter)
+            end_of_quarter = date(target_year, last_month_of_quarter, last_day)
+
+            return {
+                "gte": start_of_quarter.isoformat(),
+                "lte": end_of_quarter.isoformat()
+            }
+
+        elif date_range_lower in ["this_year", "cette année", "cette annee", "this year"]:
+            start_of_year = today.replace(month=1, day=1)
+            end_of_year = today.replace(month=12, day=31)
+            return {
+                "gte": start_of_year.isoformat(),
+                "lte": end_of_year.isoformat()
+            }
+
+        elif date_range_lower in ["last_year", "l'année dernière", "l annee derniere", "année dernière", "last year"]:
+            last_year = today.year - 1
+            start_of_last_year = date(last_year, 1, 1)
+            end_of_last_year = date(last_year, 12, 31)
+            return {
+                "gte": start_of_last_year.isoformat(),
+                "lte": end_of_last_year.isoformat()
+            }
+
+        elif date_range_lower in ["weekend", "le weekend", "ce weekend", "this weekend"]:
+            # Trouver le dernier weekend (samedi-dimanche)
+            days_since_monday = today.weekday()
+            if days_since_monday >= 5:  # Samedi (5) ou Dimanche (6)
+                # On est dans le weekend actuel
+                days_to_saturday = days_since_monday - 5
+                start_of_weekend = today - relativedelta(days=days_to_saturday)
+            else:
+                # Le weekend dernier
+                days_to_last_saturday = days_since_monday + 2
+                start_of_weekend = today - relativedelta(days=days_to_last_saturday)
+
+            end_of_weekend = start_of_weekend + relativedelta(days=1)  # Dimanche
+            return {
+                "gte": start_of_weekend.isoformat(),
+                "lte": end_of_weekend.isoformat()
             }
 
         # === MAPPING DES MOIS ===
@@ -460,10 +552,21 @@ class TemplateEngine:
             if match:
                 parsed_date = self._parse_single_date_match(match, pattern, french_months, current_year, all_months)
                 if parsed_date:
-                    return {
-                        "gte": parsed_date.isoformat(),
-                        "lte": parsed_date.isoformat()
-                    }
+                    # Date exacte isolée : utiliser eq au lieu de gte/lte
+                    return {"eq": parsed_date.isoformat()}
+
+        # === FORMAT YYYY (année seule) ===
+        if re.match(r'^\d{4}$', date_range_string.strip()):
+            try:
+                target_year = int(date_range_string.strip())
+                start_of_year = date(target_year, 1, 1)
+                end_of_year = date(target_year, 12, 31)
+                return {
+                    "gte": start_of_year.isoformat(),
+                    "lte": end_of_year.isoformat()
+                }
+            except ValueError:
+                pass  # Continue vers le fallback
 
         # === FORMAT YYYY-MM ===
         if re.match(r'^\d{4}-\d{2}$', date_range_string.strip()):

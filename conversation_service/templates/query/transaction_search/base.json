@@ -7,7 +7,7 @@
     "query": "{% if query %}{{query}}{% else %}{% endif %}",
     "filters": {
       "transaction_type": "{{transaction_type}}",
-      "merchant_name": "{{ merchants if merchants else null }}",
+      "merchant_name": "{% if merchants %}{{merchants}}{% elif merchant_name %}['{{merchant_name}}']{% endif %}",
       "category_name": "{{ categories if categories else null }}",
       "amount_abs": "{{amount}}",
       "date": "{{ date_range if date_range else null }}"
@@ -37,11 +37,17 @@
       "allowed_values": ["debit", "credit"],
       "default": ""
     },
+    "merchant_name": {
+      "required": false,
+      "type": "string",
+      "source": "entities.merchant_name",
+      "description": "Marchand unique (normalisé depuis merchant)"
+    },
     "merchants": {
       "required": false,
       "type": "array",
       "source": "entities.merchants",
-      "description": "Liste des marchands"
+      "description": "Liste des marchands (pluriel)"
     },
     "categories": {
       "required": false,

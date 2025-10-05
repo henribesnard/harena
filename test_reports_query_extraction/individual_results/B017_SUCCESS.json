@@ -1,22 +1,31 @@
 {
   "question_id": "B017",
   "category": "B_vendeur",
-  "question": "Mes transactions McDonald's KFC Burger King",
+  "question": "Mes transactions Bouygues Telecom Canal Sat Issy Les M Paypal Luxembourg",
   "intent_detected": "transaction_search",
   "intent_confidence": 0.9,
   "entities_structured": {
     "merchants": [
-      "McDonald's",
-      "KFC",
-      "Burger King"
+      "Bouygues Telecom",
+      "Canal Sat",
+      "Issy Les M",
+      "Paypal Luxembourg"
     ],
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.8999999999999999,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "filters": {
+      "merchant_name": [
+        "Bouygues Telecom",
+        "Canal Sat",
+        "Issy Les M",
+        "Paypal Luxembourg"
+      ]
+    },
     "sort": [
       {
         "date": {
@@ -58,26 +67,225 @@
             }
           }
         }
+      },
+      "bouygues_telecom_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Bouygues Telecom"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "bouygues_telecom_credit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Bouygues Telecom"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "canal_sat_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Canal Sat"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "canal_sat_credit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Canal Sat"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "issy_les_m_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Issy Les M"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "issy_les_m_credit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Issy Les M"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "paypal_luxembourg_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Paypal Luxembourg"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "paypal_luxembourg_credit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Paypal Luxembourg"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 411,
-  "has_filters": false,
+  "query_size": 2199,
+  "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 0,
-  "aggregation_count": 3,
+  "filter_count": 1,
+  "aggregation_count": 11,
   "coherence_analysis": {
-    "coherence_score": "LOW",
+    "coherence_score": "MEDIUM",
     "issues": [
-      "Entités manquantes dans query: merchants",
-      "Intent transaction_search mais aucun filtre dans query"
+      "Entités manquantes dans query: merchants"
     ],
     "details": {
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 32111.26899998635,
+  "latency_ms": 31229.054299998097,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:44:25.889281"
+  "timestamp": "2025-10-05T11:59:30.270603"
 }

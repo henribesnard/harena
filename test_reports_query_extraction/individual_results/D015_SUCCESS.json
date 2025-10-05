@@ -14,11 +14,11 @@
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit",
       "date": {
         "gte": "tomorrow",
         "lte": "tomorrow"
-      }
+      },
+      "transaction_type": "debit"
     },
     "sort": [
       {
@@ -62,8 +62,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26271.745399804786,
+  "latency_ms": 29541.556500000297,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:56:41.231031"
+  "timestamp": "2025-10-05T12:53:56.582139"
 }

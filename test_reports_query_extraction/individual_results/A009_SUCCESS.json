@@ -3,14 +3,14 @@
   "category": "A_montant",
   "question": "Mes dépenses exactement égales à 25.50 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "amount": 25.5,
     "operator": "eq",
     "transaction_type": "debit"
   },
   "entities_count": 3,
-  "entity_confidence": 0.96,
+  "entity_confidence": 0.9333333333333332,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -62,8 +62,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 23001.626699930057,
+  "latency_ms": 24513.204500006395,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:32:11.663177"
+  "timestamp": "2025-10-05T11:29:17.068220"
 }

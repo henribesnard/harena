@@ -1,6 +1,6 @@
 {
   "category": "B_vendeur",
-  "timestamp": "2025-10-03T10:44:26.390632",
+  "timestamp": "2025-10-05T11:59:30.774104",
   "total_questions": 17,
   "api_successful": 17,
   "queries_found": 17,
@@ -20,7 +20,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Netflix",
         "filters": {
           "merchant_name": "Netflix",
           "transaction_type": "debit"
@@ -80,7 +79,7 @@
           }
         }
       },
-      "query_size": 571,
+      "query_size": 551,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -92,7 +91,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25173.41349995695,
+      "latency_ms": 24087.715500005288,
       "api_success": true,
       "error_message": null
     },
@@ -110,7 +109,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Amazon",
         "filters": {
           "merchant_name": "Amazon",
           "transaction_type": "debit"
@@ -170,7 +168,7 @@
           }
         }
       },
-      "query_size": 567,
+      "query_size": 548,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -182,7 +180,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25349.830999970436,
+      "latency_ms": 23709.52769998985,
       "api_success": true,
       "error_message": null
     },
@@ -200,7 +198,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Carrefour",
         "filters": {
           "merchant_name": "Carrefour"
         },
@@ -298,7 +295,7 @@
           }
         }
       },
-      "query_size": 882,
+      "query_size": 860,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -310,7 +307,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 29233.951499918476,
+      "latency_ms": 27262.585600008606,
       "api_success": true,
       "error_message": null
     },
@@ -328,7 +325,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Apple",
         "filters": {
           "merchant_name": "Apple",
           "transaction_type": "debit"
@@ -388,7 +384,7 @@
           }
         }
       },
-      "query_size": 563,
+      "query_size": 545,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -400,7 +396,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 18968.727100174874,
+      "latency_ms": 19295.413599989843,
       "api_success": true,
       "error_message": null
     },
@@ -418,9 +414,8 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "McDonald's",
         "filters": {
-          "merchant_name": "Mcdonald'S",
+          "merchant_name": "McDonald's",
           "transaction_type": "debit"
         },
         "sort": [
@@ -462,7 +457,7 @@
                   },
                   {
                     "term": {
-                      "merchant_name.keyword": "Mcdonald'S"
+                      "merchant_name.keyword": "McDonald's"
                     }
                   }
                 ]
@@ -478,7 +473,7 @@
           }
         }
       },
-      "query_size": 583,
+      "query_size": 560,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -490,7 +485,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 19149.105600081384,
+      "latency_ms": 17848.486999995657,
       "api_success": true,
       "error_message": null
     },
@@ -508,7 +503,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Amazon",
         "filters": {
           "merchant_name": "Amazon",
           "transaction_type": "debit"
@@ -568,7 +562,7 @@
           }
         }
       },
-      "query_size": 567,
+      "query_size": 548,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -580,7 +574,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 23891.20680000633,
+      "latency_ms": 26625.56269999186,
       "api_success": true,
       "error_message": null
     },
@@ -598,7 +592,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Netflix",
         "filters": {
           "merchant_name": "Netflix",
           "transaction_type": "debit"
@@ -658,7 +651,7 @@
           }
         }
       },
-      "query_size": 571,
+      "query_size": 551,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -670,7 +663,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 24676.123799989,
+      "latency_ms": 24478.2242999936,
       "api_success": true,
       "error_message": null
     },
@@ -688,9 +681,8 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "McDonald's",
         "filters": {
-          "merchant_name": "Mcdonald'S",
+          "merchant_name": "McDonald's",
           "transaction_type": "debit"
         },
         "sort": [
@@ -732,7 +724,7 @@
                   },
                   {
                     "term": {
-                      "merchant_name.keyword": "Mcdonald'S"
+                      "merchant_name.keyword": "McDonald's"
                     }
                   }
                 ]
@@ -748,7 +740,7 @@
           }
         }
       },
-      "query_size": 583,
+      "query_size": 560,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -760,7 +752,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 18825.151699827984,
+      "latency_ms": 16683.697999993456,
       "api_success": true,
       "error_message": null
     },
@@ -768,7 +760,7 @@
       "question_id": "B009",
       "question": "Mes achats Apple/iTunes",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "merchant": "Apple/iTunes",
         "transaction_type": "debit"
@@ -778,9 +770,8 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Apple/iTunes",
         "filters": {
-          "merchant_name": "Apple/Itunes",
+          "merchant_name": "Apple/iTunes",
           "transaction_type": "debit"
         },
         "sort": [
@@ -822,7 +813,7 @@
                   },
                   {
                     "term": {
-                      "merchant_name.keyword": "Apple/Itunes"
+                      "merchant_name.keyword": "Apple/iTunes"
                     }
                   }
                 ]
@@ -838,7 +829,7 @@
           }
         }
       },
-      "query_size": 591,
+      "query_size": 566,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -850,7 +841,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 19276.19990007952,
+      "latency_ms": 18658.62560000096,
       "api_success": true,
       "error_message": null
     },
@@ -943,7 +934,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 27406.91770007834,
+      "latency_ms": 27551.85150000034,
       "api_success": true,
       "error_message": null
     },
@@ -961,9 +952,8 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "McDonald's",
         "filters": {
-          "merchant_name": "Mcdonald'S"
+          "merchant_name": "McDonald's"
         },
         "sort": [
           {
@@ -1018,7 +1008,7 @@
                   },
                   {
                     "term": {
-                      "merchant_name.keyword": "Mcdonald'S"
+                      "merchant_name.keyword": "McDonald's"
                     }
                   }
                 ]
@@ -1043,7 +1033,7 @@
                   },
                   {
                     "term": {
-                      "merchant_name.keyword": "Mcdonald'S"
+                      "merchant_name.keyword": "McDonald's"
                     }
                   }
                 ]
@@ -1059,7 +1049,7 @@
           }
         }
       },
-      "query_size": 888,
+      "query_size": 865,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -1071,7 +1061,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 18322.730000130832,
+      "latency_ms": 18956.093300002976,
       "api_success": true,
       "error_message": null
     },
@@ -1079,17 +1069,16 @@
       "question_id": "B012",
       "question": "Mes achats chez Google",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.95,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "merchant": "Google",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.965,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Google",
         "filters": {
           "merchant_name": "Google",
           "transaction_type": "debit"
@@ -1149,7 +1138,7 @@
           }
         }
       },
-      "query_size": 567,
+      "query_size": 548,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -1161,7 +1150,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 32503.165300004184,
+      "latency_ms": 32283.663700000034,
       "api_success": true,
       "error_message": null
     },
@@ -1179,7 +1168,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Uber",
         "filters": {
           "merchant_name": "Uber",
           "transaction_type": "debit"
@@ -1239,7 +1227,7 @@
           }
         }
       },
-      "query_size": 559,
+      "query_size": 542,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -1251,7 +1239,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 18033.14649988897,
+      "latency_ms": 18364.389500013203,
       "api_success": true,
       "error_message": null
     },
@@ -1265,11 +1253,10 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.965,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Tesla",
         "filters": {
           "merchant_name": "Tesla",
           "transaction_type": "debit"
@@ -1329,7 +1316,7 @@
           }
         }
       },
-      "query_size": 563,
+      "query_size": 545,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -1341,30 +1328,38 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 17803.128100000322,
+      "latency_ms": 19527.52779998991,
       "api_success": true,
       "error_message": null
     },
     {
       "question_id": "B015",
-      "question": "Mes achats Amazon Prime Video Netflix Disney+ Apple TV",
+      "question": "Mes achats Auchan Supermarc St Lidl Netflix Com Paris",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.95,
+      "intent_confidence": 0.85,
       "entities_structured": {
         "merchants": [
-          "Amazon Prime Video",
+          "Auchan",
+          "Supermarché",
+          "Lidl",
           "Netflix",
-          "Disney+",
-          "Apple TV"
+          "Com Paris"
         ],
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.95,
+      "entity_confidence": 0.925,
       "query_found": true,
       "query_data": {
         "user_id": 100,
         "filters": {
+          "merchant_name": [
+            "Auchan",
+            "Supermarché",
+            "Lidl",
+            "Netflix",
+            "Com Paris"
+          ],
           "transaction_type": "debit"
         },
         "sort": [
@@ -1394,14 +1389,139 @@
                 }
               }
             }
+          },
+          "auchan_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Auchan"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "supermarché_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Supermarché"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "lidl_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Lidl"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "netflix_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Netflix"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "com_paris_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Com Paris"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
           }
         }
       },
-      "query_size": 325,
+      "query_size": 1410,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 1,
-      "aggregation_count": 2,
+      "filter_count": 2,
+      "aggregation_count": 7,
       "coherence_analysis": {
         "coherence_score": "MEDIUM",
         "issues": [
@@ -1411,20 +1531,21 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 34730.96249997616,
+      "latency_ms": 30656.083599998965,
       "api_success": true,
       "error_message": null
     },
     {
       "question_id": "B016",
-      "question": "Mes dépenses chez Carrefour Leclerc Intermarché",
+      "question": "Mes dépenses chez Carrefour Market CR Centre Leclerc Amboi Cdiscount Bordeaux",
       "intent_detected": "transaction_search",
       "intent_confidence": 0.9,
       "entities_structured": {
         "merchants": [
-          "Carrefour",
+          "Carrefour Market",
+          "CR Centre",
           "Leclerc",
-          "Intermarché"
+          "Cdiscount"
         ],
         "transaction_type": "debit"
       },
@@ -1434,6 +1555,12 @@
       "query_data": {
         "user_id": 100,
         "filters": {
+          "merchant_name": [
+            "Carrefour Market",
+            "CR Centre",
+            "Leclerc",
+            "Cdiscount"
+          ],
           "transaction_type": "debit"
         },
         "sort": [
@@ -1463,14 +1590,114 @@
                 }
               }
             }
+          },
+          "carrefour_market_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Carrefour Market"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "cr_centre_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "CR Centre"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "leclerc_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Leclerc"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "cdiscount_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Cdiscount"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
           }
         }
       },
-      "query_size": 325,
+      "query_size": 1219,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 1,
-      "aggregation_count": 2,
+      "filter_count": 2,
+      "aggregation_count": 6,
       "coherence_analysis": {
         "coherence_score": "MEDIUM",
         "issues": [
@@ -1480,28 +1707,37 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 27931.387400021777,
+      "latency_ms": 39627.90349998977,
       "api_success": true,
       "error_message": null
     },
     {
       "question_id": "B017",
-      "question": "Mes transactions McDonald's KFC Burger King",
+      "question": "Mes transactions Bouygues Telecom Canal Sat Issy Les M Paypal Luxembourg",
       "intent_detected": "transaction_search",
       "intent_confidence": 0.9,
       "entities_structured": {
         "merchants": [
-          "McDonald's",
-          "KFC",
-          "Burger King"
+          "Bouygues Telecom",
+          "Canal Sat",
+          "Issy Les M",
+          "Paypal Luxembourg"
         ],
         "transaction_type": "all"
       },
       "entities_count": 2,
-      "entity_confidence": 0.8999999999999999,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "filters": {
+          "merchant_name": [
+            "Bouygues Telecom",
+            "Canal Sat",
+            "Issy Les M",
+            "Paypal Luxembourg"
+          ]
+        },
         "sort": [
           {
             "date": {
@@ -1543,25 +1779,224 @@
                 }
               }
             }
+          },
+          "bouygues_telecom_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Bouygues Telecom"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "bouygues_telecom_credit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Bouygues Telecom"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "canal_sat_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Canal Sat"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "canal_sat_credit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Canal Sat"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "issy_les_m_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Issy Les M"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "issy_les_m_credit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Issy Les M"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "paypal_luxembourg_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Paypal Luxembourg"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "paypal_luxembourg_credit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Paypal Luxembourg"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
           }
         }
       },
-      "query_size": 411,
-      "has_filters": false,
+      "query_size": 2199,
+      "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 0,
-      "aggregation_count": 3,
+      "filter_count": 1,
+      "aggregation_count": 11,
       "coherence_analysis": {
-        "coherence_score": "LOW",
+        "coherence_score": "MEDIUM",
         "issues": [
-          "Entités manquantes dans query: merchants",
-          "Intent transaction_search mais aucun filtre dans query"
+          "Entités manquantes dans query: merchants"
         ],
         "details": {
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 32111.26899998635,
+      "latency_ms": 31229.054299998097,
       "api_success": true,
       "error_message": null
     }

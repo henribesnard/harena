@@ -3,20 +3,20 @@
   "category": "D_temporel",
   "question": "Toutes mes transactions d'hier",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "date_range": "yesterday",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
       "date": {
-        "gte": "2025-10-02",
-        "lte": "2025-10-02"
+        "gte": "2025-10-04",
+        "lte": "2025-10-04"
       }
     },
     "sort": [
@@ -75,8 +75,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 19259.04990010895,
+  "latency_ms": 17410.41490000498,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:52:10.300189"
+  "timestamp": "2025-10-05T12:49:20.482880"
 }

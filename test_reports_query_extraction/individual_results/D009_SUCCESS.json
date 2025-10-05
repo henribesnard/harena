@@ -3,7 +3,7 @@
   "category": "D_temporel",
   "question": "Mes dépenses des 30 derniers jours",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "date_range": "last_30_days",
     "transaction_type": "debit"
@@ -62,8 +62,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 28375.989799853414,
+  "latency_ms": 27501.359200003208,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:54:16.892834"
+  "timestamp": "2025-10-05T12:51:14.269516"
 }

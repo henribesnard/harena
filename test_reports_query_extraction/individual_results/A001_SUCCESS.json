@@ -3,7 +3,7 @@
   "category": "A_montant",
   "question": "Mes dépenses de plus de 100 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "amount": 100,
     "operator": "gt",
@@ -62,8 +62,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 30327.691599959508,
+  "latency_ms": 26930.212700011907,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:28:05.820582"
+  "timestamp": "2025-10-05T11:24:59.412555"
 }

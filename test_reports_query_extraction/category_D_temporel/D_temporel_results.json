@@ -1,10 +1,10 @@
 {
   "category": "D_temporel",
-  "timestamp": "2025-10-03T11:00:34.665676",
+  "timestamp": "2025-10-05T12:57:38.208808",
   "total_questions": 25,
   "api_successful": 25,
-  "queries_found": 23,
-  "success_rate": 92.0,
+  "queries_found": 25,
+  "success_rate": 100.0,
   "detailed_results": [
     {
       "question_id": "D001",
@@ -69,7 +69,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 17318.500000052154,
+      "latency_ms": 19294.861200003652,
       "api_success": true,
       "error_message": null
     },
@@ -329,14 +329,14 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 30676.366599975154,
+      "latency_ms": 35234.78590000013,
       "api_success": true,
       "error_message": null
     },
     {
       "question_id": "D003",
       "question": "Mes revenus de ce mois",
-      "intent_detected": "financial_query",
+      "intent_detected": "transaction_search",
       "intent_confidence": 0.85,
       "entities_structured": {
         "date_range": "this_month",
@@ -344,21 +344,59 @@
       },
       "entities_count": 2,
       "entity_confidence": 0.925,
-      "query_found": false,
-      "query_data": null,
-      "query_size": 0,
-      "has_filters": false,
-      "has_aggregations": false,
-      "filter_count": 0,
-      "aggregation_count": 0,
-      "coherence_analysis": {
-        "coherence_score": "LOW",
-        "issues": [
-          "Aucune query générée malgré intent et entités détectées"
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "date": {
+            "gte": "2025-10-01",
+            "lte": "2025-10-31"
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
         ],
-        "details": {}
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
       },
-      "latency_ms": 18026.065399870276,
+      "query_size": 380,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 18380.366600002162,
       "api_success": true,
       "error_message": null
     },
@@ -366,20 +404,20 @@
       "question_id": "D004",
       "question": "Toutes mes transactions d'hier",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.95,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "date_range": "yesterday",
         "transaction_type": "all"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
         "filters": {
           "date": {
-            "gte": "2025-10-02",
-            "lte": "2025-10-02"
+            "gte": "2025-10-04",
+            "lte": "2025-10-04"
           }
         },
         "sort": [
@@ -438,7 +476,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 19259.04990010895,
+      "latency_ms": 17410.41490000498,
       "api_success": true,
       "error_message": null
     },
@@ -505,7 +543,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 18548.00460021943,
+      "latency_ms": 15851.145499997074,
       "api_success": true,
       "error_message": null
     },
@@ -572,7 +610,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 19437.913399888203,
+      "latency_ms": 17433.44989999605,
       "api_success": true,
       "error_message": null
     },
@@ -639,7 +677,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25599.814400076866,
+      "latency_ms": 26641.74739998998,
       "api_success": true,
       "error_message": null
     },
@@ -706,7 +744,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 32116.304300026968,
+      "latency_ms": 23832.80440000817,
       "api_success": true,
       "error_message": null
     },
@@ -714,7 +752,7 @@
       "question_id": "D009",
       "question": "Mes dépenses des 30 derniers jours",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.95,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "date_range": "last_30_days",
         "transaction_type": "debit"
@@ -773,7 +811,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 28375.989799853414,
+      "latency_ms": 27501.359200003208,
       "api_success": true,
       "error_message": null
     },
@@ -839,14 +877,14 @@
           "entities_translated": "1/3"
         }
       },
-      "latency_ms": 25114.926100010052,
+      "latency_ms": 30805.722700009937,
       "api_success": true,
       "error_message": null
     },
     {
       "question_id": "D011",
       "question": "Mes revenus ce trimestre",
-      "intent_detected": "financial_query",
+      "intent_detected": "transaction_search",
       "intent_confidence": 0.85,
       "entities_structured": {
         "date_range": "this_quarter",
@@ -854,21 +892,59 @@
       },
       "entities_count": 2,
       "entity_confidence": 0.925,
-      "query_found": false,
-      "query_data": null,
-      "query_size": 0,
-      "has_filters": false,
-      "has_aggregations": false,
-      "filter_count": 0,
-      "aggregation_count": 0,
-      "coherence_analysis": {
-        "coherence_score": "LOW",
-        "issues": [
-          "Aucune query générée malgré intent et entités détectées"
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "date": {
+            "gte": "this_quarter",
+            "lte": "this_quarter"
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
         ],
-        "details": {}
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
       },
-      "latency_ms": 17590.066800126806,
+      "query_size": 384,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "2/2"
+        }
+      },
+      "latency_ms": 27769.707900006324,
       "api_success": true,
       "error_message": null
     },
@@ -1128,7 +1204,7 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 18257.26310000755,
+      "latency_ms": 17214.65259999968,
       "api_success": true,
       "error_message": null
     },
@@ -1208,7 +1284,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 28871.962000150234,
+      "latency_ms": 25787.40149999794,
       "api_success": true,
       "error_message": null
     },
@@ -1468,7 +1544,7 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 25210.835699923337,
+      "latency_ms": 28162.768099995446,
       "api_success": true,
       "error_message": null
     },
@@ -1487,11 +1563,11 @@
       "query_data": {
         "user_id": 100,
         "filters": {
-          "transaction_type": "debit",
           "date": {
             "gte": "tomorrow",
             "lte": "tomorrow"
-          }
+          },
+          "transaction_type": "debit"
         },
         "sort": [
           {
@@ -1535,7 +1611,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26271.745399804786,
+      "latency_ms": 29541.556500000297,
       "api_success": true,
       "error_message": null
     },
@@ -1795,7 +1871,7 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 21391.44100015983,
+      "latency_ms": 17941.664599988144,
       "api_success": true,
       "error_message": null
     },
@@ -1875,7 +1951,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 18256.4586000517,
+      "latency_ms": 17488.056199988932,
       "api_success": true,
       "error_message": null
     },
@@ -2134,7 +2210,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 24817.165300017223,
+      "latency_ms": 23162.85649999918,
       "api_success": true,
       "error_message": null
     },
@@ -2155,8 +2231,8 @@
         "filters": {
           "transaction_type": "debit",
           "date": {
-            "gte": "2025-10-03",
-            "lte": "2025-10-03"
+            "gte": "2025-10-05",
+            "lte": "2025-10-05"
           }
         },
         "sort": [
@@ -2201,7 +2277,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 20332.004699856043,
+      "latency_ms": 17805.678899996565,
       "api_success": true,
       "error_message": null
     },
@@ -2461,7 +2537,7 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 16979.33360002935,
+      "latency_ms": 16565.50569999672,
       "api_success": true,
       "error_message": null
     },
@@ -2528,7 +2604,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 30503.674699924886,
+      "latency_ms": 27743.610200006515,
       "api_success": true,
       "error_message": null
     },
@@ -2608,7 +2684,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 29745.386900147423,
+      "latency_ms": 28145.375099993544,
       "api_success": true,
       "error_message": null
     },
@@ -2868,7 +2944,7 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 27077.939900103956,
+      "latency_ms": 27810.437599997385,
       "api_success": true,
       "error_message": null
     },
@@ -2935,7 +3011,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 17799.26380002871,
+      "latency_ms": 19064.401800002088,
       "api_success": true,
       "error_message": null
     },
@@ -2943,13 +3019,13 @@
       "question_id": "D025",
       "question": "Mes transactions du 1er au 15 octobre",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.95,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "date_range": "2025-10-01_2025-10-15",
         "transaction_type": "all"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -3015,7 +3091,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 20951.32129988633,
+      "latency_ms": 20318.716399997356,
       "api_success": true,
       "error_message": null
     }

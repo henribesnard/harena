@@ -1,24 +1,32 @@
 {
   "question_id": "B015",
   "category": "B_vendeur",
-  "question": "Mes achats Amazon Prime Video Netflix Disney+ Apple TV",
+  "question": "Mes achats Auchan Supermarc St Lidl Netflix Com Paris",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.85,
   "entities_structured": {
     "merchants": [
-      "Amazon Prime Video",
+      "Auchan",
+      "Supermarché",
+      "Lidl",
       "Netflix",
-      "Disney+",
-      "Apple TV"
+      "Com Paris"
     ],
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
+      "merchant_name": [
+        "Auchan",
+        "Supermarché",
+        "Lidl",
+        "Netflix",
+        "Com Paris"
+      ],
       "transaction_type": "debit"
     },
     "sort": [
@@ -48,14 +56,139 @@
             }
           }
         }
+      },
+      "auchan_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Auchan"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "supermarché_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Supermarché"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "lidl_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Lidl"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "netflix_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Netflix"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "com_paris_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Com Paris"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 1410,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 2,
+  "aggregation_count": 7,
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
@@ -65,8 +198,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 34730.96249997616,
+  "latency_ms": 30656.083599998965,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:43:24.839935"
+  "timestamp": "2025-10-05T11:58:18.398565"
 }

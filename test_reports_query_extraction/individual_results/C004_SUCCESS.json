@@ -6,8 +6,7 @@
   "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
-      "Santé/pharmacie",
-      "Santé/Pharmacie"
+      "Santé/pharmacie"
     ],
     "transaction_type": "debit"
   },
@@ -19,8 +18,7 @@
     "filters": {
       "transaction_type": "debit",
       "category_name": [
-        "Santé/pharmacie",
-        "Santé/Pharmacie"
+        "Santé/pharmacie"
       ]
     },
     "sort": [
@@ -62,7 +60,7 @@
               },
               {
                 "term": {
-                  "category_name.keyword": "Santé/Pharmacie"
+                  "category_name.keyword": "Santé/pharmacie"
                 }
               }
             ]
@@ -78,7 +76,7 @@
       }
     }
   },
-  "query_size": 616,
+  "query_size": 592,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -90,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 34928.984500002116,
+  "latency_ms": 32127.141000004485,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:46:20.882732"
+  "timestamp": "2025-10-05T12:23:46.284470"
 }

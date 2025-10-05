@@ -13,7 +13,6 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Carrefour",
     "filters": {
       "merchant_name": "Carrefour"
     },
@@ -111,7 +110,7 @@
       }
     }
   },
-  "query_size": 882,
+  "query_size": 860,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -123,8 +122,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 29233.951499918476,
+  "latency_ms": 27262.585600008606,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:38:45.227307"
+  "timestamp": "2025-10-05T11:53:41.413061"
 }

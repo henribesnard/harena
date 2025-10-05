@@ -25,6 +25,10 @@
     "user_id": 100,
     "filters": {
       "transaction_type": "debit",
+      "amount_abs": {
+        "gte": 100,
+        "lte": 200
+      },
       "category_name": [
         "Carburant",
         "Transport",
@@ -240,22 +244,20 @@
       }
     }
   },
-  "query_size": 1906,
+  "query_size": 1946,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 3,
   "aggregation_count": 9,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: amount_min, amount_max"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/4"
+      "entities_translated": "4/4"
     }
   },
-  "latency_ms": 27394.490800099447,
+  "latency_ms": 27301.740000009886,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:33:16.885043"
+  "timestamp": "2025-10-05T11:30:17.813481"
 }

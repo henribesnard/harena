@@ -4,7 +4,7 @@
   "target_intention": "TRANSACTION_SEARCH.filter",
   "parameters": {
     "user_id": "{{user_id}}",
-    "query": "{{merchant_query}}",
+    "query": "{% if query %}{{query}}{% elif merchant_query %}{{merchant_query}}{% else %}{% endif %}",
     "filters": {
       "merchant_name": "{{merchant_name}}",
       "transaction_type": "{{transaction_type}}",
@@ -23,6 +23,13 @@
       "required": true,
       "type": "integer",
       "source": "context.user_id"
+    },
+    "query": {
+      "required": false,
+      "type": "string",
+      "source": "entities.query",
+      "description": "Termes de recherche textuelle pour filtrer les transactions",
+      "default": ""
     },
     "merchant_query": {
       "required": false,

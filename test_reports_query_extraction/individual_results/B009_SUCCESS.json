@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes achats Apple/iTunes",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Apple/iTunes",
     "transaction_type": "debit"
@@ -13,9 +13,8 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Apple/iTunes",
     "filters": {
-      "merchant_name": "Apple/Itunes",
+      "merchant_name": "Apple/iTunes",
       "transaction_type": "debit"
     },
     "sort": [
@@ -57,7 +56,7 @@
               },
               {
                 "term": {
-                  "merchant_name.keyword": "Apple/Itunes"
+                  "merchant_name.keyword": "Apple/iTunes"
                 }
               }
             ]
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 591,
+  "query_size": 566,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 19276.19990007952,
+  "latency_ms": 18658.62560000096,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:40:53.027267"
+  "timestamp": "2025-10-05T11:55:48.030820"
 }

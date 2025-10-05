@@ -13,9 +13,8 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "McDonald's",
     "filters": {
-      "merchant_name": "Mcdonald'S"
+      "merchant_name": "McDonald's"
     },
     "sort": [
       {
@@ -70,7 +69,7 @@
               },
               {
                 "term": {
-                  "merchant_name.keyword": "Mcdonald'S"
+                  "merchant_name.keyword": "McDonald's"
                 }
               }
             ]
@@ -95,7 +94,7 @@
               },
               {
                 "term": {
-                  "merchant_name.keyword": "Mcdonald'S"
+                  "merchant_name.keyword": "McDonald's"
                 }
               }
             ]
@@ -111,7 +110,7 @@
       }
     }
   },
-  "query_size": 888,
+  "query_size": 865,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -123,8 +122,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18322.730000130832,
+  "latency_ms": 18956.093300002976,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T10:41:39.762748"
+  "timestamp": "2025-10-05T11:56:35.554070"
 }

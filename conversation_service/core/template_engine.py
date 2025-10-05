@@ -1076,9 +1076,13 @@ class TemplateEngine:
         if isinstance(obj, dict):
             result = {}
             for k, v in obj.items():
+                # Cas spécial: le champ 'query' doit être préservé même s'il est vide (pour Elasticsearch multi_match)
+                preserve_empty = (k == "query")
+
                 # Exclure les valeurs null ET les chaînes "None" (de Jinja2)
                 # MAIS garder les objets sérialisés qui ressemblent à des dicts Python
-                if v is not None and v != "None" and str(v).strip() != "":
+                # ET préserver le champ 'query' même s'il est vide
+                if v is not None and v != "None" and (str(v).strip() != "" or preserve_empty):
                     # Cas spécial : si c'est une string qui ressemble à un dict Python, la parser
                     if isinstance(v, str) and (v.startswith("{'") and v.endswith("}")):
                         try:

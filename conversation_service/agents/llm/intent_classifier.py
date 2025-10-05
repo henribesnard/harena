@@ -653,6 +653,31 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
         # PRIORITE: Examples cas problématiques temporels en positions 1-2 pour être dans top 5
         self._few_shot_examples = [
             {
+                "user": "Mes achats en Bitcoin",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_query",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "query",
+            "value": "bitcoin crypto cryptomonnaie",
+            "confidence": 0.95,
+            "span": [15, 22],
+            "entity_type": "query"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Bitcoin n'est pas une catégorie - utiliser query SANS categories"
+}"""
+            },
+            {
                 "user": "Mes achats du weekend",
                 "assistant": """{
     "intent_group": "transaction_search",
@@ -725,6 +750,31 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
         }
     ],
     "reasoning": "Recherche de dépenses pour une date spécifique"
+}"""
+            },
+            {
+                "user": "Mes factures d'énergie",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "categories",
+            "value": ["Électricité/eau"],
+            "confidence": 0.95,
+            "span": [4, 22],
+            "entity_type": "categories"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Factures d'énergie = catégorie Électricité/eau"
 }"""
             },
             {

@@ -397,6 +397,19 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
 - Maximum 10 entités les plus pertinentes
 - Si incertain → intent_group: "CONVERSATIONAL"
 - Être intelligent et autonome, pas de regex interne
+
+⚠️ RÈGLE D'EXCLUSION MUTUELLE CRITIQUE :
+On ne peut PAS avoir SIMULTANÉMENT un "query" ET un filtre sur "categories" ou "merchant".
+C'est l'un des trois : SOIT query, SOIT categories, SOIT merchant.
+- Si on utilise "query" → NE PAS extraire "categories" ni "merchant"
+- Si on utilise "merchant" → NE PAS extraire "query" ni "categories"
+- Si on utilise "categories" → NE PAS extraire "query" ni "merchant"
+- Les autres filtres (date_range, amount, transaction_type, operation_type) sont compatibles avec les 3
+
+EXEMPLES:
+- "Mes achats en Bitcoin" → query: "bitcoin crypto" SEULEMENT (PAS de categories)
+- "Mes transactions chez Carrefour" → merchant: "Carrefour" SEULEMENT (PAS de query ni categories)
+- "Mes achats alimentaires" → categories: ["Alimentation"] SEULEMENT (PAS de query ni merchant)
 - Comprendre le contexte naturel français
 - Corriger automatiquement les erreurs utilisateur"""
     
@@ -472,6 +485,9 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
 
         # ENRICHISSEMENT: Ajouter logique achats/catégories même après succès LLM
         entities = self._enrich_entities_with_purchase_logic(entities, request.user_message)
+
+        # VALIDATION POST-LLM: Appliquer règle d'exclusion mutuelle query/categories/merchant
+        entities = self._apply_mutual_exclusion_rule(entities, request.user_message)
 
         return ClassificationResult(
             success=True,
@@ -617,6 +633,53 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
         )
 
         return entities + [categories_entity]
+
+    def _apply_mutual_exclusion_rule(self, entities: List[ExtractedEntity], message: str) -> List[ExtractedEntity]:
+        """
+        Applique la règle d'exclusion mutuelle: query XOR (categories OR merchant)
+
+        Règle métier: On ne peut pas avoir simultanément un "query" ET un filtre sur "categories" ou "merchant"
+        - Si "query" existe → supprimer "categories" et "merchant"/"merchants"
+        - Garder tous les autres filtres (date_range, amount, transaction_type, operation_type)
+
+        Args:
+            entities: Liste des entités extraites par le LLM
+            message: Message utilisateur original (pour logging)
+
+        Returns:
+            Liste d'entités nettoyée selon la règle d'exclusion
+        """
+        # Identifier les entités présentes
+        has_query = any(e.name == "query" for e in entities)
+        has_categories = any(e.name == "categories" for e in entities)
+        has_merchant = any(e.name in ["merchant", "merchants", "merchant_name"] for e in entities)
+
+        # Si pas de query, pas de nettoyage nécessaire
+        if not has_query:
+            return entities
+
+        # Si query existe avec categories ou merchant → supprimer categories et merchant
+        if has_query and (has_categories or has_merchant):
+            logger.warning(
+                f"Règle d'exclusion mutuelle appliquée pour: '{message}' - "
+                f"Query présent, suppression de categories={has_categories} et merchant={has_merchant}"
+            )
+
+            # Filtrer les entités pour supprimer categories et merchant
+            cleaned_entities = [
+                e for e in entities
+                if e.name not in ["categories", "merchant", "merchants", "merchant_name"]
+            ]
+
+            logger.info(
+                f"Entités après nettoyage: {[e.name for e in cleaned_entities]} "
+                f"(supprimé: {[e.name for e in entities if e not in cleaned_entities]})"
+            )
+
+            return cleaned_entities
+
+        # Pas de conflit, retourner tel quel
+        return entities
 
     def _get_confidence_level(self, confidence: float) -> IntentConfidence:
         """Determine le niveau de confiance"""

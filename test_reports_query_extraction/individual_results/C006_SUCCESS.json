@@ -3,23 +3,19 @@
   "category": "C_categorie",
   "question": "Mes factures d'énergie",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.85,
   "entities_structured": {
-    "categories": [
-      "Eélectricité/eau"
-    ],
+    "query": "factures énergie électricité eau",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "factures énergie électricité eau",
     "filters": {
-      "transaction_type": "debit",
-      "category_name": [
-        "Eélectricité/eau"
-      ]
+      "transaction_type": "debit"
     },
     "sort": [
       {
@@ -48,48 +44,25 @@
             }
           }
         }
-      },
-      "eélectricité/eau_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Eélectricité/eau"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
       }
     }
   },
-  "query_size": 610,
+  "query_size": 385,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
-  "aggregation_count": 3,
+  "filter_count": 1,
+  "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "HIGH",
-    "issues": [],
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: query"
+    ],
     "details": {
-      "entities_translated": "2/2"
+      "entities_translated": "1/2"
     }
   },
-  "latency_ms": 26709.47359999991,
+  "latency_ms": 24600.05999999703,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:24:43.321044"
+  "timestamp": "2025-10-05T21:56:31.888495"
 }

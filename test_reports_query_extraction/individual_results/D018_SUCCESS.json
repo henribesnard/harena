@@ -3,8 +3,9 @@
   "category": "D_temporel",
   "question": "Mes achats du 32 février",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.7,
+  "intent_confidence": 0.85,
   "entities_structured": {
+    "date_range": "2025-02-28",
     "transaction_type": "debit",
     "categories": [
       "Carburant",
@@ -16,16 +17,15 @@
       "Vêtements"
     ]
   },
-  "entities_count": 2,
-  "entity_confidence": 0.7166666666666667,
+  "entities_count": 3,
+  "entity_confidence": 0.9166666666666666,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
       "transaction_type": "debit",
       "date": {
-        "gte": "2025-02-28",
-        "lte": "2025-02-28"
+        "eq": "2025-02-28"
       },
       "category_name": [
         "Carburant",
@@ -242,7 +242,7 @@
       }
     }
   },
-  "query_size": 1958,
+  "query_size": 1936,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 3,
@@ -251,11 +251,11 @@
     "coherence_score": "HIGH",
     "issues": [],
     "details": {
-      "entities_translated": "2/2"
+      "entities_translated": "3/3"
     }
   },
-  "latency_ms": 23162.85649999918,
+  "latency_ms": 23501.732999982778,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:54:56.695689"
+  "timestamp": "2025-10-05T22:11:49.696349"
 }

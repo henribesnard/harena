@@ -92,7 +92,7 @@ class LoanDetail(Base, TimestampMixin):
 
 class RawTransaction(Base, TimestampMixin):
     __tablename__ = "raw_transactions"
-    
+
     id = Column(Integer, primary_key=True)
     bridge_transaction_id = Column(BigInteger, nullable=False, unique=True)
     account_id = Column(Integer, ForeignKey("sync_accounts.id", ondelete="CASCADE"), nullable=False)
@@ -107,10 +107,11 @@ class RawTransaction(Base, TimestampMixin):
     currency_code = Column(String(3), nullable=True)
     category_id = Column(Integer, nullable=True)
     operation_type = Column(String, nullable=True)
+    merchant_name = Column(String, nullable=True)
     deleted = Column(Boolean, default=False)
     future = Column(Boolean, default=False)
     updated_at_bridge = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Relations
     account = relationship("SyncAccount", back_populates="raw_transactions")
     user = relationship("User", back_populates="raw_transactions")

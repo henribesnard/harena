@@ -600,21 +600,29 @@ def create_app():
     except Exception as e:
         logger.error(f"ERROR Conversation Service v2.0 router: {e}")
 
-    # 6. Metric Service - Trends, Health, Patterns
+    # 6. Metric Service - Tous les routers (anciens + nouveaux)
     metric_modules = [
+        # Anciens routers (deprecated)
         ("metric_service.api.routes.trends", "/api/v1/metrics/trends", "metrics-trends"),
         ("metric_service.api.routes.health", "/api/v1/metrics/health", "metrics-health"),
         ("metric_service.api.routes.patterns", "/api/v1/metrics/patterns", "metrics-patterns"),
+        # Nouveaux routers (5 métriques essentielles - Specs conformes)
+        ("metric_service.api.routes.expenses", "/api/v1/metrics/expenses", "metrics-expenses"),
+        ("metric_service.api.routes.income", "/api/v1/metrics/income", "metrics-income"),
+        ("metric_service.api.routes.coverage", "/api/v1/metrics", "metrics-coverage"),
     ]
 
     for module_path, prefix, tag in metric_modules:
         try:
             module = __import__(module_path, fromlist=["router"])
             router = getattr(module, "router")
+            routes_count = len(router.routes) if hasattr(router, 'routes') else 0
             app.include_router(router, prefix=prefix, tags=[tag])
-            logger.info(f"OK {module_path.split('.')[-1]} router included")
+            logger.info(f"OK {module_path.split('.')[-1]} router included - {routes_count} routes on {prefix}")
         except Exception as e:
             logger.error(f"❌ {module_path}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     @app.get("/health")
     async def health():

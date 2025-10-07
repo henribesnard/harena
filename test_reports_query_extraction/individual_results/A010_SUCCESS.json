@@ -3,7 +3,7 @@
   "category": "A_montant",
   "question": "Mes transactions entre 25 et 75 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "amount_min": 25,
     "amount_max": 75,
@@ -76,8 +76,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 32429.378000000725,
+  "latency_ms": 31482.46610001661,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:29:50.001184"
+  "timestamp": "2025-10-05T21:34:05.192317"
 }

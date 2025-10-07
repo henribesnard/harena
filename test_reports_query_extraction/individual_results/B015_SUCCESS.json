@@ -7,7 +7,7 @@
   "entities_structured": {
     "merchants": [
       "Auchan",
-      "Supermarché",
+      "Supermarc",
       "Lidl",
       "Netflix",
       "Com Paris"
@@ -22,7 +22,7 @@
     "filters": {
       "merchant_name": [
         "Auchan",
-        "Supermarché",
+        "Supermarc",
         "Lidl",
         "Netflix",
         "Com Paris"
@@ -82,7 +82,7 @@
           }
         }
       },
-      "supermarché_debit": {
+      "supermarc_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -93,7 +93,7 @@
               },
               {
                 "term": {
-                  "merchant_name.keyword": "Supermarché"
+                  "merchant_name.keyword": "Supermarc"
                 }
               }
             ]
@@ -184,7 +184,7 @@
       }
     }
   },
-  "query_size": 1410,
+  "query_size": 1389,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -198,8 +198,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 30656.083599998965,
+  "latency_ms": 28591.766800003825,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:58:18.398565"
+  "timestamp": "2025-10-05T21:44:51.753624"
 }

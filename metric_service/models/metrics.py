@@ -15,6 +15,7 @@ class MetricType(str, Enum):
     BURN_RATE = "burn_rate"
     BALANCE_FORECAST = "balance_forecast"
     RECURRING = "recurring_expenses"
+    COVERAGE_RATE = "coverage_rate"
 
 class TrendDirection(str, Enum):
     """Direction de la tendance"""

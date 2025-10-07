@@ -8,8 +8,8 @@ import logging
 from typing import Optional
 import os
 
-from api.routes import trends, health, patterns
-from core.cache import cache_manager
+from metric_service.api.routes import trends, health, patterns, expenses, income, coverage
+from metric_service.core.cache import cache_manager
 
 # Configuration du logging
 logging.basicConfig(
@@ -50,10 +50,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routes
-app.include_router(trends.router, prefix="/api/v1/metrics/trends", tags=["Trends"])
-app.include_router(health.router, prefix="/api/v1/metrics/health", tags=["Health"])
-app.include_router(patterns.router, prefix="/api/v1/metrics/patterns", tags=["Patterns"])
+# Routes - 5 Métriques Essentielles (Specs conformes)
+app.include_router(expenses.router, prefix="/api/v1/metrics/expenses", tags=["Métriques Dépenses"])
+app.include_router(income.router, prefix="/api/v1/metrics/income", tags=["Métriques Revenus"])
+app.include_router(coverage.router, prefix="/api/v1/metrics/coverage", tags=["Taux de Couverture"])
+
+# Anciennes routes (à deprecier)
+app.include_router(trends.router, prefix="/api/v1/metrics/trends", tags=["Trends (deprecated)"])
+app.include_router(health.router, prefix="/api/v1/metrics/health", tags=["Health (deprecated)"])
+app.include_router(patterns.router, prefix="/api/v1/metrics/patterns", tags=["Patterns (deprecated)"])
 
 @app.get("/")
 async def root():

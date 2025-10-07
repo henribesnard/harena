@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes dépenses Uber",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Uber",
     "transaction_type": "debit"
@@ -84,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18364.389500013203,
+  "latency_ms": 18735.083999985363,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:57:27.208239"
+  "timestamp": "2025-10-05T21:44:00.472109"
 }

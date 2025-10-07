@@ -14,11 +14,10 @@
   "query_data": {
     "user_id": 100,
     "filters": {
+      "transaction_type": "debit",
       "date": {
-        "gte": "tomorrow",
-        "lte": "tomorrow"
-      },
-      "transaction_type": "debit"
+        "eq": "2025-10-06"
+      }
     },
     "sort": [
       {
@@ -50,7 +49,7 @@
       }
     }
   },
-  "query_size": 373,
+  "query_size": 355,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -62,8 +61,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 29541.556500000297,
+  "latency_ms": 17544.51429998153,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:53:56.582139"
+  "timestamp": "2025-10-05T22:10:49.474681"
 }

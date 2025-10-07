@@ -3,13 +3,13 @@
   "category": "D_temporel",
   "question": "Mes revenus de ce mois",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "date_range": "this_month",
     "transaction_type": "credit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -62,8 +62,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18380.366600002162,
+  "latency_ms": 18149.15499999188,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:49:02.569314"
+  "timestamp": "2025-10-05T22:05:44.912468"
 }

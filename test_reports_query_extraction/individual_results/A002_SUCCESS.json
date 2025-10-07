@@ -3,7 +3,7 @@
   "category": "A_montant",
   "question": "Mes dépenses de plus de 500 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "amount": 500,
     "operator": "gt",
@@ -62,8 +62,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 35345.378899990465,
+  "latency_ms": 27049.55890000565,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:25:35.262037"
+  "timestamp": "2025-10-05T21:30:06.969750"
 }

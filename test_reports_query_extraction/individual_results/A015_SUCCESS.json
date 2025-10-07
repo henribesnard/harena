@@ -5,9 +5,9 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "transaction_type": "credit",
     "amount": 0,
-    "operator": "lt"
+    "operator": "lt",
+    "transaction_type": "credit"
   },
   "entities_count": 3,
   "entity_confidence": 0.85,
@@ -62,8 +62,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 20155.14410000469,
+  "latency_ms": 19791.27819999121,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:31:55.970633"
+  "timestamp": "2025-10-05T21:36:06.433838"
 }

@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes dépenses McDonald's",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "McDonald's",
     "transaction_type": "debit"
@@ -84,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 17848.486999995657,
+  "latency_ms": 18509.139100002358,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:54:19.563790"
+  "timestamp": "2025-10-05T21:41:06.127652"
 }

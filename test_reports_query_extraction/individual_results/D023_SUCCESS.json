@@ -25,8 +25,8 @@
     "filters": {
       "transaction_type": "debit",
       "date": {
-        "gte": "weekend",
-        "lte": "weekend"
+        "gte": "2025-10-04",
+        "lte": "2025-10-05"
       },
       "category_name": [
         "Carburant",
@@ -243,7 +243,7 @@
       }
     }
   },
-  "query_size": 1952,
+  "query_size": 1958,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 3,
@@ -255,8 +255,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 27810.437599997385,
+  "latency_ms": 18045.552099996712,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:56:57.297940"
+  "timestamp": "2025-10-05T22:14:00.383064"
 }

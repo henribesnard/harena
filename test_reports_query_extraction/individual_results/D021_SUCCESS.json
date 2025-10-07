@@ -16,8 +16,8 @@
     "filters": {
       "transaction_type": "credit",
       "date": {
-        "gte": "this_year",
-        "lte": "this_year"
+        "gte": "2025-01-01",
+        "lte": "2025-12-31"
       }
     },
     "sort": [
@@ -47,14 +47,350 @@
             }
           }
         }
+      },
+      "monthly_credit_2025_01": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-01-01",
+                    "lte": "2025-01-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_02": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-02-01",
+                    "lte": "2025-02-28"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_03": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-03-01",
+                    "lte": "2025-03-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_04": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-04-01",
+                    "lte": "2025-04-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_05": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-05-01",
+                    "lte": "2025-05-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_06": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-06-01",
+                    "lte": "2025-06-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_07": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-07-01",
+                    "lte": "2025-07-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_08": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-08-01",
+                    "lte": "2025-08-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_09": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-09-01",
+                    "lte": "2025-09-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_10": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-10-01",
+                    "lte": "2025-10-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_11": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-11-01",
+                    "lte": "2025-11-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_12": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-12-01",
+                    "lte": "2025-12-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 378,
+  "query_size": 3080,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
-  "aggregation_count": 2,
+  "aggregation_count": 14,
   "coherence_analysis": {
     "coherence_score": "HIGH",
     "issues": [],
@@ -62,8 +398,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27743.610200006515,
+  "latency_ms": 33658.90710000531,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:56:00.335251"
+  "timestamp": "2025-10-05T22:13:01.180124"
 }

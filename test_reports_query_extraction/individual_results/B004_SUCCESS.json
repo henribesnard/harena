@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes achats Apple",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Apple",
     "transaction_type": "debit"
@@ -84,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 19295.413599989843,
+  "latency_ms": 16899.52269999776,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:54:01.211701"
+  "timestamp": "2025-10-05T21:40:47.082613"
 }

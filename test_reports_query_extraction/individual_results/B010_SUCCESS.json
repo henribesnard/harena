@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes dépenses essence/carburant",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "Carburant"
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27551.85150000034,
+  "latency_ms": 24317.900199996075,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:56:16.085742"
+  "timestamp": "2025-10-05T21:42:55.533055"
 }

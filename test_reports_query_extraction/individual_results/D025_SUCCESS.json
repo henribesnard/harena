@@ -16,7 +16,7 @@
     "filters": {
       "date": {
         "gte": "2025-10-01",
-        "lte": "2025-10-01"
+        "lte": "2025-10-15"
       }
     },
     "sort": [
@@ -75,8 +75,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 20318.716399997356,
+  "latency_ms": 18537.682700000005,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:57:37.688231"
+  "timestamp": "2025-10-05T22:14:38.228656"
 }

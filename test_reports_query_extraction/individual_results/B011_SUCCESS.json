@@ -3,13 +3,13 @@
   "category": "B_vendeur",
   "question": "Mes transactions McDo",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "McDonald's",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.8999999999999999,
+  "entity_confidence": 0.875,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -122,8 +122,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18956.093300002976,
+  "latency_ms": 20316.895099997055,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:56:35.554070"
+  "timestamp": "2025-10-05T21:43:16.392182"
 }

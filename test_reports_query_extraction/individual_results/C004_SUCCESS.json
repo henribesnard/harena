@@ -3,7 +3,7 @@
   "category": "C_categorie",
   "question": "Mes dépenses santé",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.85,
   "entities_structured": {
     "categories": [
       "Santé/pharmacie"
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 32127.141000004485,
+  "latency_ms": 34539.93970001466,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:23:46.284470"
+  "timestamp": "2025-10-05T21:55:38.061213"
 }

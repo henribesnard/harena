@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes achats chez Google",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Google",
     "transaction_type": "debit"
@@ -84,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 32283.663700000034,
+  "latency_ms": 24306.333999993512,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:57:08.341050"
+  "timestamp": "2025-10-05T21:43:41.233275"
 }

@@ -16,8 +16,8 @@
     "filters": {
       "transaction_type": "credit",
       "date": {
-        "gte": "this_quarter",
-        "lte": "this_quarter"
+        "gte": "2025-10-01",
+        "lte": "2025-12-31"
       }
     },
     "sort": [
@@ -47,14 +47,98 @@
             }
           }
         }
+      },
+      "monthly_credit_2025_10": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-10-01",
+                    "lte": "2025-10-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_11": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-11-01",
+                    "lte": "2025-11-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_12": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-12-01",
+                    "lte": "2025-12-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 384,
+  "query_size": 1055,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
-  "aggregation_count": 2,
+  "aggregation_count": 5,
   "coherence_analysis": {
     "coherence_score": "HIGH",
     "issues": [],
@@ -62,8 +146,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27769.707900006324,
+  "latency_ms": 20471.43820000929,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:52:13.860198"
+  "timestamp": "2025-10-05T22:09:13.726153"
 }

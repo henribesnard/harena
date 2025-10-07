@@ -16,8 +16,8 @@
     "filters": {
       "transaction_type": "debit",
       "date": {
-        "gte": "last_30_days",
-        "lte": "last_30_days"
+        "gte": "2025-09-05",
+        "lte": "2025-10-05"
       }
     },
     "sort": [
@@ -50,7 +50,7 @@
       }
     }
   },
-  "query_size": 381,
+  "query_size": 377,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -62,8 +62,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27501.359200003208,
+  "latency_ms": 24304.153099976247,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:51:14.269516"
+  "timestamp": "2025-10-05T22:07:59.167512"
 }

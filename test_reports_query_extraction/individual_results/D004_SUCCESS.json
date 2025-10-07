@@ -15,8 +15,7 @@
     "user_id": 100,
     "filters": {
       "date": {
-        "gte": "2025-10-04",
-        "lte": "2025-10-04"
+        "eq": "2025-10-04"
       }
     },
     "sort": [
@@ -63,7 +62,7 @@
       }
     }
   },
-  "query_size": 476,
+  "query_size": 454,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -75,8 +74,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 17410.41490000498,
+  "latency_ms": 17062.46519999695,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:49:20.482880"
+  "timestamp": "2025-10-05T22:06:02.478695"
 }

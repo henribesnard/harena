@@ -34,6 +34,7 @@ class TransactionInput(BaseModel):
     currency_code: Optional[str] = None
     category_id: Optional[int] = None
     category_name: Optional[str] = None
+    merchant_name: Optional[str] = None
     operation_type: Optional[str] = None
     deleted: bool = False
     future: bool = False

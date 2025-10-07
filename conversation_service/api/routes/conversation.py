@@ -161,16 +161,18 @@ async def analyze_conversation_stream(
     request: Request,
     validated_user_id: int = Depends(validate_path_user_id),
     user_context: Dict[str, Any] = Depends(get_user_context),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence),
     _rate_limit: None = Depends(rate_limit_dependency),
     jwt_token: str = Depends(get_current_jwt_token)
 ):
     """
     Endpoint streaming v2.0 - Stream la reponse finale
     """
-    
+
     async def generate_stream() -> AsyncGenerator[str, None]:
         request_id = f"stream_{int(time.time() * 1000)}_{validated_user_id}"
-        
+        accumulated_response = ""
+
         try:
             # Validation
             message_validation = validate_user_message(request_data.message)
@@ -181,37 +183,56 @@ async def analyze_conversation_stream(
                 }
                 yield f"data: {json.dumps(error_data)}\n\n"
                 return
-            
+
             clean_message = sanitize_user_input(request_data.message)
-            
+
             # Utiliser orchestrateur v2.0 si disponible
             if app_state.initialized and app_state.conversation_orchestrator:
                 from conversation_service.core.conversation_orchestrator import ConversationRequest as OrchestratorRequest
-                
+
                 orchestrator_request = OrchestratorRequest(
                     user_id=validated_user_id,
                     user_message=clean_message,
                     conversation_id=getattr(request_data, 'conversation_id', None),
                     jwt_token=jwt_token
                 )
-                
-                # Stream de la reponse
+
+                # Stream de la reponse et accumuler le contenu
                 async for chunk in app_state.conversation_orchestrator.process_conversation_stream(orchestrator_request):
+                    # Accumuler les chunks de réponse
+                    if chunk.get("type") == "response_chunk":
+                        accumulated_response += chunk.get("content", "")
+
                     # chunk est maintenant un dictionnaire, on le serialise en SSE
                     yield f"data: {json.dumps(chunk)}\n\n"
 
                     # Si c'est une erreur ou la fin, on arrête
                     if chunk.get("type") in ["error", "response_end"]:
                         break
-            
+
+                # Sauvegarder la conversation après le streaming
+                if persistence_service and accumulated_response:
+                    try:
+                        await _save_conversation_turn(
+                            persistence_service=persistence_service,
+                            user_id=validated_user_id,
+                            user_message=clean_message,
+                            assistant_response=accumulated_response,
+                            result_data={"request_id": request_id, "streaming": True},
+                            request_id=request_id
+                        )
+                        logger.info(f"[{request_id}] Conversation sauvegardée en base")
+                    except Exception as e:
+                        logger.error(f"[{request_id}] Erreur sauvegarde conversation: {str(e)}")
+
             else:
                 # Fallback: pas de streaming pour legacy
                 yield f"data: {json.dumps({'error': 'Streaming non disponible en mode legacy'})}\n\n"
-        
+
         except Exception as e:
             logger.error(f"[{request_id}] Erreur streaming: {str(e)}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
+
     return StreamingResponse(
         generate_stream(),
         media_type="text/plain",
@@ -429,12 +450,12 @@ async def get_user_conversations(
     try:
         if validated_user_id != user_id:
             raise HTTPException(status_code=403, detail="Accès non autorisé")
-        
+
         if not persistence_service:
             raise HTTPException(status_code=500, detail="Service persistence non disponible")
-        
+
         conversations = persistence_service.get_user_conversations(user_id, limit=limit)
-        
+
         return {
             "user_id": user_id,
             "conversations": [
@@ -449,11 +470,121 @@ async def get_user_conversations(
             ],
             "total_count": len(conversations)
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Erreur récupération conversations: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne")
+
+@router.get("/conversation/{conversation_id}/turns")
+async def get_conversation_turns(
+    conversation_id: int,
+    validated_user_id: int = Depends(get_current_user_id),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence)
+):
+    """Récupération d'une conversation complète avec tous ses tours"""
+    try:
+        if not persistence_service:
+            raise HTTPException(status_code=500, detail="Service persistence non disponible")
+
+        conversation = persistence_service.get_conversation_with_turns(
+            conversation_id=conversation_id,
+            user_id=validated_user_id
+        )
+
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation non trouvée")
+
+        return {
+            "conversation": {
+                "id": conversation.id,
+                "title": conversation.title,
+                "created_at": conversation.created_at.isoformat(),
+                "updated_at": conversation.updated_at.isoformat(),
+                "total_turns": conversation.total_turns
+            },
+            "turns": [
+                {
+                    "id": turn.id,
+                    "turn_number": turn.turn_number,
+                    "user_message": turn.user_message,
+                    "assistant_response": turn.assistant_response,
+                    "created_at": turn.created_at.isoformat()
+                }
+                for turn in conversation.turns
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur récupération conversation {conversation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne")
+
+@router.get("/admin/conversations/count")
+async def count_all_conversations(
+    validated_user_id: int = Depends(get_current_user_id),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence)
+):
+    """ADMIN: Compte le nombre total de conversations"""
+    try:
+        if not persistence_service:
+            raise HTTPException(status_code=500, detail="Service persistence non disponible")
+
+        from db_service.models.conversation import ConversationTurn, Conversation
+
+        total_conversations = persistence_service.db.query(Conversation).count()
+        total_turns = persistence_service.db.query(ConversationTurn).count()
+
+        # Count by user
+        from sqlalchemy import func
+        by_user = persistence_service.db.query(
+            Conversation.user_id,
+            func.count(Conversation.id).label('count')
+        ).group_by(Conversation.user_id).all()
+
+        return {
+            "total_conversations": total_conversations,
+            "total_turns": total_turns,
+            "by_user": [{"user_id": u, "count": c} for u, c in by_user]
+        }
+
+    except Exception as e:
+        logger.error(f"Erreur comptage conversations: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne")
+
+@router.delete("/admin/conversations/clear")
+async def clear_all_conversations_admin(
+    validated_user_id: int = Depends(get_current_user_id),
+    persistence_service: Optional[ConversationPersistenceService] = Depends(get_conversation_persistence)
+):
+    """ADMIN: Supprime toutes les conversations (pour dev/test uniquement)"""
+    try:
+        if not persistence_service:
+            raise HTTPException(status_code=500, detail="Service persistence non disponible")
+
+        # Delete all turns first (FK constraint)
+        from db_service.models.conversation import ConversationTurn, Conversation
+        turns_deleted = persistence_service.db.query(ConversationTurn).delete()
+
+        # Then delete all conversations
+        conv_deleted = persistence_service.db.query(Conversation).delete()
+
+        persistence_service.db.commit()
+
+        logger.info(f"Admin cleared all conversations: {conv_deleted} conversations, {turns_deleted} turns")
+
+        return {
+            "success": True,
+            "conversations_deleted": conv_deleted,
+            "turns_deleted": turns_deleted,
+            "message": "Toutes les conversations ont été supprimées"
+        }
+
+    except Exception as e:
+        persistence_service.db.rollback()
+        logger.error(f"Erreur suppression conversations: {str(e)}")
         raise HTTPException(status_code=500, detail="Erreur interne")
 
 # === UTILITAIRES ===

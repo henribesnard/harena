@@ -609,7 +609,7 @@ def create_app():
         # Nouveaux routers (5 métriques essentielles - Specs conformes)
         ("metric_service.api.routes.expenses", "/api/v1/metrics/expenses", "metrics-expenses"),
         ("metric_service.api.routes.income", "/api/v1/metrics/income", "metrics-income"),
-        ("metric_service.api.routes.coverage", "/api/v1/metrics", "metrics-coverage"),
+        ("metric_service.api.routes.coverage", "/api/v1/metrics/coverage", "metrics-coverage"),
     ]
 
     for module_path, prefix, tag in metric_modules:

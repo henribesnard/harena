@@ -167,7 +167,9 @@ class MetricCalculator:
         previous_amount = sum(tx['amount'] for tx in previous_txs)
 
         change_amount = current_amount - previous_amount
-        change_percent = (change_amount / abs(previous_amount) * 100) if previous_amount != 0 else 0
+        # Pour les dépenses (négatifs): si on dépense moins, change_percent doit être négatif
+        # On utilise previous_amount SANS abs() pour garder le signe correct
+        change_percent = (change_amount / previous_amount * 100) if previous_amount != 0 else 0
 
         # Déterminer tendance selon le type
         if transaction_type == "expenses":
@@ -239,7 +241,9 @@ class MetricCalculator:
         previous_amount = sum(tx['amount'] for tx in previous_txs)
 
         change_amount = current_amount - previous_amount
-        change_percent = (change_amount / abs(previous_amount) * 100) if previous_amount != 0 else 0
+        # Pour les dépenses (négatifs): si on dépense moins, change_percent doit être négatif
+        # On utilise previous_amount SANS abs() pour garder le signe correct
+        change_percent = (change_amount / previous_amount * 100) if previous_amount != 0 else 0
 
         # Déterminer tendance selon le type
         if transaction_type == "expenses":

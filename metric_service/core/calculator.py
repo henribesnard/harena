@@ -124,7 +124,8 @@ class MetricCalculator:
         self,
         user_id: int,
         month: Optional[str] = None,
-        category: Optional[str] = None
+        category: Optional[str] = None,
+        transaction_type: str = "expenses"  # "expenses" or "income"
     ) -> Dict[str, Any]:
         """
         Month-over-Month comparison
@@ -133,6 +134,7 @@ class MetricCalculator:
             user_id: ID utilisateur
             month: YYYY-MM format (default: current month)
             category: Filter by category
+            transaction_type: "expenses" (montants négatifs) ou "income" (montants positifs)
         """
         # Déterminer les périodes
         if month:
@@ -150,6 +152,16 @@ class MetricCalculator:
         current_txs = await self._fetch_transactions(user_id, current_start, current_end, category)
         previous_txs = await self._fetch_transactions(user_id, previous_start, previous_end, category)
 
+        # Filtrer par type de transaction
+        if transaction_type == "expenses":
+            # Dépenses = montants négatifs
+            current_txs = [tx for tx in current_txs if tx['amount'] < 0]
+            previous_txs = [tx for tx in previous_txs if tx['amount'] < 0]
+        else:  # income
+            # Revenus = montants positifs
+            current_txs = [tx for tx in current_txs if tx['amount'] > 0]
+            previous_txs = [tx for tx in previous_txs if tx['amount'] > 0]
+
         # Calculer totaux
         current_amount = sum(tx['amount'] for tx in current_txs)
         previous_amount = sum(tx['amount'] for tx in previous_txs)
@@ -157,13 +169,23 @@ class MetricCalculator:
         change_amount = current_amount - previous_amount
         change_percent = (change_amount / abs(previous_amount) * 100) if previous_amount != 0 else 0
 
-        # Déterminer tendance
-        if change_percent > 5:
-            trend = TrendDirection.INCREASING
-        elif change_percent < -5:
-            trend = TrendDirection.DECREASING
-        else:
-            trend = TrendDirection.STABLE
+        # Déterminer tendance selon le type
+        if transaction_type == "expenses":
+            # Pour les dépenses: augmentation = mauvais
+            if change_percent > 5:
+                trend = TrendDirection.INCREASING
+            elif change_percent < -5:
+                trend = TrendDirection.DECREASING
+            else:
+                trend = TrendDirection.STABLE
+        else:  # income
+            # Pour les revenus: augmentation = bon
+            if change_percent > 5:
+                trend = TrendDirection.INCREASING
+            elif change_percent < -5:
+                trend = TrendDirection.DECREASING
+            else:
+                trend = TrendDirection.STABLE
 
         return {
             "current_month": current_start.strftime("%Y-%m"),
@@ -172,16 +194,26 @@ class MetricCalculator:
             "previous_amount": previous_amount,
             "change_amount": change_amount,
             "change_percent": round(change_percent, 2),
-            "trend": trend.value
+            "trend": trend.value,
+            "transaction_type": transaction_type
         }
 
     async def calculate_yoy(
         self,
         user_id: int,
         year: Optional[int] = None,
-        category: Optional[str] = None
+        category: Optional[str] = None,
+        transaction_type: str = "expenses"  # "expenses" or "income"
     ) -> Dict[str, Any]:
-        """Year-over-Year comparison"""
+        """
+        Year-over-Year comparison
+
+        Args:
+            user_id: ID utilisateur
+            year: Année à comparer (default: année actuelle)
+            category: Filter by category
+            transaction_type: "expenses" (montants négatifs) ou "income" (montants positifs)
+        """
         current_year = year or datetime.now().year
         previous_year = current_year - 1
 
@@ -193,18 +225,39 @@ class MetricCalculator:
         current_txs = await self._fetch_transactions(user_id, current_start, current_end, category)
         previous_txs = await self._fetch_transactions(user_id, previous_start, previous_end, category)
 
+        # Filtrer par type de transaction
+        if transaction_type == "expenses":
+            # Dépenses = montants négatifs
+            current_txs = [tx for tx in current_txs if tx['amount'] < 0]
+            previous_txs = [tx for tx in previous_txs if tx['amount'] < 0]
+        else:  # income
+            # Revenus = montants positifs
+            current_txs = [tx for tx in current_txs if tx['amount'] > 0]
+            previous_txs = [tx for tx in previous_txs if tx['amount'] > 0]
+
         current_amount = sum(tx['amount'] for tx in current_txs)
         previous_amount = sum(tx['amount'] for tx in previous_txs)
 
         change_amount = current_amount - previous_amount
         change_percent = (change_amount / abs(previous_amount) * 100) if previous_amount != 0 else 0
 
-        if change_percent > 5:
-            trend = TrendDirection.INCREASING
-        elif change_percent < -5:
-            trend = TrendDirection.DECREASING
-        else:
-            trend = TrendDirection.STABLE
+        # Déterminer tendance selon le type
+        if transaction_type == "expenses":
+            # Pour les dépenses: augmentation = mauvais
+            if change_percent > 5:
+                trend = TrendDirection.INCREASING
+            elif change_percent < -5:
+                trend = TrendDirection.DECREASING
+            else:
+                trend = TrendDirection.STABLE
+        else:  # income
+            # Pour les revenus: augmentation = bon
+            if change_percent > 5:
+                trend = TrendDirection.INCREASING
+            elif change_percent < -5:
+                trend = TrendDirection.DECREASING
+            else:
+                trend = TrendDirection.STABLE
 
         return {
             "current_year": current_year,
@@ -213,10 +266,108 @@ class MetricCalculator:
             "previous_amount": previous_amount,
             "change_amount": change_amount,
             "change_percent": round(change_percent, 2),
-            "trend": trend.value
+            "trend": trend.value,
+            "transaction_type": transaction_type
         }
 
     # === HEALTH ===
+
+    async def calculate_coverage_rate(
+        self,
+        user_id: int,
+        mois: Optional[int] = None,
+        annee: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Calcule le taux de couverture mensuel
+
+        Taux_Couverture (%) = ((Revenus - Dépenses) / Revenus) × 100
+
+        Interprétation:
+        - > 20%: Excellente couverture (vert foncé)
+        - 10-20%: Bonne couverture (vert)
+        - 5-10%: Couverture correcte (vert clair)
+        - 0-5%: Limite (orange)
+        - < 0%: Déficit (rouge)
+        """
+        # Période par défaut = mois actuel
+        now = datetime.now()
+        mois = mois or now.month
+        annee = annee or now.year
+
+        is_current_month = (mois == now.month and annee == now.year)
+
+        # Calculer début et fin du mois
+        start_date = datetime(annee, mois, 1)
+        if mois == 12:
+            end_date = datetime(annee + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = datetime(annee, mois + 1, 1) - timedelta(days=1)
+
+        # Récupérer les transactions du mois
+        transactions = await self._fetch_transactions(user_id, start_date, end_date)
+
+        # Séparer revenus et dépenses
+        revenus = sum(tx['amount'] for tx in transactions if tx['amount'] > 0)
+        depenses = abs(sum(tx['amount'] for tx in transactions if tx['amount'] < 0))
+
+        # Calcul du solde et du taux
+        solde = revenus - depenses
+
+        if revenus == 0:
+            taux_couverture = -100.0 if depenses > 0 else 0.0
+        else:
+            taux_couverture = float((solde / revenus) * 100)
+
+        # Déterminer le niveau et la couleur
+        if taux_couverture >= 20:
+            couleur = "green-dark"
+            niveau = "excellent"
+            message = f"Excellente couverture - Vous épargnez {taux_couverture:.1f}% de vos revenus"
+        elif taux_couverture >= 10:
+            couleur = "green"
+            niveau = "good"
+            message = f"Bonne couverture - {taux_couverture:.1f}% de revenus épargnés"
+        elif taux_couverture >= 5:
+            couleur = "green-light"
+            niveau = "correct"
+            message = f"Couverture correcte - {taux_couverture:.1f}% de revenus restants"
+        elif taux_couverture >= 0:
+            couleur = "orange"
+            niveau = "limit"
+            message = "Couverture limite - Attention à vos dépenses"
+        else:
+            couleur = "red"
+            niveau = "deficit"
+            deficit = abs(solde)
+            message = f"Déficit ! Vos dépenses dépassent vos revenus de {deficit:.2f}€"
+
+        # Label du mois
+        mois_names = [
+            "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+            "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+        ]
+        label = f"{mois_names[mois-1]} {annee}"
+
+        return {
+            "metric_type": "coverage_rate",
+            "periode": {
+                "mois": mois,
+                "annee": annee,
+                "label": label,
+                "is_current_month": is_current_month
+            },
+            "revenus": revenus,
+            "depenses": depenses,
+            "solde": solde,
+            "taux_couverture": round(taux_couverture, 2),
+            "affichage": {
+                "couleur": couleur,
+                "niveau": niveau,
+                "message": message
+            },
+            "mise_a_jour": datetime.now().isoformat()
+        }
 
     async def calculate_savings_rate(
         self,

@@ -3,18 +3,19 @@
   "category": "D_temporel",
   "question": "Mes achats Amazon en décembre",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Amazon",
-    "date_range": "2025-12",
+    "date_range": "2024-12",
     "transaction_type": "debit"
   },
   "entities_count": 3,
-  "entity_confidence": 0.9499999999999998,
+  "entity_confidence": 0.9333333333333332,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
+      "merchant_name": "Amazon",
       "transaction_type": "debit"
     },
     "sort": [
@@ -44,25 +45,50 @@
             }
           }
         }
+      },
+      "amazon_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Amazon"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 548,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 2,
+  "aggregation_count": 3,
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
-      "Entités manquantes dans query: merchant, date_range"
+      "Entités manquantes dans query: date_range"
     ],
     "details": {
-      "entities_translated": "1/3"
+      "entities_translated": "2/3"
     }
   },
-  "latency_ms": 30805.722700009937,
+  "latency_ms": 53071.968000003835,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:51:45.578552"
+  "timestamp": "2025-10-05T22:08:52.743129"
 }

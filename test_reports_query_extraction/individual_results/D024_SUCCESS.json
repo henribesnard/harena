@@ -14,11 +14,10 @@
   "query_data": {
     "user_id": 100,
     "filters": {
+      "transaction_type": "debit",
       "date": {
-        "gte": "2025-09-15",
-        "lte": "2025-09-15"
-      },
-      "transaction_type": "debit"
+        "eq": "2025-09-15"
+      }
     },
     "sort": [
       {
@@ -50,7 +49,7 @@
       }
     }
   },
-  "query_size": 377,
+  "query_size": 355,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -62,8 +61,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 19064.401800002088,
+  "latency_ms": 18300.890199985588,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:57:16.866350"
+  "timestamp": "2025-10-05T22:14:19.187815"
 }

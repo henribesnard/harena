@@ -3,13 +3,13 @@
   "category": "B_vendeur",
   "question": "Mes dépenses Netflix ?",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Netflix",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.965,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -84,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 24087.715500005288,
+  "latency_ms": 23267.37790001789,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:52:49.434907"
+  "timestamp": "2025-10-05T21:39:40.001204"
 }

@@ -4,9 +4,20 @@
   "question": "Mes achats du 32 février",
   "intent_detected": "CONVERSATIONAL",
   "intent_confidence": 0.7,
-  "entities_structured": {},
-  "entities_count": 0,
-  "entity_confidence": 0.0,
+  "entities_structured": {
+    "transaction_type": "debit",
+    "categories": [
+      "Carburant",
+      "Transport",
+      "Loisirs",
+      "Entretien maison",
+      "achats en ligne",
+      "Alimentation",
+      "Vêtements"
+    ]
+  },
+  "entities_count": 2,
+  "entity_confidence": 0.925,
   "query_found": false,
   "query_data": null,
   "query_size": 0,
@@ -21,8 +32,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 12962.322399951518,
+  "latency_ms": 12628.116100007901,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-09-30T21:21:57.984731"
+  "timestamp": "2025-10-05T19:23:53.039175"
 }

@@ -3,7 +3,7 @@
   "category": "B_vendeur",
   "question": "Mes transactions Bouygues Telecom Canal Sat Issy Les M Paypal Luxembourg",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.85,
   "entities_structured": {
     "merchants": [
       "Bouygues Telecom",
@@ -14,7 +14,7 @@
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -284,8 +284,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 31229.054299998097,
+  "latency_ms": 27882.40639999276,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:59:30.270603"
+  "timestamp": "2025-10-05T21:45:46.620405"
 }

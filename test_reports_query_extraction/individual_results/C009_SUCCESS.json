@@ -5,21 +5,17 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "categories": [
-      "Electronics"
-    ],
+    "query": "électronique électro",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "électronique électro",
     "filters": {
-      "transaction_type": "debit",
-      "category_name": [
-        "Electronics"
-      ]
+      "transaction_type": "debit"
     },
     "sort": [
       {
@@ -48,48 +44,25 @@
             }
           }
         }
-      },
-      "electronics_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Electronics"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
       }
     }
   },
-  "query_size": 565,
+  "query_size": 368,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
-  "aggregation_count": 3,
+  "filter_count": 1,
+  "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "HIGH",
-    "issues": [],
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: query"
+    ],
     "details": {
-      "entities_translated": "2/2"
+      "entities_translated": "1/2"
     }
   },
-  "latency_ms": 18828.632300006575,
+  "latency_ms": 23627.045900007943,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:26:18.171807"
+  "timestamp": "2025-10-05T21:57:55.493059"
 }

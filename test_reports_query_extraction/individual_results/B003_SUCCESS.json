@@ -3,13 +3,13 @@
   "category": "B_vendeur",
   "question": "Mes transactions chez Carrefour",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Carrefour",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.8999999999999999,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -122,8 +122,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27262.585600008606,
+  "latency_ms": 24423.5055000172,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T11:53:41.413061"
+  "timestamp": "2025-10-05T21:40:29.679637"
 }

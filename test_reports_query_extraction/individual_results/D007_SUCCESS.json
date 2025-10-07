@@ -15,8 +15,7 @@
     "user_id": 100,
     "filters": {
       "date": {
-        "gte": "2025-03-05",
-        "lte": "2025-03-05"
+        "eq": "2025-03-05"
       },
       "transaction_type": "debit"
     },
@@ -50,7 +49,7 @@
       }
     }
   },
-  "query_size": 377,
+  "query_size": 355,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -62,8 +61,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26641.74739998998,
+  "latency_ms": 25440.4618999979,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T12:50:21.928161"
+  "timestamp": "2025-10-05T22:07:05.475026"
 }

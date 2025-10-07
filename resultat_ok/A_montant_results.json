@@ -1,0 +1,1903 @@
+{
+  "category": "A_montant",
+  "timestamp": "2025-10-05T11:34:09.183504",
+  "total_questions": 19,
+  "api_successful": 19,
+  "queries_found": 19,
+  "success_rate": 100.0,
+  "detailed_results": [
+    {
+      "question_id": "A001",
+      "question": "Mes dépenses de plus de 100 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 100,
+        "operator": "gt",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "gt": 100
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 352,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 26930.212700011907,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A002",
+      "question": "Mes dépenses de plus de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "gt",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "gt": 500
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 352,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 35345.378899990465,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A003",
+      "question": "Mes dépenses de plus de 1000 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 1000,
+        "operator": "gt",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "gt": 1000
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 353,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 31747.543000004953,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A004",
+      "question": "Mes dépenses de moins de 50 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 50,
+        "operator": "lt",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "lt": 50
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 351,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 33359.648800003924,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A005",
+      "question": "Est-ce que j'ai des dépenses d'un montant de 50 euros ?",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "amount": 50,
+        "operator": "eq",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "eq": 50
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 351,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 27824.056900004507,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A006",
+      "question": "Mes revenus de plus de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "gt",
+        "transaction_type": "credit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "amount_abs": {
+            "gt": 500
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 355,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 29737.870299999486,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A007",
+      "question": "Mes revenus de plus de 1500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 1500,
+        "operator": "gt",
+        "transaction_type": "credit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "amount_abs": {
+            "gt": 1500
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 356,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 35460.33950000128,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A008",
+      "question": "Mes revenus de moins de 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "lt",
+        "transaction_type": "credit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "amount_abs": {
+            "lt": 500
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 355,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 35631.62379999994,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A009",
+      "question": "Mes dépenses exactement égales à 25.50 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 25.5,
+        "operator": "eq",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "eq": 25.5
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 353,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 24513.204500006395,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A010",
+      "question": "Mes transactions entre 25 et 75 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount_min": 25,
+        "amount_max": 75,
+        "transaction_type": "all"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "amount_abs": {
+            "gte": 25,
+            "lte": 75
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 462,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 32429.378000000725,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A011",
+      "question": "Mes achats compris entre 100€ et 200€",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount_min": 100,
+        "amount_max": 200,
+        "transaction_type": "debit",
+        "categories": [
+          "Carburant",
+          "Transport",
+          "Loisirs",
+          "Entretien maison",
+          "achats en ligne",
+          "Alimentation",
+          "Vêtements"
+        ]
+      },
+      "entities_count": 4,
+      "entity_confidence": 0.9375,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "gte": 100,
+            "lte": 200
+          },
+          "category_name": [
+            "Carburant",
+            "Transport",
+            "Loisirs",
+            "Entretien maison",
+            "achats en ligne",
+            "Alimentation",
+            "Vêtements"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "carburant_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Carburant"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "transport_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Transport"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "loisirs_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Loisirs"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "entretien_maison_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Entretien maison"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "achats_en_ligne_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "achats en ligne"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "alimentation_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Alimentation"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "vêtements_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Vêtements"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 1946,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 3,
+      "aggregation_count": 9,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "4/4"
+        }
+      },
+      "latency_ms": 27301.740000009886,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A012",
+      "question": "Mes dépenses de 0 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "amount": 0,
+        "operator": "eq",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "eq": 0
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 350,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 21702.144199996837,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A013",
+      "question": "Mes transactions de plus de 10000 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.95,
+      "entities_structured": {
+        "amount": 10000,
+        "operator": "gt",
+        "transaction_type": "all"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "amount_abs": {
+            "gt": 10000
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 453,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 29106.005099994945,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A014",
+      "question": "Mes achats de moins de 0.01 euro",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 0.01,
+        "operator": "lt",
+        "transaction_type": "debit",
+        "categories": [
+          "Carburant",
+          "Transport",
+          "Loisirs",
+          "Entretien maison",
+          "achats en ligne",
+          "Alimentation",
+          "Vêtements"
+        ]
+      },
+      "entities_count": 4,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "lt": 0.01
+          },
+          "category_name": [
+            "Carburant",
+            "Transport",
+            "Loisirs",
+            "Entretien maison",
+            "achats en ligne",
+            "Alimentation",
+            "Vêtements"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "carburant_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Carburant"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "transport_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Transport"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "loisirs_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Loisirs"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "entretien_maison_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Entretien maison"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "achats_en_ligne_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "achats en ligne"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "alimentation_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Alimentation"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "vêtements_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Vêtements"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 1934,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 3,
+      "aggregation_count": 9,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "4/4"
+        }
+      },
+      "latency_ms": 25171.13689999678,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A015",
+      "question": "Mes revenus négatifs",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "transaction_type": "credit",
+        "amount": 0,
+        "operator": "lt"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.85,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "amount_abs": {
+            "lt": 0
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 353,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 20155.14410000469,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A016",
+      "question": "Mes dépenses de 100 euros et plus",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 100,
+        "operator": "gte",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "gte": 100
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 353,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 26744.733400002588,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A017",
+      "question": "Mes achats de 50 euros maximum",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 50,
+        "operator": "lte",
+        "transaction_type": "debit",
+        "categories": [
+          "Carburant",
+          "Transport",
+          "Loisirs",
+          "Entretien maison",
+          "achats en ligne",
+          "Alimentation",
+          "Vêtements"
+        ]
+      },
+      "entities_count": 4,
+      "entity_confidence": 0.925,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "amount_abs": {
+            "lte": 50
+          },
+          "category_name": [
+            "Carburant",
+            "Transport",
+            "Loisirs",
+            "Entretien maison",
+            "achats en ligne",
+            "Alimentation",
+            "Vêtements"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "carburant_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Carburant"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "transport_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Transport"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "loisirs_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Loisirs"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "entretien_maison_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Entretien maison"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "achats_en_ligne_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "achats en ligne"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "alimentation_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Alimentation"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "vêtements_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Vêtements"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 1933,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 3,
+      "aggregation_count": 9,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "4/4"
+        }
+      },
+      "latency_ms": 30889.091799996095,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A018",
+      "question": "Mes revenus d'au moins 500 euros",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 500,
+        "operator": "gte",
+        "transaction_type": "credit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9333333333333332,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "credit",
+          "amount_abs": {
+            "gte": 500
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 356,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 2,
+      "aggregation_count": 2,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 31951.556799991522,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "A019",
+      "question": "Mes transactions de 75 euros ou moins",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.9,
+      "entities_structured": {
+        "amount": 75,
+        "operator": "lte",
+        "transaction_type": "all"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.9,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "amount_abs": {
+            "lte": 75
+          }
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "total_credit": {
+            "filter": {
+              "term": {
+                "transaction_type": "credit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          }
+        }
+      },
+      "query_size": 451,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 1,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 41063.00059999921,
+      "api_success": true,
+      "error_message": null
+    }
+  ]
+}

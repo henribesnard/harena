@@ -1,0 +1,37 @@
+# AWS Configuration
+aws_region     = "eu-west-1"
+environment    = "dev"
+aws_account_id = "204093577928"
+
+# Network
+vpc_cidr = "10.0.0.0/16"
+
+# RDS PostgreSQL
+rds_instance_class    = "db.t4g.micro"
+rds_allocated_storage = 20
+db_name              = "harena"
+db_username          = "harena_admin"
+db_password          = "YOUR_DB_PASSWORD_HERE"  # From .env AWS_DB_PASSWORD
+
+# ElastiCache Redis
+redis_node_type  = "cache.t4g.micro"
+redis_auth_token = "YOUR_REDIS_TOKEN_HERE"  # From .env AWS_REDIS_AUTH_TOKEN
+
+# EC2
+ec2_instance_type  = "t4g.micro"
+use_spot_instances = true
+spot_max_price     = "0.0042"
+ebs_volume_size    = 20
+
+# Application secrets
+deepseek_api_key = "YOUR_DEEPSEEK_KEY_HERE"  # From .env DEEPSEEK_API_KEY
+secret_key       = "YOUR_SECRET_KEY_HERE"    # From .env SECRET_KEY
+
+# Frontend
+domain_name = "app.harena.com"
+
+# Monitoring
+enable_auto_shutdown = true
+shutdown_night      = true
+shutdown_weekend    = true
+alert_email         = "besnard.hounwanou@gmail.com"

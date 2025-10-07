@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env_old/
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+harena_local.log
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+test_reports*/
+tests/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Documentation
+*.md
+!README.md
+docs/
+architecture/
+
+# Local files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.claude/
+analyse_specifique/
+harena_front/
+resultat_ok/
+temp/
+data/
+
+# Terraform
+terraform/
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

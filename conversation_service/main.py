@@ -124,6 +124,7 @@ class ConversationServiceLoader:
             self._inject_services_into_app_state(app)
             
             # Configuration middleware et routes APRÈS validation
+            # NOTE: Routes déjà incluses au niveau module, mais middlewares CRITIQUES nécessaires
             self._configure_app_middleware_and_routes(app)
             
             # Phase 5 : Workflow complet intégré - Plus besoin d'AutoGen Runtime
@@ -501,133 +502,11 @@ class ConversationServiceLoader:
         logger.info(" Services injectés dans app state")
     
     def _configure_app_middleware_and_routes(self, app: FastAPI) -> None:
-        """Configuration middleware et routes avec gestion intégration"""
-        
-        # Vérifier si l'app a déjà démarré (intégration dans local_app)
-        def _probe_middleware(app: FastAPI) -> None:
-            """Ajoute puis retire un middleware pour tester si l'opération est possible.
-
-            L'ajout de middleware met à jour ``app.user_middleware`` et non
-            ``middleware_stack``; nous utilisons donc ``user_middleware.pop``
-            pour nettoyer après le test.
-            """
-
-            test_middleware_class = type(
-                "TestMiddleware", (), {"__call__": lambda self, scope, receive, send: None}
-            )
-            app.add_middleware(test_middleware_class)
-            app.user_middleware.pop()
-            # Rebuild the stack so the dummy middleware is completely discarded
-            app.middleware_stack = app.build_middleware_stack()
-
-        try:
-            _probe_middleware(app)
-            # Si on arrive ici, on peut ajouter des middlewares
-            can_add_middleware = True
-        except RuntimeError as e:
-            if "Cannot add middleware after an application has started" in str(e):
-                can_add_middleware = False
-                logger.info(" Application déjà démarrée - middleware géré par l'app parent (mode intégration)")
-            else:
-                raise e
-        
-        # Configuration selon le mode
-        if can_add_middleware:
-            logger.info(" Mode standalone - Configuration complète des middlewares")
-            
-            # CORS en premier
-            cors_origins = self._get_cors_origins()
-            app.add_middleware(
-                CORSMiddleware,
-                allow_origins=cors_origins,
-                allow_credentials=True,
-                allow_methods=["GET", "POST", "OPTIONS"],
-                allow_headers=["*"],
-                max_age=3600
-            )
-            logger.info(f" CORS configuré - Origins: {len(cors_origins)} autorisées")
-            
-            # Middleware JWT
-            app.add_middleware(JWTAuthMiddleware)
-            logger.info(" Middleware JWT configuré - Compatible user_service")
-            
-            # Routes conversation v1 (legacy) avec préfixe API
-            app.include_router(conversation_router, prefix="/api/v1")
-            logger.info(" Routes conversation v1 configurées (Phase 5 intégrée)")
-            
-            # Routes conversation v2.0 (nouvelle architecture)
-            try:
-                from conversation_service.api.routes.conversation_v2 import router as conversation_v2_router
-                app.include_router(conversation_v2_router)
-                logger.info(" Routes conversation v2.0 configurées (Architecture hybride IA + Pure Logic)")
-            except ImportError as e:
-                logger.warning(f" Routes v2.0 non disponibles: {e}")
-            
-            # Routes de santé globales
-            self._add_global_health_routes(app)
-            logger.info(" Routes santé configurées")
-            
-        else:
-            logger.info(" Mode intégration - Routes uniquement (middleware géré par app parent)")
-            
-            # En mode intégration, on assume que l'app parent gère les middlewares
-            # On ne charge que les routes sans préfixe (sera géré par local_app)
-            logger.info(" Routes conversation configurées en mode intégration")
-            
-            # Pas de routes santé globales en mode intégration
-            logger.info(" Routes santé skippées (gérées par app parent)")
-    
-    def _get_cors_origins(self) -> list:
-        """Configuration CORS sécurisée selon environnement"""
-        environment = getattr(settings, 'ENVIRONMENT', 'production')
-        
-        if environment in ["development", "testing"]:
-            return ["*"]  # Permissif en dev/test
-        else:
-            # Production : origins spécifiques
-            return [
-                "https://app.harena.fr",
-                "https://api.harena.fr", 
-                "https://harenabackend-ab1b255e55c6.herokuapp.com"
-            ]
-    
-    def _add_global_health_routes(self, app: FastAPI) -> None:
-        """Routes de santé globales sans authentification"""
-        
-        @app.get("/health/live")
-        async def liveness_probe():
-            """Probe liveness pour Kubernetes/Docker"""
-            return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
-        
-        @app.get("/health/ready") 
-        async def readiness_probe():
-            """Probe readiness pour Kubernetes/Docker"""
-            #  CORRECTION: Health check synchrone pour DeepSeek
-            try:
-                deepseek_ready = (
-                    self.deepseek_client and
-                    self.deepseek_client.health_check()  # Pas de await
-                )
-            except Exception as e:
-                logger.warning(f"Erreur readiness DeepSeek: {str(e)}")
-                deepseek_ready = False
-            
-            is_ready = (
-                self.service_healthy and 
-                self.deepseek_client and
-                deepseek_ready
-            )
-            
-            status_code = 200 if is_ready else 503
-            return JSONResponse(
-                status_code=status_code,
-                content={
-                    "status": "ready" if is_ready else "not_ready",
-                    "service_healthy": self.service_healthy,
-                    "jwt_compatible": self.service_config["jwt_compatible"],
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        """Configuration middleware et routes - NOP car déjà fait au niveau module"""
+        # NOTE: Middlewares CORS/JWT et routes santé déjà configurés aux lignes 743-818
+        # Cette méthode est conservée pour compatibilité mais ne fait plus rien
+        logger.info(" Middlewares et routes deja configures au niveau module")
+        pass
     
     async def _optional_cache_warmup(self) -> None:
         """Warm-up optionnel du cache avec données communes"""
@@ -703,25 +582,41 @@ conversation_service_loader = ConversationServiceLoader()
 async def lifespan(app: FastAPI):
     """Gestionnaire cycle de vie application avec validation JWT"""
     startup_start = datetime.now(timezone.utc)
-    
+
     # Startup
     logger.info(" Démarrage application conversation service - JWT compatible")
-    
+
     try:
-        # Initialisation service avec timeout
+        # Initialisation du nouveau système v2.0 (app_state)
+        from conversation_service.api.dependencies import app_state
+        logger.info(" Initialisation pipeline v2.0...")
+
+        try:
+            v2_initialization = await asyncio.wait_for(
+                app_state.initialize(),
+                timeout=60.0
+            )
+            if v2_initialization:
+                logger.info(" Pipeline v2.0 initialisé avec succès")
+            else:
+                logger.warning(" Pipeline v2.0 non initialisé - fallback sur legacy")
+        except Exception as e:
+            logger.warning(f" Erreur initialisation v2.0: {e} - fallback sur legacy")
+
+        # Initialisation service legacy avec timeout
         initialization_success = await asyncio.wait_for(
             conversation_service_loader.initialize_conversation_service(app),
             timeout=90.0  # 90s timeout pour permettre les tests JWT
         )
-        
+
         startup_time = (datetime.now(timezone.utc) - startup_start).total_seconds()
-        
+
         if initialization_success:
             logger.info(f" Service démarré avec succès en {startup_time:.2f}s")
         else:
             logger.error(f"ERROR Échec initialisation en {startup_time:.2f}s - service dégradé")
             # App démarre quand même pour exposer health checks
-        
+
         yield  # Application running
         
     except asyncio.TimeoutError:
@@ -736,8 +631,15 @@ async def lifespan(app: FastAPI):
         # Shutdown
         shutdown_start = datetime.now(timezone.utc)
         logger.info(" Arrêt application conversation service")
-        
+
         try:
+            # Fermer app_state v2.0 d'abord
+            from conversation_service.api.dependencies import app_state
+            if app_state.initialized:
+                await app_state.close()
+                logger.info(" Pipeline v2.0 fermé")
+
+            # Puis fermer le legacy
             await conversation_service_loader.cleanup()
             shutdown_time = (datetime.now(timezone.utc) - shutdown_start).total_seconds()
             logger.info(f" Arrêt propre terminé en {shutdown_time:.2f}s")
@@ -750,10 +652,84 @@ app = FastAPI(
     description="Service IA conversationnelle financière - Compatible user_service JWT",
     version="1.1.0",
     lifespan=lifespan,
-    docs_url="/docs" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None,
-    redoc_url="/redoc" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None,
-    openapi_url="/openapi.json" if getattr(settings, 'ENVIRONMENT', 'production') != "production" else None
+    docs_url="/docs",  # Docs activées même en production (pour debug)
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
+
+# IMPORTANT: Configuration CORS et JWT AVANT les routes
+# CORS doit être ajouté en premier pour être exécuté en dernier (ordre inverse FastAPI)
+environment = getattr(settings, 'ENVIRONMENT', 'production')
+if environment in ["development", "testing"]:
+    cors_origins = ["*"]
+else:
+    cors_origins = [
+        "https://app.harena.fr",
+        "https://api.harena.fr",
+        "https://harenabackend-ab1b255e55c6.herokuapp.com"
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
+    allow_headers=["*"],
+    max_age=3600
+)
+logger.info(f"CORS configured - {len(cors_origins)} origins allowed")
+
+# JWT middleware (exécuté avant CORS car ajouté après)
+app.add_middleware(JWTAuthMiddleware)
+logger.info("JWT middleware configured - user_service compatible")
+
+# IMPORTANT: Inclure les routes APRÈS les middlewares
+# Routes conversation v1 - le router a déjà son préfixe /api/v1/conversation
+app.include_router(conversation_router)
+logger.info("Routes conversation v1 configurees")
+
+# Routes conversation v2.0 (nouvelle architecture)
+try:
+    from conversation_service.api.routes.conversation_v2 import router as conversation_v2_router
+    app.include_router(conversation_v2_router)
+    logger.info("Routes conversation v2.0 configurees")
+except ImportError as e:
+    logger.warning(f"Routes v2.0 non disponibles: {e}")
+
+# Routes de santé au niveau module (avant lifespan)
+@app.get("/health/live")
+async def liveness_probe():
+    """Probe liveness pour Kubernetes/Docker"""
+    return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+@app.get("/health/ready")
+async def readiness_probe():
+    """Probe readiness pour Kubernetes/Docker"""
+    try:
+        deepseek_ready = (
+            conversation_service_loader.deepseek_client and
+            conversation_service_loader.deepseek_client.health_check()
+        )
+    except Exception as e:
+        logger.warning(f"Erreur readiness DeepSeek: {str(e)}")
+        deepseek_ready = False
+
+    is_ready = (
+        conversation_service_loader.service_healthy and
+        conversation_service_loader.deepseek_client and
+        deepseek_ready
+    )
+
+    status_code = 200 if is_ready else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ready" if is_ready else "not_ready",
+            "service_healthy": conversation_service_loader.service_healthy,
+            "jwt_compatible": conversation_service_loader.service_config.get("jwt_compatible", False) if conversation_service_loader.service_config else False,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    )
 
 # Health check global principal (compatible pattern Harena)
 @app.get("/health")

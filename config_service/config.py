@@ -19,7 +19,9 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     PROJECT_NAME: str = "Harena Finance Platform"
     API_V1_STR: str = "/api/v1"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 8))  # 8 jours par défaut
+    # Configuration ISO production : tokens courts pour sécurité maximale
+    # 60 minutes (1 heure) en production, modifiable via variable d'environnement
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60))  # 1 heure par défaut (ISO prod)
     ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
     
     # ==========================================
@@ -220,6 +222,7 @@ class GlobalSettings(BaseSettings):
     USER_SERVICE_URL: str = os.environ.get("USER_SERVICE_URL", "")
     SYNC_SERVICE_URL: str = os.environ.get("SYNC_SERVICE_URL", "")
     TRANSACTION_VECTOR_SERVICE_URL: str = os.environ.get("TRANSACTION_VECTOR_SERVICE_URL", "")
+    SEARCH_SERVICE_URL: str = os.environ.get("SEARCH_SERVICE_URL", "http://localhost:8002/api/v1")
     
     # ==========================================
     # CONFIGURATION CORS

@@ -114,16 +114,22 @@ async def analyze_conversation(
             )
             
             # Persistence si disponible
+            saved_conversation_id = None
             if persistence_service:
-                await _save_conversation_turn(
+                saved_conversation_id = await _save_conversation_turn(
                     persistence_service=persistence_service,
                     user_id=validated_user_id,
                     user_message=clean_message,
                     assistant_response=result.response_text if result.response_text else "Erreur de traitement",
                     result_data=_serialize_conversation_result(result),
-                    request_id=request_id
+                    request_id=request_id,
+                    conversation_id=request_data.conversation_id
                 )
-            
+
+            # Ajouter conversation_id à la réponse
+            if saved_conversation_id:
+                response["conversation_id"] = saved_conversation_id
+
             return response
         
         else:
@@ -213,15 +219,20 @@ async def analyze_conversation_stream(
                 # Sauvegarder la conversation après le streaming
                 if persistence_service and accumulated_response:
                     try:
-                        await _save_conversation_turn(
+                        saved_conversation_id = await _save_conversation_turn(
                             persistence_service=persistence_service,
                             user_id=validated_user_id,
                             user_message=clean_message,
                             assistant_response=accumulated_response,
                             result_data={"request_id": request_id, "streaming": True},
-                            request_id=request_id
+                            request_id=request_id,
+                            conversation_id=request_data.conversation_id
                         )
-                        logger.info(f"[{request_id}] Conversation sauvegardée en base")
+                        logger.info(f"[{request_id}] Conversation sauvegardée en base - ID: {saved_conversation_id}")
+
+                        # Envoyer le conversation_id au frontend
+                        if saved_conversation_id:
+                            yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': saved_conversation_id})}\n\n"
                     except Exception as e:
                         logger.error(f"[{request_id}] Erreur sauvegarde conversation: {str(e)}")
 
@@ -724,32 +735,66 @@ async def _save_conversation_turn(
     user_message: str,
     assistant_response: str,
     result_data: Dict[str, Any],
-    request_id: str
+    request_id: str,
+    conversation_id: Optional[int] = None
 ):
-    """Sauvegarde un tour de conversation"""
+    """Sauvegarde un tour de conversation
+
+    Args:
+        conversation_id: Si fourni, ajoute à cette conversation existante.
+                        Si None, crée une NOUVELLE conversation.
+    """
     try:
-        conversation = persistence_service.get_or_create_active_conversation(
-            user_id=user_id,
-            conversation_title=f"Conversation du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-        )
-        
+        from db_service.models.conversation import Conversation
+
+        if conversation_id:
+            # Utiliser la conversation existante
+            conversation = persistence_service.db.query(Conversation).filter_by(
+                id=conversation_id,
+                user_id=user_id
+            ).first()
+
+            if not conversation:
+                logger.warning(f"[{request_id}] Conversation {conversation_id} non trouvée pour user {user_id}, création d'une nouvelle")
+                conversation = persistence_service.create_conversation(
+                    user_id=user_id,
+                    title=f"Conversation du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                )
+            else:
+                logger.debug(f"[{request_id}] Ajout à conversation existante - ID: {conversation_id}")
+        else:
+            # Créer une NOUVELLE conversation
+            logger.info(f"[{request_id}] Création d'une NOUVELLE conversation pour user {user_id}")
+            conversation = persistence_service.create_conversation(
+                user_id=user_id,
+                title=f"Conversation du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            )
+
         turn_data = {
             "request_id": request_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "architecture": "v2.0",
             "pipeline_data": result_data
         }
-        
+
         persistence_service.add_conversation_turn(
             conversation_id=conversation.id,
             user_message=user_message,
             assistant_response=assistant_response,
             turn_data=turn_data
         )
-        
+
         logger.debug(f"[{request_id}] Conversation sauvegardee - ID: {conversation.id}")
-    
+
+        # Retourner l'ID de la conversation pour que le frontend puisse l'utiliser
+        return conversation.id
+
     except Exception as e:
-        logger.error(f"[{request_id}] Erreur sauvegarde conversation: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"[{request_id}] Erreur sauvegarde conversation: {str(e)}\n{error_trace}")
+        print(f"ERROR SAVING CONVERSATION: {str(e)}")
+        print(error_trace)
+        return None
 
 logger.info("Conversation routes v2.0 configured")

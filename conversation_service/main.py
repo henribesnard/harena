@@ -666,7 +666,9 @@ else:
     cors_origins = [
         "https://app.harena.fr",
         "https://api.harena.fr",
-        "https://harenabackend-ab1b255e55c6.herokuapp.com"
+        "https://harenabackend-ab1b255e55c6.herokuapp.com",
+        "https://d19gou4k6g36eh.cloudfront.net",  # Frontend CloudFront
+        "https://d3l74kj9wvw60x.cloudfront.net"   # API CloudFront
     ]
 
 app.add_middleware(

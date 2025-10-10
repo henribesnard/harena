@@ -42,36 +42,41 @@ async def lifespan(app: FastAPI):
     
     # Vérification des configurations critiques
     config_issues = []
-    
-    if not settings.BONSAI_URL:
-        config_issues.append("BONSAI_URL non définie")
-        logger.error("❌ BONSAI_URL non définie. L'indexation Elasticsearch ne fonctionnera pas.")
-    
-    if config_issues:
+
+    if not settings.BONSAI_URL and not getattr(settings, 'ELASTICSEARCH_URL', None):
+        config_issues.append("BONSAI_URL ou ELASTICSEARCH_URL non définie")
+        logger.warning("⚠️ BONSAI_URL non définie. Tentative avec ELASTICSEARCH_URL...")
+
+    if config_issues and not getattr(settings, 'ELASTICSEARCH_URL', None):
         logger.error(f"❌ Problèmes de configuration détectés: {', '.join(config_issues)}")
-        logger.error("💡 Le service ne peut pas démarrer sans Elasticsearch")
-        raise ValueError("Configuration Elasticsearch manquante")
+        logger.error("💡 Service désactivé car Elasticsearch non configuré")
+        # Ne pas raise l'erreur, juste logger et continuer sans Elasticsearch
+        elasticsearch_client = None
+        elasticsearch_processor = None
     
-    # 1. Initialisation du client Elasticsearch
+    # 1. Initialisation du client Elasticsearch (si configuré)
     elasticsearch_success = False
-    try:
-        elasticsearch_client = ElasticsearchClient()
-        await elasticsearch_client.initialize()
-        elasticsearch_success = True
-        logger.info("✅ Elasticsearch client initialisé avec succès")
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de l'initialisation d'Elasticsearch: {e}")
-        raise Exception(f"Failed to initialize Elasticsearch: {e}")
-    
-    # 2. Création du processeur Elasticsearch
+    if not config_issues or getattr(settings, 'ELASTICSEARCH_URL', None):
+        try:
+            elasticsearch_client = ElasticsearchClient()
+            await elasticsearch_client.initialize()
+            elasticsearch_success = True
+            logger.info("✅ Elasticsearch client initialisé avec succès")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors de l'initialisation d'Elasticsearch: {e}")
+            logger.warning("💡 Le service continuera sans Elasticsearch")
+            elasticsearch_client = None
+
+    # 2. Création du processeur Elasticsearch (si client disponible)
     processor_success = False
-    try:
-        elasticsearch_processor = ElasticsearchTransactionProcessor(elasticsearch_client)
-        processor_success = True
-        logger.info("✅ Elasticsearch processor créé avec succès")
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la création du processeur: {e}")
-        raise Exception(f"Failed to create processor: {e}")
+    if elasticsearch_client:
+        try:
+            elasticsearch_processor = ElasticsearchTransactionProcessor(elasticsearch_client)
+            processor_success = True
+            logger.info("✅ Elasticsearch processor créé avec succès")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors de la création du processeur: {e}")
+            elasticsearch_processor = None
     
     # 3. Injection des instances dans le module routes
     try:
@@ -302,7 +307,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8002,
+        port=8003,
         reload=True,
         log_level="info"
     )

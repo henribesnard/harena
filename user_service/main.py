@@ -98,4 +98,4 @@ if __name__ == "__main__":
         print("Standalone server disabled. Use local_app.py (port 8000) or set HARENA_STANDALONE=true")
         sys.exit(0)
     import uvicorn
-    uvicorn.run("user_service.main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("user_service.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -51,14 +51,17 @@ class ConversationRequest(BaseModel):
     
     # Champ principal
     message: str
-    
+
+    # Conversation tracking
+    conversation_id: Optional[int] = None
+
     # Métadonnées optionnelles
     message_type: MessageType = MessageType.TEXT
     priority: RequestPriority = RequestPriority.NORMAL
     client_info: Optional[Dict[str, Any]] = None
     context_hints: Optional[Dict[str, Any]] = None
     preferences: Optional[Dict[str, Any]] = None
-    
+
     # Debugging et tracing (non-production uniquement)
     debug_mode: bool = False
     trace_id: Optional[str] = None

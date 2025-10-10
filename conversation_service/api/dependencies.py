@@ -97,12 +97,15 @@ class ApplicationState:
             )
             
             # Query Executor
+            import os
+            search_service_url = os.getenv("SEARCH_SERVICE_URL", "http://localhost:8000/api/v1")
             self.query_executor = QueryExecutor(
-                search_service_url="http://localhost:8000",
+                search_service_url=search_service_url,
                 timeout_seconds=10,
                 max_concurrent_requests=50
             )
             await self.query_executor.initialize()
+            logger.info(f"Query Executor configured with search_service_url: {search_service_url}")
             
             logger.info("OK Agents Logiques initialises")
             

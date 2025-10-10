@@ -785,20 +785,36 @@ PROFIL UTILISATEUR:
         return system_prompt
     
     def _filter_transaction_data(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
-        """Filtre les donnees de transaction pour ne garder que les champs utiles"""
-        
-        # Champs a garder (user-friendly)
-        user_friendly_fields = {
-            'amount', 'date', 'merchant_name', 'merchant', 'primary_description', 
-            'description', 'category', 'transaction_type', 'currency'
+        """Filtre les données de transaction pour minimiser le contexte LLM
+
+        Réduit de 14 champs à 6 champs essentiels pour améliorer la précision du LLM
+        et réduire la consommation de tokens (~57% de réduction).
+
+        Champs conservés :
+        - amount: Montant de la transaction
+        - date: Date de la transaction
+        - primary_description: Description détaillée
+        - merchant_name: Nom du marchand
+        - category_name: Catégorie de dépense/revenu
+        - operation_type: Type d'opération (CB, VIR, etc.)
+        """
+
+        # Champs essentiels pour le LLM (optimisation token)
+        essential_fields = {
+            'amount',              # Montant de la transaction
+            'date',                # Date de la transaction
+            'primary_description', # Description détaillée
+            'merchant_name',       # Nom du marchand
+            'category_name',       # Catégorie
+            'operation_type'       # Type d'opération (CB, VIR, etc.)
         }
-        
-        # Filtrer les champs techniques (user_id, IDs, etc.)
+
+        # Filtrer en conservant uniquement les champs essentiels
         filtered_transaction = {}
         for key, value in transaction.items():
-            if key in user_friendly_fields and value is not None:
+            if key in essential_fields and value is not None:
                 filtered_transaction[key] = value
-        
+
         return filtered_transaction
 
     def _build_user_prompt(
@@ -816,23 +832,44 @@ PROFIL UTILISATEUR:
         # Intention classifiee
         prompt_parts.append(f"INTENTION: {request.intent_group}.{request.intent_subtype}")
         
-        # Resultats de recherche
+        # Resultats de recherche - TOUTES les transactions filtrées
         if request.search_results:
-            results_summary = f"DONNeES TROUVeES ({len(request.search_results)} resultats):"
-            
-            # Filtrer et limiter l'affichage des donnees (eviter surcharge context)
-            for i, result in enumerate(request.search_results[:5]):
-                filtered_result = self._filter_transaction_data(result)
-                result_str = json.dumps(filtered_result, ensure_ascii=False)[:200]
-                results_summary += f"\n{i+1}. {result_str}..."
-            
-            if len(request.search_results) > 5:
-                results_summary += f"\n... et {len(request.search_results) - 5} autres resultats"
-            
+            # Filtrer TOUTES les transactions pour réduire le contexte LLM
+            filtered_results = [
+                self._filter_transaction_data(result)
+                for result in request.search_results
+            ]
+
+            # Vérification de la limite de tokens
+            max_transactions = self._calculate_max_transactions_for_context(filtered_results)
+
+            # Tronquer si nécessaire avec warning
+            if len(filtered_results) > max_transactions:
+                logger.warning(
+                    f"Réduction du nombre de transactions pour le LLM: "
+                    f"{len(filtered_results)} → {max_transactions} (limite tokens)"
+                )
+                filtered_results = filtered_results[:max_transactions]
+
+            # Construire le résumé avec TOUTES les transactions filtrées
+            results_summary = f"DONNEES TROUVEES ({len(filtered_results)} transactions"
+            if len(filtered_results) < len(request.search_results):
+                results_summary += f" sur {len(request.search_results)} total, limite appliquée"
+            results_summary += "):\n"
+
+            # Envoyer TOUTES les transactions filtrées au LLM (format compact JSON)
+            results_summary += json.dumps(filtered_results, ensure_ascii=False, indent=2)
+
             prompt_parts.append(results_summary)
         else:
-            prompt_parts.append("DONNeES: Aucune donnee trouvee")
-        
+            prompt_parts.append("DONNEES: Aucune donnee trouvee")
+
+        # Agrégations optimisées (optionnel mais utile pour les totaux)
+        if request.search_aggregations:
+            formatted_aggs = self._format_aggregations_for_llm(request.search_aggregations)
+            if formatted_aggs:
+                prompt_parts.append(f"AGREGATIONS FINANCIERES:\n{formatted_aggs}")
+
         # Insights automatiques
         if insights:
             insights_text = "INSIGHTS AUTOMATIQUES:"
@@ -1015,7 +1052,98 @@ PROFIL UTILISATEUR:
     def _get_processing_time(self, start_time: datetime) -> int:
         """Calcule le temps de traitement en ms"""
         return int((datetime.now() - start_time).total_seconds() * 1000)
-    
+
+    def _calculate_max_transactions_for_context(
+        self,
+        filtered_transactions: List[Dict[str, Any]]
+    ) -> int:
+        """Calcule le nombre maximum de transactions à inclure sans dépasser les limites de tokens
+
+        Limite DeepSeek : 128K tokens
+        Budget alloué aux transactions : 80K tokens (laisse 48K pour le reste du contexte)
+        Estimation : ~55 tokens par transaction filtrée (6 champs)
+
+        Args:
+            filtered_transactions: Liste des transactions déjà filtrées
+
+        Returns:
+            Nombre maximum de transactions à inclure dans le contexte
+        """
+
+        MAX_TOKENS_FOR_TRANSACTIONS = 80000  # Budget token pour les transactions
+        AVG_TOKENS_PER_TRANSACTION = 55      # Estimation après filtrage à 6 champs
+
+        # Calcul du nombre max basé sur le budget tokens
+        max_based_on_tokens = MAX_TOKENS_FOR_TRANSACTIONS // AVG_TOKENS_PER_TRANSACTION
+
+        # Limite de sécurité : maximum 1500 transactions
+        max_transactions = min(max_based_on_tokens, 1500, len(filtered_transactions))
+
+        logger.debug(
+            f"Calcul limite transactions: {len(filtered_transactions)} disponibles, "
+            f"max basé tokens: {max_based_on_tokens}, limite retenue: {max_transactions}"
+        )
+
+        return max_transactions
+
+    def _format_aggregations_for_llm(
+        self,
+        aggregations: Dict[str, Any]
+    ) -> str:
+        """Formate les agrégations de manière compacte pour le LLM
+
+        Optimise les agrégations en ne gardant que les métriques essentielles
+        et en limitant le nombre de détails par catégorie.
+
+        Args:
+            aggregations: Dictionnaire des agrégations depuis search_service
+
+        Returns:
+            String JSON formaté avec les agrégations optimisées
+        """
+
+        if not aggregations:
+            return ""
+
+        # Extraire uniquement les métriques essentielles
+        compact_aggs = {}
+
+        # Total des transactions
+        if 'transaction_count' in aggregations:
+            compact_aggs['total_transactions'] = aggregations['transaction_count'].get('value', 0)
+
+        # Total débits
+        if 'total_debit' in aggregations and 'sum_amount' in aggregations['total_debit']:
+            compact_aggs['total_debit'] = round(
+                aggregations['total_debit']['sum_amount'].get('value', 0), 2
+            )
+
+        # Total crédits
+        if 'total_credit' in aggregations and 'sum_amount' in aggregations['total_credit']:
+            compact_aggs['total_credit'] = round(
+                aggregations['total_credit']['sum_amount'].get('value', 0), 2
+            )
+
+        # Top marchands (seulement top 5 pour éviter la surcharge)
+        top_merchants = []
+        for key, value in aggregations.items():
+            # Identifier les agrégations de marchands (finissent par _debit ou _credit)
+            if (key.endswith('_debit') or key.endswith('_credit')) and isinstance(value, dict):
+                merchant_name = key.replace('_debit', '').replace('_credit', '').replace('_', ' ').title()
+                amount = value.get('sum_amount', {}).get('value', 0)
+                if amount > 0:
+                    top_merchants.append({
+                        'merchant': merchant_name,
+                        'amount': round(amount, 2)
+                    })
+
+        # Trier par montant et limiter à top 5
+        if top_merchants:
+            top_merchants.sort(key=lambda x: x['amount'], reverse=True)
+            compact_aggs['top_merchants'] = top_merchants[:5]
+
+        return json.dumps(compact_aggs, ensure_ascii=False, indent=2)
+
     def get_stats(self) -> Dict[str, Any]:
         """Recupere les statistiques du generateur"""
         return {

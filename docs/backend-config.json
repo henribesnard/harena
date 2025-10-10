@@ -1,0 +1,199 @@
+{
+  "environment": "production",
+  "baseIP": "34.244.189.140",
+  "services": {
+    "user": {
+      "port": 8000,
+      "baseURL": "http://34.244.189.140:8000",
+      "endpoints": {
+        "auth": {
+          "register": "/api/v1/users/register",
+          "login": "/api/v1/users/login",
+          "logout": "/api/v1/users/logout",
+          "refresh": "/api/v1/users/refresh"
+        },
+        "profile": {
+          "me": "/api/v1/users/me",
+          "update": "/api/v1/users/me",
+          "delete": "/api/v1/users/me"
+        },
+        "metrics": {
+          "overview": "/api/v1/metrics/overview",
+          "byCategory": "/api/v1/metrics/by-category",
+          "recurring": "/api/v1/metrics/recurring",
+          "trends": "/api/v1/metrics/trends"
+        },
+        "health": {
+          "check": "/health",
+          "docs": "/docs"
+        }
+      },
+      "requiresAuth": {
+        "register": false,
+        "login": false,
+        "me": true,
+        "metrics": true
+      }
+    },
+    "conversation": {
+      "port": 8001,
+      "baseURL": "http://34.244.189.140:8001",
+      "endpoints": {
+        "conversation": {
+          "analyze": "/api/v1/conversation/{user_id}",
+          "stream": "/api/v1/conversation/{user_id}/stream",
+          "websocket": "/api/v1/conversation/{user_id}/ws"
+        },
+        "history": {
+          "list": "/api/v1/conversation/conversations/{user_id}",
+          "details": "/api/v1/conversation/conversation/{conversation_id}/turns"
+        },
+        "admin": {
+          "count": "/api/v1/conversation/admin/conversations/count",
+          "clear": "/api/v1/conversation/admin/conversations/clear"
+        },
+        "monitoring": {
+          "health": "/api/v1/conversation/health",
+          "status": "/api/v1/conversation/status",
+          "metrics": "/api/v1/conversation/metrics"
+        },
+        "health": {
+          "check": "/health",
+          "live": "/health/live",
+          "ready": "/health/ready",
+          "prometheus": "/metrics",
+          "docs": "/docs"
+        }
+      },
+      "requiresAuth": {
+        "analyze": true,
+        "stream": true,
+        "websocket": true,
+        "list": true,
+        "details": true
+      },
+      "features": {
+        "streaming": true,
+        "websocket": true,
+        "persistence": true,
+        "jwtCompatible": true,
+        "phase": 5
+      }
+    },
+    "search": {
+      "port": 8005,
+      "baseURL": "http://34.244.189.140:8005",
+      "endpoints": {
+        "search": {
+          "transactions": "/api/v1/search",
+          "categories": "/api/v1/search/categories",
+          "merchants": "/api/v1/search/merchants"
+        },
+        "health": {
+          "check": "/health",
+          "docs": "/docs"
+        }
+      },
+      "requiresAuth": {
+        "transactions": true,
+        "categories": true,
+        "merchants": true
+      },
+      "features": {
+        "fulltext": true,
+        "aggregations": true,
+        "filters": ["category", "date", "amount", "merchant"]
+      }
+    },
+    "metrics": {
+      "port": 8004,
+      "baseURL": "http://34.244.189.140:8004",
+      "endpoints": {
+        "metrics": {
+          "overview": "/api/v1/metrics/{user_id}/overview",
+          "byCategory": "/api/v1/metrics/{user_id}/by-category",
+          "recurring": "/api/v1/metrics/{user_id}/recurring",
+          "trends": "/api/v1/metrics/{user_id}/trends",
+          "cashflow": "/api/v1/metrics/{user_id}/cashflow"
+        },
+        "health": {
+          "check": "/health",
+          "docs": "/docs"
+        }
+      },
+      "requiresAuth": {
+        "overview": true,
+        "byCategory": true,
+        "recurring": true,
+        "trends": true,
+        "cashflow": true
+      },
+      "queryParams": {
+        "dateFrom": "date_from",
+        "dateTo": "date_to",
+        "category": "category",
+        "period": "period"
+      },
+      "periods": ["daily", "weekly", "monthly", "yearly"]
+    },
+    "enrichment": {
+      "port": 8002,
+      "baseURL": "http://34.244.189.140:8002",
+      "endpoints": {
+        "enrichment": {
+          "transaction": "/api/v1/enrichment/transaction",
+          "batch": "/api/v1/enrichment/batch",
+          "categories": "/api/v1/enrichment/categories",
+          "rules": "/api/v1/enrichment/rules"
+        },
+        "health": {
+          "check": "/health",
+          "docs": "/docs"
+        }
+      },
+      "requiresAuth": {
+        "transaction": true,
+        "batch": true,
+        "categories": true,
+        "rules": true
+      },
+      "features": {
+        "categorization": true,
+        "normalization": true,
+        "duplicateDetection": true,
+        "bridgeAPI": true
+      }
+    }
+  },
+  "cors": {
+    "allowedOrigins": [
+      "https://app.harena.fr",
+      "https://api.harena.fr",
+      "https://harenabackend-ab1b255e55c6.herokuapp.com"
+    ],
+    "credentials": true,
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  },
+  "auth": {
+    "type": "JWT",
+    "header": "Authorization",
+    "prefix": "Bearer",
+    "tokenExpiry": 3600,
+    "loginEndpoint": "/api/v1/users/login",
+    "refreshEndpoint": "/api/v1/users/refresh"
+  },
+  "deployment": {
+    "platform": "AWS EC2",
+    "region": "eu-west-1",
+    "instanceId": "i-0cc135eda272700e1",
+    "publicIP": "34.244.189.140"
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdate": "2025-10-08",
+    "documentation": {
+      "full": "docs/BACKEND_API_URLS.md",
+      "quick": "docs/BACKEND_ENDPOINTS_QUICK_REFERENCE.md"
+    }
+  }
+}

@@ -70,6 +70,10 @@ config.json
 *.md
 !conversation_service/config/README.md
 !conversation_service/prompts/README.md
+!DEPLOYMENT.md
+!QUICK_START.md
+!AWS_SETUP_SUMMARY.md
+!README.md
 
 
 # Dossiers de données locales ou volumineuses
@@ -87,6 +91,7 @@ harena_front/
 .generated/
 test_output/
 test_enrichissement.py
+test_reports_query_extraction/
 
 # Dépendances Node.js (si vous ajoutez un frontend plus tard)
 node_modules/

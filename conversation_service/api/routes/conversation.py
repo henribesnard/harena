@@ -669,7 +669,8 @@ def _convert_orchestrator_to_api_response(
 
         "response": {
             "message": result.response_text,
-            "structured_data": result.insights
+            "structured_data": result.insights,
+            "visualizations": result.data_visualizations if hasattr(result, 'data_visualizations') else []
         },
 
         "search_summary": {

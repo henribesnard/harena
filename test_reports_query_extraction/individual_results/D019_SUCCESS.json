@@ -3,7 +3,7 @@
   "category": "D_temporel",
   "question": "Mes dépenses aujourd'hui",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "today",
     "transaction_type": "debit"
@@ -16,7 +16,7 @@
     "filters": {
       "transaction_type": "debit",
       "date": {
-        "eq": "2025-10-05"
+        "eq": "2025-10-10"
       }
     },
     "sort": [
@@ -61,8 +61,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18475.563799991505,
+  "latency_ms": 20271.495900000446,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:12:08.707775"
+  "timestamp": "2025-10-10T11:42:39.848792"
 }

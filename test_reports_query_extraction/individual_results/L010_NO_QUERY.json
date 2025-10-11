@@ -4,9 +4,19 @@
   "question": "tel:0123456789 mes achats",
   "intent_detected": "CONVERSATIONAL",
   "intent_confidence": 0.7,
-  "entities_structured": {},
-  "entities_count": 0,
-  "entity_confidence": 0.0,
+  "entities_structured": {
+    "categories": [
+      "Carburant",
+      "Transport",
+      "Loisirs",
+      "Entretien maison",
+      "achats en ligne",
+      "Alimentation",
+      "Vêtements"
+    ]
+  },
+  "entities_count": 1,
+  "entity_confidence": 0.9,
   "query_found": false,
   "query_data": null,
   "query_size": 0,
@@ -21,8 +31,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 13669.609199976549,
+  "latency_ms": 15155.769200006034,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-01T07:49:52.645853"
+  "timestamp": "2025-10-10T12:15:25.784427"
 }

@@ -5,18 +5,11 @@
   "intent_detected": "financial_query",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "categories": [
-      "Alimentation",
-      "Supermarkets / Groceries",
-      "Restaurants",
-      "Fast foods",
-      "Coffee shop",
-      "Food - Others"
-    ],
+    "query": "optimisation budget alimentaire",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.9,
+  "entity_confidence": 0.8500000000000001,
   "query_found": false,
   "query_data": null,
   "query_size": 0,
@@ -31,8 +24,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 22619.064399972558,
+  "latency_ms": 21453.525499993702,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:36:28.628561"
+  "timestamp": "2025-10-10T12:11:51.281700"
 }

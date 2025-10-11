@@ -3,7 +3,7 @@
   "category": "C_categorie",
   "question": "Mes abonnements",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "streaming",
@@ -14,7 +14,7 @@
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -169,8 +169,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 31365.646799997194,
+  "latency_ms": 25201.132100017276,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:58:59.006481"
+  "timestamp": "2025-10-10T11:35:29.238207"
 }

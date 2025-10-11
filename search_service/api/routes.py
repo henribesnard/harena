@@ -10,8 +10,8 @@ from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Router principal
-router = APIRouter(tags=["search"])
+# Router principal avec préfixe /api/v1
+router = APIRouter(prefix="/api/v1", tags=["search"])
 
 # Instance globale du moteur de recherche
 search_engine = SearchEngine()
@@ -153,25 +153,25 @@ async def count_transactions(
 async def health_check() -> Dict[str, Any]:
     """
     Vérification de santé du service de recherche
-    
+
     Returns:
         Dict avec le statut du service et ses composants
     """
     health_status = {
         "status": "healthy",
         "service": "search_service",
-        "version": settings.api_version,
+        "version": "1.0.0",
         "components": {}
     }
-    
+
     # Vérifier le client Elasticsearch
     try:
-        if search_engine.elasticsearch_client:
+        if hasattr(search_engine, 'elasticsearch_client') and search_engine.elasticsearch_client:
             # Test simple de connectivité
             # On peut adapter selon les méthodes disponibles dans votre client
             health_status["components"]["elasticsearch"] = {
                 "status": "connected",
-                "index": search_engine.index_name
+                "index": getattr(search_engine, 'index_name', 'unknown')
             }
         else:
             health_status["components"]["elasticsearch"] = {
@@ -183,8 +183,8 @@ async def health_check() -> Dict[str, Any]:
             "status": "error",
             "error": str(e)
         }
-        health_status["status"] = "unhealthy"
-    
+        health_status["status"] = "degraded"
+
     return health_status
 
 @router.get("/metrics")

@@ -3,13 +3,13 @@
   "category": "D_temporel",
   "question": "Mes transactions du 1er au 15 octobre",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "2025-10-01_2025-10-15",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -75,8 +75,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18537.682700000005,
+  "latency_ms": 20518.60310000484,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:14:38.228656"
+  "timestamp": "2025-10-10T11:44:41.352119"
 }

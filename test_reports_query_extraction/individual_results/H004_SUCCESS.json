@@ -3,16 +3,17 @@
   "category": "H_recherche",
   "question": "Toutes les transactions contenant 'voyage'",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "query": "voyage",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "voyage",
     "sort": [
       {
         "date": {
@@ -57,7 +58,7 @@
       }
     }
   },
-  "query_size": 411,
+  "query_size": 430,
   "has_filters": false,
   "has_aggregations": true,
   "filter_count": 0,
@@ -72,8 +73,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 31806.056800065562,
+  "latency_ms": 22513.644299993757,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:23:55.766346"
+  "timestamp": "2025-10-10T12:02:16.766602"
 }

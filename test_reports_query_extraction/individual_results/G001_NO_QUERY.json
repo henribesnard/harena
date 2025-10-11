@@ -3,7 +3,7 @@
   "category": "G_analyse",
   "question": "Combien j'ai dépensé ce mois ?",
   "intent_detected": "financial_query",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "this_month",
     "transaction_type": "debit"
@@ -24,8 +24,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 17035.44700006023,
+  "latency_ms": 16470.548499986762,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:17:55.494806"
+  "timestamp": "2025-10-10T11:57:17.090063"
 }

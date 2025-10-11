@@ -9,11 +9,10 @@
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Amazon",
     "filters": {
       "merchant_name": "Amazon",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 567,
+  "query_size": 548,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 25947.275900049135,
+  "latency_ms": 22586.6089000192,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:31:03.250335"
+  "timestamp": "2025-10-10T12:07:07.290914"
 }

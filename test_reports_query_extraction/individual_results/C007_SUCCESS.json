@@ -3,7 +3,7 @@
   "category": "C_categorie",
   "question": "Mes frais bancaires",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "Frais bancaires"
@@ -11,7 +11,7 @@
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.94,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27025.685800006613,
+  "latency_ms": 20794.070000003558,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:56:59.417916"
+  "timestamp": "2025-10-10T11:33:58.634034"
 }

@@ -3,7 +3,7 @@
   "category": "A_montant",
   "question": "Mes achats compris entre 100€ et 200€",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "amount_min": 100,
     "amount_max": 200,
@@ -256,8 +256,8 @@
       "entities_translated": "4/4"
     }
   },
-  "latency_ms": 27765.721000003396,
+  "latency_ms": 22917.712499998743,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:34:33.469812"
+  "timestamp": "2025-10-10T11:22:29.692787"
 }

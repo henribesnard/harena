@@ -6,7 +6,6 @@
   "intent_confidence": 0.85,
   "entities_structured": {
     "transaction_type": "debit",
-    "query": "achats répétitifs récurrents réguliers",
     "categories": [
       "Carburant",
       "Transport",
@@ -17,8 +16,8 @@
       "Vêtements"
     ]
   },
-  "entities_count": 3,
-  "entity_confidence": 0.8833333333333333,
+  "entities_count": 2,
+  "entity_confidence": 0.9,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -245,16 +244,14 @@
   "filter_count": 2,
   "aggregation_count": 9,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: query"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/3"
+      "entities_translated": "2/2"
     }
   },
-  "latency_ms": 36229.75440020673,
+  "latency_ms": 18172.466000018176,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:25:29.904205"
+  "timestamp": "2025-10-10T12:03:16.441263"
 }

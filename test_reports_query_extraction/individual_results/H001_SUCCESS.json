@@ -5,7 +5,7 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "query": "restaurant italien",
+    "query": "restaurant italien cuisine italienne",
     "transaction_type": "debit"
   },
   "entities_count": 2,
@@ -13,6 +13,7 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "restaurant italien cuisine italienne",
     "filters": {
       "transaction_type": "debit"
     },
@@ -46,7 +47,7 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 374,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -60,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 22916.631900006905,
+  "latency_ms": 19694.046899996465,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:22:35.978759"
+  "timestamp": "2025-10-10T12:01:12.636972"
 }

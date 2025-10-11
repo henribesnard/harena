@@ -12,6 +12,18 @@ resource "aws_security_group" "rds" {
     description     = "PostgreSQL from backend"
   }
 
+  # En dev: accès public pour DBeaver
+  dynamic "ingress" {
+    for_each = var.environment == "dev" ? [1] : []
+    content {
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+      description = "Public access for development"
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -26,8 +38,9 @@ resource "aws_security_group" "rds" {
 
 # DB Subnet Group
 resource "aws_db_subnet_group" "main" {
-  name       = "harena-db-subnet-${var.environment}"
-  subnet_ids = var.private_subnet_ids
+  name = "harena-db-subnet-${var.environment}"
+  # En dev: utiliser subnets publics pour accès direct, en prod: subnets privés
+  subnet_ids = var.environment == "dev" ? var.public_subnet_ids : var.private_subnet_ids
 
   tags = {
     Name = "harena-db-subnet-${var.environment}"
@@ -38,7 +51,7 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "main" {
   identifier     = "harena-db-${var.environment}"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "16"
 
   instance_class    = var.instance_class
   allocated_storage = var.allocated_storage
@@ -54,7 +67,7 @@ resource "aws_db_instance" "main" {
 
   # Free Tier optimizations
   multi_az               = false
-  publicly_accessible    = false
+  publicly_accessible    = var.environment == "dev" ? true : false
   backup_retention_period = 1
   skip_final_snapshot    = true
   deletion_protection    = false

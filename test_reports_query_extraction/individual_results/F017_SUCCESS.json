@@ -3,7 +3,7 @@
   "category": "F_complexe",
   "question": "Mes retraits d'espèces d'au minimum 50 euros cette semaine",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "amount": 50,
     "operator": "gte",
@@ -17,7 +17,14 @@
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "amount_abs": {
+        "gte": 50
+      },
+      "date": {
+        "gte": "2025-10-06",
+        "lte": "2025-10-12"
+      }
     },
     "sort": [
       {
@@ -49,22 +56,22 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 404,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
+  "filter_count": 3,
   "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "LOW",
+    "coherence_score": "MEDIUM",
     "issues": [
-      "Mauvaise traduction entités->query. Manquantes: amount, operator, date_range, operation_type"
+      "Entités manquantes dans query: operation_type"
     ],
     "details": {
-      "entities_translated": "1/5"
+      "entities_translated": "4/5"
     }
   },
-  "latency_ms": 29213.832100154832,
+  "latency_ms": 24710.39139997447,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:17:37.947592"
+  "timestamp": "2025-10-10T11:57:00.109702"
 }

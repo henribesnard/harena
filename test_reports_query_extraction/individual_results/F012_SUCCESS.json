@@ -5,22 +5,17 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "categories": [
-      "Restaurant"
-    ],
-    "query": "pourboires",
+    "query": "restaurants pourboire",
     "transaction_type": "debit"
   },
-  "entities_count": 3,
-  "entity_confidence": 0.9,
+  "entities_count": 2,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "restaurants pourboire",
     "filters": {
-      "transaction_type": "debit",
-      "category_name": [
-        "Restaurant"
-      ]
+      "transaction_type": "debit"
     },
     "sort": [
       {
@@ -49,50 +44,25 @@
             }
           }
         }
-      },
-      "restaurant_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Restaurant"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
       }
     }
   },
-  "query_size": 562,
+  "query_size": 359,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
-  "aggregation_count": 3,
+  "filter_count": 1,
+  "aggregation_count": 2,
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
       "Entités manquantes dans query: query"
     ],
     "details": {
-      "entities_translated": "2/3"
+      "entities_translated": "1/2"
     }
   },
-  "latency_ms": 37587.41599996574,
+  "latency_ms": 21221.17169998819,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:14:56.635285"
+  "timestamp": "2025-10-10T11:54:52.291601"
 }

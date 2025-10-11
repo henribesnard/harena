@@ -3,17 +3,16 @@
   "category": "L_securite",
   "question": "www.amazon.fr mes dépenses",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "merchant": "Amazon",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Amazon",
     "filters": {
       "merchant_name": "Amazon",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 567,
+  "query_size": 548,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26026.45350014791,
+  "latency_ms": 20735.53420000826,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:40:30.204068"
+  "timestamp": "2025-10-10T12:15:10.126765"
 }

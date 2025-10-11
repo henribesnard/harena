@@ -5,20 +5,16 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "amount": 0,
-    "operator": "lt",
-    "transaction_type": "credit"
+    "transaction_type": "credit",
+    "query": "revenus négatifs pertes déficit"
   },
-  "entities_count": 3,
-  "entity_confidence": 0.85,
+  "entities_count": 2,
+  "entity_confidence": 0.8500000000000001,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "credit",
-      "amount_abs": {
-        "lt": 0
-      }
+      "transaction_type": "credit"
     },
     "sort": [
       {
@@ -50,20 +46,22 @@
       }
     }
   },
-  "query_size": 353,
+  "query_size": 328,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 1,
   "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "HIGH",
-    "issues": [],
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: query"
+    ],
     "details": {
-      "entities_translated": "3/3"
+      "entities_translated": "1/2"
     }
   },
-  "latency_ms": 19791.27819999121,
+  "latency_ms": 18942.21369997831,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:36:06.433838"
+  "timestamp": "2025-10-10T11:24:00.353881"
 }

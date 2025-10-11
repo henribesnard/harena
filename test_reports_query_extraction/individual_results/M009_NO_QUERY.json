@@ -3,7 +3,7 @@
   "category": "M_robustesse",
   "question": "mes...dépenses...points...de...suspension",
   "intent_detected": "CONVERSATIONAL",
-  "intent_confidence": 0.5,
+  "intent_confidence": 0.7,
   "entities_structured": {},
   "entities_count": 0,
   "entity_confidence": 0.0,
@@ -21,8 +21,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 14320.526800118387,
+  "latency_ms": 12895.614900015062,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:44:54.287657"
+  "timestamp": "2025-10-10T12:18:28.487518"
 }

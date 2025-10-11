@@ -1,6 +1,6 @@
 {
   "category": "C_categorie",
-  "timestamp": "2025-10-05T21:59:45.258764",
+  "timestamp": "2025-10-10T11:36:12.064590",
   "total_questions": 13,
   "api_successful": 13,
   "queries_found": 13,
@@ -10,7 +10,7 @@
       "question_id": "C001",
       "question": "Mes dépenses restaurant",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "categories": [
           "Restaurant"
@@ -95,7 +95,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 24491.264399985084,
+      "latency_ms": 18402.61439999449,
       "api_success": true,
       "error_message": null
     },
@@ -188,7 +188,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26861.435400001938,
+      "latency_ms": 20825.915900000837,
       "api_success": true,
       "error_message": null
     },
@@ -196,7 +196,7 @@
       "question_id": "C003",
       "question": "Mes achats alimentaires",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "categories": [
           "Alimentation"
@@ -281,7 +281,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26425.950700009707,
+      "latency_ms": 19993.71589999646,
       "api_success": true,
       "error_message": null
     },
@@ -289,7 +289,7 @@
       "question_id": "C004",
       "question": "Mes dépenses santé",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
           "Santé/pharmacie"
@@ -374,7 +374,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 34539.93970001466,
+      "latency_ms": 20801.210199977504,
       "api_success": true,
       "error_message": null
     },
@@ -467,7 +467,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 28213.56190001825,
+      "latency_ms": 19362.217199988663,
       "api_success": true,
       "error_message": null
     },
@@ -475,19 +475,23 @@
       "question_id": "C006",
       "question": "Mes factures d'énergie",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
-        "query": "factures énergie électricité eau",
+        "categories": [
+          "Eélectricité/eau"
+        ],
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "factures énergie électricité eau",
         "filters": {
-          "transaction_type": "debit"
+          "transaction_type": "debit",
+          "category_name": [
+            "Eélectricité/eau"
+          ]
         },
         "sort": [
           {
@@ -516,24 +520,47 @@
                 }
               }
             }
+          },
+          "eélectricité/eau_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "category_name.keyword": "Eélectricité/eau"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
           }
         }
       },
-      "query_size": 385,
+      "query_size": 610,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 1,
-      "aggregation_count": 2,
+      "filter_count": 2,
+      "aggregation_count": 3,
       "coherence_analysis": {
-        "coherence_score": "MEDIUM",
-        "issues": [
-          "Entités manquantes dans query: query"
-        ],
+        "coherence_score": "HIGH",
+        "issues": [],
         "details": {
-          "entities_translated": "1/2"
+          "entities_translated": "2/2"
         }
       },
-      "latency_ms": 24600.05999999703,
+      "latency_ms": 23148.032400000375,
       "api_success": true,
       "error_message": null
     },
@@ -541,7 +568,7 @@
       "question_id": "C007",
       "question": "Mes frais bancaires",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "categories": [
           "Frais bancaires"
@@ -549,7 +576,7 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.95,
+      "entity_confidence": 0.94,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -626,7 +653,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 27025.685800006613,
+      "latency_ms": 20794.070000003558,
       "api_success": true,
       "error_message": null
     },
@@ -634,7 +661,7 @@
       "question_id": "C008",
       "question": "Mes achats vêtements",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "categories": [
           "Vêtements"
@@ -719,7 +746,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 31441.92589999875,
+      "latency_ms": 23006.94900000235,
       "api_success": true,
       "error_message": null
     },
@@ -727,13 +754,13 @@
       "question_id": "C009",
       "question": "Mes dépenses électronique",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "query": "électronique électro",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -785,7 +812,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 23627.045900007943,
+      "latency_ms": 19468.21499997168,
       "api_success": true,
       "error_message": null
     },
@@ -793,7 +820,7 @@
       "question_id": "C010",
       "question": "Mes achats en ligne",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "categories": [
           "achats en ligne"
@@ -878,7 +905,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 31134.346699982416,
+      "latency_ms": 20915.826700016623,
       "api_success": true,
       "error_message": null
     },
@@ -886,7 +913,7 @@
       "question_id": "C011",
       "question": "Mes abonnements",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "categories": [
           "streaming",
@@ -897,7 +924,7 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.95,
+      "entity_confidence": 0.925,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -1052,7 +1079,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 31365.646799997194,
+      "latency_ms": 25201.132100017276,
       "api_success": true,
       "error_message": null
     },
@@ -1060,13 +1087,13 @@
       "question_id": "C012",
       "question": "Mes dépenses spatial",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "query": "spatial espace astronomie",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -1118,7 +1145,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 25156.215700000757,
+      "latency_ms": 20092.40900000441,
       "api_success": true,
       "error_message": null
     },
@@ -1126,37 +1153,19 @@
       "question_id": "C013",
       "question": "Mes achats en Bitcoin",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "query": "bitcoin crypto cryptomonnaie",
-        "transaction_type": "debit",
-        "categories": [
-          "Carburant",
-          "Transport",
-          "Loisirs",
-          "Entretien maison",
-          "achats en ligne",
-          "Alimentation",
-          "Vêtements"
-        ]
+        "transaction_type": "debit"
       },
-      "entities_count": 3,
-      "entity_confidence": 0.9166666666666666,
+      "entities_count": 2,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
         "query": "bitcoin crypto cryptomonnaie",
         "filters": {
-          "transaction_type": "debit",
-          "category_name": [
-            "Carburant",
-            "Transport",
-            "Loisirs",
-            "Entretien maison",
-            "achats en ligne",
-            "Alimentation",
-            "Vêtements"
-          ]
+          "transaction_type": "debit"
         },
         "sort": [
           {
@@ -1185,199 +1194,24 @@
                 }
               }
             }
-          },
-          "carburant_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Carburant"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "transport_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Transport"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "loisirs_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Loisirs"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "entretien_maison_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Entretien maison"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "achats_en_ligne_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "achats en ligne"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "alimentation_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Alimentation"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "vêtements_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Vêtements"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
           }
         }
       },
-      "query_size": 1947,
+      "query_size": 366,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 2,
-      "aggregation_count": 9,
+      "filter_count": 1,
+      "aggregation_count": 2,
       "coherence_analysis": {
         "coherence_score": "MEDIUM",
         "issues": [
           "Entités manquantes dans query: query"
         ],
         "details": {
-          "entities_translated": "2/3"
+          "entities_translated": "1/2"
         }
       },
-      "latency_ms": 19583.21429998614,
+      "latency_ms": 21228.71289998875,
       "api_success": true,
       "error_message": null
     }

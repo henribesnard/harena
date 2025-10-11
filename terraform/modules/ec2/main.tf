@@ -4,13 +4,67 @@ resource "aws_security_group" "backend" {
   description = "Security group for backend EC2"
   vpc_id      = var.vpc_id
 
-  # HTTP for backend API
+  # SSH access
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SSH access"
+  }
+
+  # User Service
   ingress {
     from_port   = 8000
     to_port     = 8000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Backend API"
+    description = "User Service API"
+  }
+
+  # Conversation Service
+  ingress {
+    from_port   = 8001
+    to_port     = 8001
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Conversation Service API"
+  }
+
+  # Sync Service
+  ingress {
+    from_port   = 8002
+    to_port     = 8002
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Sync Service API"
+  }
+
+  # Enrichment Service
+  ingress {
+    from_port   = 8003
+    to_port     = 8003
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Enrichment Service API"
+  }
+
+  # Metric Service
+  ingress {
+    from_port   = 8004
+    to_port     = 8004
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Metric Service API"
+  }
+
+  # Search Service
+  ingress {
+    from_port   = 8005
+    to_port     = 8005
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Search Service API"
   }
 
   # Elasticsearch (internal only)
@@ -68,6 +122,12 @@ resource "aws_iam_role_policy_attachment" "cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
+# Attach S3 Read-Only policy for deployment
+resource "aws_iam_role_policy_attachment" "s3" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+}
+
 # Instance Profile
 resource "aws_iam_instance_profile" "ec2" {
   name = "harena-ec2-profile-${var.environment}"
@@ -109,16 +169,18 @@ locals {
 resource "aws_instance" "backend" {
   ami           = data.aws_ami.ubuntu_arm.id
   instance_type = var.instance_type
+  key_name      = "harena-deploy-key"
 
-  # Spot instance configuration
+  # Spot instance configuration - persistent pour permettre stop/start
   instance_market_options {
     market_type = var.use_spot_instances ? "spot" : null
 
     dynamic "spot_options" {
       for_each = var.use_spot_instances ? [1] : []
       content {
-        max_price          = var.spot_max_price
-        spot_instance_type = "one-time"
+        max_price                      = var.spot_max_price
+        spot_instance_type             = "persistent"
+        instance_interruption_behavior = "stop"
       }
     }
   }
@@ -144,4 +206,21 @@ resource "aws_instance" "backend" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+# Elastic IP for Backend (fixed IP address)
+resource "aws_eip" "backend" {
+  domain = "vpc"
+
+  tags = {
+    Name        = "harena-backend-eip-${var.environment}"
+    Project     = "harena"
+    Environment = var.environment
+  }
+}
+
+# Associate Elastic IP with EC2 Instance
+resource "aws_eip_association" "backend" {
+  instance_id   = aws_instance.backend.id
+  allocation_id = aws_eip.backend.id
 }

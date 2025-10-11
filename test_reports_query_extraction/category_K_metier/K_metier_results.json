@@ -1,6 +1,6 @@
 {
   "category": "K_metier",
-  "timestamp": "2025-10-03T11:38:29.140919",
+  "timestamp": "2025-10-10T12:13:30.189790",
   "total_questions": 12,
   "api_successful": 12,
   "queries_found": 7,
@@ -13,28 +13,24 @@
       "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Alimentation",
-          "Alimentation/Supermarché",
-          "Supermarkets / Groceries"
+          "Alimentation"
         ],
         "date_range": "this_week",
         "transaction_type": "debit"
       },
       "entities_count": 3,
-      "entity_confidence": 0.9333333333333332,
+      "entity_confidence": 0.9499999999999998,
       "query_found": true,
       "query_data": {
         "user_id": 100,
         "filters": {
           "transaction_type": "debit",
           "date": {
-            "gte": "2025-09-29",
-            "lte": "2025-10-05"
+            "gte": "2025-10-06",
+            "lte": "2025-10-12"
           },
           "category_name": [
-            "Alimentation",
-            "Alimentation/Supermarché",
-            "Supermarkets / Groceries"
+            "Alimentation"
           ]
         },
         "sort": [
@@ -89,8 +85,80 @@
                 }
               }
             }
+          }
+        }
+      },
+      "query_size": 620,
+      "has_filters": true,
+      "has_aggregations": true,
+      "filter_count": 3,
+      "aggregation_count": 3,
+      "coherence_analysis": {
+        "coherence_score": "HIGH",
+        "issues": [],
+        "details": {
+          "entities_translated": "3/3"
+        }
+      },
+      "latency_ms": 22288.445500016678,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "K002",
+      "question": "Budget sorties du mois",
+      "intent_detected": "transaction_search",
+      "intent_confidence": 0.85,
+      "entities_structured": {
+        "categories": [],
+        "date_range": "this_month",
+        "transaction_type": "debit"
+      },
+      "entities_count": 3,
+      "entity_confidence": 0.85,
+      "query_found": true,
+      "query_data": {
+        "user_id": 100,
+        "filters": {
+          "transaction_type": "debit",
+          "date": {
+            "gte": "2025-10-01",
+            "lte": "2025-10-31"
           },
-          "alimentation/supermarché_debit": {
+          "category_name": [
+            "Loisirs",
+            "Restaurant"
+          ]
+        },
+        "sort": [
+          {
+            "date": {
+              "order": "desc"
+            }
+          }
+        ],
+        "page_size": 50,
+        "aggregations": {
+          "transaction_count": {
+            "value_count": {
+              "field": "transaction_id"
+            }
+          },
+          "total_debit": {
+            "filter": {
+              "term": {
+                "transaction_type": "debit"
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "loisirs_debit": {
             "filter": {
               "bool": {
                 "must": [
@@ -101,7 +169,7 @@
                   },
                   {
                     "term": {
-                      "category_name.keyword": "Alimentation/Supermarché"
+                      "category_name.keyword": "Loisirs"
                     }
                   }
                 ]
@@ -115,7 +183,7 @@
               }
             }
           },
-          "supermarkets_/_groceries_debit": {
+          "restaurant_debit": {
             "filter": {
               "bool": {
                 "must": [
@@ -126,7 +194,7 @@
                   },
                   {
                     "term": {
-                      "category_name.keyword": "Supermarkets / Groceries"
+                      "category_name.keyword": "Restaurant"
                     }
                   }
                 ]
@@ -142,11 +210,11 @@
           }
         }
       },
-      "query_size": 1155,
+      "query_size": 823,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 3,
-      "aggregation_count": 5,
+      "aggregation_count": 4,
       "coherence_analysis": {
         "coherence_score": "HIGH",
         "issues": [],
@@ -154,44 +222,7 @@
           "entities_translated": "3/3"
         }
       },
-      "latency_ms": 20933.72630001977,
-      "api_success": true,
-      "error_message": null
-    },
-    {
-      "question_id": "K002",
-      "question": "Budget sorties du mois",
-      "intent_detected": "financial_query",
-      "intent_confidence": 0.85,
-      "entities_structured": {
-        "categories": [
-          "Loisirs",
-          "Restaurants/Sortie",
-          "Movies & Cinema",
-          "Concerts & Shows",
-          "Gaming",
-          "Sports Events"
-        ],
-        "date_range": "this_month",
-        "transaction_type": "debit"
-      },
-      "entities_count": 3,
-      "entity_confidence": 0.9333333333333332,
-      "query_found": false,
-      "query_data": null,
-      "query_size": 0,
-      "has_filters": false,
-      "has_aggregations": false,
-      "filter_count": 0,
-      "aggregation_count": 0,
-      "coherence_analysis": {
-        "coherence_score": "LOW",
-        "issues": [
-          "Aucune query générée malgré intent et entités détectées"
-        ],
-        "details": {}
-      },
-      "latency_ms": 20238.248399924487,
+      "latency_ms": 23122.36170002143,
       "api_success": true,
       "error_message": null
     },
@@ -199,16 +230,17 @@
       "question_id": "K003",
       "question": "Frais professionnels à rembourser",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.8,
+      "intent_confidence": 0.85,
       "entities_structured": {
-        "query": "frais professionnels rembourser",
+        "query": "frais professionnels remboursement",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.875,
+      "entity_confidence": 0.8500000000000001,
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "frais professionnels remboursement",
         "filters": {
           "transaction_type": "debit"
         },
@@ -242,7 +274,7 @@
           }
         }
       },
-      "query_size": 325,
+      "query_size": 372,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -256,7 +288,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 36053.64799988456,
+      "latency_ms": 19540.96050001681,
       "api_success": true,
       "error_message": null
     },
@@ -266,26 +298,17 @@
       "intent_detected": "transaction_search",
       "intent_confidence": 0.85,
       "entities_structured": {
-        "categories": [
-          "Voyage/Vacances"
-        ],
-        "date_range": "2025-07",
+        "query": "vacances juillet été",
         "transaction_type": "debit"
       },
-      "entities_count": 3,
-      "entity_confidence": 0.9333333333333332,
+      "entities_count": 2,
+      "entity_confidence": 0.925,
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "vacances juillet été",
         "filters": {
-          "transaction_type": "debit",
-          "date": {
-            "gte": "2025-07-01",
-            "lte": "2025-07-31"
-          },
-          "category_name": [
-            "Voyage/Vacances"
-          ]
+          "transaction_type": "debit"
         },
         "sort": [
           {
@@ -314,47 +337,24 @@
                 }
               }
             }
-          },
-          "voyage/vacances_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Voyage/Vacances"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
           }
         }
       },
-      "query_size": 629,
+      "query_size": 368,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 3,
-      "aggregation_count": 3,
+      "filter_count": 1,
+      "aggregation_count": 2,
       "coherence_analysis": {
-        "coherence_score": "HIGH",
-        "issues": [],
+        "coherence_score": "MEDIUM",
+        "issues": [
+          "Entités manquantes dans query: query"
+        ],
         "details": {
-          "entities_translated": "3/3"
+          "entities_translated": "1/2"
         }
       },
-      "latency_ms": 20911.833399906754,
+      "latency_ms": 20351.175000017975,
       "api_success": true,
       "error_message": null
     },
@@ -383,7 +383,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 16693.59659985639,
+      "latency_ms": 18672.264399996493,
       "api_success": true,
       "error_message": null
     },
@@ -402,7 +402,7 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.9,
+      "entity_confidence": 0.8500000000000001,
       "query_found": false,
       "query_data": null,
       "query_size": 0,
@@ -417,7 +417,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 19636.917000170797,
+      "latency_ms": 21605.50149998744,
       "api_success": true,
       "error_message": null
     },
@@ -427,18 +427,11 @@
       "intent_detected": "financial_query",
       "intent_confidence": 0.85,
       "entities_structured": {
-        "categories": [
-          "Alimentation",
-          "Supermarkets / Groceries",
-          "Restaurants",
-          "Fast foods",
-          "Coffee shop",
-          "Food - Others"
-        ],
+        "query": "optimisation budget alimentaire",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.9,
+      "entity_confidence": 0.8500000000000001,
       "query_found": false,
       "query_data": null,
       "query_size": 0,
@@ -453,7 +446,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 22619.064399972558,
+      "latency_ms": 21453.525499993702,
       "api_success": true,
       "error_message": null
     },
@@ -463,7 +456,7 @@
       "intent_detected": "financial_query",
       "intent_confidence": 0.85,
       "entities_structured": {
-        "transaction_type": "all"
+        "query": "objectifs épargne suivi"
       },
       "entities_count": 1,
       "entity_confidence": 0.8,
@@ -481,7 +474,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 17975.15350021422,
+      "latency_ms": 17740.66519999178,
       "api_success": true,
       "error_message": null
     },
@@ -492,8 +485,7 @@
       "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Electricity",
-          "Water"
+          "Eélectricité/eau"
         ],
         "transaction_type": "debit"
       },
@@ -505,8 +497,7 @@
         "filters": {
           "transaction_type": "debit",
           "category_name": [
-            "Electricity",
-            "Water"
+            "Eélectricité/eau"
           ]
         },
         "sort": [
@@ -537,7 +528,7 @@
               }
             }
           },
-          "electricity_debit": {
+          "eélectricité/eau_debit": {
             "filter": {
               "bool": {
                 "must": [
@@ -548,32 +539,7 @@
                   },
                   {
                     "term": {
-                      "category_name.keyword": "Electricity"
-                    }
-                  }
-                ]
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          },
-          "water_debit": {
-            "filter": {
-              "bool": {
-                "must": [
-                  {
-                    "term": {
-                      "transaction_type": "debit"
-                    }
-                  },
-                  {
-                    "term": {
-                      "category_name.keyword": "Water"
+                      "category_name.keyword": "Eélectricité/eau"
                     }
                   }
                 ]
@@ -589,11 +555,11 @@
           }
         }
       },
-      "query_size": 768,
+      "query_size": 610,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
-      "aggregation_count": 4,
+      "aggregation_count": 3,
       "coherence_analysis": {
         "coherence_score": "HIGH",
         "issues": [],
@@ -601,7 +567,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 20603.276999900118,
+      "latency_ms": 21515.636299998732,
       "api_success": true,
       "error_message": null
     },
@@ -609,24 +575,22 @@
       "question_id": "K010",
       "question": "Mes remboursements de frais médicaux",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
-          "Santé/pharmacie",
-          "Santé/Pharmacie"
+          "Santé/pharmacie"
         ],
         "transaction_type": "credit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
         "filters": {
           "transaction_type": "credit",
           "category_name": [
-            "Santé/pharmacie",
-            "Santé/Pharmacie"
+            "Santé/pharmacie"
           ]
         },
         "sort": [
@@ -668,7 +632,7 @@
                   },
                   {
                     "term": {
-                      "category_name.keyword": "Santé/Pharmacie"
+                      "category_name.keyword": "Santé/pharmacie"
                     }
                   }
                 ]
@@ -684,7 +648,7 @@
           }
         }
       },
-      "query_size": 621,
+      "query_size": 597,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -696,7 +660,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 21505.01920003444,
+      "latency_ms": 21224.839400005294,
       "api_success": true,
       "error_message": null
     },
@@ -704,13 +668,13 @@
       "question_id": "K011",
       "question": "Historique des virements reçus",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "operation_type": "transfer",
         "transaction_type": "credit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.95,
+      "entity_confidence": 0.925,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -761,72 +725,33 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 29352.495800005272,
+      "latency_ms": 21031.92979999585,
       "api_success": true,
       "error_message": null
     },
     {
       "question_id": "K012",
       "question": "Dépenses déductibles fiscalement",
-      "intent_detected": "transaction_search",
-      "intent_confidence": 0.8,
-      "entities_structured": {
-        "query": "déductibles fiscalement impôts taxes",
-        "transaction_type": "debit"
-      },
-      "entities_count": 2,
-      "entity_confidence": 0.875,
-      "query_found": true,
-      "query_data": {
-        "user_id": 100,
-        "filters": {
-          "transaction_type": "debit"
-        },
-        "sort": [
-          {
-            "date": {
-              "order": "desc"
-            }
-          }
-        ],
-        "page_size": 50,
-        "aggregations": {
-          "transaction_count": {
-            "value_count": {
-              "field": "transaction_id"
-            }
-          },
-          "total_debit": {
-            "filter": {
-              "term": {
-                "transaction_type": "debit"
-              }
-            },
-            "aggs": {
-              "sum_amount": {
-                "sum": {
-                  "field": "amount_abs"
-                }
-              }
-            }
-          }
-        }
-      },
-      "query_size": 325,
-      "has_filters": true,
-      "has_aggregations": true,
-      "filter_count": 1,
-      "aggregation_count": 2,
+      "intent_detected": "CONVERSATIONAL",
+      "intent_confidence": 0.7,
+      "entities_structured": {},
+      "entities_count": 0,
+      "entity_confidence": 0.0,
+      "query_found": false,
+      "query_data": null,
+      "query_size": 0,
+      "has_filters": false,
+      "has_aggregations": false,
+      "filter_count": 0,
+      "aggregation_count": 0,
       "coherence_analysis": {
-        "coherence_score": "MEDIUM",
+        "coherence_score": "LOW",
         "issues": [
-          "Entités manquantes dans query: query"
+          "Aucune query générée malgré intent et entités détectées"
         ],
-        "details": {
-          "entities_translated": "1/2"
-        }
+        "details": {}
       },
-      "latency_ms": 28057.76089988649,
+      "latency_ms": 14382.690400001593,
       "api_success": true,
       "error_message": null
     }

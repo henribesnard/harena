@@ -8,3 +8,8 @@ variable "domain_name" {
   type        = string
   default     = ""
 }
+
+variable "backend_public_ip" {
+  description = "Public IP address of the backend EC2 instance"
+  type        = string
+}

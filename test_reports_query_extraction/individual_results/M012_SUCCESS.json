@@ -3,7 +3,7 @@
   "category": "M_robustesse",
   "question": "Combien j'ai dépensé chez Amazon versus Netflix versus Carrefour",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchants": [
       "Amazon",
@@ -18,6 +18,11 @@
   "query_data": {
     "user_id": 100,
     "filters": {
+      "merchant_name": [
+        "Amazon",
+        "Netflix",
+        "Carrefour"
+      ],
       "transaction_type": "debit"
     },
     "sort": [
@@ -47,14 +52,89 @@
             }
           }
         }
+      },
+      "amazon_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Amazon"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "netflix_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Netflix"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "carrefour_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Carrefour"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 974,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 2,
+  "aggregation_count": 5,
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
@@ -64,8 +144,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 24741.30479991436,
+  "latency_ms": 19398.05190000334,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:46:15.469787"
+  "timestamp": "2025-10-10T12:19:31.987891"
 }

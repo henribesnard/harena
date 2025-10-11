@@ -10,7 +10,7 @@
     "transaction_type": "all"
   },
   "entities_count": 3,
-  "entity_confidence": 0.9166666666666666,
+  "entity_confidence": 0.9433333333333334,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -75,8 +75,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 27638.849900016794,
+  "latency_ms": 23003.021300013643,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:35:22.305966"
+  "timestamp": "2025-10-10T11:23:17.518874"
 }

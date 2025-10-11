@@ -12,12 +12,23 @@
     "transaction_type": "debit"
   },
   "entities_count": 5,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.946,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "merchant_name": [
+        "Amazon"
+      ],
+      "amount_abs": {
+        "gte": 50,
+        "lte": 100
+      },
+      "date": {
+        "gte": "2025-06-01",
+        "lte": "2025-06-30"
+      }
     },
     "sort": [
       {
@@ -46,25 +57,48 @@
             }
           }
         }
+      },
+      "amazon_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Amazon"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 641,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 4,
+  "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "LOW",
-    "issues": [
-      "Mauvaise traduction entités->query. Manquantes: merchant, amount_min, amount_max, date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "1/5"
+      "entities_translated": "5/5"
     }
   },
-  "latency_ms": 31429.065800039098,
+  "latency_ms": 25718.921699997736,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:11:45.396817"
+  "timestamp": "2025-10-10T11:52:51.610279"
 }

@@ -3,7 +3,7 @@
   "category": "C_categorie",
   "question": "Mes achats vêtements",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "Vêtements"
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 31441.92589999875,
+  "latency_ms": 23006.94900000235,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:57:31.362830"
+  "timestamp": "2025-10-10T11:34:22.143379"
 }

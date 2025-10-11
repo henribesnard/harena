@@ -3,7 +3,7 @@
   "category": "F_complexe",
   "question": "Mes dépenses restaurant de 25 euros maximum ce mois",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "amount": 25,
     "operator": "lte",
@@ -22,7 +22,14 @@
       "transaction_type": "debit",
       "category_name": [
         "Restaurant"
-      ]
+      ],
+      "amount_abs": {
+        "lte": 25
+      },
+      "date": {
+        "gte": "2025-10-01",
+        "lte": "2025-10-31"
+      }
     },
     "sort": [
       {
@@ -79,22 +86,20 @@
       }
     }
   },
-  "query_size": 562,
+  "query_size": 641,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 4,
   "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: amount, operator, date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/5"
+      "entities_translated": "5/5"
     }
   },
-  "latency_ms": 34152.76590012945,
+  "latency_ms": 26163.912900025025,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:16:05.058393"
+  "timestamp": "2025-10-10T11:55:43.660187"
 }

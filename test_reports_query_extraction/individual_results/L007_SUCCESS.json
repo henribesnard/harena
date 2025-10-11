@@ -5,15 +5,33 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
+    "categories": [
+      "Carburant",
+      "Transport",
+      "Loisirs",
+      "Entretien maison",
+      "achats en ligne",
+      "Alimentation",
+      "Vêtements"
+    ],
     "transaction_type": "debit"
   },
-  "entities_count": 1,
-  "entity_confidence": 0.95,
+  "entities_count": 2,
+  "entity_confidence": 0.875,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "category_name": [
+        "Carburant",
+        "Transport",
+        "Loisirs",
+        "Entretien maison",
+        "achats en ligne",
+        "Alimentation",
+        "Vêtements"
+      ]
     },
     "sort": [
       {
@@ -42,23 +60,198 @@
             }
           }
         }
+      },
+      "carburant_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Carburant"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "transport_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Transport"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "loisirs_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Loisirs"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "entretien_maison_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Entretien maison"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "achats_en_ligne_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "achats en ligne"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "alimentation_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Alimentation"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "vêtements_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Vêtements"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 1906,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 2,
+  "aggregation_count": 9,
   "coherence_analysis": {
     "coherence_score": "HIGH",
     "issues": [],
     "details": {
-      "entities_translated": "1/1"
+      "entities_translated": "2/2"
     }
   },
-  "latency_ms": 24073.235099902377,
+  "latency_ms": 21142.567200004123,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:39:34.589861"
+  "timestamp": "2025-10-10T12:14:29.509602"
 }

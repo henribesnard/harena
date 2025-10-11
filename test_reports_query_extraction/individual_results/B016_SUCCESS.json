@@ -3,18 +3,19 @@
   "category": "B_vendeur",
   "question": "Mes dépenses chez Carrefour Market CR Centre Leclerc Amboi Cdiscount Bordeaux",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "merchants": [
       "Carrefour Market",
       "CR Centre Leclerc",
       "Amboi",
-      "Cdiscount Bordeaux"
+      "Cdiscount",
+      "Bordeaux"
     ],
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.875,
+  "entity_confidence": 0.8999999999999999,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -23,7 +24,8 @@
         "Carrefour Market",
         "CR Centre Leclerc",
         "Amboi",
-        "Cdiscount Bordeaux"
+        "Cdiscount",
+        "Bordeaux"
       ],
       "transaction_type": "debit"
     },
@@ -130,7 +132,7 @@
           }
         }
       },
-      "cdiscount_bordeaux_debit": {
+      "cdiscount_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -141,7 +143,32 @@
               },
               {
                 "term": {
-                  "merchant_name.keyword": "Cdiscount Bordeaux"
+                  "merchant_name.keyword": "Cdiscount"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "bordeaux_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Bordeaux"
                 }
               }
             ]
@@ -157,11 +184,11 @@
       }
     }
   },
-  "query_size": 1264,
+  "query_size": 1449,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
-  "aggregation_count": 6,
+  "aggregation_count": 7,
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
@@ -171,8 +198,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 25900.232400017558,
+  "latency_ms": 21724.062300025253,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:45:18.201480"
+  "timestamp": "2025-10-10T11:31:09.028756"
 }

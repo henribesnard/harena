@@ -3,13 +3,13 @@
   "category": "E_transaction",
   "question": "Mes paiements par carte de crédit",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "operation_type": "card",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -60,8 +60,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 34224.654300138354,
+  "latency_ms": 20767.90550001897,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:07:34.357240"
+  "timestamp": "2025-10-10T11:49:37.445236"
 }

@@ -15,8 +15,8 @@
   "filter_count": 0,
   "aggregation_count": 0,
   "coherence_analysis": null,
-  "latency_ms": 5.470599979162216,
+  "latency_ms": 4.667900007916614,
   "api_success": false,
   "error_message": "HTTP 422: {\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"message\"],\"msg\":\"Value error, Pattern non autorisé détecté: contenu potentiellement malveillant\",\"input\":\"<script>alert('hack')</script> mes dépenses\",\"ctx\":{\"error\":{}}}]}",
-  "timestamp": "2025-10-03T11:38:30.167383"
+  "timestamp": "2025-10-10T12:13:31.217260"
 }

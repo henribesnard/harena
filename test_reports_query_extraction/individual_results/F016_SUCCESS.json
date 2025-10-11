@@ -3,7 +3,7 @@
   "category": "F_complexe",
   "question": "Mes paiements par carte de 15 euros ou moins",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "amount": 15,
     "operator": "lte",
@@ -16,7 +16,10 @@
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "amount_abs": {
+        "lte": 15
+      }
     },
     "sort": [
       {
@@ -48,22 +51,22 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 352,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
+  "filter_count": 2,
   "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "LOW",
+    "coherence_score": "MEDIUM",
     "issues": [
-      "Mauvaise traduction entités->query. Manquantes: amount, operator, operation_type"
+      "Entités manquantes dans query: operation_type"
     ],
     "details": {
-      "entities_translated": "1/4"
+      "entities_translated": "3/4"
     }
   },
-  "latency_ms": 28924.314300063998,
+  "latency_ms": 24861.113300023135,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:17:08.231088"
+  "timestamp": "2025-10-10T11:56:34.897442"
 }

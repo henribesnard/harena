@@ -1,6 +1,6 @@
 {
   "category": "H_recherche",
-  "timestamp": "2025-10-03T11:25:55.714669",
+  "timestamp": "2025-10-10T12:03:36.124485",
   "total_questions": 8,
   "api_successful": 8,
   "queries_found": 8,
@@ -12,7 +12,7 @@
       "intent_detected": "transaction_search",
       "intent_confidence": 0.85,
       "entities_structured": {
-        "query": "restaurant italien",
+        "query": "restaurant italien cuisine italienne",
         "transaction_type": "debit"
       },
       "entities_count": 2,
@@ -20,6 +20,7 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "restaurant italien cuisine italienne",
         "filters": {
           "transaction_type": "debit"
         },
@@ -53,7 +54,7 @@
           }
         }
       },
-      "query_size": 325,
+      "query_size": 374,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -67,7 +68,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 22916.631900006905,
+      "latency_ms": 19694.046899996465,
       "api_success": true,
       "error_message": null
     },
@@ -77,7 +78,7 @@
       "intent_detected": "transaction_search",
       "intent_confidence": 0.85,
       "entities_structured": {
-        "query": "livraison nourriture",
+        "query": "livraison nourriture alimentation",
         "transaction_type": "debit"
       },
       "entities_count": 2,
@@ -85,6 +86,7 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "livraison nourriture alimentation",
         "filters": {
           "transaction_type": "debit"
         },
@@ -118,7 +120,7 @@
           }
         }
       },
-      "query_size": 325,
+      "query_size": 371,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -132,7 +134,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 22808.98159998469,
+      "latency_ms": 20355.82820000127,
       "api_success": true,
       "error_message": null
     },
@@ -140,7 +142,7 @@
       "question_id": "H003",
       "question": "Cherche 'abonnement streaming'",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "categories": [
           "streaming"
@@ -148,7 +150,7 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -225,7 +227,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 23662.720600143075,
+      "latency_ms": 19755.139200016856,
       "api_success": true,
       "error_message": null
     },
@@ -233,16 +235,17 @@
       "question_id": "H004",
       "question": "Toutes les transactions contenant 'voyage'",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "query": "voyage",
         "transaction_type": "all"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "voyage",
         "sort": [
           {
             "date": {
@@ -287,7 +290,7 @@
           }
         }
       },
-      "query_size": 411,
+      "query_size": 430,
       "has_filters": false,
       "has_aggregations": true,
       "filter_count": 0,
@@ -302,7 +305,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 31806.056800065562,
+      "latency_ms": 22513.644299993757,
       "api_success": true,
       "error_message": null
     },
@@ -310,16 +313,11 @@
       "question_id": "H005",
       "question": "Mes abonnements récurrents",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "operation_type": "direct_debit",
-        "categories": [
-          "streaming",
-          "Téléphones/internet",
-          "Services",
-          "Abonnements"
-        ],
-        "transaction_type": "debit"
+        "transaction_type": "debit",
+        "categories": []
       },
       "entities_count": 3,
       "entity_confidence": 0.9166666666666666,
@@ -479,7 +477,7 @@
           "entities_translated": "2/3"
         }
       },
-      "latency_ms": 30135.1439000573,
+      "latency_ms": 20117.50310001662,
       "api_success": true,
       "error_message": null
     },
@@ -487,16 +485,17 @@
       "question_id": "H006",
       "question": "Mes dépenses inhabituelles",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.75,
+      "intent_confidence": 0.85,
       "entities_structured": {
         "query": "inhabituelles anormales suspectes",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.875,
+      "entity_confidence": 0.8500000000000001,
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "inhabituelles anormales suspectes",
         "filters": {
           "transaction_type": "debit"
         },
@@ -530,7 +529,7 @@
           }
         }
       },
-      "query_size": 325,
+      "query_size": 371,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 1,
@@ -544,7 +543,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 26258.354099933058,
+      "latency_ms": 19873.21079999674,
       "api_success": true,
       "error_message": null
     },
@@ -555,7 +554,6 @@
       "intent_confidence": 0.85,
       "entities_structured": {
         "transaction_type": "debit",
-        "query": "achats répétitifs récurrents réguliers",
         "categories": [
           "Carburant",
           "Transport",
@@ -566,8 +564,8 @@
           "Vêtements"
         ]
       },
-      "entities_count": 3,
-      "entity_confidence": 0.8833333333333333,
+      "entities_count": 2,
+      "entity_confidence": 0.9,
       "query_found": true,
       "query_data": {
         "user_id": 100,
@@ -794,15 +792,13 @@
       "filter_count": 2,
       "aggregation_count": 9,
       "coherence_analysis": {
-        "coherence_score": "MEDIUM",
-        "issues": [
-          "Entités manquantes dans query: query"
-        ],
+        "coherence_score": "HIGH",
+        "issues": [],
         "details": {
-          "entities_translated": "2/3"
+          "entities_translated": "2/2"
         }
       },
-      "latency_ms": 36229.75440020673,
+      "latency_ms": 18172.466000018176,
       "api_success": true,
       "error_message": null
     },
@@ -810,16 +806,17 @@
       "question_id": "H008",
       "question": "Mes transactions suspectes",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.8,
+      "intent_confidence": 0.85,
       "entities_structured": {
         "query": "suspectes frauduleuses anomalies",
         "transaction_type": "all"
       },
       "entities_count": 2,
-      "entity_confidence": 0.875,
+      "entity_confidence": 0.8500000000000001,
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "query": "suspectes frauduleuses anomalies",
         "sort": [
           {
             "date": {
@@ -864,7 +861,7 @@
           }
         }
       },
-      "query_size": 411,
+      "query_size": 456,
       "has_filters": false,
       "has_aggregations": true,
       "filter_count": 0,
@@ -879,7 +876,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 24805.46629987657,
+      "latency_ms": 18679.328300000634,
       "api_success": true,
       "error_message": null
     }

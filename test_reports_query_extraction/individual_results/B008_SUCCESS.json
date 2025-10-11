@@ -3,13 +3,13 @@
   "category": "B_vendeur",
   "question": "Restaurant McDonald",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "McDonald's",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -84,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 17144.393099995796,
+  "latency_ms": 20995.59639999643,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:42:12.379464"
+  "timestamp": "2025-10-10T11:28:16.132667"
 }

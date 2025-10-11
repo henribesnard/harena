@@ -13,7 +13,6 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Netflix",
     "filters": {
       "merchant_name": "Netflix",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 571,
+  "query_size": 551,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 24863.303400110453,
+  "latency_ms": 20495.7393000077,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:43:46.957497"
+  "timestamp": "2025-10-10T12:17:32.817292"
 }

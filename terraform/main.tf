@@ -51,6 +51,7 @@ module "rds" {
   db_password         = var.db_password
   vpc_id              = module.vpc.vpc_id
   private_subnet_ids  = module.vpc.private_subnet_ids
+  public_subnet_ids   = module.vpc.public_subnet_ids
   backend_sg_id       = module.ec2.backend_security_group_id
 }
 
@@ -89,13 +90,26 @@ module "ec2" {
   secret_key           = var.secret_key
 }
 
-# S3 + CloudFront pour le frontend
+# S3 + CloudFront pour le frontend + API proxy
 module "s3_cloudfront" {
   source = "./modules/s3-cloudfront"
 
-  environment = var.environment
-  domain_name = var.domain_name
+  environment       = var.environment
+  domain_name       = var.domain_name
+  backend_public_ip = module.ec2.public_ip
 }
+
+# OpenSearch (Elasticsearch) - Désactivé: nécessite subscription AWS
+# module "opensearch" {
+#   source = "./modules/opensearch"
+#
+#   environment                = var.environment
+#   region                     = var.aws_region
+#   vpc_id                     = module.vpc.vpc_id
+#   private_subnet_ids         = module.vpc.private_subnet_ids
+#   backend_security_group_id  = module.ec2.backend_security_group_id
+#   allowed_cidr_blocks        = [module.vpc.vpc_cidr]
+# }
 
 # Monitoring et Auto-shutdown
 module "monitoring" {

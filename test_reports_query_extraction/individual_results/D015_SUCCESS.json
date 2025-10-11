@@ -16,7 +16,7 @@
     "filters": {
       "transaction_type": "debit",
       "date": {
-        "eq": "2025-10-06"
+        "eq": "2025-10-11"
       }
     },
     "sort": [
@@ -61,8 +61,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 17544.51429998153,
+  "latency_ms": 20114.787700003944,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:10:49.474681"
+  "timestamp": "2025-10-10T11:41:19.610550"
 }

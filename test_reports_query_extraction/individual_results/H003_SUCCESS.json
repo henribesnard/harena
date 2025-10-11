@@ -3,7 +3,7 @@
   "category": "H_recherche",
   "question": "Cherche 'abonnement streaming'",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
       "streaming"
@@ -11,7 +11,7 @@
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 23662.720600143075,
+  "latency_ms": 19755.139200016856,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:23:23.455108"
+  "timestamp": "2025-10-10T12:01:53.751427"
 }

@@ -7,13 +7,11 @@
   "entities_structured": {
     "amount": 50,
     "operator": "gt",
-    "categories": [
-      "Carburant"
-    ],
-    "transaction_type": "debit"
+    "transaction_type": "debit",
+    "query": "essence carburant"
   },
   "entities_count": 4,
-  "entity_confidence": 0.9375,
+  "entity_confidence": 0.9125,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -21,10 +19,7 @@
       "transaction_type": "debit",
       "amount_abs": {
         "gt": 50
-      },
-      "category_name": [
-        "Carburant"
-      ]
+      }
     },
     "sort": [
       {
@@ -53,48 +48,25 @@
             }
           }
         }
-      },
-      "carburant_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Carburant"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
       }
     }
   },
-  "query_size": 585,
+  "query_size": 351,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 3,
-  "aggregation_count": 3,
+  "filter_count": 2,
+  "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "HIGH",
-    "issues": [],
+    "coherence_score": "MEDIUM",
+    "issues": [
+      "Entités manquantes dans query: query"
+    ],
     "details": {
-      "entities_translated": "4/4"
+      "entities_translated": "3/4"
     }
   },
-  "latency_ms": 34893.115000100806,
+  "latency_ms": 23974.139800004195,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:10:39.907337"
+  "timestamp": "2025-10-10T11:52:01.377694"
 }

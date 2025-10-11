@@ -34,25 +34,29 @@ resource "aws_elasticache_subnet_group" "main" {
   }
 }
 
-# ElastiCache Redis
-resource "aws_elasticache_cluster" "main" {
-  cluster_id           = "harena-redis-${var.environment}"
-  engine               = "redis"
-  engine_version       = "7.0"
-  node_type           = var.node_type
-  num_cache_nodes     = 1
-  parameter_group_name = "default.redis7"
-  port                = 6379
+# ElastiCache Redis Replication Group (supports auth_token)
+resource "aws_elasticache_replication_group" "main" {
+  replication_group_id       = "harena-redis-${var.environment}"
+  description                = "Harena Redis cluster"
+  engine                     = "redis"
+  engine_version             = "7.0"
+  node_type                  = var.node_type
+  num_cache_clusters         = 1
+  parameter_group_name       = "default.redis7"
+  port                       = 6379
 
-  subnet_group_name    = aws_elasticache_subnet_group.main.name
-  security_group_ids   = [aws_security_group.redis.id]
+  subnet_group_name          = aws_elasticache_subnet_group.main.name
+  security_group_ids         = [aws_security_group.redis.id]
 
   # Authentication
   auth_token                 = var.auth_token
   transit_encryption_enabled = true
+  at_rest_encryption_enabled = true
 
   # Free Tier optimizations
-  snapshot_retention_limit = 0
+  automatic_failover_enabled = false
+  multi_az_enabled          = false
+  snapshot_retention_limit  = 0
 
   tags = {
     Name = "harena-redis-${var.environment}"

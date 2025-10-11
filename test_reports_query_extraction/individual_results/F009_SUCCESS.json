@@ -5,15 +5,11 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.95,
   "entities_structured": {
+    "categories": [
+      "Alimentation"
+    ],
     "amount": 25,
     "operator": "lt",
-    "categories": [
-      "Supermarkets / Groceries",
-      "Restaurants",
-      "Fast foods",
-      "Coffee shop",
-      "Food - Others"
-    ],
     "date_range": "2025-05",
     "transaction_type": "debit"
   },
@@ -25,12 +21,15 @@
     "filters": {
       "transaction_type": "debit",
       "category_name": [
-        "Supermarkets / Groceries",
-        "Restaurants",
-        "Fast foods",
-        "Coffee shop",
-        "Food - Others"
-      ]
+        "Alimentation"
+      ],
+      "amount_abs": {
+        "lt": 25
+      },
+      "date": {
+        "gte": "2025-05-01",
+        "lte": "2025-05-31"
+      }
     },
     "sort": [
       {
@@ -60,7 +59,7 @@
           }
         }
       },
-      "supermarkets_/_groceries_debit": {
+      "alimentation_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -71,107 +70,7 @@
               },
               {
                 "term": {
-                  "category_name.keyword": "Supermarkets / Groceries"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "restaurants_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Restaurants"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "fast_foods_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Fast foods"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "coffee_shop_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Coffee shop"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "food___others_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Food - Others"
+                  "category_name.keyword": "Alimentation"
                 }
               }
             ]
@@ -187,22 +86,20 @@
       }
     }
   },
-  "query_size": 1491,
+  "query_size": 646,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
-  "aggregation_count": 7,
+  "filter_count": 4,
+  "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: amount, operator, date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/5"
+      "entities_translated": "5/5"
     }
   },
-  "latency_ms": 26729.73469994031,
+  "latency_ms": 28067.000599985477,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:12:39.141361"
+  "timestamp": "2025-10-10T11:53:45.431054"
 }

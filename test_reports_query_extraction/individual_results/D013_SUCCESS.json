@@ -3,13 +3,13 @@
   "category": "D_temporel",
   "question": "Mes transactions le mois dernier",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "last_month",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -75,8 +75,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 27416.951599996537,
+  "latency_ms": 18358.709899999667,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:09:59.685563"
+  "timestamp": "2025-10-10T11:40:38.928771"
 }

@@ -6,8 +6,7 @@
   "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
-      "Electricity",
-      "Water"
+      "Eélectricité/eau"
     ],
     "transaction_type": "debit"
   },
@@ -19,8 +18,7 @@
     "filters": {
       "transaction_type": "debit",
       "category_name": [
-        "Electricity",
-        "Water"
+        "Eélectricité/eau"
       ]
     },
     "sort": [
@@ -51,7 +49,7 @@
           }
         }
       },
-      "electricity_debit": {
+      "eélectricité/eau_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -62,32 +60,7 @@
               },
               {
                 "term": {
-                  "category_name.keyword": "Electricity"
-                }
-              }
-            ]
-          }
-        },
-        "aggs": {
-          "sum_amount": {
-            "sum": {
-              "field": "amount_abs"
-            }
-          }
-        }
-      },
-      "water_debit": {
-        "filter": {
-          "bool": {
-            "must": [
-              {
-                "term": {
-                  "transaction_type": "debit"
-                }
-              },
-              {
-                "term": {
-                  "category_name.keyword": "Water"
+                  "category_name.keyword": "Eélectricité/eau"
                 }
               }
             ]
@@ -103,11 +76,11 @@
       }
     }
   },
-  "query_size": 768,
+  "query_size": 610,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
-  "aggregation_count": 4,
+  "aggregation_count": 3,
   "coherence_analysis": {
     "coherence_score": "HIGH",
     "issues": [],
@@ -115,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 20603.276999900118,
+  "latency_ms": 21515.636299998732,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:37:08.211608"
+  "timestamp": "2025-10-10T12:12:31.541496"
 }

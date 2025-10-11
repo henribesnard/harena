@@ -3,17 +3,15 @@
   "category": "F_complexe",
   "question": "Mes achats en ligne inférieurs à 20 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
-    "categories": [
-      "achats en ligne"
-    ],
+    "categories": [],
     "amount": 20,
     "operator": "lt",
     "transaction_type": "debit"
   },
   "entities_count": 4,
-  "entity_confidence": 0.9375,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -21,7 +19,10 @@
       "transaction_type": "debit",
       "category_name": [
         "achats en ligne"
-      ]
+      ],
+      "amount_abs": {
+        "lt": 20
+      }
     },
     "sort": [
       {
@@ -78,22 +79,20 @@
       }
     }
   },
-  "query_size": 577,
+  "query_size": 603,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 3,
   "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: amount, operator"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/4"
+      "entities_translated": "4/4"
     }
   },
-  "latency_ms": 33050.19730003551,
+  "latency_ms": 23507.864699990023,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:11:13.463106"
+  "timestamp": "2025-10-10T11:52:25.389795"
 }

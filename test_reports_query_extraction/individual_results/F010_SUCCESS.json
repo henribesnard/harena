@@ -10,13 +10,18 @@
     "transaction_type": "all"
   },
   "entities_count": 3,
-  "entity_confidence": 0.9166666666666666,
+  "entity_confidence": 0.9,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Uber",
     "filters": {
-      "merchant_name": "Uber"
+      "merchant_name": [
+        "Uber"
+      ],
+      "date": {
+        "gte": "2025-07-01",
+        "lte": "2025-09-30"
+      }
     },
     "sort": [
       {
@@ -109,25 +114,191 @@
             }
           }
         }
+      },
+      "monthly_debit_2025_07": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-07-01",
+                    "lte": "2025-07-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_07": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-07-01",
+                    "lte": "2025-07-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_08": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-08-01",
+                    "lte": "2025-08-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_08": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-08-01",
+                    "lte": "2025-08-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_09": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-09-01",
+                    "lte": "2025-09-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_09": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-09-01",
+                    "lte": "2025-09-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 852,
+  "query_size": 2233,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 5,
+  "filter_count": 2,
+  "aggregation_count": 11,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/3"
+      "entities_translated": "3/3"
     }
   },
-  "latency_ms": 21044.860299909487,
+  "latency_ms": 22847.749800013844,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-02T07:17:21.625924"
+  "timestamp": "2025-10-10T11:54:08.780234"
 }

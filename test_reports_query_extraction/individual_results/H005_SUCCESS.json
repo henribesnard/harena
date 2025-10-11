@@ -3,16 +3,11 @@
   "category": "H_recherche",
   "question": "Mes abonnements récurrents",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "operation_type": "direct_debit",
-    "categories": [
-      "streaming",
-      "Téléphones/internet",
-      "Services",
-      "Abonnements"
-    ],
-    "transaction_type": "debit"
+    "transaction_type": "debit",
+    "categories": []
   },
   "entities_count": 3,
   "entity_confidence": 0.9166666666666666,
@@ -172,8 +167,8 @@
       "entities_translated": "2/3"
     }
   },
-  "latency_ms": 30135.1439000573,
+  "latency_ms": 20117.50310001662,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:24:26.404340"
+  "timestamp": "2025-10-10T12:02:37.385777"
 }

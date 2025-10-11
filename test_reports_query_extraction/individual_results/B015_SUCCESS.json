@@ -3,11 +3,11 @@
   "category": "B_vendeur",
   "question": "Mes achats Auchan Supermarc St Lidl Netflix Com Paris",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "merchants": [
       "Auchan",
-      "Supermarc",
+      "Supermarché",
       "Lidl",
       "Netflix",
       "Com Paris"
@@ -15,14 +15,14 @@
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
       "merchant_name": [
         "Auchan",
-        "Supermarc",
+        "Supermarché",
         "Lidl",
         "Netflix",
         "Com Paris"
@@ -82,7 +82,7 @@
           }
         }
       },
-      "supermarc_debit": {
+      "supermarché_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -93,7 +93,7 @@
               },
               {
                 "term": {
-                  "merchant_name.keyword": "Supermarc"
+                  "merchant_name.keyword": "Supermarché"
                 }
               }
             ]
@@ -184,7 +184,7 @@
       }
     }
   },
-  "query_size": 1389,
+  "query_size": 1410,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -198,8 +198,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 28591.766800003825,
+  "latency_ms": 21814.414899999974,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:44:51.753624"
+  "timestamp": "2025-10-10T11:30:46.798153"
 }

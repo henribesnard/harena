@@ -62,7 +62,8 @@ resource "aws_cloudfront_distribution" "frontend" {
   default_root_object = "index.html"
   price_class         = "PriceClass_100"  # US, Canada, Europe only
 
-  aliases = var.domain_name != "" ? [var.domain_name] : []
+  # Temporarily disable custom domain (requires ACM certificate setup)
+  # aliases = var.domain_name != "" ? [var.domain_name] : []
 
   origin {
     domain_name = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -112,12 +113,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = var.domain_name == "" ? true : false
-
-    # For custom domain (à configurer manuellement avec ACM)
-    # acm_certificate_arn      = var.acm_certificate_arn
-    # ssl_support_method       = "sni-only"
-    # minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = true
   }
 
   tags = {

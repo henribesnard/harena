@@ -19,8 +19,13 @@ output "ec2_instance_id" {
 }
 
 output "ec2_public_ip" {
-  description = "EC2 public IP"
+  description = "EC2 Elastic IP (fixed IP address)"
   value       = module.ec2.public_ip
+}
+
+output "elastic_ip_allocation_id" {
+  description = "Elastic IP allocation ID"
+  value       = module.ec2.elastic_ip_allocation_id
 }
 
 output "backend_url" {
@@ -43,7 +48,33 @@ output "frontend_url" {
   value       = "https://${module.s3_cloudfront.cloudfront_domain}"
 }
 
+output "api_cloudfront_domain" {
+  description = "API CloudFront domain (HTTPS proxy to backend)"
+  value       = module.s3_cloudfront.api_cloudfront_domain
+}
+
+output "api_url" {
+  description = "API URL (HTTPS via CloudFront)"
+  value       = "https://${module.s3_cloudfront.api_cloudfront_domain}"
+}
+
 output "ssh_command" {
   description = "SSH command to connect to EC2 (via SSM)"
   value       = "aws ssm start-session --target ${module.ec2.instance_id} --region ${var.aws_region}"
 }
+
+# OpenSearch outputs désactivés - module désactivé
+# output "opensearch_endpoint" {
+#   description = "OpenSearch endpoint URL"
+#   value       = module.opensearch.endpoint
+# }
+#
+# output "opensearch_domain_name" {
+#   description = "OpenSearch domain name"
+#   value       = module.opensearch.domain_name
+# }
+#
+# output "opensearch_kibana_url" {
+#   description = "OpenSearch Dashboards (Kibana) URL"
+#   value       = module.opensearch.kibana_endpoint
+# }

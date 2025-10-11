@@ -3,19 +3,23 @@
   "category": "C_categorie",
   "question": "Mes factures d'énergie",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
-    "query": "factures énergie électricité eau",
+    "categories": [
+      "Eélectricité/eau"
+    ],
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "factures énergie électricité eau",
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "category_name": [
+        "Eélectricité/eau"
+      ]
     },
     "sort": [
       {
@@ -44,25 +48,48 @@
             }
           }
         }
+      },
+      "eélectricité/eau_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "category_name.keyword": "Eélectricité/eau"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 385,
+  "query_size": 610,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 2,
+  "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: query"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "1/2"
+      "entities_translated": "2/2"
     }
   },
-  "latency_ms": 24600.05999999703,
+  "latency_ms": 23148.032400000375,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:56:31.888495"
+  "timestamp": "2025-10-10T11:33:37.338112"
 }

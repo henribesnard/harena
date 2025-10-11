@@ -26,9 +26,6 @@
     "user_id": 100,
     "filters": {
       "transaction_type": "debit",
-      "amount_abs": {
-        "lt": 10
-      },
       "category_name": [
         "Carburant",
         "Transport",
@@ -37,7 +34,14 @@
         "achats en ligne",
         "Alimentation",
         "Vêtements"
-      ]
+      ],
+      "amount_abs": {
+        "lt": 10
+      },
+      "date": {
+        "gte": "2025-06-01",
+        "lte": "2025-06-30"
+      }
     },
     "sort": [
       {
@@ -244,22 +248,20 @@
       }
     }
   },
-  "query_size": 1932,
+  "query_size": 1984,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 3,
+  "filter_count": 4,
   "aggregation_count": 9,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "4/5"
+      "entities_translated": "5/5"
     }
   },
-  "latency_ms": 34491.49759998545,
+  "latency_ms": 30399.158599990187,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:47:28.336414"
+  "timestamp": "2025-10-10T12:20:27.074700"
 }

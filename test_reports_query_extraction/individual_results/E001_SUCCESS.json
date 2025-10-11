@@ -3,7 +3,7 @@
   "category": "E_transaction",
   "question": "Trouve mes abonnements récurrents",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "operation_type": "direct_debit",
     "transaction_type": "debit",
@@ -15,7 +15,7 @@
     ]
   },
   "entities_count": 3,
-  "entity_confidence": 0.9333333333333332,
+  "entity_confidence": 0.9166666666666666,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -172,8 +172,8 @@
       "entities_translated": "2/3"
     }
   },
-  "latency_ms": 27197.438000002876,
+  "latency_ms": 21682.87180000334,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:01:01.874063"
+  "timestamp": "2025-10-10T11:45:03.566571"
 }

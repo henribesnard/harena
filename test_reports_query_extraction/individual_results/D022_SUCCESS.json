@@ -3,13 +3,13 @@
   "category": "D_temporel",
   "question": "Mes transactions de l'année dernière",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "last_year",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -747,8 +747,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 40145.02870000433,
+  "latency_ms": 20097.409500012873,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:13:41.830117"
+  "timestamp": "2025-10-10T11:43:39.977867"
 }

@@ -241,7 +241,7 @@ class QueryExecutor:
         
         try:
             # Construction URL
-            search_url = urljoin(self.search_service_url, '/api/v1/search/search')
+            search_url = urljoin(self.search_service_url + '/', 'search')
             
             # Transformation du format template vers SearchRequest
             query_data = request.query
@@ -464,7 +464,7 @@ class QueryExecutor:
                 await self.initialize()
             
             # Test simple ping
-            health_url = urljoin(self.search_service_url, '/health')
+            health_url = urljoin(self.search_service_url + '/', 'health')
             
             async with self._session.get(health_url) as response:
                 if response.status == 200:

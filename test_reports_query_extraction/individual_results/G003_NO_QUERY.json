@@ -5,11 +5,10 @@
   "intent_detected": "financial_query",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "transaction_type": "debit",
-    "period": "daily"
+    "transaction_type": "debit"
   },
-  "entities_count": 2,
-  "entity_confidence": 0.8500000000000001,
+  "entities_count": 1,
+  "entity_confidence": 0.9,
   "query_found": false,
   "query_data": null,
   "query_size": 0,
@@ -24,8 +23,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 16727.342099882662,
+  "latency_ms": 15694.788399996469,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:18:30.966489"
+  "timestamp": "2025-10-10T11:57:50.254333"
 }

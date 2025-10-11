@@ -3,7 +3,7 @@
   "category": "D_temporel",
   "question": "Mes dépenses du 1er mai",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "2025-05-01",
     "transaction_type": "debit"
@@ -61,8 +61,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 17865.14349997742,
+  "latency_ms": 19968.275399995036,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:06:39.531491"
+  "timestamp": "2025-10-10T11:38:14.156655"
 }

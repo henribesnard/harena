@@ -3,7 +3,7 @@
   "category": "M_robustesse",
   "question": "Toutes mes transactions du 1er janvier au 31 décembre avec catégories",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "date_range": "2025-01-01_2025-12-31",
     "transaction_type": "all"
@@ -13,6 +13,12 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "filters": {
+      "date": {
+        "gte": "2025-01-01",
+        "lte": "2025-12-31"
+      }
+    },
     "sort": [
       {
         "date": {
@@ -54,26 +60,695 @@
             }
           }
         }
+      },
+      "monthly_debit_2025_01": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-01-01",
+                    "lte": "2025-01-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_01": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-01-01",
+                    "lte": "2025-01-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_02": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-02-01",
+                    "lte": "2025-02-28"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_02": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-02-01",
+                    "lte": "2025-02-28"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_03": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-03-01",
+                    "lte": "2025-03-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_03": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-03-01",
+                    "lte": "2025-03-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_04": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-04-01",
+                    "lte": "2025-04-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_04": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-04-01",
+                    "lte": "2025-04-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_05": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-05-01",
+                    "lte": "2025-05-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_05": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-05-01",
+                    "lte": "2025-05-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_06": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-06-01",
+                    "lte": "2025-06-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_06": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-06-01",
+                    "lte": "2025-06-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_07": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-07-01",
+                    "lte": "2025-07-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_07": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-07-01",
+                    "lte": "2025-07-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_08": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-08-01",
+                    "lte": "2025-08-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_08": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-08-01",
+                    "lte": "2025-08-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_09": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-09-01",
+                    "lte": "2025-09-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_09": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-09-01",
+                    "lte": "2025-09-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_10": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-10-01",
+                    "lte": "2025-10-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_10": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-10-01",
+                    "lte": "2025-10-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_11": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-11-01",
+                    "lte": "2025-11-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_11": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-11-01",
+                    "lte": "2025-11-30"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_debit_2025_12": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-12-01",
+                    "lte": "2025-12-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
+      },
+      "monthly_credit_2025_12": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "credit"
+                }
+              },
+              {
+                "range": {
+                  "date": {
+                    "gte": "2025-12-01",
+                    "lte": "2025-12-31"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 411,
-  "has_filters": false,
+  "query_size": 5852,
+  "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 0,
-  "aggregation_count": 3,
+  "filter_count": 1,
+  "aggregation_count": 27,
   "coherence_analysis": {
-    "coherence_score": "LOW",
-    "issues": [
-      "Entités manquantes dans query: date_range",
-      "Intent transaction_search mais aucun filtre dans query"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "1/2"
+      "entities_translated": "2/2"
     }
   },
-  "latency_ms": 37369.63829980232,
+  "latency_ms": 23680.96590001369,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:46:53.341394"
+  "timestamp": "2025-10-10T12:19:56.170951"
 }

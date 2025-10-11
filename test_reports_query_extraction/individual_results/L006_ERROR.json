@@ -15,8 +15,8 @@
   "filter_count": 0,
   "aggregation_count": 0,
   "coherence_analysis": null,
-  "latency_ms": 8875.634199939668,
+  "latency_ms": 9443.62189999083,
   "api_success": false,
   "error_message": "argument of type 'NoneType' is not iterable",
-  "timestamp": "2025-10-03T11:39:10.010960"
+  "timestamp": "2025-10-10T12:14:07.862670"
 }

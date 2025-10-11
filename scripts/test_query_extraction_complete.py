@@ -58,7 +58,7 @@ class QueryExtractionTester:
 
         # Configuration d'authentification
         self.username = "henri@example.com"
-        self.password = "hounwanou"
+        self.password = "Henri123456"
 
         # Résultats par catégorie
         self.results_by_category: Dict[str, List[QueryExtractionResult]] = defaultdict(list)

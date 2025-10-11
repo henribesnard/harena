@@ -3,16 +3,17 @@
   "category": "H_recherche",
   "question": "Mes transactions suspectes",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.8,
+  "intent_confidence": 0.85,
   "entities_structured": {
     "query": "suspectes frauduleuses anomalies",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.875,
+  "entity_confidence": 0.8500000000000001,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "suspectes frauduleuses anomalies",
     "sort": [
       {
         "date": {
@@ -57,7 +58,7 @@
       }
     }
   },
-  "query_size": 411,
+  "query_size": 456,
   "has_filters": false,
   "has_aggregations": true,
   "filter_count": 0,
@@ -72,8 +73,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 24805.46629987657,
+  "latency_ms": 18679.328300000634,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:25:55.212881"
+  "timestamp": "2025-10-10T12:03:35.623042"
 }

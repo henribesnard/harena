@@ -3,7 +3,7 @@
   "category": "C_categorie",
   "question": "Mes dépenses restaurant",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "Restaurant"
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 24491.264399985084,
+  "latency_ms": 18402.61439999449,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:54:08.723868"
+  "timestamp": "2025-10-10T11:31:50.692522"
 }

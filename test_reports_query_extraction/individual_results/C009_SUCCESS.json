@@ -3,13 +3,13 @@
   "category": "C_categorie",
   "question": "Mes dépenses électronique",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "query": "électronique électro",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -61,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 23627.045900007943,
+  "latency_ms": 19468.21499997168,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:57:55.493059"
+  "timestamp": "2025-10-10T11:34:42.113679"
 }

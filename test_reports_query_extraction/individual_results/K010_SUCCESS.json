@@ -3,24 +3,22 @@
   "category": "K_metier",
   "question": "Mes remboursements de frais médicaux",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
-      "Santé/pharmacie",
-      "Santé/Pharmacie"
+      "Santé/pharmacie"
     ],
     "transaction_type": "credit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.925,
+  "entity_confidence": 0.95,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
       "transaction_type": "credit",
       "category_name": [
-        "Santé/pharmacie",
-        "Santé/Pharmacie"
+        "Santé/pharmacie"
       ]
     },
     "sort": [
@@ -62,7 +60,7 @@
               },
               {
                 "term": {
-                  "category_name.keyword": "Santé/Pharmacie"
+                  "category_name.keyword": "Santé/pharmacie"
                 }
               }
             ]
@@ -78,7 +76,7 @@
       }
     }
   },
-  "query_size": 621,
+  "query_size": 597,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -90,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 21505.01920003444,
+  "latency_ms": 21224.839400005294,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:37:30.219249"
+  "timestamp": "2025-10-10T12:12:53.267974"
 }

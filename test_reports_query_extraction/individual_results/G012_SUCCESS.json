@@ -3,9 +3,9 @@
   "category": "G_analyse",
   "question": "Mes 5 plus grosses dépenses",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.95,
+  "intent_confidence": 0.9,
   "entities_structured": {
-    "limit": 5,
+    "amount": 5,
     "transaction_type": "debit"
   },
   "entities_count": 2,
@@ -14,7 +14,10 @@
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "amount_abs": {
+        "eq": 5
+      }
     },
     "sort": [
       {
@@ -46,22 +49,20 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 350,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
+  "filter_count": 2,
   "aggregation_count": 2,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: limit"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "1/2"
+      "entities_translated": "2/2"
     }
   },
-  "latency_ms": 42934.57489996217,
+  "latency_ms": 18892.609500006074,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:22:12.552594"
+  "timestamp": "2025-10-10T12:00:52.436855"
 }

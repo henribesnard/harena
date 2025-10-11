@@ -10,7 +10,7 @@
     "transaction_type": "debit"
   },
   "entities_count": 3,
-  "entity_confidence": 0.9333333333333332,
+  "entity_confidence": 0.9433333333333334,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -87,8 +87,8 @@
       "entities_translated": "2/3"
     }
   },
-  "latency_ms": 53071.968000003835,
+  "latency_ms": 22924.473599996418,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:08:52.743129"
+  "timestamp": "2025-10-10T11:39:38.649045"
 }

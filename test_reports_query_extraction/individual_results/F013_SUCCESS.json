@@ -3,7 +3,7 @@
   "category": "F_complexe",
   "question": "Mes achats Amazon d'au moins 75 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "merchant": "Amazon",
     "amount": 75,
@@ -11,12 +11,18 @@
     "transaction_type": "debit"
   },
   "entities_count": 4,
-  "entity_confidence": 0.9375,
+  "entity_confidence": 0.945,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
-      "transaction_type": "debit"
+      "transaction_type": "debit",
+      "merchant_name": [
+        "Amazon"
+      ],
+      "amount_abs": {
+        "gte": 75
+      }
     },
     "sort": [
       {
@@ -45,25 +51,48 @@
             }
           }
         }
+      },
+      "amazon_debit": {
+        "filter": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "transaction_type": "debit"
+                }
+              },
+              {
+                "term": {
+                  "merchant_name.keyword": "Amazon"
+                }
+              }
+            ]
+          }
+        },
+        "aggs": {
+          "sum_amount": {
+            "sum": {
+              "field": "amount_abs"
+            }
+          }
+        }
       }
     }
   },
-  "query_size": 325,
+  "query_size": 577,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 1,
-  "aggregation_count": 2,
+  "filter_count": 3,
+  "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "LOW",
-    "issues": [
-      "Mauvaise traduction entités->query. Manquantes: merchant, amount, operator"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "1/4"
+      "entities_translated": "4/4"
     }
   },
-  "latency_ms": 33262.384299887344,
+  "latency_ms": 24200.21420001285,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:15:30.400454"
+  "timestamp": "2025-10-10T11:55:16.994042"
 }

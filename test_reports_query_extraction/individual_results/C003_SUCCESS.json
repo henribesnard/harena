@@ -3,7 +3,7 @@
   "category": "C_categorie",
   "question": "Mes achats alimentaires",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "Alimentation"
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26425.950700009707,
+  "latency_ms": 19993.71589999646,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:55:03.017824"
+  "timestamp": "2025-10-10T11:32:32.516597"
 }

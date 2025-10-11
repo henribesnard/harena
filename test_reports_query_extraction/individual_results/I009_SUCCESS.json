@@ -3,16 +3,17 @@
   "category": "I_edge_cases",
   "question": "Transactions importantes",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.75,
+  "intent_confidence": 0.85,
   "entities_structured": {
-    "query": "importantes",
+    "query": "importantes gros montants significatives",
     "transaction_type": "all"
   },
   "entities_count": 2,
-  "entity_confidence": 0.75,
+  "entity_confidence": 0.8500000000000001,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "importantes gros montants significatives",
     "sort": [
       {
         "date": {
@@ -57,7 +58,7 @@
       }
     }
   },
-  "query_size": 411,
+  "query_size": 464,
   "has_filters": false,
   "has_aggregations": true,
   "filter_count": 0,
@@ -72,8 +73,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 40759.863999905065,
+  "latency_ms": 18148.714699986158,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:29:13.708641"
+  "timestamp": "2025-10-10T12:05:38.141631"
 }

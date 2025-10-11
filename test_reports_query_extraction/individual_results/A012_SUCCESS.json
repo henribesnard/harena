@@ -3,7 +3,7 @@
   "category": "A_montant",
   "question": "Mes dépenses de 0 euros",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "amount": 0,
     "operator": "eq",
@@ -62,8 +62,8 @@
       "entities_translated": "3/3"
     }
   },
-  "latency_ms": 20190.956400008872,
+  "latency_ms": 23819.386399991345,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T21:34:54.164077"
+  "timestamp": "2025-10-10T11:22:54.014195"
 }

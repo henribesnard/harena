@@ -5,7 +5,7 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "query": "livraison nourriture",
+    "query": "livraison nourriture alimentation",
     "transaction_type": "debit"
   },
   "entities_count": 2,
@@ -13,6 +13,7 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "livraison nourriture alimentation",
     "filters": {
       "transaction_type": "debit"
     },
@@ -46,7 +47,7 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 371,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -60,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 22808.98159998469,
+  "latency_ms": 20355.82820000127,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:22:59.290196"
+  "timestamp": "2025-10-10T12:01:33.494359"
 }

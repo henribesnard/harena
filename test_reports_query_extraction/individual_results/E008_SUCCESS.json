@@ -3,7 +3,7 @@
   "category": "E_transaction",
   "question": "Mes chèques émis",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
     "categories": [
       "Chèques émis"
@@ -11,7 +11,7 @@
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.95,
+  "entity_confidence": 0.94,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -88,8 +88,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 26179.60419994779,
+  "latency_ms": 19104.097600007663,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:04:35.013318"
+  "timestamp": "2025-10-10T11:47:27.493181"
 }

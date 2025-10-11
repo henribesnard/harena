@@ -3,26 +3,33 @@
   "category": "F_complexe",
   "question": "Mes dépenses restaurant de plus de 40 euros ce mois",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.9,
+  "intent_confidence": 0.95,
   "entities_structured": {
+    "categories": [
+      "Restaurant"
+    ],
     "amount": 40,
     "operator": "gt",
-    "categories": [
-      "Restaurants"
-    ],
     "date_range": "this_month",
     "transaction_type": "debit"
   },
   "entities_count": 5,
-  "entity_confidence": 0.93,
+  "entity_confidence": 0.9400000000000001,
   "query_found": true,
   "query_data": {
     "user_id": 100,
     "filters": {
       "transaction_type": "debit",
       "category_name": [
-        "Restaurants"
-      ]
+        "Restaurant"
+      ],
+      "amount_abs": {
+        "gt": 40
+      },
+      "date": {
+        "gte": "2025-10-01",
+        "lte": "2025-10-31"
+      }
     },
     "sort": [
       {
@@ -52,7 +59,7 @@
           }
         }
       },
-      "restaurants_debit": {
+      "restaurant_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -63,7 +70,7 @@
               },
               {
                 "term": {
-                  "category_name.keyword": "Restaurants"
+                  "category_name.keyword": "Restaurant"
                 }
               }
             ]
@@ -79,22 +86,20 @@
       }
     }
   },
-  "query_size": 565,
+  "query_size": 640,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 4,
   "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: amount, operator, date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/5"
+      "entities_translated": "5/5"
     }
   },
-  "latency_ms": 26011.361400131136,
+  "latency_ms": 24750.065400003223,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:12:11.909780"
+  "timestamp": "2025-10-10T11:53:16.862460"
 }

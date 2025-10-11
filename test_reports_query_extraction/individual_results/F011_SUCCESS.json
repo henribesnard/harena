@@ -3,7 +3,7 @@
   "category": "F_complexe",
   "question": "Mes achats en ligne du week-end dernier",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "categories": [
       "achats en ligne"
@@ -20,7 +20,11 @@
       "transaction_type": "debit",
       "category_name": [
         "achats en ligne"
-      ]
+      ],
+      "date": {
+        "gte": "last_weekend",
+        "lte": "last_weekend"
+      }
     },
     "sort": [
       {
@@ -77,22 +81,20 @@
       }
     }
   },
-  "query_size": 577,
+  "query_size": 633,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 3,
   "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: date_range"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/3"
+      "entities_translated": "3/3"
     }
   },
-  "latency_ms": 38382.68300006166,
+  "latency_ms": 21282.4064999877,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:14:18.545938"
+  "timestamp": "2025-10-10T11:54:30.568250"
 }

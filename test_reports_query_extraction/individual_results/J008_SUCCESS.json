@@ -3,17 +3,16 @@
   "category": "J_langage_naturel",
   "question": "Quel est mon comportement d'achat Amazon ?",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.85,
+  "intent_confidence": 0.9,
   "entities_structured": {
     "merchant": "Amazon",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.8500000000000001,
+  "entity_confidence": 0.925,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "query": "Amazon",
     "filters": {
       "merchant_name": "Amazon",
       "transaction_type": "debit"
@@ -73,7 +72,7 @@
       }
     }
   },
-  "query_size": 567,
+  "query_size": 548,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 2,
@@ -85,8 +84,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 28433.41620010324,
+  "latency_ms": 20896.69870000216,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:33:48.015159"
+  "timestamp": "2025-10-10T12:09:20.727607"
 }

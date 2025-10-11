@@ -5,8 +5,6 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "amount": null,
-    "operator": "gt",
     "date_range": "this_month",
     "transaction_type": "debit",
     "categories": [
@@ -19,8 +17,8 @@
       "Vêtements"
     ]
   },
-  "entities_count": 5,
-  "entity_confidence": 0.86,
+  "entities_count": 3,
+  "entity_confidence": 0.9166666666666666,
   "query_found": true,
   "query_data": {
     "user_id": 100,
@@ -249,14 +247,14 @@
   "coherence_analysis": {
     "coherence_score": "MEDIUM",
     "issues": [
-      "Entités manquantes dans query: amount, operator, date_range"
+      "Entités manquantes dans query: date_range"
     ],
     "details": {
-      "entities_translated": "2/5"
+      "entities_translated": "2/3"
     }
   },
-  "latency_ms": 29750.157499918714,
+  "latency_ms": 20270.691599987913,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:19:01.221415"
+  "timestamp": "2025-10-10T11:58:11.026511"
 }

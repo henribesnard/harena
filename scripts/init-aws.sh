@@ -4,13 +4,24 @@ set -e
 echo "🚀 Initialisation AWS pour Harena"
 echo "=================================="
 
-# Load environment variables
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-else
+# Load environment variables (safe method)
+if [ ! -f .env ]; then
     echo "❌ Fichier .env introuvable"
     exit 1
 fi
+
+# Extract specific variables using grep
+AWS_REGION=$(grep '^AWS_REGION=' .env | cut -d'=' -f2)
+AWS_ACCOUNT_ID=$(grep '^AWS_ACCOUNT_ID=' .env | cut -d'=' -f2)
+AWS_ACCESS_KEY_ID=$(grep '^AWS_ACCESS_KEY_ID=' .env | cut -d'=' -f2)
+AWS_SECRET_ACCESS_KEY=$(grep '^AWS_SECRET_ACCESS_KEY=' .env | cut -d'=' -f2)
+AWS_DB_PASSWORD=$(grep '^AWS_DB_PASSWORD=' .env | cut -d'=' -f2-)
+AWS_REDIS_AUTH_TOKEN=$(grep '^AWS_REDIS_AUTH_TOKEN=' .env | cut -d'=' -f2-)
+DEEPSEEK_API_KEY=$(grep '^DEEPSEEK_API_KEY=' .env | cut -d'=' -f2)
+SECRET_KEY=$(grep '^SECRET_KEY=' .env | cut -d'=' -f2)
+ALERT_EMAIL=$(grep '^ALERT_EMAIL=' .env | cut -d'=' -f2)
+DOMAIN_NAME=$(grep '^DOMAIN_NAME=' .env | cut -d'=' -f2)
+ENVIRONMENT=$(grep '^ENVIRONMENT=' .env | cut -d'=' -f2)
 
 # Check AWS credentials
 if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then

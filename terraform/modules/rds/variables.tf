@@ -39,6 +39,12 @@ variable "private_subnet_ids" {
   type        = list(string)
 }
 
+variable "public_subnet_ids" {
+  description = "Public subnet IDs (for dev environment)"
+  type        = list(string)
+  default     = []
+}
+
 variable "backend_sg_id" {
   description = "Backend security group ID"
   type        = string

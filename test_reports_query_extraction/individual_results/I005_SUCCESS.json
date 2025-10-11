@@ -3,7 +3,7 @@
   "category": "I_edge_cases",
   "question": "Mes dépenses dans une catégorie inexistante",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.8,
+  "intent_confidence": 0.85,
   "entities_structured": {
     "query": "catégorie inexistante",
     "transaction_type": "debit"
@@ -13,6 +13,7 @@
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "catégorie inexistante",
     "filters": {
       "transaction_type": "debit"
     },
@@ -46,7 +47,7 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 364,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -60,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 58161.30120004527,
+  "latency_ms": 22235.348900023382,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:27:36.674639"
+  "timestamp": "2025-10-10T12:04:29.545832"
 }

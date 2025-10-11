@@ -1,6 +1,6 @@
 {
   "category": "M_robustesse",
-  "timestamp": "2025-10-03T11:47:48.142478",
+  "timestamp": "2025-10-10T12:20:47.545107",
   "total_questions": 15,
   "api_successful": 15,
   "queries_found": 11,
@@ -28,7 +28,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 10713.40260002762,
+      "latency_ms": 12762.82549998723,
       "api_success": true,
       "error_message": null
     },
@@ -64,7 +64,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 12825.015399837866,
+      "latency_ms": 11976.51560002123,
       "api_success": true,
       "error_message": null
     },
@@ -126,7 +126,7 @@
           "entities_translated": "1/1"
         }
       },
-      "latency_ms": 28786.613899981603,
+      "latency_ms": 17714.96159999515,
       "api_success": true,
       "error_message": null
     },
@@ -134,17 +134,16 @@
       "question_id": "M004",
       "question": "MES DÉPENSES EN MAJUSCULES NETFLIX",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "merchant": "Netflix",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.95,
+      "entity_confidence": 0.965,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Netflix",
         "filters": {
           "merchant_name": "Netflix",
           "transaction_type": "debit"
@@ -204,7 +203,7 @@
           }
         }
       },
-      "query_size": 571,
+      "query_size": 551,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -216,7 +215,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 26687.586600193754,
+      "latency_ms": 21608.504500007257,
       "api_success": true,
       "error_message": null
     },
@@ -224,17 +223,16 @@
       "question_id": "M005",
       "question": "mes dépenses en minuscules amazon",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "merchant": "Amazon",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Amazon",
         "filters": {
           "merchant_name": "Amazon",
           "transaction_type": "debit"
@@ -294,7 +292,7 @@
           }
         }
       },
-      "query_size": 567,
+      "query_size": 548,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -306,7 +304,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 23664.59949989803,
+      "latency_ms": 21083.200499997474,
       "api_success": true,
       "error_message": null
     },
@@ -324,7 +322,6 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Netflix",
         "filters": {
           "merchant_name": "Netflix",
           "transaction_type": "debit"
@@ -384,7 +381,7 @@
           }
         }
       },
-      "query_size": 571,
+      "query_size": 551,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -396,7 +393,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 24863.303400110453,
+      "latency_ms": 20495.7393000077,
       "api_success": true,
       "error_message": null
     },
@@ -404,17 +401,16 @@
       "question_id": "M007",
       "question": "Mes dépenses Netflix?????",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "merchant": "Netflix",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.965,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Netflix",
         "filters": {
           "merchant_name": "Netflix",
           "transaction_type": "debit"
@@ -474,7 +470,7 @@
           }
         }
       },
-      "query_size": 571,
+      "query_size": 551,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -486,7 +482,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25531.42400016077,
+      "latency_ms": 20895.417299994733,
       "api_success": true,
       "error_message": null
     },
@@ -500,11 +496,10 @@
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.95,
+      "entity_confidence": 0.965,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Amazon",
         "filters": {
           "merchant_name": "Amazon",
           "transaction_type": "debit"
@@ -564,7 +559,7 @@
           }
         }
       },
-      "query_size": 567,
+      "query_size": 548,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -576,7 +571,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25971.28890012391,
+      "latency_ms": 20373.608900001273,
       "api_success": true,
       "error_message": null
     },
@@ -584,7 +579,7 @@
       "question_id": "M009",
       "question": "mes...dépenses...points...de...suspension",
       "intent_detected": "CONVERSATIONAL",
-      "intent_confidence": 0.5,
+      "intent_confidence": 0.7,
       "entities_structured": {},
       "entities_count": 0,
       "entity_confidence": 0.0,
@@ -602,7 +597,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 14320.526800118387,
+      "latency_ms": 12895.614900015062,
       "api_success": true,
       "error_message": null
     },
@@ -610,17 +605,16 @@
       "question_id": "M010",
       "question": "Mes/dépenses/slashes/Amazon",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.9,
       "entities_structured": {
         "merchant": "Amazon",
         "transaction_type": "debit"
       },
       "entities_count": 2,
-      "entity_confidence": 0.925,
+      "entity_confidence": 0.95,
       "query_found": true,
       "query_data": {
         "user_id": 100,
-        "query": "Amazon",
         "filters": {
           "merchant_name": "Amazon",
           "transaction_type": "debit"
@@ -680,7 +674,7 @@
           }
         }
       },
-      "query_size": 567,
+      "query_size": 548,
       "has_filters": true,
       "has_aggregations": true,
       "filter_count": 2,
@@ -692,7 +686,7 @@
           "entities_translated": "2/2"
         }
       },
-      "latency_ms": 25645.551200024784,
+      "latency_ms": 20465.056999993976,
       "api_success": true,
       "error_message": null
     },
@@ -769,7 +763,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 29284.39240017906,
+      "latency_ms": 22127.6654000103,
       "api_success": true,
       "error_message": null
     },
@@ -777,7 +771,7 @@
       "question_id": "M012",
       "question": "Combien j'ai dépensé chez Amazon versus Netflix versus Carrefour",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.9,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "merchants": [
           "Amazon",
@@ -792,6 +786,11 @@
       "query_data": {
         "user_id": 100,
         "filters": {
+          "merchant_name": [
+            "Amazon",
+            "Netflix",
+            "Carrefour"
+          ],
           "transaction_type": "debit"
         },
         "sort": [
@@ -821,14 +820,89 @@
                 }
               }
             }
+          },
+          "amazon_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Amazon"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "netflix_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Netflix"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "carrefour_debit": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "term": {
+                      "merchant_name.keyword": "Carrefour"
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
           }
         }
       },
-      "query_size": 325,
+      "query_size": 974,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 1,
-      "aggregation_count": 2,
+      "filter_count": 2,
+      "aggregation_count": 5,
       "coherence_analysis": {
         "coherence_score": "MEDIUM",
         "issues": [
@@ -838,7 +912,7 @@
           "entities_translated": "1/2"
         }
       },
-      "latency_ms": 24741.30479991436,
+      "latency_ms": 19398.05190000334,
       "api_success": true,
       "error_message": null
     },
@@ -846,7 +920,7 @@
       "question_id": "M013",
       "question": "Toutes mes transactions du 1er janvier au 31 décembre avec catégories",
       "intent_detected": "transaction_search",
-      "intent_confidence": 0.85,
+      "intent_confidence": 0.95,
       "entities_structured": {
         "date_range": "2025-01-01_2025-12-31",
         "transaction_type": "all"
@@ -856,6 +930,12 @@
       "query_found": true,
       "query_data": {
         "user_id": 100,
+        "filters": {
+          "date": {
+            "gte": "2025-01-01",
+            "lte": "2025-12-31"
+          }
+        },
         "sort": [
           {
             "date": {
@@ -897,25 +977,694 @@
                 }
               }
             }
+          },
+          "monthly_debit_2025_01": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-01-01",
+                        "lte": "2025-01-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_01": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-01-01",
+                        "lte": "2025-01-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_02": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-02-01",
+                        "lte": "2025-02-28"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_02": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-02-01",
+                        "lte": "2025-02-28"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_03": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-03-01",
+                        "lte": "2025-03-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_03": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-03-01",
+                        "lte": "2025-03-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_04": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-04-01",
+                        "lte": "2025-04-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_04": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-04-01",
+                        "lte": "2025-04-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_05": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-05-01",
+                        "lte": "2025-05-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_05": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-05-01",
+                        "lte": "2025-05-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_06": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-06-01",
+                        "lte": "2025-06-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_06": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-06-01",
+                        "lte": "2025-06-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_07": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-07-01",
+                        "lte": "2025-07-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_07": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-07-01",
+                        "lte": "2025-07-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_08": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-08-01",
+                        "lte": "2025-08-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_08": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-08-01",
+                        "lte": "2025-08-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_09": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-09-01",
+                        "lte": "2025-09-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_09": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-09-01",
+                        "lte": "2025-09-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_10": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-10-01",
+                        "lte": "2025-10-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_10": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-10-01",
+                        "lte": "2025-10-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_11": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-11-01",
+                        "lte": "2025-11-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_11": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-11-01",
+                        "lte": "2025-11-30"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_debit_2025_12": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "debit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-12-01",
+                        "lte": "2025-12-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
+          },
+          "monthly_credit_2025_12": {
+            "filter": {
+              "bool": {
+                "must": [
+                  {
+                    "term": {
+                      "transaction_type": "credit"
+                    }
+                  },
+                  {
+                    "range": {
+                      "date": {
+                        "gte": "2025-12-01",
+                        "lte": "2025-12-31"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "aggs": {
+              "sum_amount": {
+                "sum": {
+                  "field": "amount_abs"
+                }
+              }
+            }
           }
         }
       },
-      "query_size": 411,
-      "has_filters": false,
+      "query_size": 5852,
+      "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 0,
-      "aggregation_count": 3,
+      "filter_count": 1,
+      "aggregation_count": 27,
       "coherence_analysis": {
-        "coherence_score": "LOW",
-        "issues": [
-          "Entités manquantes dans query: date_range",
-          "Intent transaction_search mais aucun filtre dans query"
-        ],
+        "coherence_score": "HIGH",
+        "issues": [],
         "details": {
-          "entities_translated": "1/2"
+          "entities_translated": "2/2"
         }
       },
-      "latency_ms": 37369.63829980232,
+      "latency_ms": 23680.96590001369,
       "api_success": true,
       "error_message": null
     },
@@ -946,9 +1695,6 @@
         "user_id": 100,
         "filters": {
           "transaction_type": "debit",
-          "amount_abs": {
-            "lt": 10
-          },
           "category_name": [
             "Carburant",
             "Transport",
@@ -957,7 +1703,14 @@
             "achats en ligne",
             "Alimentation",
             "Vêtements"
-          ]
+          ],
+          "amount_abs": {
+            "lt": 10
+          },
+          "date": {
+            "gte": "2025-06-01",
+            "lte": "2025-06-30"
+          }
         },
         "sort": [
           {
@@ -1164,21 +1917,19 @@
           }
         }
       },
-      "query_size": 1932,
+      "query_size": 1984,
       "has_filters": true,
       "has_aggregations": true,
-      "filter_count": 3,
+      "filter_count": 4,
       "aggregation_count": 9,
       "coherence_analysis": {
-        "coherence_score": "MEDIUM",
-        "issues": [
-          "Entités manquantes dans query: date_range"
-        ],
+        "coherence_score": "HIGH",
+        "issues": [],
         "details": {
-          "entities_translated": "4/5"
+          "entities_translated": "5/5"
         }
       },
-      "latency_ms": 34491.49759998545,
+      "latency_ms": 30399.158599990187,
       "api_success": true,
       "error_message": null
     },
@@ -1207,7 +1958,7 @@
         ],
         "details": {}
       },
-      "latency_ms": 18791.31400003098,
+      "latency_ms": 19459.044000017457,
       "api_success": true,
       "error_message": null
     }

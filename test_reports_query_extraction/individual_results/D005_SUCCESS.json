@@ -16,8 +16,8 @@
     "filters": {
       "transaction_type": "debit",
       "date": {
-        "gte": "2025-09-22",
-        "lte": "2025-09-28"
+        "gte": "2025-09-29",
+        "lte": "2025-10-05"
       }
     },
     "sort": [
@@ -62,8 +62,8 @@
       "entities_translated": "2/2"
     }
   },
-  "latency_ms": 18176.367999985814,
+  "latency_ms": 20355.984399997396,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-05T22:06:21.158165"
+  "timestamp": "2025-10-10T11:37:53.683061"
 }

@@ -5,7 +5,7 @@
   "intent_detected": "financial_query",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "transaction_type": "all"
+    "query": "objectifs épargne suivi"
   },
   "entities_count": 1,
   "entity_confidence": 0.8,
@@ -23,8 +23,8 @@
     ],
     "details": {}
   },
-  "latency_ms": 17975.15350021422,
+  "latency_ms": 17740.66519999178,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:36:47.105930"
+  "timestamp": "2025-10-10T12:12:09.524274"
 }

@@ -5,20 +5,14 @@
   "intent_detected": "transaction_search",
   "intent_confidence": 0.85,
   "entities_structured": {
-    "amount": 500,
-    "operator": "gt",
-    "transaction_type": "all"
+    "transaction_type": "all",
+    "query": "gros montants importants élevés"
   },
-  "entities_count": 3,
-  "entity_confidence": 0.8166666666666668,
+  "entities_count": 2,
+  "entity_confidence": 0.775,
   "query_found": true,
   "query_data": {
     "user_id": 100,
-    "filters": {
-      "amount_abs": {
-        "gt": 500
-      }
-    },
     "sort": [
       {
         "date": {
@@ -63,20 +57,23 @@
       }
     }
   },
-  "query_size": 451,
-  "has_filters": true,
+  "query_size": 411,
+  "has_filters": false,
   "has_aggregations": true,
-  "filter_count": 1,
+  "filter_count": 0,
   "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "HIGH",
-    "issues": [],
+    "coherence_score": "LOW",
+    "issues": [
+      "Entités manquantes dans query: query",
+      "Intent transaction_search mais aucun filtre dans query"
+    ],
     "details": {
-      "entities_translated": "3/3"
+      "entities_translated": "1/2"
     }
   },
-  "latency_ms": 31494.695600122213,
+  "latency_ms": 23889.615799998865,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:30:15.348813"
+  "timestamp": "2025-10-10T12:06:21.804096"
 }

@@ -3,16 +3,17 @@
   "category": "K_metier",
   "question": "Frais professionnels à rembourser",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.8,
+  "intent_confidence": 0.85,
   "entities_structured": {
-    "query": "frais professionnels rembourser",
+    "query": "frais professionnels remboursement",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.875,
+  "entity_confidence": 0.8500000000000001,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "frais professionnels remboursement",
     "filters": {
       "transaction_type": "debit"
     },
@@ -46,7 +47,7 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 372,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -60,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 36053.64799988456,
+  "latency_ms": 19540.96050001681,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:35:06.754973"
+  "timestamp": "2025-10-10T12:10:27.189422"
 }

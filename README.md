@@ -1,5 +1,60 @@
 # Harena
 
+## 🚀 Déploiement AWS
+
+### 📚 Documentation Complète de Déploiement
+
+**Pour déployer Harena sur AWS, suivez ces documents dans l'ordre:**
+
+#### 🚀 Pour Déployer MAINTENANT
+
+1. **[COMMANDES_DEPLOIEMENT.md](COMMANDES_DEPLOIEMENT.md)** - ⭐ **DÉPLOIEMENT PRÊT**
+   - ✅ Préparation terminée (ports, env, terraform)
+   - ✅ Archive créée et uploadée sur S3 (5.8 MB)
+   - ✅ Scripts de migration et déploiement prêts
+   - 📋 Commandes prêtes à copier-coller
+   - ⏱️ Temps estimé: 25-35 minutes
+   - **Tout est prêt, vous pouvez déployer immédiatement!**
+
+#### 📖 Documentation de Référence
+
+2. **[RESUME_DEPLOIEMENT.md](RESUME_DEPLOIEMENT.md)** - Vue d'ensemble
+   - Architecture cible et services à déployer
+   - Plan simplifié sur 3 jours
+   - Checklist complète
+
+3. **[ROADMAP_DEPLOIEMENT.md](ROADMAP_DEPLOIEMENT.md)** - Plan détaillé
+   - 6 phases de déploiement expliquées
+   - Détails techniques de chaque étape
+   - Configuration de tous les services systemd
+
+4. **[GUIDE_EXPLOITATION.md](GUIDE_EXPLOITATION.md)** - Guide opérationnel
+   - URLs et endpoints de tous les services
+   - Démarrer/arrêter l'infrastructure (gestion des coûts)
+   - Déployer des mises à jour du code
+   - Monitoring, logs, et dépannage
+   - Connexion DBeaver à PostgreSQL AWS
+
+5. **[DEPLOIEMENT_AWS.md](DEPLOIEMENT_AWS.md)** - Infrastructure actuelle
+   - État de l'infrastructure déployée
+   - Services actuellement actifs
+   - Configuration technique détaillée
+
+### 🎯 État Actuel
+
+**Infrastructure AWS**: ✅ Créée et opérationnelle
+- VPC, EC2, PostgreSQL RDS, Redis ElastiCache, S3 + CloudFront
+
+**Services Backend Déployés**: 2/6
+- ✅ Conversation Service (port 8001)
+- ✅ Metric Service (port 8004)
+- ❌ User Service (port 8000) - À déployer
+- ❌ Sync Service (port 8002) - À déployer
+- ❌ Enrichment Service (port 8003) - À déployer
+- ❌ Search Service (port 8005) - À déployer
+
+**Prochaine étape**: Suivre [ROADMAP_DEPLOIEMENT.md](ROADMAP_DEPLOIEMENT.md) pour déployer les 4 services manquants
+
 ## Local Development (Unified Port)
 
 - Single entrypoint: run `python local_app.py` and access `http://localhost:8000`.

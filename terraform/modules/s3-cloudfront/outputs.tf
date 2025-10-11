@@ -17,3 +17,13 @@ output "cloudfront_id" {
   description = "CloudFront distribution ID"
   value       = aws_cloudfront_distribution.frontend.id
 }
+
+output "api_cloudfront_domain" {
+  description = "API CloudFront distribution domain (HTTPS)"
+  value       = aws_cloudfront_distribution.api.domain_name
+}
+
+output "api_cloudfront_id" {
+  description = "API CloudFront distribution ID"
+  value       = aws_cloudfront_distribution.api.id
+}

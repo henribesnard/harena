@@ -7,9 +7,7 @@
   "entities_structured": {
     "amount": 30,
     "operator": "lt",
-    "categories": [
-      "Restaurants"
-    ],
+    "categories": [],
     "transaction_type": "debit"
   },
   "entities_count": 4,
@@ -19,8 +17,11 @@
     "user_id": 100,
     "filters": {
       "transaction_type": "debit",
+      "amount_abs": {
+        "lt": 30
+      },
       "category_name": [
-        "Restaurants"
+        "Restaurant"
       ]
     },
     "sort": [
@@ -51,7 +52,7 @@
           }
         }
       },
-      "restaurants_debit": {
+      "restaurant_debit": {
         "filter": {
           "bool": {
             "must": [
@@ -62,7 +63,7 @@
               },
               {
                 "term": {
-                  "category_name.keyword": "Restaurants"
+                  "category_name.keyword": "Restaurant"
                 }
               }
             ]
@@ -78,22 +79,20 @@
       }
     }
   },
-  "query_size": 565,
+  "query_size": 588,
   "has_filters": true,
   "has_aggregations": true,
-  "filter_count": 2,
+  "filter_count": 3,
   "aggregation_count": 3,
   "coherence_analysis": {
-    "coherence_score": "MEDIUM",
-    "issues": [
-      "Entités manquantes dans query: amount, operator"
-    ],
+    "coherence_score": "HIGH",
+    "issues": [],
     "details": {
-      "entities_translated": "2/4"
+      "entities_translated": "4/4"
     }
   },
-  "latency_ms": 20872.41840013303,
+  "latency_ms": 22781.852300016908,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:09:05.935267"
+  "timestamp": "2025-10-10T11:50:46.362162"
 }

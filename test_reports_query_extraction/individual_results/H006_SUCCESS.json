@@ -3,16 +3,17 @@
   "category": "H_recherche",
   "question": "Mes dépenses inhabituelles",
   "intent_detected": "transaction_search",
-  "intent_confidence": 0.75,
+  "intent_confidence": 0.85,
   "entities_structured": {
     "query": "inhabituelles anormales suspectes",
     "transaction_type": "debit"
   },
   "entities_count": 2,
-  "entity_confidence": 0.875,
+  "entity_confidence": 0.8500000000000001,
   "query_found": true,
   "query_data": {
     "user_id": 100,
+    "query": "inhabituelles anormales suspectes",
     "filters": {
       "transaction_type": "debit"
     },
@@ -46,7 +47,7 @@
       }
     }
   },
-  "query_size": 325,
+  "query_size": 371,
   "has_filters": true,
   "has_aggregations": true,
   "filter_count": 1,
@@ -60,8 +61,8 @@
       "entities_translated": "1/2"
     }
   },
-  "latency_ms": 26258.354099933058,
+  "latency_ms": 19873.21079999674,
   "api_success": true,
   "error_message": null,
-  "timestamp": "2025-10-03T11:24:53.172321"
+  "timestamp": "2025-10-10T12:02:57.763780"
 }

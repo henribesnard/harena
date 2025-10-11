@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .llm_provider import LLMProviderManager, LLMRequest, LLMResponse
+from ..analytics_agent import AnalyticsAgent, AnomalyDetectionMethod
+from ..recommendation_engine import RecommendationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +96,18 @@ class ResponseGenerator:
     ):
         self.llm_manager = llm_manager
         self.response_templates_path = response_templates_path
-        
+
+        # Initialize specialized agents
+        self.analytics_agent = AnalyticsAgent()
+        self.recommendation_engine = RecommendationEngine(
+            user_profile_manager=None,  # Will be connected in future
+            analytics_agent=self.analytics_agent
+        )
+
         # Templates de reponse par intention
         self.response_templates = {}
         self._templates_loaded = False
-        
+
         # Configuration insights automatiques
         self.insight_generators = {
             InsightType.SPENDING_PATTERN: self._generate_spending_pattern_insight,
@@ -109,7 +118,7 @@ class ResponseGenerator:
             InsightType.RECOMMENDATION: self._generate_recommendation_insight,
             InsightType.FINANCIAL_SUMMARY: self._generate_financial_summary_insight
         }
-        
+
         # Statistiques
         self.stats = {
             "responses_generated": 0,
@@ -119,8 +128,8 @@ class ResponseGenerator:
             "avg_processing_time_ms": 0,
             "total_tokens_used": 0
         }
-        
-        logger.info("ResponseGenerator initialise")
+
+        logger.info("ResponseGenerator initialise with Analytics Agent and Recommendation Engine")
     
     async def initialize(self) -> bool:
         """Initialise le generateur de reponses"""
@@ -498,36 +507,63 @@ class ResponseGenerator:
         return None
     
     async def _generate_unusual_transaction_insight(
-        self, 
-        search_results: List[Dict[str, Any]], 
+        self,
+        search_results: List[Dict[str, Any]],
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
-        """Genere insight sur transactions inhabituelles selon le type (debit/credit)"""
-        
-        if not search_results:
+        """Genere insight sur transactions inhabituelles avec Analytics Agent"""
+
+        if not search_results or len(search_results) < 3:
             return None
-        
+
         try:
-            # Séparer par type de transaction
-            debits = [tx for tx in search_results if tx.get("transaction_type") == "debit"]
-            credits = [tx for tx in search_results if tx.get("transaction_type") == "credit"]
-            
-            # Analyser les dépenses inhabituelles
-            if debits:
-                insight = await self._analyze_unusual_expenses(debits, user_profile)
-                if insight:
-                    return insight
-            
-            # Analyser les revenus inhabituels  
-            if credits:
-                insight = await self._analyze_unusual_income(credits, user_profile)
-                if insight:
-                    return insight
-                    
+            # Use Analytics Agent for anomaly detection
+            anomalies = await self.analytics_agent.detect_anomalies(
+                transactions=search_results,
+                method=AnomalyDetectionMethod.Z_SCORE,
+                threshold=2.0
+            )
+
+            if not anomalies:
+                # Fallback to legacy methods if no anomalies detected
+                debits = [tx for tx in search_results if tx.get("transaction_type") == "debit"]
+                credits = [tx for tx in search_results if tx.get("transaction_type") == "credit"]
+
+                if debits:
+                    insight = await self._analyze_unusual_expenses(debits, user_profile)
+                    if insight:
+                        return insight
+
+                if credits:
+                    insight = await self._analyze_unusual_income(credits, user_profile)
+                    if insight:
+                        return insight
+
+                return None
+
+            # Take the most significant anomaly
+            anomaly = anomalies[0]
+
+            return GeneratedInsight(
+                type=InsightType.UNUSUAL_TRANSACTION,
+                title="Transaction inhabituelle détectée",
+                description=f"{anomaly.amount:.2f}€ chez {anomaly.merchant} - {anomaly.reason}",
+                confidence=min(0.95, anomaly.anomaly_score / 3.0),  # Normalize score to confidence
+                data_support={
+                    "transaction_id": anomaly.transaction_id,
+                    "amount": anomaly.amount,
+                    "merchant": anomaly.merchant,
+                    "date": anomaly.date,
+                    "anomaly_score": anomaly.anomaly_score,
+                    "method": anomaly.method.value
+                },
+                actionable=True,
+                priority=1
+            )
+
         except Exception as e:
-            logger.warning(f"Erreur detection transaction inhabituelle: {str(e)}")
-        
-        return None
+            logger.warning(f"Erreur detection transaction inhabituelle avec Analytics Agent: {str(e)}")
+            return None
     
     async def _analyze_unusual_expenses(
         self, 
@@ -648,24 +684,108 @@ class ResponseGenerator:
         return None
     
     async def _generate_trend_analysis_insight(
-        self, 
-        search_results: List[Dict[str, Any]], 
+        self,
+        search_results: List[Dict[str, Any]],
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
-        """Genere insight analyse de tendance"""
-        
-        # Placeholder - necessite donnees historiques
-        return None
+        """Genere insight analyse de tendance avec Analytics Agent"""
+
+        if not search_results or len(search_results) < 3:
+            return None
+
+        try:
+            # Use Analytics Agent to calculate trend
+            trend = await self.analytics_agent.calculate_trend(
+                transactions=search_results,
+                aggregation_period="monthly",
+                forecast_periods=3
+            )
+
+            # Only return insight if trend is significant
+            if abs(trend.slope) < 0.01 or trend.r_squared < 0.3:
+                logger.debug(f"Trend not significant: slope={trend.slope}, r2={trend.r_squared}")
+                return None
+
+            # Build description with forecast
+            description = f"Vos dépenses évoluent de {trend.slope:.1f}% par période"
+
+            if trend.forecast_next_periods:
+                next_period_amount = trend.forecast_next_periods[0][1]
+                description += f". Prévision prochaine période: {next_period_amount:.2f}€"
+
+            # Determine confidence based on R²
+            confidence = min(0.95, trend.r_squared)
+
+            return GeneratedInsight(
+                type=InsightType.TREND_ANALYSIS,
+                title=f"Tendance {trend.trend_direction}: {abs(trend.slope):.1f}%/période",
+                description=description,
+                confidence=confidence,
+                data_support={
+                    "trend_direction": trend.trend_direction,
+                    "slope": trend.slope,
+                    "r_squared": trend.r_squared,
+                    "data_points_count": len(trend.data_points),
+                    "forecast": trend.forecast_next_periods[:2]  # Only first 2 forecasts
+                },
+                actionable=trend.trend_direction == "up",  # Rising expenses are actionable
+                priority=1 if abs(trend.slope) > 10 else 2
+            )
+
+        except Exception as e:
+            logger.warning(f"Erreur calcul trend analysis avec Analytics Agent: {str(e)}")
+            return None
     
     async def _generate_recommendation_insight(
-        self, 
-        search_results: List[Dict[str, Any]], 
+        self,
+        search_results: List[Dict[str, Any]],
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
-        """Genere recommandation personnalisee"""
-        
-        # Placeholder - e implementer selon regles metier
-        return None
+        """Genere recommandation personnalisee avec Recommendation Engine"""
+
+        if not search_results:
+            return None
+
+        try:
+            # Use Recommendation Engine to generate recommendations
+            recommendations = await self.recommendation_engine.generate_recommendations(
+                transactions=search_results,
+                user_id=user_profile.get("user_id", 0),
+                user_context=user_profile,
+                max_recommendations=1  # Only take top recommendation for insight
+            )
+
+            if not recommendations:
+                return None
+
+            # Take the most relevant recommendation
+            rec = recommendations[0]
+
+            # Build description with savings if available
+            description = rec.description
+            if rec.estimated_savings:
+                description += f" Économie estimée: {rec.estimated_savings:.0f}€"
+
+            return GeneratedInsight(
+                type=InsightType.RECOMMENDATION,
+                title=rec.title,
+                description=description,
+                confidence=rec.confidence,
+                data_support={
+                    "recommendation_id": rec.recommendation_id,
+                    "recommendation_type": rec.recommendation_type.value,
+                    "estimated_savings": rec.estimated_savings,
+                    "cta_text": rec.cta_text,
+                    "cta_action": rec.cta_action,
+                    **(rec.data_support or {})
+                },
+                actionable=rec.actionable,
+                priority=rec.priority.value
+            )
+
+        except Exception as e:
+            logger.warning(f"Erreur generation recommendation avec Recommendation Engine: {str(e)}")
+            return None
     
     async def _generate_financial_summary_insight(
         self,

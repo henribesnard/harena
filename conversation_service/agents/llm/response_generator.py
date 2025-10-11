@@ -1025,48 +1025,247 @@ PROFIL UTILISATEUR:
             return ResponseType.DIRECT_ANSWER
     
     def _prepare_data_visualizations(self, request: ResponseGenerationRequest) -> List[Dict[str, Any]]:
-        """Prepare les visualisations de donnees pour l'interface"""
-        
+        """Prepare les visualisations Chart.js pour l'interface
+
+        Genere des configurations Chart.js completes et utilisables directement
+        par le frontend pour afficher des graphiques interactifs.
+        """
+
         visualizations = []
-        
+
         if not request.search_results:
             return visualizations
-        
+
         try:
-            # Graphique montants par date (si transactions)
-            if request.intent_group == "transaction_search":
-                dates_amounts = {}
+            from datetime import datetime
+            from collections import defaultdict
+
+            # 1. LINE CHART: Evolution des montants dans le temps
+            if request.intent_group == "transaction_search" and len(request.search_results) > 2:
+                dates_amounts = defaultdict(lambda: {"debit": 0, "credit": 0})
+
                 for tx in request.search_results:
-                    date = tx.get("date", "N/A")
-                    amount = float(tx.get("amount", 0))
-                    dates_amounts[date] = dates_amounts.get(date, 0) + amount
-                
+                    date_str = tx.get("date", "")
+                    if not date_str:
+                        continue
+
+                    try:
+                        # Parse date and format as YYYY-MM-DD
+                        if isinstance(date_str, str):
+                            date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                        else:
+                            date_obj = date_str
+
+                        date_key = date_obj.strftime("%Y-%m-%d")
+                        amount = float(tx.get("amount", 0))
+
+                        if amount < 0:
+                            dates_amounts[date_key]["debit"] += abs(amount)
+                        else:
+                            dates_amounts[date_key]["credit"] += amount
+
+                    except Exception as e:
+                        logger.debug(f"Erreur parsing date {date_str}: {e}")
+                        continue
+
                 if dates_amounts:
+                    # Sort by date
+                    sorted_dates = sorted(dates_amounts.keys())
+
+                    # Build Chart.js config
                     visualizations.append({
-                        "type": "line_chart",
-                        "title": "evolution des montants",
-                        "data": [{"date": d, "amount": a} for d, a in dates_amounts.items()],
-                        "x_axis": "date",
-                        "y_axis": "amount"
+                        "type": "chart",
+                        "chart_type": "line",
+                        "title": "Evolution des transactions",
+                        "config": {
+                            "type": "line",
+                            "data": {
+                                "labels": sorted_dates,
+                                "datasets": [
+                                    {
+                                        "label": "Depenses",
+                                        "data": [dates_amounts[d]["debit"] for d in sorted_dates],
+                                        "borderColor": "rgb(255, 99, 132)",
+                                        "backgroundColor": "rgba(255, 99, 132, 0.1)",
+                                        "tension": 0.3,
+                                        "fill": True
+                                    },
+                                    {
+                                        "label": "Revenus",
+                                        "data": [dates_amounts[d]["credit"] for d in sorted_dates],
+                                        "borderColor": "rgb(75, 192, 192)",
+                                        "backgroundColor": "rgba(75, 192, 192, 0.1)",
+                                        "tension": 0.3,
+                                        "fill": True
+                                    }
+                                ]
+                            },
+                            "options": {
+                                "responsive": True,
+                                "plugins": {
+                                    "legend": {
+                                        "position": "top"
+                                    },
+                                    "title": {
+                                        "display": True,
+                                        "text": "Evolution des transactions dans le temps"
+                                    },
+                                    "tooltip": {
+                                        "callbacks": {
+                                            "label": "function(context) { return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '€'; }"
+                                        }
+                                    }
+                                },
+                                "scales": {
+                                    "y": {
+                                        "beginAtZero": True,
+                                        "ticks": {
+                                            "callback": "function(value) { return value.toFixed(0) + '€'; }"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     })
-            
-            # Repartition par categorie
-            categories_amounts = {}
-            for result in request.search_results:
-                category = result.get("category", "Autres")
-                amount = float(result.get("amount", 0))
-                categories_amounts[category] = categories_amounts.get(category, 0) + amount
-            
+
+            # 2. PIE CHART: Repartition par categorie (uniquement pour debits)
+            categories_amounts = defaultdict(float)
+
+            for tx in request.search_results:
+                amount = float(tx.get("amount", 0))
+
+                # Only count debits (expenses) for category breakdown
+                if amount < 0:
+                    category = tx.get("category_name", tx.get("category", "Autres"))
+                    if not category or category == "":
+                        category = "Non categorise"
+                    categories_amounts[category] += abs(amount)
+
             if len(categories_amounts) > 1:
+                # Sort by amount descending
+                sorted_categories = sorted(categories_amounts.items(), key=lambda x: x[1], reverse=True)
+
+                # Limit to top 8 categories, group rest as "Autres"
+                if len(sorted_categories) > 8:
+                    top_categories = sorted_categories[:8]
+                    other_amount = sum(amount for _, amount in sorted_categories[8:])
+                    if other_amount > 0:
+                        top_categories.append(("Autres", other_amount))
+                    sorted_categories = top_categories
+
+                # Generate distinct colors
+                colors = [
+                    "rgb(255, 99, 132)",
+                    "rgb(54, 162, 235)",
+                    "rgb(255, 206, 86)",
+                    "rgb(75, 192, 192)",
+                    "rgb(153, 102, 255)",
+                    "rgb(255, 159, 64)",
+                    "rgb(199, 199, 199)",
+                    "rgb(83, 102, 255)",
+                    "rgb(255, 99, 255)"
+                ]
+
                 visualizations.append({
-                    "type": "pie_chart",
-                    "title": "Repartition par categorie",
-                    "data": [{"category": c, "amount": a} for c, a in categories_amounts.items()]
+                    "type": "chart",
+                    "chart_type": "pie",
+                    "title": "Repartition des depenses par categorie",
+                    "config": {
+                        "type": "pie",
+                        "data": {
+                            "labels": [cat for cat, _ in sorted_categories],
+                            "datasets": [{
+                                "data": [amount for _, amount in sorted_categories],
+                                "backgroundColor": colors[:len(sorted_categories)],
+                                "borderWidth": 1
+                            }]
+                        },
+                        "options": {
+                            "responsive": True,
+                            "plugins": {
+                                "legend": {
+                                    "position": "right"
+                                },
+                                "title": {
+                                    "display": True,
+                                    "text": "Repartition des depenses par categorie"
+                                },
+                                "tooltip": {
+                                    "callbacks": {
+                                        "label": "function(context) { var label = context.label || ''; var value = context.parsed || 0; var total = context.dataset.data.reduce((a, b) => a + b, 0); var percentage = ((value / total) * 100).toFixed(1); return label + ': ' + value.toFixed(2) + '€ (' + percentage + '%)'; }"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 })
-                
+
+            # 3. BAR CHART: Top marchands (uniquement pour debits)
+            merchants_amounts = defaultdict(float)
+
+            for tx in request.search_results:
+                amount = float(tx.get("amount", 0))
+
+                # Only count debits (expenses) for merchant breakdown
+                if amount < 0:
+                    merchant = tx.get("merchant_name", tx.get("merchant", "Inconnu"))
+                    if not merchant or merchant == "":
+                        merchant = "Marchand inconnu"
+                    merchants_amounts[merchant] += abs(amount)
+
+            if len(merchants_amounts) > 1:
+                # Top 10 merchants by spending
+                sorted_merchants = sorted(merchants_amounts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+                visualizations.append({
+                    "type": "chart",
+                    "chart_type": "bar",
+                    "title": "Top 10 marchands",
+                    "config": {
+                        "type": "bar",
+                        "data": {
+                            "labels": [merchant for merchant, _ in sorted_merchants],
+                            "datasets": [{
+                                "label": "Montant des depenses",
+                                "data": [amount for _, amount in sorted_merchants],
+                                "backgroundColor": "rgba(54, 162, 235, 0.6)",
+                                "borderColor": "rgb(54, 162, 235)",
+                                "borderWidth": 1
+                            }]
+                        },
+                        "options": {
+                            "responsive": True,
+                            "plugins": {
+                                "legend": {
+                                    "display": False
+                                },
+                                "title": {
+                                    "display": True,
+                                    "text": "Top 10 des marchands par montant"
+                                },
+                                "tooltip": {
+                                    "callbacks": {
+                                        "label": "function(context) { return context.parsed.y.toFixed(2) + '€'; }"
+                                    }
+                                }
+                            },
+                            "scales": {
+                                "y": {
+                                    "beginAtZero": True,
+                                    "ticks": {
+                                        "callback": "function(value) { return value.toFixed(0) + '€'; }"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+
         except Exception as e:
-            logger.warning(f"Erreur preparation visualisations: {str(e)}")
-        
+            logger.warning(f"Erreur preparation visualisations Chart.js: {str(e)}")
+            import traceback
+            logger.debug(traceback.format_exc())
+
         return visualizations
     
     async def _fallback_response(

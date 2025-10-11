@@ -23,12 +23,15 @@ from ..core.context_manager import ContextManager, ContextCompressionRequest
 from ..core.query_builder import QueryBuilder, QueryBuildRequest
 from ..core.query_executor import QueryExecutor, QueryExecutionRequest
 
-# Agents LLM (Phase 4) 
+# Agents LLM (Phase 4)
 from ..agents.llm import (
     LLMProviderManager,
     IntentClassifier, ClassificationRequest,
     ResponseGenerator, ResponseGenerationRequest
 )
+
+# Advanced Agents (Phase 3.5)
+from ..agents.reasoning_agent import ReasoningAgent
 
 # Configuration
 from ..config.settings import ConfigManager
@@ -104,11 +107,12 @@ class ConversationOrchestrator:
     def __init__(
         self,
         context_manager: ContextManager,
-        intent_classifier: IntentClassifier, 
+        intent_classifier: IntentClassifier,
         query_builder: QueryBuilder,
         query_executor: QueryExecutor,
         response_generator: ResponseGenerator,
-        config_manager: ConfigManager
+        config_manager: ConfigManager,
+        reasoning_agent: Optional[ReasoningAgent] = None
     ):
         # Agents du pipeline
         self.context_manager = context_manager
@@ -117,6 +121,7 @@ class ConversationOrchestrator:
         self.query_executor = query_executor
         self.response_generator = response_generator
         self.config_manager = config_manager
+        self.reasoning_agent = reasoning_agent  # Optional for complex queries
         
         # Cache cross-pipeline pour optimisation
         self._conversation_cache: Dict[str, Any] = {}
@@ -230,7 +235,66 @@ class ConversationOrchestrator:
                 logger.info(f"Entités extraites ({entities_count}): {', '.join(entities_list)}")
             else:
                 logger.info("Aucune entité extraite")
-            
+
+            # === ROUTING: CHECK IF COMPLEX QUERY NEEDS REASONING AGENT ===
+            if self.reasoning_agent and self._is_complex_query(classification_result, request.user_message):
+                logger.info(f"Complex query detected - routing to Reasoning Agent")
+
+                # Use Reasoning Agent for complex multi-step queries
+                stage_start = datetime.now()
+                current_stage = PipelineStage.RESPONSE_GENERATION
+
+                try:
+                    reasoning_result = await self.reasoning_agent.reason_and_execute(
+                        user_question=request.user_message,
+                        user_id=request.user_id,
+                        context={
+                            "classified_intent": {
+                                "intent_group": classification_result.intent_group,
+                                "intent_subtype": classification_result.intent_subtype,
+                                "confidence": classification_result.confidence
+                            },
+                            "conversation_context": context_result["context_snapshot"]
+                        }
+                    )
+
+                    metrics.stage_timings["reasoning_agent"] = self._get_stage_time(stage_start)
+                    metrics.total_processing_time_ms = self._get_total_time(start_time)
+
+                    # Convert reasoning result to standard format
+                    if reasoning_result.success:
+                        await self._update_conversation_stats(metrics, True)
+                        await self._save_conversation_turn(conversation_id, request, reasoning_result.final_answer)
+
+                        logger.info(f"Reasoning Agent completed successfully in {reasoning_result.total_execution_time_ms}ms")
+
+                        return ConversationResult(
+                            success=True,
+                            response_text=reasoning_result.final_answer,
+                            conversation_id=conversation_id,
+                            pipeline_stage=PipelineStage.COMPLETED,
+                            insights=[],  # Reasoning Agent doesn't generate insights (yet)
+                            data_visualizations=[],
+                            metrics=metrics,
+                            classified_intent={
+                                "intent_group": classification_result.intent_group,
+                                "intent_subtype": classification_result.intent_subtype,
+                                "confidence": classification_result.confidence,
+                                "entities": [entity.__dict__ for entity in classification_result.entities]
+                            },
+                            built_query=None,  # Reasoning Agent manages queries internally
+                            search_results=[],
+                            search_total_hits=0,
+                            context_snapshot=context_result["context_snapshot"]
+                        )
+                    else:
+                        logger.warning(f"Reasoning Agent failed, falling back to standard pipeline")
+                        # Fall through to standard pipeline
+
+                except Exception as e:
+                    logger.error(f"Reasoning Agent error: {str(e)}, falling back to standard pipeline")
+                    # Fall through to standard pipeline
+
             # === ROUTAGE SELON INTENTION ===
             # Import des helpers d'intention
             from ..prompts.harena_intents import can_direct_response, requires_search, HarenaIntentType
@@ -962,14 +1026,78 @@ class ConversationOrchestrator:
                 "timestamp": datetime.now().isoformat()
             }
     
+    def _is_complex_query(self, classification_result: Any, user_message: str) -> bool:
+        """
+        Détecte si une question est complexe et nécessite le Reasoning Agent
+
+        Critères de complexité:
+        - Mots-clés de comparaison: "compare", "vs", "différence", "variation"
+        - Mots-clés temporels multiples: "ce mois" + "mois dernier"
+        - Questions multi-parties avec "et"
+        - Calculs explicites: "total", "moyenne", "combien"
+        - Analyse de tendance: "évolution", "progression", "trend"
+
+        Returns:
+            True si la question est complexe, False sinon
+        """
+
+        message_lower = user_message.lower()
+
+        # Keywords indicating complex comparison queries
+        comparison_keywords = [
+            "compare", "comparer", "comparaison",
+            "vs", "versus",
+            "différence", "difference",
+            "variation",
+            "évolution", "evolution",
+            "progression",
+            "tendance", "trend"
+        ]
+
+        # Temporal keywords indicating multi-period analysis
+        temporal_keywords = [
+            "ce mois", "mois dernier", "mois précédent",
+            "cette année", "année dernière", "année précédente",
+            "ce trimestre", "trimestre dernier",
+            "cette semaine", "semaine dernière"
+        ]
+
+        # Multi-part questions
+        multi_part_indicators = [
+            " et ", " puis ", " ensuite ",
+            " ainsi que ", " également "
+        ]
+
+        # Check for comparison keywords
+        has_comparison = any(keyword in message_lower for keyword in comparison_keywords)
+
+        # Check for multiple temporal references (indicates period comparison)
+        temporal_count = sum(1 for keyword in temporal_keywords if keyword in message_lower)
+        has_multi_temporal = temporal_count >= 2
+
+        # Check for multi-part questions
+        has_multi_part = any(indicator in message_lower for indicator in multi_part_indicators)
+
+        # Complex if:
+        # 1. Has comparison keywords
+        # 2. Has multiple temporal references (e.g., "ce mois vs mois dernier")
+        # 3. Has multi-part structure
+        is_complex = has_comparison or has_multi_temporal or has_multi_part
+
+        if is_complex:
+            logger.info(f"Complex query detected: comparison={has_comparison}, "
+                       f"multi_temporal={has_multi_temporal}, multi_part={has_multi_part}")
+
+        return is_complex
+
     async def close(self):
         """Ferme proprement tous les composants"""
-        
+
         try:
             # Fermeture des composants avec connexions
             await self.query_executor.close()
-            
+
             logger.info("ConversationOrchestrator ferme proprement")
-            
+
         except Exception as e:
             logger.error(f"Erreur fermeture ConversationOrchestrator: {str(e)}")

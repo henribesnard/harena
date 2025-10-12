@@ -18,7 +18,13 @@ import logging
 from contextlib import contextmanager
 
 from conversation_service.models.user_profile.entities import PreComputedMetric
-from conversation_service.config.settings import settings
+
+# Import settings from config_service instead
+try:
+    from config_service.config import settings
+except ImportError:
+    # Fallback if config_service not available
+    settings = None
 
 logger = logging.getLogger(__name__)
 

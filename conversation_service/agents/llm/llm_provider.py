@@ -256,11 +256,14 @@ class DeepSeekProvider(BaseLLMProvider):
                 await self.initialize()
             
             payload = {
-                "model": request.model or "deepseek-chat", 
+                "model": request.model or "deepseek-chat",
                 "messages": self._prepare_messages(request),
                 "temperature": request.temperature,
                 "stream": True
             }
+
+            if request.max_tokens:
+                payload["max_tokens"] = request.max_tokens
             
             headers = {"Authorization": f"Bearer {self.config.api_key}"}
             

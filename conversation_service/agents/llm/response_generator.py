@@ -20,6 +20,19 @@ from enum import Enum
 
 from .llm_provider import LLMProviderManager, LLMRequest, LLMResponse
 
+# 🆕 Import Analytics Agent (Sprint 1.1)
+try:
+    from conversation_service.agents.analytics.analytics_agent import (
+        AnalyticsAgent,
+        TimeSeriesMetrics,
+        AnomalyDetectionResult,
+        TrendAnalysis
+    )
+    ANALYTICS_AGENT_AVAILABLE = True
+except ImportError:
+    ANALYTICS_AGENT_AVAILABLE = False
+    logger.warning("Analytics Agent not available - fallback to basic insights")
+
 logger = logging.getLogger(__name__)
 
 class ResponseType(Enum):
@@ -93,18 +106,38 @@ class ResponseGenerator:
         response_templates_path: Optional[str] = None,
         model: str = "deepseek-chat",
         max_tokens: int = 8000,
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        enable_analytics: bool = True  # 🆕 Feature flag Analytics Agent
     ):
         self.llm_manager = llm_manager
         self.response_templates_path = response_templates_path
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.enable_analytics = enable_analytics
 
         # Templates de reponse par intention
         self.response_templates = {}
         self._templates_loaded = False
-        
+
+        # 🆕 Initialisation Analytics Agent (Sprint 1.1)
+        self.analytics_agent = None
+        if self.enable_analytics and ANALYTICS_AGENT_AVAILABLE:
+            try:
+                self.analytics_agent = AnalyticsAgent(
+                    zscore_threshold=2.0,
+                    iqr_multiplier=1.5,
+                    stable_threshold_pct=5.0
+                )
+                logger.info("Analytics Agent initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Analytics Agent: {e}. Fallback to basic insights.")
+                self.analytics_agent = None
+        elif not ANALYTICS_AGENT_AVAILABLE:
+            logger.info("Analytics Agent module not available")
+        else:
+            logger.info("Analytics Agent disabled (feature flag off)")
+
         # Configuration insights automatiques
         self.insight_generators = {
             InsightType.SPENDING_PATTERN: self._generate_spending_pattern_insight,
@@ -115,7 +148,7 @@ class ResponseGenerator:
             InsightType.RECOMMENDATION: self._generate_recommendation_insight,
             InsightType.FINANCIAL_SUMMARY: self._generate_financial_summary_insight
         }
-        
+
         # Statistiques
         self.stats = {
             "responses_generated": 0,
@@ -123,10 +156,15 @@ class ResponseGenerator:
             "insights_generated": 0,
             "fallbacks_used": 0,
             "avg_processing_time_ms": 0,
-            "total_tokens_used": 0
+            "total_tokens_used": 0,
+            "analytics_insights_generated": 0,  # 🆕 Statistique Analytics
+            "analytics_fallbacks": 0  # 🆕 Statistique fallbacks Analytics
         }
 
-        logger.info(f"ResponseGenerator initialise (model={self.model}, max_tokens={self.max_tokens}, temperature={self.temperature})")
+        logger.info(
+            f"ResponseGenerator initialise (model={self.model}, max_tokens={self.max_tokens}, "
+            f"temperature={self.temperature}, analytics={self.enable_analytics and self.analytics_agent is not None})"
+        )
     
     async def initialize(self) -> bool:
         """Initialise le generateur de reponses"""
@@ -507,35 +545,52 @@ class ResponseGenerator:
         return None
     
     async def _generate_unusual_transaction_insight(
-        self, 
-        search_results: List[Dict[str, Any]], 
+        self,
+        search_results: List[Dict[str, Any]],
         user_profile: Dict[str, Any]
     ) -> Optional[GeneratedInsight]:
-        """Genere insight sur transactions inhabituelles selon le type (debit/credit)"""
-        
+        """Genere insight sur transactions inhabituelles selon le type (debit/credit)
+
+        🆕 Sprint 1.1: Utilise Analytics Agent si disponible pour détection anomalies avancée
+        """
+
         if not search_results:
             return None
-        
+
         try:
+            # 🆕 Tentative utilisation Analytics Agent (fallback gracieux si échec)
+            if self.analytics_agent:
+                try:
+                    analytics_insight = await self._detect_anomalies_with_analytics_agent(
+                        search_results, user_profile
+                    )
+                    if analytics_insight:
+                        self.stats["analytics_insights_generated"] += 1
+                        return analytics_insight
+                except Exception as e:
+                    logger.warning(f"Analytics Agent anomaly detection failed: {e}. Using basic method.")
+                    self.stats["analytics_fallbacks"] += 1
+
+            # Fallback: Méthode basique existante
             # Séparer par type de transaction
             debits = [tx for tx in search_results if tx.get("transaction_type") == "debit"]
             credits = [tx for tx in search_results if tx.get("transaction_type") == "credit"]
-            
+
             # Analyser les dépenses inhabituelles
             if debits:
                 insight = await self._analyze_unusual_expenses(debits, user_profile)
                 if insight:
                     return insight
-            
-            # Analyser les revenus inhabituels  
+
+            # Analyser les revenus inhabituels
             if credits:
                 insight = await self._analyze_unusual_income(credits, user_profile)
                 if insight:
                     return insight
-                    
+
         except Exception as e:
             logger.warning(f"Erreur detection transaction inhabituelle: {str(e)}")
-        
+
         return None
     
     async def _analyze_unusual_expenses(
@@ -738,7 +793,107 @@ class ResponseGenerator:
             actionable=False,
             priority=0  # Priorité élevée pour affichage en premier
         )
-    
+
+    async def _detect_anomalies_with_analytics_agent(
+        self,
+        search_results: List[Dict[str, Any]],
+        user_profile: Dict[str, Any]
+    ) -> Optional[GeneratedInsight]:
+        """Détecte anomalies avec Analytics Agent (Sprint 1.1)
+
+        Convertit les transactions search_results au format Analytics Agent,
+        appelle detect_anomalies(), et convertit le résultat en GeneratedInsight.
+
+        Args:
+            search_results: Liste transactions depuis search_service
+            user_profile: Profil utilisateur pour contexte
+
+        Returns:
+            GeneratedInsight si anomalie détectée, None sinon
+        """
+
+        if not search_results or len(search_results) < 3:
+            # Besoin d'au moins 3 transactions pour détection statistique
+            return None
+
+        try:
+            # Préparer données pour Analytics Agent
+            # Format requis: {'id': int, 'amount': float, 'date': str, 'merchant_name': str}
+            analytics_transactions = []
+
+            for tx in search_results:
+                # Convertir au format Analytics Agent
+                analytics_tx = {
+                    'id': tx.get('id', tx.get('transaction_id', 0)),
+                    'amount': abs(float(tx.get('amount', 0))),  # Valeur absolue pour anomalies
+                    'date': tx.get('date', tx.get('transaction_date', '')),
+                    'merchant_name': tx.get('merchant_name', tx.get('merchant', 'N/A'))
+                }
+                analytics_transactions.append(analytics_tx)
+
+            # Appeler Analytics Agent pour détection anomalies Z-score
+            # Threshold 1.5 pour équilibrer sensibilité (détecte plus d'anomalies)
+            # vs précision (évite trop de faux positifs)
+            anomalies = await self.analytics_agent.detect_anomalies(
+                transactions=analytics_transactions,
+                method='zscore',
+                threshold=1.5  # Threshold abaissé pour meilleure sensibilité
+            )
+
+            if not anomalies:
+                # Aucune anomalie détectée
+                return None
+
+            # Prendre la première anomalie (score le plus élevé)
+            # Les anomalies sont triées par score décroissant dans Analytics Agent
+            top_anomaly = anomalies[0]
+
+            # Déterminer type de transaction (debit/credit) pour titre personnalisé
+            original_tx = next(
+                (tx for tx in search_results
+                 if tx.get('id') == top_anomaly.transaction_id or
+                    tx.get('transaction_id') == top_anomaly.transaction_id),
+                None
+            )
+
+            transaction_type = "debit"
+            if original_tx:
+                tx_amount = float(original_tx.get('amount', 0))
+                transaction_type = "credit" if tx_amount > 0 else "debit"
+
+            # Titre personnalisé selon type
+            if transaction_type == "credit":
+                title = "Revenu exceptionnel détecté (Analytics)"
+                description_prefix = "Revenu de"
+            else:
+                title = "Dépense inhabituelle détectée (Analytics)"
+                description_prefix = "Dépense de"
+
+            # Convertir AnomalyDetectionResult en GeneratedInsight
+            return GeneratedInsight(
+                type=InsightType.UNUSUAL_TRANSACTION,
+                title=title,
+                description=f"{description_prefix} {top_anomaly.amount:.2f}€ chez {top_anomaly.merchant_name} - {top_anomaly.explanation}",
+                confidence=min(0.95, 0.70 + (top_anomaly.anomaly_score / 10)),  # Confidence basée sur score
+                data_support={
+                    "transaction_id": top_anomaly.transaction_id,
+                    "amount": top_anomaly.amount,
+                    "merchant_name": top_anomaly.merchant_name,
+                    "anomaly_score": top_anomaly.anomaly_score,
+                    "method": top_anomaly.method,
+                    "threshold_exceeded": top_anomaly.threshold_exceeded,
+                    "transaction_type": transaction_type,
+                    "analytics_agent_used": True  # Flag pour debugging
+                },
+                actionable=True,
+                priority=1
+            )
+
+        except Exception as e:
+            # Log l'erreur et propager l'exception pour fallback
+            logger.error(f"Analytics Agent anomaly detection error: {str(e)}", exc_info=True)
+            raise  # Propager pour que le fallback se déclenche
+
     def _select_response_template(self, request: ResponseGenerationRequest) -> Dict[str, str]:
         """Selectionne le template de reponse approprie"""
         

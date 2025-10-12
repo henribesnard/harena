@@ -177,9 +177,14 @@ class ApplicationState:
             await self.intent_classifier.initialize()
             
             # Response Generator
+            task_configs = llm_config.get("task_configs", {})
+            response_config = task_configs.get("response_generation", {})
+
             self.response_generator = ResponseGenerator(
                 llm_manager=self.llm_provider_manager,
-                response_templates_path=None
+                response_templates_path=None,
+                max_tokens=response_config.get("max_tokens", 4000),
+                temperature=response_config.get("temperature", 0.7)
             )
             await self.response_generator.initialize()
             

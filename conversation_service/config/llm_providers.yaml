@@ -43,9 +43,9 @@ task_configs:
     temperature: 0.1
     
   response_generation:
-    preferred_providers: ["deepseek", "openai"] 
-    max_tokens: 2000
-    temperature: 0.2
+    preferred_providers: ["deepseek", "openai"]
+    max_tokens: 4000  # Augmenté pour permettre des réponses complètes avec plusieurs transactions
+    temperature: 0.7  # Plus créatif pour des réponses naturelles
 
 # Monitoring et coûts
 monitoring:

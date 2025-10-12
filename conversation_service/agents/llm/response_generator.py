@@ -90,11 +90,15 @@ class ResponseGenerator:
     def __init__(
         self,
         llm_manager: LLMProviderManager,
-        response_templates_path: Optional[str] = None
+        response_templates_path: Optional[str] = None,
+        max_tokens: int = 4000,
+        temperature: float = 0.7
     ):
         self.llm_manager = llm_manager
         self.response_templates_path = response_templates_path
-        
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+
         # Templates de reponse par intention
         self.response_templates = {}
         self._templates_loaded = False
@@ -119,8 +123,8 @@ class ResponseGenerator:
             "avg_processing_time_ms": 0,
             "total_tokens_used": 0
         }
-        
-        logger.info("ResponseGenerator initialise")
+
+        logger.info(f"ResponseGenerator initialise (max_tokens={self.max_tokens}, temperature={self.temperature})")
     
     async def initialize(self) -> bool:
         """Initialise le generateur de reponses"""
@@ -194,8 +198,8 @@ class ResponseGenerator:
                     "content": user_prompt
                 }],
                 system_prompt=system_prompt,
-                temperature=0.7,
-                max_tokens=4000,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
                 stream=True,
                 user_id=request.user_id,
                 conversation_id=request.conversation_id
@@ -226,8 +230,8 @@ class ResponseGenerator:
                 "content": user_prompt
             }],
             system_prompt=system_prompt,
-            temperature=0.7,
-            max_tokens=4000,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
             user_id=request.user_id,
             conversation_id=request.conversation_id
         )
@@ -278,8 +282,8 @@ class ResponseGenerator:
                 "content": user_prompt
             }],
             system_prompt=system_prompt,
-            temperature=0.7,
-            max_tokens=4000,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
             stream=True,
             user_id=request.user_id,
             conversation_id=request.conversation_id

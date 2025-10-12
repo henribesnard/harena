@@ -2,11 +2,13 @@
 Context Manager - Agent Logique Phase 3
 Architecture v2.0 - Composant déterministe
 
-Responsabilité : Compression intelligente des tokens
+Responsabilités:
+- Compression intelligente des tokens
 - Gestion contexte conversationnel
-- Compression tokens pour optimisation LLM
 - Historique conversation avec TTL
 - Résumé intelligent des échanges précédents
+- Chargement automatique profils utilisateurs (Sprint 1.2)
+- Intégration métriques pré-calculées (Sprint 1.2)
 """
 
 import logging
@@ -15,6 +17,10 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from collections import deque
+from sqlalchemy.orm import Session
+
+from conversation_service.services.user_profile.profile_service import UserProfileService
+from conversation_service.services.metrics.metrics_service import MetricsService
 
 logger = logging.getLogger(__name__)
 
@@ -63,38 +69,57 @@ class ContextCompressionResult:
 class ContextManager:
     """
     Agent logique pour gestion du contexte conversationnel
-    
+
     Optimise la mémoire et les tokens pour les appels LLM
+    Charge automatiquement profils utilisateurs et métriques
     """
-    
+
     def __init__(
         self,
         max_context_turns: int = 10,
         max_total_tokens: int = 8000,
         context_ttl_hours: int = 24,
-        enable_compression: bool = True
+        enable_compression: bool = True,
+        db_session: Optional[Session] = None,
+        enable_user_profiles: bool = True
     ):
         self.max_context_turns = max_context_turns
         self.max_total_tokens = max_total_tokens
         self.context_ttl_hours = context_ttl_hours
         self.enable_compression = enable_compression
-        
+        self.enable_user_profiles = enable_user_profiles
+
         # Stockage des conversations actives
         self._conversations: Dict[str, deque] = {}
         self._conversation_metadata: Dict[str, Dict[str, Any]] = {}
-        
+
         # Cache des résumés
         self._summary_cache: Dict[str, str] = {}
-        
+
+        # Services Sprint 1.2
+        self.user_profile_service = None
+        self.metrics_service = None
+
+        if db_session and enable_user_profiles:
+            try:
+                self.user_profile_service = UserProfileService(db_session)
+                self.metrics_service = MetricsService(db_session)
+                logger.info("User profile and metrics services initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize user services: {e}")
+                self.enable_user_profiles = False
+
         # Statistiques
         self.stats = {
             "conversations_active": 0,
             "total_turns_stored": 0,
             "compressions_performed": 0,
             "tokens_saved": 0,
-            "cache_hits": 0
+            "cache_hits": 0,
+            "profiles_loaded": 0,
+            "metrics_loaded": 0
         }
-        
+
         logger.info("ContextManager initialisé")
     
     async def add_conversation_turn(
@@ -575,7 +600,7 @@ class ContextManager:
     
     async def clear_conversation(self, conversation_id: str) -> bool:
         """Supprime complètement une conversation"""
-        
+
         try:
             if conversation_id in self._conversations:
                 del self._conversations[conversation_id]
@@ -583,12 +608,169 @@ class ContextManager:
                 del self._conversation_metadata[conversation_id]
             if conversation_id in self._summary_cache:
                 del self._summary_cache[conversation_id]
-            
+
             self.stats["conversations_active"] = max(0, self.stats["conversations_active"] - 1)
-            
+
             logger.info(f"Conversation {conversation_id} supprimée")
             return True
-            
+
         except Exception as e:
             logger.error(f"Erreur suppression conversation {conversation_id}: {str(e)}")
             return False
+
+    # ==========================================
+    # Sprint 1.2 - User Profile Integration
+    # ==========================================
+
+    async def build_enriched_context(
+        self,
+        conversation_id: str,
+        user_id: int,
+        max_turns: Optional[int] = None,
+        include_user_profile: bool = True,
+        include_metrics: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Build enriched context with conversation history, user profile, and metrics
+
+        Args:
+            conversation_id: Conversation ID
+            user_id: User ID
+            max_turns: Max conversation turns to include
+            include_user_profile: Include user profile data
+            include_metrics: Include pre-computed metrics
+
+        Returns:
+            Dict with enriched context
+        """
+        context = {
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "conversation_history": [],
+            "user_profile": None,
+            "metrics": None,
+            "loaded_at": datetime.now().isoformat()
+        }
+
+        # Load conversation history
+        conversation_history = await self.get_conversation_context(
+            conversation_id=conversation_id,
+            max_turns=max_turns,
+            include_summary=True
+        )
+        context["conversation_history"] = conversation_history
+
+        # Load user profile (with graceful degradation)
+        if include_user_profile and self.user_profile_service:
+            try:
+                user_profile = await self.user_profile_service.get_or_create_profile(user_id)
+                context["user_profile"] = {
+                    "preferences": {
+                        "preferred_categories": user_profile.preferences.preferred_categories,
+                        "preferred_merchants": user_profile.preferences.preferred_merchants,
+                        "currency": user_profile.preferences.currency,
+                        "language": user_profile.preferences.language,
+                    },
+                    "habits": {
+                        "frequent_query_patterns": [p.value for p in user_profile.habits.frequent_query_patterns],
+                        "query_frequency": user_profile.habits.query_frequency,
+                        "average_spending_by_category": user_profile.habits.average_spending_by_category,
+                    },
+                    "stats": {
+                        "total_queries": user_profile.total_queries,
+                        "total_sessions": user_profile.total_sessions,
+                        "profile_completeness": user_profile.profile_completeness,
+                    }
+                }
+                self.stats["profiles_loaded"] += 1
+                logger.debug(f"Loaded profile for user_id={user_id}")
+            except Exception as e:
+                logger.error(f"Failed to load profile for user_id={user_id}: {e}")
+                context["user_profile"] = None
+
+        # Load pre-computed metrics (with fallback)
+        if include_metrics and self.metrics_service:
+            try:
+                metrics = await self.metrics_service.get_user_metrics(user_id)
+                context["metrics"] = metrics
+                self.stats["metrics_loaded"] += 1
+                logger.debug(f"Loaded metrics for user_id={user_id}")
+            except Exception as e:
+                logger.error(f"Failed to load metrics for user_id={user_id}: {e}")
+                context["metrics"] = None
+
+        return context
+
+    async def get_user_profile_context(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get user profile context only (convenience method)
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            User profile dict or None
+        """
+        if not self.user_profile_service:
+            return None
+
+        try:
+            profile = await self.user_profile_service.get_or_create_profile(user_id)
+            return {
+                "user_id": profile.user_id,
+                "preferred_categories": profile.preferences.preferred_categories,
+                "preferred_merchants": profile.preferences.preferred_merchants,
+                "frequent_patterns": [p.value for p in profile.habits.frequent_query_patterns],
+                "total_queries": profile.total_queries,
+                "profile_completeness": profile.profile_completeness
+            }
+        except Exception as e:
+            logger.error(f"Failed to get profile context for user_id={user_id}: {e}")
+            return None
+
+    async def get_user_metrics_context(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get user metrics context only (convenience method)
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Metrics dict or None
+        """
+        if not self.metrics_service:
+            return None
+
+        try:
+            metrics = await self.metrics_service.get_user_metrics(user_id)
+            return metrics
+        except Exception as e:
+            logger.error(f"Failed to get metrics context for user_id={user_id}: {e}")
+            return None
+
+    async def update_user_query_patterns(
+        self,
+        user_id: int,
+        intent_group: str,
+        intent_subtype: str
+    ) -> None:
+        """
+        Update user query patterns after processing a query
+
+        Args:
+            user_id: User ID
+            intent_group: Intent group detected
+            intent_subtype: Intent subtype detected
+        """
+        if not self.user_profile_service:
+            return
+
+        try:
+            await self.user_profile_service.update_query_patterns(
+                user_id=user_id,
+                intent_group=intent_group,
+                intent_subtype=intent_subtype
+            )
+            logger.debug(f"Updated query patterns for user_id={user_id}: {intent_group}.{intent_subtype}")
+        except Exception as e:
+            logger.error(f"Failed to update query patterns for user_id={user_id}: {e}")

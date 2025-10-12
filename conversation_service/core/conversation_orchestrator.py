@@ -23,12 +23,15 @@ from ..core.context_manager import ContextManager, ContextCompressionRequest
 from ..core.query_builder import QueryBuilder, QueryBuildRequest
 from ..core.query_executor import QueryExecutor, QueryExecutionRequest
 
-# Agents LLM (Phase 4) 
+# Agents LLM (Phase 4)
 from ..agents.llm import (
     LLMProviderManager,
     IntentClassifier, ClassificationRequest,
     ResponseGenerator, ResponseGenerationRequest
 )
+
+# Reasoning Agent (Phase 2)
+from ..agents.reasoning import ReasoningAgent
 
 # Configuration
 from ..config.settings import ConfigManager
@@ -104,11 +107,13 @@ class ConversationOrchestrator:
     def __init__(
         self,
         context_manager: ContextManager,
-        intent_classifier: IntentClassifier, 
+        intent_classifier: IntentClassifier,
         query_builder: QueryBuilder,
         query_executor: QueryExecutor,
         response_generator: ResponseGenerator,
-        config_manager: ConfigManager
+        config_manager: ConfigManager,
+        llm_manager: Optional[Any] = None,
+        analytics_agent: Optional[Any] = None
     ):
         # Agents du pipeline
         self.context_manager = context_manager
@@ -117,6 +122,16 @@ class ConversationOrchestrator:
         self.query_executor = query_executor
         self.response_generator = response_generator
         self.config_manager = config_manager
+
+        # Reasoning Agent (Phase 2) - initialized if dependencies available
+        self.reasoning_agent = None
+        if llm_manager:
+            self.reasoning_agent = ReasoningAgent(
+                llm_manager=llm_manager,
+                query_executor=query_executor,
+                analytics_agent=analytics_agent
+            )
+            logger.info("ReasoningAgent initialized for complex query handling")
         
         # Cache cross-pipeline pour optimisation
         self._conversation_cache: Dict[str, Any] = {}
@@ -234,14 +249,14 @@ class ConversationOrchestrator:
             # === ROUTAGE SELON INTENTION ===
             # Import des helpers d'intention
             from ..prompts.harena_intents import can_direct_response, requires_search, HarenaIntentType
-            
+
             # Conversion de l'intention en enum si c'est une string
             intent_enum = None
             if hasattr(classification_result, 'intent_group'):
                 intent_str = classification_result.intent_group
             else:
                 intent_str = getattr(classification_result, 'intent_type', 'UNKNOWN')
-            
+
             try:
                 # Essayer d'abord avec la string exacte
                 intent_enum = HarenaIntentType(intent_str)
@@ -252,6 +267,20 @@ class ConversationOrchestrator:
                 except ValueError:
                     logger.warning(f"Intention inconnue: {intent_str}, fallback vers UNKNOWN")
                     intent_enum = HarenaIntentType.UNKNOWN
+
+            # === CHECK IF COMPLEX QUERY REQUIRES REASONING AGENT ===
+            # Detect period comparisons and multi-step analytics
+            requires_reasoning = self._requires_reasoning_agent(
+                classification_result.intent_group,
+                classification_result.intent_subtype,
+                classification_result.entities
+            )
+
+            if requires_reasoning and self.reasoning_agent:
+                logger.info(f"Complex query detected - routing to Reasoning Agent")
+                return await self._process_with_reasoning_agent(
+                    request, classification_result, context_result, metrics, start_time, conversation_id
+                )
             
             # Si l'intention peut aller directement à la génération de réponse
             if can_direct_response(intent_enum):
@@ -282,8 +311,8 @@ class ConversationOrchestrator:
                 
                 await self._update_conversation_stats(metrics, True)
                 await self._save_conversation_turn(conversation_id, request, response_result.response_text)
-                
-                logger.info(f"Pipeline {conversation_id} court-circuité en {metrics.total_processing_time_ms}ms")
+
+                logger.info(f"Pipeline {conversation_id} court-circuité en {metrics.total_processing_time_ms}ms - Modèle LLM: {metrics.model_used} ({metrics.tokens_used} tokens)")
                 
                 return ConversationResult(
                     success=True,
@@ -365,8 +394,8 @@ class ConversationOrchestrator:
             await self._save_conversation_turn(
                 conversation_id, request, response_result.response_text
             )
-            
-            logger.info(f"Pipeline {conversation_id} termine en {metrics.total_processing_time_ms}ms")
+
+            logger.info(f"Pipeline {conversation_id} termine en {metrics.total_processing_time_ms}ms - Modèle LLM: {metrics.model_used} ({metrics.tokens_used} tokens)")
             
             return ConversationResult(
                 success=True,
@@ -962,14 +991,207 @@ class ConversationOrchestrator:
                 "timestamp": datetime.now().isoformat()
             }
     
+    def _requires_reasoning_agent(
+        self,
+        intent_group: str,
+        intent_subtype: str,
+        entities: List[Any]
+    ) -> bool:
+        """
+        Determine if query requires Reasoning Agent for complex multi-step processing.
+
+        Args:
+            intent_group: Intent group (e.g., ANALYSIS_INSIGHTS)
+            intent_subtype: Intent subtype (e.g., period_comparison)
+            entities: Extracted entities
+
+        Returns:
+            True if Reasoning Agent should handle this query
+        """
+        # Period comparisons always require reasoning
+        if intent_subtype == "period_comparison":
+            return True
+
+        # Check for multi-period entities
+        entity_names = [e.name for e in entities] if entities else []
+        has_multiple_periods = "periode_1" in entity_names and "periode_2" in entity_names
+
+        # Analysis insights with multiple periods
+        if intent_group == "ANALYSIS_INSIGHTS" and has_multiple_periods:
+            return True
+
+        # MoM and YoY comparisons
+        if intent_subtype in ["mom", "yoy", "trend"]:
+            return True
+
+        return False
+
+    async def _process_with_reasoning_agent(
+        self,
+        request: ConversationRequest,
+        classification_result: Any,
+        context_result: Dict[str, Any],
+        metrics: PipelineMetrics,
+        start_time: datetime,
+        conversation_id: str
+    ) -> ConversationResult:
+        """
+        Process complex query using Reasoning Agent.
+
+        Args:
+            request: Original conversation request
+            classification_result: Classification result
+            context_result: Context analysis result
+            metrics: Pipeline metrics
+            start_time: Pipeline start time
+            conversation_id: Conversation ID
+
+        Returns:
+            ConversationResult with processed response
+        """
+        try:
+            logger.info("Processing query with Reasoning Agent")
+
+            # Extract entities as dict
+            entities_dict = {}
+            for entity in classification_result.entities:
+                entities_dict[entity.name] = entity.value
+
+            # === STAGE 3: REASONING & DECOMPOSITION ===
+            stage_start = datetime.now()
+            current_stage = PipelineStage.QUERY_BUILDING
+
+            # Decompose query into execution plan
+            reasoning_plan = await self.reasoning_agent.decompose_query(
+                query=request.user_message,
+                intent_group=classification_result.intent_group,
+                intent_subtype=classification_result.intent_subtype,
+                entities=entities_dict,
+                user_context=context_result.get("user_context")
+            )
+
+            logger.info(f"Reasoning plan generated with {len(reasoning_plan.steps)} steps")
+            metrics.stage_timings["reasoning_decomposition"] = self._get_stage_time(stage_start)
+
+            # === STAGE 4: PLAN EXECUTION ===
+            stage_start = datetime.now()
+            current_stage = PipelineStage.QUERY_EXECUTION
+
+            # Execute reasoning plan
+            execution_result = await self.reasoning_agent.execute_plan(
+                plan=reasoning_plan,
+                user_id=request.user_id,
+                context=context_result.get("user_context")
+            )
+
+            metrics.stage_timings["reasoning_execution"] = self._get_stage_time(stage_start)
+
+            if not execution_result.get("success"):
+                logger.error(f"Reasoning plan execution failed: {execution_result.get('error')}")
+                return self._build_error_result(
+                    conversation_id, current_stage, metrics, start_time,
+                    f"Reasoning execution failed: {execution_result.get('error')}"
+                )
+
+            # Extract results from execution
+            results = execution_result.get("results", {})
+            logger.info(f"Reasoning execution completed with results: {list(results.keys())}")
+
+            # === STAGE 5: RESPONSE GENERATION ===
+            stage_start = datetime.now()
+            current_stage = PipelineStage.RESPONSE_GENERATION
+
+            # Prepare search results and aggregations for response generator
+            # For period comparisons, we have comparison_result
+            search_results = []
+            comparison_result = None
+
+            if "comparison_result" in results:
+                comparison_result = results["comparison_result"]
+                # Also include transactions for context
+                if "transactions_current" in results:
+                    search_results.extend(results["transactions_current"])
+                if "transactions_previous" in results:
+                    search_results.extend(results["transactions_previous"])
+
+            elif "transactions" in results:
+                search_results = results["transactions"]
+
+            # Generate response with comparison data
+            response_request = ResponseGenerationRequest(
+                intent_group=classification_result.intent_group,
+                intent_subtype=classification_result.intent_subtype,
+                user_message=request.user_message,
+                search_results=search_results,
+                conversation_context=context_result["context_snapshot"]["recent_turns"],
+                user_profile={"user_id": request.user_id},
+                user_id=request.user_id,
+                conversation_id=conversation_id,
+                generate_insights=request.include_insights,
+                stream_response=request.stream_response,
+                search_aggregations=comparison_result  # Pass comparison as aggregation
+            )
+
+            response_result = await self.response_generator.generate_response(response_request)
+
+            metrics.stage_timings["response_generation"] = self._get_stage_time(stage_start)
+
+            if not response_result.success:
+                return self._build_error_result(
+                    conversation_id, current_stage, metrics, start_time,
+                    f"Response generation failed: {response_result.error_message}"
+                )
+
+            # === PIPELINE COMPLETED ===
+            metrics.total_processing_time_ms = self._get_total_time(start_time)
+            metrics.tokens_used = response_result.tokens_used
+            metrics.model_used = response_result.model_used
+
+            # Update statistics
+            await self._update_conversation_stats(metrics, True)
+
+            # Save conversation turn
+            await self._save_conversation_turn(
+                conversation_id, request, response_result.response_text
+            )
+
+            logger.info(f"Reasoning pipeline {conversation_id} completed in {metrics.total_processing_time_ms}ms - Modèle LLM: {metrics.model_used} ({metrics.tokens_used} tokens)")
+
+            return ConversationResult(
+                success=True,
+                response_text=response_result.response_text,
+                conversation_id=conversation_id,
+                pipeline_stage=PipelineStage.COMPLETED,
+                insights=[insight.__dict__ for insight in response_result.insights],
+                data_visualizations=response_result.data_visualizations,
+                metrics=metrics,
+                classified_intent={
+                    "intent_group": classification_result.intent_group,
+                    "intent_subtype": classification_result.intent_subtype,
+                    "confidence": classification_result.confidence,
+                    "entities": [entity.__dict__ for entity in classification_result.entities]
+                },
+                built_query=reasoning_plan.model_dump() if hasattr(reasoning_plan, 'model_dump') else reasoning_plan.dict(),  # Include reasoning plan
+                search_results=search_results,
+                search_total_hits=len(search_results),
+                context_snapshot=context_result["context_snapshot"]
+            )
+
+        except Exception as e:
+            logger.error(f"Reasoning Agent processing failed: {str(e)}", exc_info=True)
+            return self._build_error_result(
+                conversation_id, PipelineStage.QUERY_EXECUTION, metrics, start_time,
+                f"Reasoning Agent error: {str(e)}"
+            )
+
     async def close(self):
         """Ferme proprement tous les composants"""
-        
+
         try:
             # Fermeture des composants avec connexions
             await self.query_executor.close()
-            
+
             logger.info("ConversationOrchestrator ferme proprement")
-            
+
         except Exception as e:
             logger.error(f"Erreur fermeture ConversationOrchestrator: {str(e)}")

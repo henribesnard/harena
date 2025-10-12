@@ -649,7 +649,7 @@ def _convert_orchestrator_to_api_response(
     processing_time_ms: int
 ) -> Dict[str, Any]:
     """Convertit la reponse de l'orchestrateur vers le format API legacy"""
-    
+
     return {
         "user_id": user_id,
         "message": message,
@@ -679,7 +679,9 @@ def _convert_orchestrator_to_api_response(
 
         "performance": {
             "overall_success": result.success,
-            "pipeline_stages": len(result.pipeline_metrics) if hasattr(result, 'pipeline_metrics') else 5
+            "pipeline_stages": len(result.metrics.stage_timings) if hasattr(result, 'metrics') and hasattr(result.metrics, 'stage_timings') else 5,
+            "model_used": result.metrics.model_used if hasattr(result, 'metrics') and hasattr(result.metrics, 'model_used') else "unknown",
+            "tokens_used": result.metrics.tokens_used if hasattr(result, 'metrics') and hasattr(result.metrics, 'tokens_used') else 0
         },
 
         "architecture": "v2.0"

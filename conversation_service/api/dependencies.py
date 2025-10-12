@@ -185,7 +185,9 @@ class ApplicationState:
                 response_templates_path=None,
                 model=response_config.get("model", "deepseek-chat"),
                 max_tokens=response_config.get("max_tokens", 8000),
-                temperature=response_config.get("temperature", 0.7)
+                temperature=response_config.get("temperature", 0.7),
+                enable_analytics=True,  # Sprint 1.1: Analytics Agent
+                enable_visualizations=True  # Sprint 1.3: Visualizations
             )
             await self.response_generator.initialize()
             

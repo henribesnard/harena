@@ -91,11 +91,13 @@ class ResponseGenerator:
         self,
         llm_manager: LLMProviderManager,
         response_templates_path: Optional[str] = None,
-        max_tokens: int = 4000,
+        model: str = "deepseek-reasoner",
+        max_tokens: int = 32000,
         temperature: float = 0.7
     ):
         self.llm_manager = llm_manager
         self.response_templates_path = response_templates_path
+        self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
 
@@ -124,7 +126,7 @@ class ResponseGenerator:
             "total_tokens_used": 0
         }
 
-        logger.info(f"ResponseGenerator initialise (max_tokens={self.max_tokens}, temperature={self.temperature})")
+        logger.info(f"ResponseGenerator initialise (model={self.model}, max_tokens={self.max_tokens}, temperature={self.temperature})")
     
     async def initialize(self) -> bool:
         """Initialise le generateur de reponses"""
@@ -197,6 +199,7 @@ class ResponseGenerator:
                     "role": "user",
                     "content": user_prompt
                 }],
+                model=self.model,
                 system_prompt=system_prompt,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
@@ -229,6 +232,7 @@ class ResponseGenerator:
                 "role": "user",
                 "content": user_prompt
             }],
+            model=self.model,
             system_prompt=system_prompt,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
@@ -281,6 +285,7 @@ class ResponseGenerator:
                 "role": "user",
                 "content": user_prompt
             }],
+            model=self.model,
             system_prompt=system_prompt,
             temperature=self.temperature,
             max_tokens=self.max_tokens,

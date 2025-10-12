@@ -183,8 +183,8 @@ class ApplicationState:
             self.response_generator = ResponseGenerator(
                 llm_manager=self.llm_provider_manager,
                 response_templates_path=None,
-                model=response_config.get("model", "deepseek-reasoner"),
-                max_tokens=response_config.get("max_tokens", 32000),
+                model=response_config.get("model", "deepseek-chat"),
+                max_tokens=response_config.get("max_tokens", 8000),
                 temperature=response_config.get("temperature", 0.7)
             )
             await self.response_generator.initialize()

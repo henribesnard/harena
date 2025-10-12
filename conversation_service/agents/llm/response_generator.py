@@ -91,8 +91,8 @@ class ResponseGenerator:
         self,
         llm_manager: LLMProviderManager,
         response_templates_path: Optional[str] = None,
-        model: str = "deepseek-reasoner",
-        max_tokens: int = 32000,
+        model: str = "deepseek-chat",
+        max_tokens: int = 8000,
         temperature: float = 0.7
     ):
         self.llm_manager = llm_manager

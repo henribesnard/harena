@@ -1123,7 +1123,7 @@ PROFIL UTILISATEUR:
 
                 # Convert VisualizationResponse to List[Dict] format for ResponseGenerationResult
                 for viz in viz_response.visualizations:
-                    visualizations.append(viz.dict())
+                    visualizations.append(viz.model_dump())
 
                 # Update statistics
                 self.stats["visualizations_generated"] += len(visualizations)

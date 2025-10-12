@@ -190,12 +190,12 @@ class ResponseGenerator:
             # Streaming LLM
             llm_request = LLMRequest(
                 messages=[{
-                    "role": "user", 
+                    "role": "user",
                     "content": user_prompt
                 }],
                 system_prompt=system_prompt,
                 temperature=0.7,
-                max_tokens=1000,
+                max_tokens=4000,
                 stream=True,
                 user_id=request.user_id,
                 conversation_id=request.conversation_id
@@ -227,7 +227,7 @@ class ResponseGenerator:
             }],
             system_prompt=system_prompt,
             temperature=0.7,
-            max_tokens=1000,
+            max_tokens=4000,
             user_id=request.user_id,
             conversation_id=request.conversation_id
         )
@@ -279,7 +279,7 @@ class ResponseGenerator:
             }],
             system_prompt=system_prompt,
             temperature=0.7,
-            max_tokens=1000,
+            max_tokens=4000,
             stream=True,
             user_id=request.user_id,
             conversation_id=request.conversation_id

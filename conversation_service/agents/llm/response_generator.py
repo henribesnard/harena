@@ -33,6 +33,15 @@ except ImportError:
     ANALYTICS_AGENT_AVAILABLE = False
     logger.warning("Analytics Agent not available - fallback to basic insights")
 
+# 🆕 Import Visualization Service (Sprint 1.3)
+try:
+    from conversation_service.services.visualization.visualization_service import VisualizationService
+    from conversation_service.models.visualization.schemas import VisualizationResponse
+    VISUALIZATION_SERVICE_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_SERVICE_AVAILABLE = False
+    logger.warning("Visualization Service not available - no chart generation")
+
 logger = logging.getLogger(__name__)
 
 class ResponseType(Enum):
@@ -107,7 +116,8 @@ class ResponseGenerator:
         model: str = "deepseek-chat",
         max_tokens: int = 8000,
         temperature: float = 0.7,
-        enable_analytics: bool = True  # 🆕 Feature flag Analytics Agent
+        enable_analytics: bool = True,  # 🆕 Feature flag Analytics Agent
+        enable_visualizations: bool = True  # 🆕 Feature flag Visualizations (Sprint 1.3)
     ):
         self.llm_manager = llm_manager
         self.response_templates_path = response_templates_path
@@ -115,6 +125,7 @@ class ResponseGenerator:
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.enable_analytics = enable_analytics
+        self.enable_visualizations = enable_visualizations
 
         # Templates de reponse par intention
         self.response_templates = {}
@@ -138,6 +149,20 @@ class ResponseGenerator:
         else:
             logger.info("Analytics Agent disabled (feature flag off)")
 
+        # 🆕 Initialisation Visualization Service (Sprint 1.3)
+        self.visualization_service = None
+        if self.enable_visualizations and VISUALIZATION_SERVICE_AVAILABLE:
+            try:
+                self.visualization_service = VisualizationService()
+                logger.info("Visualization Service initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Visualization Service: {e}. No chart generation.")
+                self.visualization_service = None
+        elif not VISUALIZATION_SERVICE_AVAILABLE:
+            logger.info("Visualization Service module not available")
+        else:
+            logger.info("Visualization Service disabled (feature flag off)")
+
         # Configuration insights automatiques
         self.insight_generators = {
             InsightType.SPENDING_PATTERN: self._generate_spending_pattern_insight,
@@ -158,12 +183,15 @@ class ResponseGenerator:
             "avg_processing_time_ms": 0,
             "total_tokens_used": 0,
             "analytics_insights_generated": 0,  # 🆕 Statistique Analytics
-            "analytics_fallbacks": 0  # 🆕 Statistique fallbacks Analytics
+            "analytics_fallbacks": 0,  # 🆕 Statistique fallbacks Analytics
+            "visualizations_generated": 0,  # 🆕 Statistique Visualizations (Sprint 1.3)
+            "visualization_failures": 0  # 🆕 Statistique failures Visualizations
         }
 
         logger.info(
             f"ResponseGenerator initialise (model={self.model}, max_tokens={self.max_tokens}, "
-            f"temperature={self.temperature}, analytics={self.enable_analytics and self.analytics_agent is not None})"
+            f"temperature={self.temperature}, analytics={self.enable_analytics and self.analytics_agent is not None}, "
+            f"visualizations={self.enable_visualizations and self.visualization_service is not None})"
         )
     
     async def initialize(self) -> bool:
@@ -285,12 +313,12 @@ class ResponseGenerator:
         
         # Determiner type de reponse
         response_type = self._determine_response_type(request, llm_response.content)
-        
-        # Preparation visualisations donnees si applicable
+
+        # 🆕 Preparation visualisations avec VisualizationService (Sprint 1.3)
         data_visualizations = []
         if request.search_results and response_type == ResponseType.DATA_PRESENTATION:
-            data_visualizations = self._prepare_data_visualizations(request)
-        
+            data_visualizations = await self._generate_visualizations(request)
+
         # Statistiques
         self._update_stats(llm_response, self._get_processing_time(start_time))
         
@@ -338,12 +366,14 @@ class ResponseGenerator:
             
             # Reconstituer reponse complete
             full_response = "".join(response_chunks)
-            
+
             response_type = self._determine_response_type(request, full_response)
+
+            # 🆕 Preparation visualisations avec VisualizationService (Sprint 1.3)
             data_visualizations = []
             if request.search_results and response_type == ResponseType.DATA_PRESENTATION:
-                data_visualizations = self._prepare_data_visualizations(request)
-            
+                data_visualizations = await self._generate_visualizations(request)
+
             self.stats["streaming_responses"] += 1
             self._update_stats_basic(len(full_response) // 4, self._get_processing_time(start_time))
             
@@ -1068,49 +1098,80 @@ PROFIL UTILISATEUR:
         else:
             return ResponseType.DIRECT_ANSWER
     
-    def _prepare_data_visualizations(self, request: ResponseGenerationRequest) -> List[Dict[str, Any]]:
-        """Prepare les visualisations de donnees pour l'interface"""
-        
+    async def _generate_visualizations(self, request: ResponseGenerationRequest) -> List[Dict[str, Any]]:
+        """Generate visualizations using VisualizationService (Sprint 1.3)
+
+        Replaces the old _prepare_data_visualizations with new VisualizationService integration.
+        Falls back gracefully if service is not available.
+        """
         visualizations = []
-        
+
         if not request.search_results:
             return visualizations
-        
-        try:
-            # Graphique montants par date (si transactions)
-            if request.intent_group == "transaction_search":
-                dates_amounts = {}
-                for tx in request.search_results:
-                    date = tx.get("date", "N/A")
-                    amount = float(tx.get("amount", 0))
-                    dates_amounts[date] = dates_amounts.get(date, 0) + amount
-                
-                if dates_amounts:
+
+        # 🆕 Use VisualizationService if available (Sprint 1.3)
+        if self.visualization_service:
+            try:
+                # Call VisualizationService to generate Chart.js specs
+                viz_response = self.visualization_service.generate_visualizations(
+                    intent_group=request.intent_group,
+                    intent_subtype=request.intent_subtype or "simple",
+                    search_results=request.search_results,
+                    aggregations=request.search_aggregations,
+                    user_preferences=request.user_profile.get("visualization_preferences")
+                )
+
+                # Convert VisualizationResponse to List[Dict] format for ResponseGenerationResult
+                for viz in viz_response.visualizations:
+                    visualizations.append(viz.dict())
+
+                # Update statistics
+                self.stats["visualizations_generated"] += len(visualizations)
+
+                logger.info(f"Generated {len(visualizations)} visualizations via VisualizationService")
+
+            except Exception as e:
+                logger.error(f"VisualizationService error: {e}", exc_info=True)
+                self.stats["visualization_failures"] += 1
+                # Graceful degradation: continue without visualizations
+
+        else:
+            # Fallback: old basic visualization method (legacy compatibility)
+            try:
+                # Basic line chart for transaction amounts
+                if request.intent_group == "transaction_search":
+                    dates_amounts = {}
+                    for tx in request.search_results:
+                        date = tx.get("date", "N/A")
+                        amount = float(tx.get("amount", 0))
+                        dates_amounts[date] = dates_amounts.get(date, 0) + amount
+
+                    if dates_amounts:
+                        visualizations.append({
+                            "type": "line_chart",
+                            "title": "evolution des montants",
+                            "data": [{"date": d, "amount": a} for d, a in dates_amounts.items()],
+                            "x_axis": "date",
+                            "y_axis": "amount"
+                        })
+
+                # Basic pie chart for categories
+                categories_amounts = {}
+                for result in request.search_results:
+                    category = result.get("category", "Autres")
+                    amount = float(result.get("amount", 0))
+                    categories_amounts[category] = categories_amounts.get(category, 0) + amount
+
+                if len(categories_amounts) > 1:
                     visualizations.append({
-                        "type": "line_chart",
-                        "title": "evolution des montants",
-                        "data": [{"date": d, "amount": a} for d, a in dates_amounts.items()],
-                        "x_axis": "date",
-                        "y_axis": "amount"
+                        "type": "pie_chart",
+                        "title": "Repartition par categorie",
+                        "data": [{"category": c, "amount": a} for c, a in categories_amounts.items()]
                     })
-            
-            # Repartition par categorie
-            categories_amounts = {}
-            for result in request.search_results:
-                category = result.get("category", "Autres")
-                amount = float(result.get("amount", 0))
-                categories_amounts[category] = categories_amounts.get(category, 0) + amount
-            
-            if len(categories_amounts) > 1:
-                visualizations.append({
-                    "type": "pie_chart",
-                    "title": "Repartition par categorie",
-                    "data": [{"category": c, "amount": a} for c, a in categories_amounts.items()]
-                })
-                
-        except Exception as e:
-            logger.warning(f"Erreur preparation visualisations: {str(e)}")
-        
+
+            except Exception as e:
+                logger.warning(f"Fallback visualization error: {str(e)}")
+
         return visualizations
     
     async def _fallback_response(

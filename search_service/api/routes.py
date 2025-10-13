@@ -10,8 +10,8 @@ from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Router principal avec préfixe /api/v1
-router = APIRouter(prefix="/api/v1", tags=["search"])
+# Router principal sans préfixe (le préfixe sera ajouté par local_app.py)
+router = APIRouter(tags=["search"])
 
 # Instance globale du moteur de recherche
 search_engine = SearchEngine()

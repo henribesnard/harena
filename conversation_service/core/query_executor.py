@@ -240,8 +240,8 @@ class QueryExecutor:
         search_start = datetime.now()
         
         try:
-            # Construction URL
-            search_url = urljoin(self.search_service_url + '/', 'search')
+            # Construction URL - endpoint search (prefix /api/v1/search ajouté par local_app)
+            search_url = urljoin(self.search_service_url + '/', 'api/v1/search/search')
             
             # Transformation du format template vers SearchRequest
             query_data = request.query

@@ -1,0 +1,51 @@
+{
+  "question_id": "A001",
+  "category": "A_montant",
+  "question": "Mes dépenses de plus de 100 euros",
+  "response_text": {
+    "message": "## 📊 Résumé de vos dépenses supérieures à 100€\n\nJe vois que vous avez effectué **1 327 transactions** de plus de 100€, pour un total impressionnant de **635 925€**. C'est un volume important qui mérite une analyse attentive !\n\n## 💰 Principales catégories de dépenses\n\nVoici les principales sources de vos dépenses importantes :\n\n**🏠 Charges fixes récurrentes :**\n- **Prêts immobiliers** : Mensualités régulières autour de 754,97€ et 117,11€\n- **Pension alimentaire** pour Gabin : 250€ par mois à Katia Maître\n- **Garde d'enfants** : 680€ par mois à Sylvie\n- **Prêt BNP Paribas** : 179,46€ mensuels\n\n**⚡ Factures régulières :**\n- **Électricité Engie** : 242€ environ par mois\n- **Assurances Pacifica** : 329,85€\n- **Charges de copropriété** La Grange : montants variables\n\n**💸 Transferts familiaux importants :**\n- Nombreux virements vers Hounwanou Henri et Claudie (jusqu'à 5 000€)\n- Aides via Western Union et MoneyGram\n\n## 🔍 Observations importantes\n\n**⚠️ Dépense exceptionnelle détectée :**\nUne transaction de **50 514,57€** sort nettement du lot - c'est plus de 22 fois l'écart-type de vos dépenses habituelles. Il s'agit d'un remboursement anticipé de prêt, ce qui est une décision financière stratégique.\n\n**📈 Points positifs :**\n- Vos dépenses fixes sont bien structurées et prévisibles\n- Vous gérez des obligations familiales importantes de manière régulière\n- Les remboursements de prêts montrent une gestion active de votre endettement\n\n## 💡 Recommandations\n\n1. **Évaluez l'opportunité** des remboursements anticipés de prêt par rapport à d'autres placements\n2. **Considérez un budget dédié** pour les transferts familiaux récurrents\n3. **Revoyez périodiquement** vos assurances et contrats d'énergie pour optimiser ces postes fixes\n\nVoulez-vous que nous analysions plus en détail une catégorie spécifique de vos dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 1327 transactions",
+        "description": "Débits: 635925.00€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 1327,
+          "currency": "EUR",
+          "total_debit": 635925.000579834
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 50514.57€ chez None - Montant 22.6σ de la moyenne (479.22€, σ=2210.97€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 21625,
+          "amount": 50514.57,
+          "merchant_name": "None",
+          "anomaly_score": 22.630474234461087,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 39255.65619999543,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:46:47.072836"
+}

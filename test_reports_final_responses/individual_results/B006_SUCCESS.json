@@ -1,0 +1,51 @@
+{
+  "question_id": "B006",
+  "category": "B_vendeur",
+  "question": "Mes achats Amazone",
+  "response_text": {
+    "message": "### 1. Résumé personnel de vos résultats\n\nVoici un aperçu de vos transactions Amazon ! Sur les 400 transactions analysées, vous avez dépensé un total de **13 908,54 €** chez Amazon et ses services associés. Cela représente une part importante de vos achats en ligne, avec une moyenne d'environ **34,77 €** par transaction.\n\n### 2. Description claire des transactions\n\nVoici les dernières transactions Amazon que j'ai identifiées dans vos relevés :\n\n- **18 août 2025** : 38,48 € - Achat Amazon (Carte X3800)\n- **1er juillet 2025** : 31,48 € - Achat Amazon (Carte X0832)\n- **26 juin 2025** : 23,15 € - Achat Amazon (Carte X0832)\n- **16 juin 2025** : 38,48 € - Achat Amazon (Carte X3800)\n- **5 juin 2025** : 10,99 € - Paiement Amazon\n- **4 juin 2025** : 31,44 € - Achat Amazon Villeneuve\n- **4 juin 2025** : 0,99 € - Contenu média Amazon\n\nJe vois également plusieurs types d'achats récurrents :\n- **Achats physiques** (mention \"Villeneuve\" dans la description)\n- **Services digitaux** (Amazon Digital, Amazon Media)\n- **Abonnements** (Amazon Prime à 69,90 €)\n- **Paiements divers** via Amazon Payments\n\n### 3. Observations utiles pour vos finances\n\n**Points d'attention :**\n- **Dépense inhabituelle** : J'ai détecté une transaction de **314,46 €** chez Amazon qui sort significativement de vos habitudes d'achat (6,9 fois l'écart-type par rapport à votre moyenne). C'est peut-être un achat exceptionnel, mais cela vaut la peine d'y jeter un coup d'œil.\n\n**Recommandations :**\n1. **Suivi des abonnements** : Vous avez plusieurs abonnements Amazon (Prime, services digitaux). Vérifiez régulièrement ceux que vous utilisez vraiment.\n2. **Regroupement des achats** : En moyenne 2-3 transactions Amazon par mois - envisagez de regrouper vos commandes pour réduire les frais d'expédition éventuels.\n3. **Budget mensuel** : Avec environ 100-150 € mensuels chez Amazon, vous pourriez fixer un budget précis pour mieux maîtriser vos dépenses en ligne.\n\n**Question pour vous :** Souhaitez-vous que je vous aide à analyser plus en détail une période spécifique ou certains types d'achats Amazon en particulier ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 400 transactions",
+        "description": "Débits: 13908.54€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 400,
+          "currency": "EUR",
+          "total_debit": 13908.540008485317
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 314.46€ chez Amazon - Montant 6.9σ de la moyenne (34.77€, σ=40.33€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 18325,
+          "amount": 314.46,
+          "merchant_name": "Amazon",
+          "anomaly_score": 6.9350680374197715,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 36548.34310000297,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:00:46.917373"
+}

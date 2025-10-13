@@ -1,0 +1,55 @@
+{
+  "template_name": "transaction_search_by_period_comparison",
+  "description": "Template pour comparaison de périodes (ce mois vs mois dernier, YoY, etc.)",
+  "target_intention": "TRANSACTION_SEARCH.by_period_comparison",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "transaction_type": "{{transaction_type}}",
+      "date": "{{ date_range if date_range else null }}",
+      "category_name": "{{ categories if categories else null }}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}}
+    ],
+    "page_size": 100
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "date_range": {
+      "required": true,
+      "type": "object",
+      "source": "entities.date_range",
+      "description": "Plage de dates pour la comparaison",
+      "validation": {
+        "keys": ["gte", "lte"],
+        "date_format": "ISO8601"
+      }
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type",
+      "allowed_values": ["debit", "credit"],
+      "default": ""
+    },
+    "categories": {
+      "required": false,
+      "type": "array",
+      "source": "entities.categories",
+      "description": "Liste des catégories pour la comparaison"
+    }
+  },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
+  },
+  "optimizations": {
+    "cache_duration": "15m",
+    "elasticsearch_routing": "user_id"
+  }
+}

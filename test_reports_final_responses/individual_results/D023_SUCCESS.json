@@ -1,0 +1,51 @@
+{
+  "question_id": "D023",
+  "category": "D_temporel",
+  "question": "Mes achats du weekend",
+  "response_text": {
+    "message": "### 📊 Résumé de vos achats du weekend\n\nBonjour ! J'ai analysé vos transactions du weekend et voici ce que j'ai constaté :\n\n**Vos finances en bref :**\n- **134 transactions** au total\n- **Dépenses totales : 11 565,39€**\n- Principalement concentrées sur l'entretien de votre maison (90% du total)\n\n### 🏠 Détail de vos principales dépenses\n\n**ENTRETIEN MAISON (10 410,70€) :**\n- **Syndicat La Grange** : De nombreux prélèvements pour les charges courantes, provisions et fonds de travaux\n- **Leroy Merlin** : 25€ pour des achats de bricolage\n- Plusieurs transactions pour l'entretien de votre copropriété\n\n**ALIMENTATION (884,19€) :**\n- **Intermarché** : Plusieurs courses de 5,09€ à 72,42€\n- **Leclerc** : Achats allant de 1,59€ à 90,67€\n- **Lidl** : Courses variées de 2,84€ à 41,35€\n- **Carrefour, Casino, Monoprix** : Petits achats du quotidien\n\n**TRANSPORT (45,20€) :**\n- **Fil Bleu** : Plusieurs tickets de transport à 3,10€ et 14,10€\n\n**AUTRES :**\n- **Aliexpress** : Achats en ligne de 2,21€ et 14,57€\n- **La Grande Récrée** : 9,99€ pour les loisirs\n\n### 💡 Observations importantes\n\n**⚠️ Dépense inhabituelle détectée :**\nUne transaction de **1 351,16€** pour l'entretien de votre maison se démarque significativement de vos habitudes de dépenses. C'est plus de 7 fois l'écart-type de vos dépenses habituelles.\n\n**Répartition de vos dépenses :**\n- Entretien maison : 90%\n- Alimentation : 7,6%\n- Autres : 2,4%\n\n### 🎯 Conseils pratiques\n\n1. **Planifiez vos charges de copropriété** : Vos dépenses d'entretien maison sont importantes et régulières. Pensez à anticiper ces prélèvements dans votre budget mensuel.\n\n2. **Surveillez les dépenses exceptionnelles** : La transaction de 1 351,16€ mérite une attention particulière. Assurez-vous qu'elle correspond bien à vos prévisions.\n\n3. **Optimisez vos courses** : Vos achats alimentaires sont répartis sur plusieurs enseignes. Une consolidation pourrait vous faire gagner du temps.\n\nSouhaitez-vous que je vous aide à analyser plus en détail certaines de ces catégories de dépenses ? 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 134 transactions",
+        "description": "Débits: 11565.39€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 134,
+          "currency": "EUR",
+          "total_debit": 11565.390065619722
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 1351.16€ chez None - Montant 7.1σ de la moyenne (86.31€, σ=178.78€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 18351,
+          "amount": 1351.16,
+          "merchant_name": "None",
+          "anomaly_score": 7.075015926753387,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 35735.8055000077,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:26:41.857636"
+}

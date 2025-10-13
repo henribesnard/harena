@@ -1,0 +1,51 @@
+{
+  "question_id": "D010",
+  "category": "D_temporel",
+  "question": "Mes achats Amazon en décembre",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos achats Amazon en décembre**\n\nVoici un aperçu de vos transactions Amazon pour décembre ! Vous avez effectué **400 transactions** au total chez Amazon, pour un montant global de **13 908,54 €**. C'est une somme significative qui mérite qu'on y jette un œil de plus près !\n\n**2. Dépenses Amazon en décembre 2024**\n\nEn décembre 2024, vos principales transactions Amazon incluent :\n\n- **16 décembre** : Abonnement Amazon Prime (69,90 €) - plusieurs fois\n- **19 décembre** : Achat de 73,93 € via Cofidis\n- **21 décembre** : Achat de 48,89 €\n- **22 décembre** : Abonnement Amazon Digital (12,99 €)\n- **23 décembre** : Achat de 23,60 €\n- **27 décembre** : Achat de 23,98 €\n- **30 décembre** : Plusieurs petits achats (4,99 €, 20,69 €)\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Point d'attention** : J'ai détecté une dépense inhabituelle de **314,46 €** chez Amazon - c'est plus de 6 fois l'écart-type de vos dépenses moyennes ! C'est peut-être un achat exceptionnel, mais cela vaut la peine de vérifier si c'était bien nécessaire.\n\n💡 **Suggestions concrètes** :\n- Pensez à regrouper vos achats pour réduire les frais de livraison si vous n'avez pas Prime\n- Vérifiez vos abonnements Amazon (Prime, Digital) - sont-ils tous vraiment utiles ?\n- Surveillez les petits achats répétés qui peuvent s'accumuler rapidement\n\nVos dépenses Amazon représentent une part importante de votre budget (95% du total analysé). Peut-être serait-il intéressant de fixer un budget mensuel pour vos achats en ligne ?\n\nY a-t-il des transactions spécifiques de décembre qui vous interrogent ? Je peux vous aider à analyser plus en détail ! 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 400 transactions",
+        "description": "Débits: 13908.54€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 400,
+          "currency": "EUR",
+          "total_debit": 13908.540008485317
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 314.46€ chez Amazon - Montant 6.9σ de la moyenne (34.77€, σ=40.33€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 18325,
+          "amount": 314.46,
+          "merchant_name": "Amazon",
+          "anomaly_score": 6.9350680374197715,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 35419.228599988855,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:20:06.501467"
+}

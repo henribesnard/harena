@@ -1,0 +1,19 @@
+{
+  "question_id": "A015",
+  "category": "A_montant",
+  "question": "Mes revenus négatifs",
+  "response_text": {
+    "message": "Bonjour ! J'ai bien reçu votre demande concernant vos revenus négatifs.\n\nAprès avoir analysé vos données financières, voici ce que je constate :\n\n**1. Résumé personnel**\nJe ne trouve actuellement aucune transaction dans votre historique qui corresponde à des revenus négatifs. Votre compte ne montre ni transactions négatives ni crédits enregistrés pour le moment.\n\n**2. Description des transactions**\nAucune transaction n'a pu être identifiée avec les critères de recherche que vous avez utilisés. Cela signifie soit que :\n- Vous n'avez pas encore effectué de transactions qui apparaîtraient comme des revenus négatifs\n- Les données ne sont pas disponibles pour la période recherchée\n\n**3. Observations utiles**\nSi vous cherchez à comprendre des débits ou retraits spécifiques, je vous suggère de :\n- Vérifier la période de temps que vous souhaitez analyser\n- Consulter directement votre relevé bancaire pour identifier les transactions concernées\n- Me fournir plus de détails sur le type d'opérations que vous recherchez\n\nN'hésitez pas à me donner plus d'informations sur ce que vous entendez par \"revenus négatifs\" - s'agit-il de retraits, de paiements, ou d'autres types de transactions ? Je serai ravi de vous aider à y voir plus clair !",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 22610.03789998358,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:54:46.780484"
+}

@@ -1,0 +1,19 @@
+{
+  "question_id": "A014",
+  "category": "A_montant",
+  "question": "Mes achats de moins de 0.01 euro",
+  "response_text": {
+    "message": "Bonjour ! J'ai bien reçu votre demande concernant vos achats de moins de 0,01 euro.\n\nAprès avoir analysé vos transactions, je constate que **vous n'avez effectué aucun achat inférieur à 0,01 euro** dans votre historique récent.\n\n**Résumé de la situation :**\n- Aucune transaction trouvée en dessous de ce montant\n- Votre historique ne contient pas de micro-transactions de ce type\n\n**Observation utile :**\nC'est plutôt une bonne nouvelle ! Les transactions extrêmement faibles peuvent parfois être des frais cachés ou des tests de carte, donc leur absence est rassurante pour la sécurité de votre compte.\n\nSi vous pensiez avoir effectué ce type d'achats, cela pourrait être dû à :\n- Des transactions en attente de traitement\n- Une période de recherche différente de celle où les achats ont été faits\n- Des montants arrondis légèrement au-dessus de 0,01 euro\n\nSouhaitez-vous que je vérifie pour une autre fourchette de montants ou une période spécifique ?",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 21328.158099990105,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:54:23.667917"
+}

@@ -1,0 +1,19 @@
+{
+  "question_id": "B016",
+  "category": "B_vendeur",
+  "question": "Mes dépenses chez Carrefour Market CR Centre Leclerc Amboi Cdiscount Bordeaux",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 41129.36829999671,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:05:28.585448"
+}

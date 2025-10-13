@@ -1,0 +1,51 @@
+{
+  "question_id": "A003",
+  "category": "A_montant",
+  "question": "Mes dépenses de plus de 1000 euros",
+  "response_text": {
+    "message": "### 1. Résumé personnel de vos résultats\n\nJ'ai analysé vos transactions de plus de 1 000€ et voici ce que je constate : vous avez effectué **62 transactions importantes** pour un **total de 284 222,50€**. Ces dépenses couvrent plusieurs années et concernent principalement des remboursements de prêts, des impôts, des virements familiaux et des chèques importants.\n\n### 2. Description claire de vos transactions\n\nVoici les principales catégories de dépenses identifiées :\n\n**📈 Remboursements de prêts (les plus importants)**\n- 50 514,57€ - Remboursement anticipé de prêt\n- 23 168,69€ - Remboursement anticipé de prêt  \n- 6 666,80€ - Remboursement anticipé de prêt\n- 1 525,67€ et 1 027,00€ - Remboursements de prêt réguliers\n\n**💰 Impôts et taxes**\n- 2 643,00€ - Impôt sur le revenus (Trésor Public)\n- 1 229,00€ et 1 260,00€ - Taxe foncière (Trésor Public)\n\n**👨‍👩‍👧‍👦 Virements familiaux récurrents**\n- Plusieurs virements vers Claudie Hounwanou (1 037€, 1 244€, 5 000€, 2 000€, 1 800€)\n- Plusieurs virements vers Henri Hounwanou (5 000€, 2 000€, 1 800€)\n\n**🏠 Charges immobilières**\n- 1 351,16€ et 1 107,54€ - Charges de copropriété \"La Grange\"\n\n**✈️ Autres dépenses notables**\n- 1 499,90€ - Western Union (aide)\n- 1 071,29€ - Misterfly (voyage)\n- 1 033,02€ - Moneygram (aide)\n\n### 3. Observations utiles pour vos finances\n\n**🔍 Points d'attention :**\n- Votre remboursement de prêt de 50 514,57€ a été détecté comme une dépense inhabituellement élevée par rapport à vos habitudes\n- Vous avez des virements familiaux réguliers qui représentent une part significative de vos dépenses\n- Les remboursements de prêts constituent votre plus grande catégorie de dépenses\n\n**💡 Suggestions concrètes :**\n- Pensez à budgétiser vos virements familiaux récurrents pour mieux anticiper ces sorties\n- Vérifiez si les remboursements anticipés de prêts vous font réaliser des économies d'intérêts significatives\n- Surveillez l'évolution de vos charges de copropriété qui semblent augmenter\n\nVoulez-vous que je vous aide à analyser plus en détail une de ces catégories de dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 62 transactions",
+        "description": "Débits: 284222.50€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 62,
+          "currency": "EUR",
+          "total_debit": 284222.49951171875
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 50514.57€ chez None - Montant 4.9σ de la moyenne (4584.23€, σ=9353.92€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 21625,
+          "amount": 50514.57,
+          "merchant_name": "None",
+          "anomaly_score": 4.910277170046606,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 36030.709200014826,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:47:58.643799"
+}

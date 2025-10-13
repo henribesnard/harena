@@ -1,0 +1,62 @@
+{
+  "template_name": "transaction_search_comparison",
+  "description": "Template pour comparaisons générales de transactions",
+  "target_intention": "TRANSACTION_SEARCH.comparison",
+  "parameters": {
+    "user_id": "{{user_id}}",
+    "filters": {
+      "transaction_type": "{{transaction_type}}",
+      "date": "{{ date_range if date_range else null }}",
+      "category_name": "{{ categories if categories else null }}",
+      "merchant_name": "{{ merchant_name if merchant_name else null }}"
+    },
+    "sort": [
+      {"date": {"order": "desc"}}
+    ],
+    "page_size": 100
+  },
+  "parameter_mappings": {
+    "user_id": {
+      "required": true,
+      "type": "integer",
+      "source": "context.user_id"
+    },
+    "date_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.date_range",
+      "description": "Plage de dates pour filtrer les transactions",
+      "validation": {
+        "keys": ["gte", "lte"],
+        "date_format": "ISO8601"
+      }
+    },
+    "transaction_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.transaction_type",
+      "allowed_values": ["debit", "credit"],
+      "default": ""
+    },
+    "categories": {
+      "required": false,
+      "type": "array",
+      "source": "entities.categories",
+      "description": "Liste des catégories"
+    },
+    "merchant_name": {
+      "required": false,
+      "type": "string",
+      "source": "entities.merchant_name",
+      "description": "Nom du marchand"
+    }
+  },
+  "filter_cleanup": {
+    "remove_null_values": true,
+    "remove_empty_objects": true
+  },
+  "optimizations": {
+    "cache_duration": "15m",
+    "elasticsearch_routing": "user_id"
+  }
+}

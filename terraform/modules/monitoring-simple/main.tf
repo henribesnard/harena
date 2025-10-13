@@ -1,0 +1,170 @@
+# Monitoring simplifié (sans SNS pour économiser)
+
+# CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "ec2" {
+  name              = "/aws/ec2/harena-allinone"
+  retention_in_days = 7
+
+  tags = {
+    Name = "harena-logs-${var.environment}"
+  }
+}
+
+# SNS Topic pour les alertes (optionnel)
+resource "aws_sns_topic" "alerts" {
+  count = var.alert_email != "" ? 1 : 0
+  name  = "harena-alerts-${var.environment}"
+
+  tags = {
+    Name = "harena-alerts-${var.environment}"
+  }
+}
+
+resource "aws_sns_topic_subscription" "email" {
+  count     = var.alert_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.alerts[0].arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+# IAM Role for EventBridge
+resource "aws_iam_role" "eventbridge" {
+  count = var.enable_auto_shutdown ? 1 : 0
+  name  = "harena-eventbridge-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "harena-eventbridge-role-${var.environment}"
+  }
+}
+
+resource "aws_iam_role_policy" "eventbridge" {
+  count = var.enable_auto_shutdown ? 1 : 0
+  name  = "harena-eventbridge-policy-${var.environment}"
+  role  = aws_iam_role.eventbridge[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:StopInstances",
+          "ec2:StartInstances"
+        ]
+        Resource = "arn:aws:ec2:*:*:instance/${var.ec2_instance_id}"
+      }
+    ]
+  })
+}
+
+# Auto-shutdown night (22h Paris = 20h UTC)
+resource "aws_cloudwatch_event_rule" "stop_night" {
+  count               = var.enable_auto_shutdown && var.shutdown_night ? 1 : 0
+  name                = "harena-stop-night-${var.environment}"
+  description         = "Stop EC2 at 22h Paris time"
+  schedule_expression = "cron(0 20 * * ? *)"
+
+  tags = {
+    Name = "harena-stop-night-${var.environment}"
+  }
+}
+
+resource "aws_cloudwatch_event_target" "stop_night" {
+  count     = var.enable_auto_shutdown && var.shutdown_night ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.stop_night[0].name
+  target_id = "StopEC2Instance"
+  arn       = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${var.ec2_instance_id}"
+  role_arn  = aws_iam_role.eventbridge[0].arn
+
+  input = jsonencode({
+    InstanceIds = [var.ec2_instance_id]
+  })
+}
+
+# Auto-start morning (8h Paris = 6h UTC)
+resource "aws_cloudwatch_event_rule" "start_morning" {
+  count               = var.enable_auto_shutdown && var.shutdown_night ? 1 : 0
+  name                = "harena-start-morning-${var.environment}"
+  description         = "Start EC2 at 8h Paris time"
+  schedule_expression = "cron(0 6 * * ? *)"
+
+  tags = {
+    Name = "harena-start-morning-${var.environment}"
+  }
+}
+
+resource "aws_cloudwatch_event_target" "start_morning" {
+  count     = var.enable_auto_shutdown && var.shutdown_night ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.start_morning[0].name
+  target_id = "StartEC2Instance"
+  arn       = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${var.ec2_instance_id}"
+  role_arn  = aws_iam_role.eventbridge[0].arn
+
+  input = jsonencode({
+    InstanceIds = [var.ec2_instance_id]
+  })
+}
+
+# Weekend shutdown (vendredi 22h)
+resource "aws_cloudwatch_event_rule" "stop_weekend" {
+  count               = var.enable_auto_shutdown && var.shutdown_weekend ? 1 : 0
+  name                = "harena-stop-weekend-${var.environment}"
+  description         = "Stop EC2 on Friday night"
+  schedule_expression = "cron(0 20 ? * FRI *)"
+
+  tags = {
+    Name = "harena-stop-weekend-${var.environment}"
+  }
+}
+
+resource "aws_cloudwatch_event_target" "stop_weekend" {
+  count     = var.enable_auto_shutdown && var.shutdown_weekend ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.stop_weekend[0].name
+  target_id = "StopEC2Weekend"
+  arn       = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${var.ec2_instance_id}"
+  role_arn  = aws_iam_role.eventbridge[0].arn
+
+  input = jsonencode({
+    InstanceIds = [var.ec2_instance_id]
+  })
+}
+
+# Weekend restart (lundi 8h)
+resource "aws_cloudwatch_event_rule" "start_monday" {
+  count               = var.enable_auto_shutdown && var.shutdown_weekend ? 1 : 0
+  name                = "harena-start-monday-${var.environment}"
+  description         = "Start EC2 on Monday morning"
+  schedule_expression = "cron(0 6 ? * MON *)"
+
+  tags = {
+    Name = "harena-start-monday-${var.environment}"
+  }
+}
+
+resource "aws_cloudwatch_event_target" "start_monday" {
+  count     = var.enable_auto_shutdown && var.shutdown_weekend ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.start_monday[0].name
+  target_id = "StartEC2Monday"
+  arn       = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${var.ec2_instance_id}"
+  role_arn  = aws_iam_role.eventbridge[0].arn
+
+  input = jsonencode({
+    InstanceIds = [var.ec2_instance_id]
+  })
+}
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}

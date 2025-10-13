@@ -1,0 +1,51 @@
+{
+  "question_id": "A011",
+  "category": "A_montant",
+  "question": "Mes achats compris entre 100€ et 200€",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nJ'ai trouvé **110 transactions** dans votre compte entre 100€ et 200€, pour un **total de 17 049,11€**. C'est une belle série d'achats qui nous donne une vision claire de vos habitudes de dépenses !\n\n**2. Description claire de vos transactions**\n\nVoici les principaux marchands qui reviennent régulièrement dans cette fourchette de prix :\n\n**🛒 Alimentation (6 677,34€)**\n- **Leclerc** : vos courses régulières (160€, 179€, 171€...)\n- **Lidl** : environ 100-125€ par achat\n- **Auchan** : entre 101€ et 157€\n- **Carrefour** : 125€ à 199€\n- **Jow** : environ 100-103€\n\n**🛍️ Achats en ligne (7 908,40€)**\n- **Amazon** : très régulier à 154,97€\n- **Cdiscount** : entre 126€ et 183€\n- **3X 4X Oney** : paiements en plusieurs fois autour de 182-183€\n\n**🏠 Entretien maison (1 783,84€)**\n- **Castorama** et **Leroy Merlin** : 104€ à 115€\n- Prélèvements \"Sdc La Grange Prov.\" : 183-188€\n\n**🎭 Loisirs (356€)**\n- **Zoo de Beauval** : 178€\n\n**3. Observations utiles pour vos finances**\n\n**Points positifs :**\n- Vos dépenses alimentaires sont stables et raisonnables\n- Vous semblez fidèle à quelques enseignes, ce qui peut faciliter le suivi\n\n**Points d'attention :**\n- **Amazon** : vous avez un achat récurrent de **154,97€** qui revient presque tous les mois - peut-être un abonnement ou un achat programmé ?\n- Les **achats en ligne** représentent **46%** du total - c'est une part importante de vos dépenses\n- Une dépense chez **Jow** a été détectée comme inhabituelle (100,73€) par rapport à votre moyenne\n\n**Conseils concrets :**\n- Vérifiez si l'achat récurrent Amazon correspond bien à vos besoins actuels\n- Pour les courses alimentaires, comparez les prix entre Leclerc, Lidl et Auchan pour optimiser votre budget\n- Pensez à regrouper certains achats en ligne pour réduire les frais de livraison éventuels\n\nY a-t-il une catégorie spécifique sur laquelle vous souhaiteriez que je me concentre davantage ? 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 110 transactions",
+        "description": "Débits: 17049.11€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 110,
+          "currency": "EUR",
+          "total_debit": 17049.11000061035
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 100.73€ chez Jow - Montant 1.7σ de la moyenne (154.99€, σ=31.49€)",
+        "confidence": 0.8722984184536965,
+        "data_support": {
+          "transaction_id": 2024112202,
+          "amount": 100.73,
+          "merchant_name": "Jow",
+          "anomaly_score": 1.7229841845369653,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 33815.36269999924,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:53:09.691553"
+}

@@ -1,0 +1,51 @@
+{
+  "question_id": "D008",
+  "category": "D_temporel",
+  "question": "Mes dépenses du 14 au 15 mai",
+  "response_text": {
+    "message": "Voici le résumé de vos transactions du 14 au 15 mai ! 💫\n\n**1. Résumé personnel de vos résultats**\nSur ces 2 jours, vous avez effectué 6 transactions pour un total de **77,55€** de dépenses. Vos principales catégories de dépenses sont l'alimentation et les transports.\n\n**2. Détails de vos transactions**\n\n*Le 15 mai :*\n- **SNCF** : 10,00€ - Billet de train via Trainline\n- **Lidl** : 32,57€ - Courses alimentaires\n- **Figaro** : 16,99€ - Abonnement au journal\n\n*Le 14 mai :*\n- **Intermarché** : 1,72€ - Petites courses\n- **Cofiroute** : 0,90€ - Péage d'autoroute\n- **Intermarché** : 15,37€ - Courses supplémentaires\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Point d'attention** : Votre achat chez Lidl de 32,57€ représente une dépense plus élevée que d'habitude dans cette catégorie. C'est environ 1,7 fois supérieur à vos dépenses moyennes en alimentation.\n\n💡 **Conseil pratique** : Si cette dépense inhabituelle correspond à des achats exceptionnels (stockage, invités), pas d'inquiétude ! Sinon, cela pourrait valoir la peine de vérifier si vous avez maintenu votre budget courses habituel.\n\nVos dépenses semblent bien réparties entre l'essentiel (alimentation, transports) et vos abonnements. Continuez à suivre vos transactions régulièrement pour garder le contrôle sur vos finances ! 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 6 transactions",
+        "description": "Débits: 77.55€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 6,
+          "currency": "EUR",
+          "total_debit": 77.54999935626984
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 32.57€ chez Lidl - Montant 1.7σ de la moyenne (12.92€, σ=11.72€)",
+        "confidence": 0.8675774240514825,
+        "data_support": {
+          "transaction_id": 2025051503,
+          "amount": 32.57,
+          "merchant_name": "Lidl",
+          "anomaly_score": 1.6757742405148257,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 25656.87040000921,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:18:49.435266"
+}

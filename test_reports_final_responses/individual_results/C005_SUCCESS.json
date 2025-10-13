@@ -1,0 +1,51 @@
+{
+  "question_id": "C005",
+  "category": "C_categorie",
+  "question": "Mes sorties loisirs",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nVoici un aperçu complet de vos dépenses loisirs ! Sur l'ensemble de vos transactions, vous avez dépensé **3 235,04€** répartis sur **72 opérations**. Je vois que vous avez une belle régularité dans vos activités de détente, avec quelques pics de dépenses qui ressortent particulièrement.\n\n**2. Description claire de vos transactions**\n\nVos dépenses loisirs se concentrent principalement sur trois types d'activités :\n\n**🛍️ Cultura** - Votre enseigne culturelle préférée\n- **Fréquence** : Très régulière, presque mensuelle\n- **Montants typiques** : Entre 3,58€ et 58€\n- **Dernière visite** : 12 octobre 2025 à La Grande Récré (9,99€)\n\n**🎭 Petitsculottes** - Votre sortie parisienne récurrente\n- **Particularité** : Montant fixe de 52,25€ à chaque fois\n- **Fréquence** : Très régulière, environ une fois par mois\n- **Dernière visite** : 16 janvier 2025\n\n**🎢 Activités ponctuelles** qui marquent vos étapes\n- **Zoo de Beauval** : 178€ (juin 2024)\n- **Croisières Aliz** : 5,73€\n- **Les Dauphins** : 11,70€\n- **Cds Voyag FLOA4X** : Autres activités autour de 78€\n\n**3. Observations utiles pour vos finances**\n\n**💰 Point d'attention** : Votre dépense au Zoo de Beauval (178€) représente une sortie significative qui sort de votre pattern habituel. C'est 4 fois supérieur à votre moyenne habituelle de 45€ par sortie.\n\n**📊 Recommandations concrètes** :\n- **Budget mensuel** : Avec une moyenne de 45€ par sortie loisirs, vous pourriez prévoir environ 180€ par mois pour ces activités\n- **Équilibre** : Vous alternez bien entre petites sorties (Cultura) et activités plus conséquentes\n- **Périodicité** : Vos visites chez Petitsculottes semblent être un rendez-vous mensuel régulier - c'est une bonne base pour anticiper vos dépenses\n\n**💡 Idée d'optimisation** : Pourriez-vous regrouper certaines de vos visites Cultura pour bénéficier d'éventuels programmes de fidélité ou d'offres groupées ?\n\nVotre équilibre entre sorties régulières et activités exceptionnelles semble bien maîtrisé ! Souhaitez-vous que je vous aide à analyser plus en détail une période spécifique ou à comparer avec d'autres catégories de dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 72 transactions",
+        "description": "Débits: 3235.04€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 72,
+          "currency": "EUR",
+          "total_debit": 3235.039991378784
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 178.00€ chez None - Montant 4.3σ de la moyenne (44.93€, σ=31.00€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 18402,
+          "amount": 178.0,
+          "merchant_name": "None",
+          "anomaly_score": 4.292295356388805,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 34831.96179999504,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:08:59.315481"
+}

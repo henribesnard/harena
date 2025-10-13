@@ -1,0 +1,590 @@
+{
+  "category": "B_vendeur",
+  "timestamp": "2025-10-13T21:06:01.570951",
+  "total_questions": 17,
+  "api_successful": 17,
+  "responses_received": 17,
+  "success_rate": 100.0,
+  "avg_response_length": 2.0,
+  "detailed_results": [
+    {
+      "question_id": "B001",
+      "question": "Mes dépenses Netflix ?",
+      "response_text": {
+        "message": "**1. Résumé personnel de vos dépenses Netflix**\n\nVoici un aperçu complet de vos transactions Netflix ! Vous avez effectué **80 transactions** pour un total de **1 050,20€** depuis 2020. C'est votre principal service de streaming avec des paiements très réguliers chaque mois.\n\n**2. Détails de vos transactions récentes**\n\nVoici vos dernières transactions Netflix :\n- **5 juin 2025** : 7,99€ (Netflix)\n- **5 mai 2025** : 13,49€ (Netflix)\n- **7 avril 2025** : 13,49€ (Netflix)\n- **5 mars 2025** : 13,49€ (Netflix)\n- **5 février 2025** : 13,49€ (Netflix)\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Changement de tarif récent** : Votre dernière transaction à 7,99€ représente une **réduction significative** par rapport au tarif habituel de 13,49€. Cela pourrait indiquer que vous avez changé d'abonnement ou bénéficié d'une offre promotionnelle.\n\n💰 **Dépense mensuelle stable** : Pendant la majeure partie de la période, vous avez payé **13,49€ par mois**, ce qui représente environ **162€ par an** pour ce service.\n\n📊 **Double facturation occasionnelle** : J'observe parfois des transactions dupliquées le même mois (comme en décembre 2024 avec deux transactions le 4 décembre). Cela pourrait être dû à des ajustements de facturation ou à des changements de carte.\n\n💡 **Suggestion** : Avec votre nouveau tarif à 7,99€, vous économiserez environ **66€ par an** ! C'est une belle optimisation de votre budget streaming.\n\nVoulez-vous que je vous aide à analyser vos autres abonnements pour voir s'il y a d'autres économies possibles ?",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 80 transactions",
+            "description": "Débits: 1050.20€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 80,
+              "currency": "EUR",
+              "total_debit": 1050.1999816894531
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 7.99€ chez Netflix - Montant 5.2σ de la moyenne (13.13€, σ=0.99€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 2025060506,
+              "amount": 7.99,
+              "merchant_name": "Netflix",
+              "anomaly_score": 5.204215501576438,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 26232.72800000268,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B002",
+      "question": "Mes achats Amazon ?",
+      "response_text": {
+        "message": "### 1. Résumé personnel de vos achats Amazon\n\nVoici un aperçu complet de vos transactions Amazon ! J'ai analysé vos 400 achats chez Amazon, qui représentent un total de **13 908,54€** de dépenses. C'est une somme significative qui mérite qu'on y prête attention.\n\n### 2. Description de vos transactions Amazon\n\nVos achats Amazon se répartissent principalement en plusieurs types :\n\n**🛒 Achats réguliers :**\n- Des transactions récurrentes de montants similaires (23,15€, 31,48€, 38,48€)\n- Des achats plus importants réguliers autour de 154,97€\n- Des petites dépenses fréquentes entre 0,99€ et 20€\n\n**📱 Services digitaux :**\n- Abonnements Amazon Digital (4,99€ - 12,99€)\n- Amazon Prime (49€ - 69,90€)\n- Divers services de streaming et médias\n\n**💳 Paiements fractionnés :**\n- Plusieurs transactions via Cofidis pour des achats étalés\n- Montants récurrents de 31,42€, 50,68€, 59,41€, etc.\n\n### 3. Observations pour vos finances\n\n**Points d'attention :**\n- **Dépense inhabituelle** : Un achat de 314,46€ chez Amazon qui sort nettement de vos habitudes (6,9 fois l'écart-type par rapport à votre moyenne de 34,77€)\n- **Fréquence élevée** : Vous effectuez en moyenne plusieurs transactions Amazon par mois\n- **Multiplicité des services** : Vous utilisez plusieurs services Amazon (Prime, Digital, etc.)\n\n**Recommandations :**\n1. **Revoyez vos abonnements** : Vérifiez si vous utilisez tous les services Amazon auxquels vous êtes abonné\n2. **Budget dédié** : Pourriez-vous créer un budget mensuel spécifique pour vos achats en ligne ?\n3. **Alertes de dépenses** : Activez des notifications pour les transactions supérieures à un certain montant\n\nVoulez-vous que je vous aide à analyser plus en détail certaines périodes ou types d'achats spécifiques ? 😊",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 400 transactions",
+            "description": "Débits: 13908.54€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 400,
+              "currency": "EUR",
+              "total_debit": 13908.540008485317
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 314.46€ chez Amazon - Montant 6.9σ de la moyenne (34.77€, σ=40.33€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 18325,
+              "amount": 314.46,
+              "merchant_name": "Amazon",
+              "anomaly_score": 6.9350680374197715,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 33885.80809999257,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B003",
+      "question": "Mes transactions chez Carrefour",
+      "response_text": {
+        "message": "### 1. Résumé personnel de vos résultats\n\nJe vois que vous avez effectué **624 transactions chez Carrefour** pour un total de **12 359,38 €** ! C'est votre principal point d'achat alimentaire, avec une dépense moyenne d'environ 19,80 € par transaction. Vos courses s'étalent sur plusieurs années, ce qui montre une fidélité certaine à cette enseigne.\n\n### 2. Description de vos transactions\n\nVos achats chez Carrefour se répartissent principalement entre plusieurs magasins :\n- **Carrefour City** à Joue-les-Tours (petits achats quotidiens de 2-5 €)\n- **Carrefour Château Renault** (vos courses principales)\n- **Carrefour Market** (grosses courses)\n- **Carrefour Contact** et **Carrefour Express** (achats de proximité)\n\nVos montants varient considérablement :\n- **Petits achats** : nombreux achats entre 1-10 € (probablement du pain, des boissons, etc.)\n- **Courses moyennes** : entre 15-50 € (courses de la semaine)\n- **Grosses courses** : jusqu'à 333,50 € (record détecté en septembre 2024)\n\n### 3. Observations utiles pour vos finances\n\n**Points d'attention :**\n- Une transaction **exceptionnellement élevée** de 333,50 € a été détectée - c'est plus de 10 fois votre moyenne habituelle. Peut-être s'agissait-il d'un achat spécial ou de provisions importantes ?\n- Vous faites de très nombreux petits achats (plus de 100 transactions < 5 €), ce qui peut s'accumuler rapidement\n\n**Suggestions :**\n- Pourriez-vous regrouper certains de vos petits achats pour réduire le nombre de transactions ?\n- Avez-vous envisagé les programmes de fidélité Carrefour pour potentiellement économiser sur vos courses régulières ?\n- Surveillez vos grosses courses mensuelles pour maintenir un budget alimentaire cohérent\n\nVotre modèle d'achat montre que Carrefour est vraiment votre supermarché de référence ! Si vous souhaitez que j'analyse plus en détail une période spécifique ou que je compare avec d'autres enseignes, n'hésitez pas à me le demander.",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 624 transactions",
+            "description": "Débits: 12359.38€ | Crédits: 0.00€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 624,
+              "currency": "EUR",
+              "total_debit": 12359.379983305931,
+              "total_credit": 0.0
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 333.50€ chez Carrefour - Montant 10.6σ de la moyenne (19.81€, σ=29.55€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 20624,
+              "amount": 333.5,
+              "merchant_name": "Carrefour",
+              "anomaly_score": 10.615591871648043,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 37575.4049999814,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B004",
+      "question": "Mes achats Apple",
+      "response_text": {
+        "message": "Bonjour ! J'ai cherché vos transactions avec Apple dans vos relevés, mais je n'ai trouvé aucun achat récent avec ce marchand.\n\n**Résumé de vos résultats :**\n- Aucune transaction Apple trouvée dans votre historique récent\n- Total des transactions recherchées : 0\n- Montant total : 0,00 €\n\n**Pour mieux vous aider :**\n- Si vous avez effectué des achats Apple récemment, ils pourraient apparaître sous un nom de marchand différent\n- Vérifiez si ces transactions sont listées sous \"App Store\", \"iTunes\" ou \"Apple Services\"\n- Les achats physiques en magasin Apple apparaissent généralement sous \"APPLE STORE\"\n\n**Conseil pratique :**\nSi vous cherchez un achat spécifique, vous pouvez me donner une période (comme \"ce mois-ci\") ou un montant approximatif, et je pourrai faire une recherche plus ciblée dans vos transactions.\n\nY a-t-il autre chose concernant vos finances que vous aimeriez que j'analyse ? 😊",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 18619.683899974916,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B005",
+      "question": "Mes dépenses McDonald's",
+      "response_text": {
+        "message": "Bonjour ! J'ai cherché vos transactions McDonald's dans vos données financières, mais je n'ai trouvé aucune dépense récente chez ce marchand.\n\n**Résumé de vos résultats :**\n- Aucune transaction McDonald's identifiée\n- Total des transactions analysées : 0\n- Montant total des débits : 0,00 €\n\n**Observations pour vos finances :**\nC'est une excellente nouvelle ! Si vous cherchiez à suivre vos dépenses de restauration rapide, l'absence de transactions McDonald's suggère soit que vous n'y êtes pas allé récemment, soit que ces transactions pourraient être classées différemment dans votre compte.\n\n**Actions concrètes que vous pourriez envisager :**\n- Vérifier si vos paiements McDonald's apparaissent sous un autre nom de marchand\n- Consulter une période plus longue si vous pensez avoir effectué des dépenses récemment\n- Profiter de cette occasion pour établir un budget restauration si c'est un poste que vous souhaitez surveiller\n\nY a-t-il une période spécifique ou d'autres marchands que vous aimeriez que j'analyse pour vous ? 😊",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 20440.9125999955,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B006",
+      "question": "Mes achats Amazone",
+      "response_text": {
+        "message": "### 1. Résumé personnel de vos résultats\n\nVoici un aperçu de vos transactions Amazon ! Sur les 400 transactions analysées, vous avez dépensé un total de **13 908,54 €** chez Amazon et ses services associés. Cela représente une part importante de vos achats en ligne, avec une moyenne d'environ **34,77 €** par transaction.\n\n### 2. Description claire des transactions\n\nVoici les dernières transactions Amazon que j'ai identifiées dans vos relevés :\n\n- **18 août 2025** : 38,48 € - Achat Amazon (Carte X3800)\n- **1er juillet 2025** : 31,48 € - Achat Amazon (Carte X0832)\n- **26 juin 2025** : 23,15 € - Achat Amazon (Carte X0832)\n- **16 juin 2025** : 38,48 € - Achat Amazon (Carte X3800)\n- **5 juin 2025** : 10,99 € - Paiement Amazon\n- **4 juin 2025** : 31,44 € - Achat Amazon Villeneuve\n- **4 juin 2025** : 0,99 € - Contenu média Amazon\n\nJe vois également plusieurs types d'achats récurrents :\n- **Achats physiques** (mention \"Villeneuve\" dans la description)\n- **Services digitaux** (Amazon Digital, Amazon Media)\n- **Abonnements** (Amazon Prime à 69,90 €)\n- **Paiements divers** via Amazon Payments\n\n### 3. Observations utiles pour vos finances\n\n**Points d'attention :**\n- **Dépense inhabituelle** : J'ai détecté une transaction de **314,46 €** chez Amazon qui sort significativement de vos habitudes d'achat (6,9 fois l'écart-type par rapport à votre moyenne). C'est peut-être un achat exceptionnel, mais cela vaut la peine d'y jeter un coup d'œil.\n\n**Recommandations :**\n1. **Suivi des abonnements** : Vous avez plusieurs abonnements Amazon (Prime, services digitaux). Vérifiez régulièrement ceux que vous utilisez vraiment.\n2. **Regroupement des achats** : En moyenne 2-3 transactions Amazon par mois - envisagez de regrouper vos commandes pour réduire les frais d'expédition éventuels.\n3. **Budget mensuel** : Avec environ 100-150 € mensuels chez Amazon, vous pourriez fixer un budget précis pour mieux maîtriser vos dépenses en ligne.\n\n**Question pour vous :** Souhaitez-vous que je vous aide à analyser plus en détail une période spécifique ou certains types d'achats Amazon en particulier ?",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 400 transactions",
+            "description": "Débits: 13908.54€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 400,
+              "currency": "EUR",
+              "total_debit": 13908.540008485317
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 314.46€ chez Amazon - Montant 6.9σ de la moyenne (34.77€, σ=40.33€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 18325,
+              "amount": 314.46,
+              "merchant_name": "Amazon",
+              "anomaly_score": 6.9350680374197715,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 36548.34310000297,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B007",
+      "question": "Mes dépenses Netflik",
+      "response_text": {
+        "message": "**1. Résumé personnel de vos résultats**\n\nVoici un aperçu complet de vos dépenses Netflix ! Sur les 80 transactions analysées, vous avez dépensé **1 050,20€** au total chez Netflix depuis février 2020. C'est votre abonnement streaming le plus régulier avec des prélèvements mensuels constants.\n\n**2. Description claire de vos transactions**\n\nVos transactions Netflix montrent une évolution intéressante de votre abonnement :\n\n- **Abonnement Standard (13,49€)** : La majorité de vos paiements (74 transactions)\n- **Abonnement Essentiel (11,99€)** : Présent entre février 2020 et juillet 2024\n- **Abonnement Basique (7,99€)** : Apparu récemment en juin 2024 et juin 2025\n\nJe remarque que vous avez changé plusieurs fois de formule, avec une tendance récente vers une option plus économique.\n\n**3. Observations utiles pour vos finances**\n\n💰 **Économie récente** : Votre passage à l'offre à 7,99€ vous fait économiser environ 5,50€ par mois, soit **66€ par an** ! Excellente décision si cette formule correspond à vos besoins de streaming.\n\n📊 **Régularité exemplaire** : Vos paiements sont très réguliers, ce qui facilite la budgétisation. Netflix représente environ **13€ mensuels** dans votre budget loisirs.\n\n⚠️ **Attention aux doublons** : J'observe quelques transactions dupliquées certains mois (comme en décembre 2024). Cela pourrait être dû à des tentatives de paiement successives - rien d'alarmant, mais à surveiller.\n\n**Action concrète** : Pensez à vérifier votre utilisation actuelle de Netflix. Si vous regardez principalement sur un seul écran, l'option à 7,99€ pourrait être parfaitement adaptée et continuer à vous faire économiser !",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 80 transactions",
+            "description": "Débits: 1050.20€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 80,
+              "currency": "EUR",
+              "total_debit": 1050.1999816894531
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 7.99€ chez Netflix - Montant 5.2σ de la moyenne (13.13€, σ=0.99€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 2025060506,
+              "amount": 7.99,
+              "merchant_name": "Netflix",
+              "anomaly_score": 5.204215501576438,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 28382.60869999067,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B008",
+      "question": "Restaurant McDonald",
+      "response_text": {
+        "message": "1. **Résumé personnel des résultats**\nJe n'ai trouvé aucune transaction chez McDonald's dans votre historique récent. Il semble que vous n'ayez pas effectué d'achats dans ce restaurant avec votre compte actuellement suivi.\n\n2. **Descriptions des transactions**\nMalheureusement, je ne peux pas vous fournir de détails spécifiques sur des transactions McDonald's puisque aucune n'a été enregistrée dans vos données.\n\n3. **Observations utiles pour vos finances**\nC'est une bonne nouvelle si vous cherchiez à réduire vos dépenses en restauration rapide ! Si vous pensiez avoir effectué des paiements chez McDonald's récemment, cela pourrait signifier que :\n- La transaction n'a pas encore été enregistrée\n- Le paiement a été effectué avec un autre moyen de paiement\n- Le marchand est apparu sous un nom différent dans votre relevé\n\n**Action suggérée** : Vérifiez vos autres comptes ou attendez quelques jours si l'achat est très récent. Si vous souhaitez suivre spécifiquement ce type de dépenses, je peux vous aider à analyser vos habitudes de restauration une fois que les données seront disponibles !",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 20077.136000007158,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B009",
+      "question": "Mes achats Apple/iTunes",
+      "response_text": {
+        "message": "Bonjour ! J'ai cherché vos transactions Apple et iTunes dans vos relevés, mais je n'ai trouvé aucun achat récent lié à ces services.\n\n**Résumé de vos résultats :**\n- Aucune transaction Apple/iTunes trouvée\n- Total des transactions analysées : 0\n- Montant total : 0,00 €\n\n**Observations pour vos finances :**\nIl semble que vous n'ayez pas effectué d'achats Apple ou iTunes récemment, ou alors ces transactions pourraient être classées sous d'autres catégories dans vos relevés.\n\n**Actions suggérées :**\n- Vérifiez si vos achats Apple pourraient apparaître sous d'autres noms de marchands\n- Si vous avez récemment effectué des achats, ils pourraient apparaître avec un léger délai\n- Pensez à consulter directement l'historique de vos achats dans l'App Store ou iTunes pour plus de détails\n\nN'hésitez pas à me demander de rechercher d'autres types de transactions si besoin ! 😊",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 20118.616399995517,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B010",
+      "question": "Mes dépenses essence/carburant",
+      "response_text": {
+        "message": "### 1. Résumé personnel de vos dépenses essence\n\nJe vois que vous avez effectué **160 transactions carburant** au total, pour un montant global de **8 088,86 €**. C'est une dépense significative qui mérite qu'on y regarde de plus près ! \n\nVos stations principales sont **Total** (votre fournisseur favori), ainsi que **Leclerc** et **Intermarché** pour certaines périodes.\n\n### 2. Détail de vos transactions carburant\n\n**Vos habitudes de consommation :**\n- **Total** est votre station principale avec des dépenses régulières\n- Vous alternez entre des pleins complets (50-80€) et des petits ravitaillements (25-30€)\n- On observe une concentration de dépenses chez **Leclerc** en octobre-novembre 2024 avec des montants autour de 82,70€\n\n**Périodes d'activité intense :**\n- Octobre-novembre 2024 : nombreuses transactions quotidiennes chez Leclerc\n- Mars 2025 : plusieurs pleins chez Total\n- Décembre 2024 : dépenses importantes chez Total et Intermarché\n\n### 3. Observations utiles pour vos finances\n\n**Points d'attention :**\n- Une dépense inhabituelle de seulement **0,88€** chez Total a été détectée - c'est très en dessous de votre moyenne habituelle de 50,56€\n- Votre consommation semble assez régulière avec une moyenne de **50,56€ par transaction**\n\n**Suggestions pour optimiser vos dépenses :**\n- Comparez les prix entre Total, Leclerc et Intermarché pour identifier les meilleures offres\n- Pensez aux cartes de fidélité des stations pour bénéficier de réductions\n- Si vous avez plusieurs véhicules, évaluez si certains trajets pourraient être optimisés\n\n**Voulez-vous que je vous aide à analyser plus en détail une période spécifique ou comparer vos dépenses carburant avec d'autres catégories ?** 😊",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 160 transactions",
+            "description": "Débits: 8088.86€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 160,
+              "currency": "EUR",
+              "total_debit": 8088.859916448593
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 0.88€ chez Total - Montant 2.1σ de la moyenne (50.56€, σ=23.77€)",
+            "confidence": 0.9089704245012072,
+            "data_support": {
+              "transaction_id": 21721,
+              "amount": 0.88,
+              "merchant_name": "Total",
+              "anomaly_score": 2.0897042450120726,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 28719.226600020193,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B011",
+      "question": "Mes transactions McDo",
+      "response_text": {
+        "message": "Bonjour ! J'ai cherché vos transactions McDonald's dans votre historique, mais je n'ai trouvé aucune transaction correspondante pour le moment.\n\n**Résumé de vos résultats :**\n- Aucune transaction McDonald's identifiée\n- Total des transactions analysées : 0\n- Montant total des dépenses : 0,00 €\n\n**Observations pour vos finances :**\nIl semble que vous n'ayez pas effectué d'achats chez McDonald's récemment, ou bien ces transactions pourraient être classées sous un nom de marchand différent dans votre compte.\n\n**Suggestions :**\n- Vérifiez si vos achats chez McDonald's apparaissent sous d'autres noms (comme \"MCD\", \"McDonald's\" avec une orthographe différente, ou le nom spécifique du restaurant)\n- Si vous avez récemment effectué des achats là-bas, ils pourraient apparaître dans vos prochaines mises à jour de transactions\n\nN'hésitez pas à me donner plus de détails si vous cherchez des transactions spécifiques, je serai ravi de vous aider à les retrouver !",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 19279.12490000017,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B012",
+      "question": "Mes achats chez Google",
+      "response_text": {
+        "message": "### 1. Résumé personnel de vos résultats\n\nJ'ai analysé vos 128 transactions chez Google sur les dernières années, et voici ce qui ressort :\n\n**Total dépensé : 1 187,18 €** chez Google depuis 2020\n- Toutes vos transactions sont classées en \"Abonnements\"\n- Vous avez plusieurs services Google récurrents\n\n### 2. Description claire de vos services Google\n\nVoici les principaux services que vous utilisez régulièrement :\n\n**📱 Abonnements récurrents :**\n- **Google One** (1,99€/mois) - stockage cloud\n- **YouTube Premium** (11,99€/mois) - vidéos sans pub\n- **YouTube Music** (9,99€/mois) - streaming musical\n- **Google Play Apps** - achats d'applications (montants variables)\n\n**💻 Services professionnels :**\n- **Google Cloud** - deux transactions importantes (124,30€ et 119,71€) qui semblent ponctuelles\n\n**🎯 Points remarquables :**\n- Votre abonnement Google One est très stable à 1,99€ depuis des années\n- YouTube Premium est passé de 9,99€ à 11,99€ récemment\n- Vous avez des achats occasionnels sur Google Play Store\n\n### 3. Observations utiles pour vos finances\n\n**💰 Optimisation possible :**\n- Vous pourriez vérifier si YouTube Music et YouTube Premium ne se chevauchent pas, car YouTube Premium inclut déjà YouTube Music\n- Les transactions Google Cloud sont significatives (plus de 120€) - assurez-vous qu'elles correspondent bien à votre utilisation réelle\n\n**📊 Suivi recommandé :**\n- Vos abonnements Google représentent environ 25-30€ par mois en moyenne\n- Les dépenses Google Cloud méritent une attention particulière étant donné leur montant élevé\n\n**💡 Action concrète :**\nJe vous suggère de faire le point sur l'utilité de chaque service - certains pourraient potentiellement être consolidés ou supprimés si sous-utilisés.\n\nSouhaitez-vous que je vous aide à analyser plus en détail l'un de ces services en particulier ?",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 128 transactions",
+            "description": "Débits: 1187.18€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 128,
+              "currency": "EUR",
+              "total_debit": 1187.1799926757812
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 124.30€ chez Google - Montant 5.5σ de la moyenne (9.27€, σ=20.76€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 2025010208,
+              "amount": 124.3,
+              "merchant_name": "Google",
+              "anomaly_score": 5.5416520510989695,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 29710.56099998532,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B013",
+      "question": "Mes dépenses Uber",
+      "response_text": {
+        "message": "### 📊 Résumé de vos dépenses Uber\n\nVoici un aperçu de vos transactions Uber récentes :\n\n- **Total des transactions** : 12 opérations\n- **Montant total dépensé** : 371,40€\n- **Période couverte** : De 2021 à 2024\n\n---\n\n### 🍽️ Détail de vos transactions Uber\n\n**Dernières dépenses (2024) :**\n- **22/12/2024** : Uber Eats - 25,26€\n- **09/12/2024** : Les Toques-auber Saint Jea - 45,06€\n- **05/11/2024** : Uber Eats - 29,99€\n- **05/10/2024** : Uber Eats - 29,99€\n- **03/10/2024** : Uber Eats - 21,00€\n- **02/04/2024** : Uber Eats - 34,40€\n\n**Transactions antérieures (2021) :**\nDes montants similaires apparaissent également en 2021, montrant une certaine régularité dans vos habitudes de commande.\n\n---\n\n### 💡 Observations pour vos finances\n\n**Point d'attention :** \nJ'ai détecté une dépense inhabituelle chez Uber de **45,06€** le 9 décembre 2024. Ce montant est significativement plus élevé que votre moyenne habituelle de **30,95€** pour ce type de dépenses.\n\n**Tendance observée :**\n- Vos commandes Uber Eats tournent généralement autour de 25-35€\n- Vous semblez commander plus fréquemment en fin d'année\n- La plupart de vos dépenses Uber sont catégorisées en \"Alimentation\"\n\n**Conseil pratique :**\nPour mieux maîtriser vos dépenses alimentaires, vous pourriez :\n- Identifier les commandes exceptionnelles (comme celle à 45,06€) et voir si elles correspondent à des occasions spéciales\n- Comparer le coût des livraisons avec la préparation de repas maison pour les jours où vous êtes moins pressé\n\nSouhaitez-vous que je vous aide à analyser d'autres catégories de dépenses ? 😊",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 12 transactions",
+            "description": "Débits: 371.40€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 12,
+              "currency": "EUR",
+              "total_debit": 371.4000053405762
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 45.06€ chez Uber - Montant 1.8σ de la moyenne (30.95€, σ=7.91€)",
+            "confidence": 0.878357994091435,
+            "data_support": {
+              "transaction_id": 19873,
+              "amount": 45.06,
+              "merchant_name": "Uber",
+              "anomaly_score": 1.783579940914351,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 29626.17999999202,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B014",
+      "question": "Mes achats Tesla",
+      "response_text": {
+        "message": "Bonjour ! J'ai cherché vos transactions Tesla dans votre historique, mais je n'ai trouvé aucun achat récent lié à cette marque.\n\n**Résumé de vos résultats :**\n- Aucune transaction Tesla identifiée dans votre historique récent\n- Total des transactions analysées : 0\n- Montant total des dépenses : 0,00 €\n\n**Observations pour vos finances :**\nIl semble que vous n'ayez pas effectué d'achats Tesla récemment, ou bien ces transactions pourraient être classées sous un nom de marchand différent dans votre compte.\n\n**Actions suggérées :**\n- Vérifiez si vos transactions Tesla apparaissent sous un autre nom (comme \"Tesla Store\", \"Tesla Supercharger\", ou le nom du concessionnaire)\n- Si vous avez récemment effectué un achat Tesla, il se peut qu'il n'ait pas encore été traité\n- Vous pouvez aussi me demander de rechercher d'autres types de transactions si nécessaire\n\nY a-t-il autre chose concernant vos finances que vous aimeriez que j'analyse pour vous ? 😊",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 18570.915599993896,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B015",
+      "question": "Mes achats Auchan Supermarc St Lidl Netflix Com Paris",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 40982.89769998519,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B016",
+      "question": "Mes dépenses chez Carrefour Market CR Centre Leclerc Amboi Cdiscount Bordeaux",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+        "structured_data": []
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 41129.36829999671,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "B017",
+      "question": "Mes transactions Bouygues Telecom Canal Sat Issy Les M Paypal Luxembourg",
+      "response_text": {
+        "message": "### 1. Résumé personnel de vos résultats\n\nJ'ai analysé vos transactions et voici ce que je constate : vous avez effectué **330 transactions** au total, avec **12 259,40€ de débits** et **117,98€ de crédits**. Vos dépenses principales concernent vos abonnements télécoms et services de streaming.\n\n### 2. Description claire de vos transactions\n\n**Bouygues Telecom** - Vos transactions les plus fréquentes :\n- Abonnements mobiles (environ 45-50€ par mois)\n- Abonnement box internet (environ 80€)\n- Plusieurs lignes mobiles identifiées par des numéros masqués\n- Quelques remboursements et avoirs occasionnels\n\n**Canal Sat** - Votre abonnement streaming :\n- Paiement mensuel régulier de 35,19€\n- Quelques transactions supplémentaires occasionnelles (4,99€ à 14,99€)\n- Localisation : Issy-les-Moulineaux\n\n**Autres transactions mentionnées** :\n- Quelques petites transactions chez La Poste Telecom (9,99€ à 13,23€)\n- Quelques dépenses restaurant chez \"Les Restaurateur Tours\"\n\n### 3. Observations utiles pour vos finances\n\n**Point d'attention important** : \nJ'ai détecté une **dépense inhabituelle** chez Bouygues Telecom de **123,93€** - ce montant est significativement plus élevé que votre moyenne habituelle de 37,51€. Cela pourrait correspondre à un règlement exceptionnel, des frais supplémentaires ou un changement d'abonnement.\n\n**Recommandations** :\n- Vérifiez cette transaction de 123,93€ chez Bouygues pour comprendre son origine\n- Considérez faire le point sur vos différents abonnements télécoms (vous semblez avoir plusieurs lignes)\n- Votre abonnement Canal Sat semble stable à 35,19€/mois - c'est un bon point de repère pour votre budget mensuel\n\nSouhaitez-vous que je vous aide à analyser plus en détail une période spécifique ou certaines de ces transactions ?",
+        "structured_data": [
+          {
+            "type": "financial_summary",
+            "title": "Résumé financier : 330 transactions",
+            "description": "Débits: 12259.40€ | Crédits: 117.98€",
+            "confidence": 1.0,
+            "data_support": {
+              "transaction_count": 330,
+              "currency": "EUR",
+              "total_debit": 12259.400195598602,
+              "total_credit": 117.97999954223633
+            },
+            "actionable": false,
+            "priority": 0
+          },
+          {
+            "type": "unusual_transaction",
+            "title": "Dépense inhabituelle détectée (Analytics)",
+            "description": "Dépense de 123.93€ chez Bouygues - Montant 5.0σ de la moyenne (37.51€, σ=17.24€)",
+            "confidence": 0.95,
+            "data_support": {
+              "transaction_id": 22107,
+              "amount": 123.93,
+              "merchant_name": "Bouygues",
+              "anomaly_score": 5.012054665477291,
+              "method": "zscore",
+              "threshold_exceeded": true,
+              "transaction_type": "debit",
+              "analytics_agent_used": true
+            },
+            "actionable": true,
+            "priority": 1
+          }
+        ]
+      },
+      "response_length": 2,
+      "has_response": true,
+      "intent_detected": "transaction_search",
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 31946.983799978625,
+      "api_success": true,
+      "error_message": null
+    }
+  ]
+}

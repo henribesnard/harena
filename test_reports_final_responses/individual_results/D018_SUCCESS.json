@@ -1,0 +1,48 @@
+{
+  "question_id": "D018",
+  "category": "D_temporel",
+  "question": "Mes achats du 32 février",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nVoici un aperçu de vos transactions pour la période demandée ! Vous avez effectué **3 transactions** pour un total de **11,34€ de dépenses**. Votre budget a été principalement consacré à l'alimentation, suivie par les frais de transport.\n\n---\n\n**2. Description claire de vos transactions**\n\nVoici le détail de vos achats :\n\n- **Cofiroute** (Transport) ×2 → **1,80€**  \n  Deux passages au péage de Tours-nord à 0,90€ chacun, effectués le 27 février.\n\n- **Carrefour** (Alimentation) → **9,54€**  \n  Achat alimentaire effectué le 27 février dans le magasin Carrefour Saint P.\n\n---\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Dépense inhabituelle détectée**  \nVotre achat chez Carrefour (9,54€) représente **2,5 fois votre moyenne habituelle** dans cette catégorie (habituellement autour de 3,78€). Cela pourrait correspondre à un stock de provisions ou à un achat exceptionnel !\n\n💡 **Conseil pratique**  \nSi ces dépenses alimentaires plus élevées deviennent régulières, vous pourriez envisager de réviser votre budget mensuel dédié aux courses. Sinon, pas d'inquiétude - c'est tout à fait normal d'avoir des variations occasionnelles !\n\nN'hésitez pas si vous souhaitez que j'analyse une période différente ou que je vous aide à suivre l'évolution de vos dépenses alimentaires ! 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 3 transactions",
+        "description": "Débits: 11.34€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 3,
+          "currency": "EUR",
+          "total_debit": 11.339999914169312
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée",
+        "description": "Dépense de 9.54€ chez Carrefour - 2.5x votre moyenne (3.78€)",
+        "confidence": 0.85,
+        "data_support": {
+          "max_abs_amount": 9.54,
+          "abs_avg_amount": 3.78,
+          "multiplier": 2.5238095238095237,
+          "transaction_type": "debit",
+          "merchant": "Carrefour"
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 23454.384899989236,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:24:03.898099"
+}

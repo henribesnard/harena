@@ -1,0 +1,19 @@
+{
+  "question_id": "A016",
+  "category": "A_montant",
+  "question": "Mes dépenses de 100 euros et plus",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 43355.94979999587,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:55:30.643634"
+}

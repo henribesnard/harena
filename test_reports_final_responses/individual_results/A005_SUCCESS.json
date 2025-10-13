@@ -1,0 +1,33 @@
+{
+  "question_id": "A005",
+  "category": "A_montant",
+  "question": "Est-ce que j'ai des dépenses d'un montant de 50 euros ?",
+  "response_text": {
+    "message": "### 1. Résumé personnel de vos résultats\n\nOui, vous avez effectivement de nombreuses dépenses de 50 euros ! J'ai trouvé **282 transactions** d'un montant exact de 50 euros dans votre historique, ce qui représente un total de **14 100 €** de débits cumulés. C'est un montant significatif qui mérite qu'on y prête attention.\n\n### 2. Description claire de vos transactions\n\nVos dépenses de 50 euros se répartissent principalement dans ces catégories :\n\n**🏧 Retraits d'espèces** - Fréquents dans différents distributeurs (Château Renaud, Les Mathes, Joue-les-Tours)\n**👨‍👩‍👧‍👦 Virements familiaux** - Réguliers vers Hounwanou William, Nathan, Henri et Claudie\n**⛽ Carburant** - Principalement chez Total (Relais de Villedome)\n**🎰 Paris sportifs** - Sur Winamax, Betclic, Unibet, FDJ\n**⚡ Factures d'électricité** - Greenyellow (anciennes factures Cdiscount énergie)\n**🛒 Courses alimentaires** - Intermarché, Carrefour\n**🍽️ Restaurants** - Le Palissy Tours\n**💸 Aides** - Western Union\n\n### 3. Observations utiles pour vos finances\n\n**Points d'attention :**\n- Les paris sportifs représentent une part importante de vos dépenses récurrentes de 50€\n- Les retraits d'espèces sont très fréquents - cela peut rendre le suivi budgétaire plus difficile\n- Les virements familiaux semblent être des habitudes régulières\n\n**Suggestions concrètes :**\n- Pourriez-vous regrouper certains virements pour réduire les frais éventuels ?\n- Les retraits d'espèces pourraient être planifiés pour mieux contrôler vos liquidités\n- Un suivi plus détaillé des dépenses de paris pourrait vous aider à maintenir un équilibre\n\nSouhaitez-vous que je vous aide à analyser plus en détail une catégorie spécifique de ces dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 282 transactions",
+        "description": "Débits: 14100.00€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 282,
+          "currency": "EUR",
+          "total_debit": 14100.0
+        },
+        "actionable": false,
+        "priority": 0
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 32438.22119999095,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:49:32.161995"
+}

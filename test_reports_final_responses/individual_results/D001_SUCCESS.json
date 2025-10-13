@@ -1,0 +1,19 @@
+{
+  "question_id": "D001",
+  "category": "D_temporel",
+  "question": "Mes dépenses de ce mois",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 40519.1812000121,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:14:47.616403"
+}

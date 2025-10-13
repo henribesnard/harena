@@ -1,0 +1,51 @@
+{
+  "question_id": "B010",
+  "category": "B_vendeur",
+  "question": "Mes dépenses essence/carburant",
+  "response_text": {
+    "message": "### 1. Résumé personnel de vos dépenses essence\n\nJe vois que vous avez effectué **160 transactions carburant** au total, pour un montant global de **8 088,86 €**. C'est une dépense significative qui mérite qu'on y regarde de plus près ! \n\nVos stations principales sont **Total** (votre fournisseur favori), ainsi que **Leclerc** et **Intermarché** pour certaines périodes.\n\n### 2. Détail de vos transactions carburant\n\n**Vos habitudes de consommation :**\n- **Total** est votre station principale avec des dépenses régulières\n- Vous alternez entre des pleins complets (50-80€) et des petits ravitaillements (25-30€)\n- On observe une concentration de dépenses chez **Leclerc** en octobre-novembre 2024 avec des montants autour de 82,70€\n\n**Périodes d'activité intense :**\n- Octobre-novembre 2024 : nombreuses transactions quotidiennes chez Leclerc\n- Mars 2025 : plusieurs pleins chez Total\n- Décembre 2024 : dépenses importantes chez Total et Intermarché\n\n### 3. Observations utiles pour vos finances\n\n**Points d'attention :**\n- Une dépense inhabituelle de seulement **0,88€** chez Total a été détectée - c'est très en dessous de votre moyenne habituelle de 50,56€\n- Votre consommation semble assez régulière avec une moyenne de **50,56€ par transaction**\n\n**Suggestions pour optimiser vos dépenses :**\n- Comparez les prix entre Total, Leclerc et Intermarché pour identifier les meilleures offres\n- Pensez aux cartes de fidélité des stations pour bénéficier de réductions\n- Si vous avez plusieurs véhicules, évaluez si certains trajets pourraient être optimisés\n\n**Voulez-vous que je vous aide à analyser plus en détail une période spécifique ou comparer vos dépenses carburant avec d'autres catégories ?** 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 160 transactions",
+        "description": "Débits: 8088.86€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 160,
+          "currency": "EUR",
+          "total_debit": 8088.859916448593
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 0.88€ chez Total - Montant 2.1σ de la moyenne (50.56€, σ=23.77€)",
+        "confidence": 0.9089704245012072,
+        "data_support": {
+          "transaction_id": 21721,
+          "amount": 0.88,
+          "merchant_name": "Total",
+          "anomaly_score": 2.0897042450120726,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 28719.226600020193,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:02:26.257811"
+}

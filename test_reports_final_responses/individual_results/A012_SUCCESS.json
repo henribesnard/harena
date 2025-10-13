@@ -1,0 +1,19 @@
+{
+  "question_id": "A012",
+  "category": "A_montant",
+  "question": "Mes dépenses de 0 euros",
+  "response_text": {
+    "message": "1. **Résumé personnel de vos résultats**\nJe vois que vous avez recherché vos transactions de 0 euros, mais je n'ai trouvé aucune transaction correspondante dans votre historique récent. Votre compte ne montre actuellement aucune dépense ou transaction avec ce montant spécifique.\n\n2. **Description des transactions**\nAucune transaction de 0 euros n'a été identifiée dans vos données financières. Cela peut être dû au fait que :\n- Les transactions de ce montant sont rares dans les opérations bancaires courantes\n- Vos transactions récentes ont toutes des montants différents de zéro\n- Les transactions de 0 euros peuvent être des autorisations temporaires qui ont été annulées\n\n3. **Observations utiles pour vos finances**\nC'est plutôt une bonne nouvelle ! L'absence de transactions de 0 euros signifie que vous n'avez pas de frais cachés ou d'opérations inhabituelles de ce type. Si vous cherchiez spécifiquement ce type de transaction, je vous suggère de :\n- Vérifier si vous avez récemment effectué des réservations ou pré-autorisations\n- Consulter vos relevés détaillés pour voir s'il y a des opérations annulées\n- Me préciser le contexte de votre recherche pour que je puisse mieux vous aider\n\nY a-t-il autre chose concernant vos transactions que vous aimeriez que j'analyse ?",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 22712.95009998721,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:53:32.906982"
+}

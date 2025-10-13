@@ -1,0 +1,16 @@
+{
+  "question_id": "E010",
+  "category": "E_transaction",
+  "question": "Mes paiements contactless",
+  "response_text": "[EXCEPTION: HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=60)]",
+  "response_length": 0,
+  "has_response": false,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 60012.335999985225,
+  "api_success": false,
+  "error_message": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=60)",
+  "timestamp": "2025-10-13T21:34:50.851864"
+}

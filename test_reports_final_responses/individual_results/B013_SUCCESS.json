@@ -1,0 +1,51 @@
+{
+  "question_id": "B013",
+  "category": "B_vendeur",
+  "question": "Mes dépenses Uber",
+  "response_text": {
+    "message": "### 📊 Résumé de vos dépenses Uber\n\nVoici un aperçu de vos transactions Uber récentes :\n\n- **Total des transactions** : 12 opérations\n- **Montant total dépensé** : 371,40€\n- **Période couverte** : De 2021 à 2024\n\n---\n\n### 🍽️ Détail de vos transactions Uber\n\n**Dernières dépenses (2024) :**\n- **22/12/2024** : Uber Eats - 25,26€\n- **09/12/2024** : Les Toques-auber Saint Jea - 45,06€\n- **05/11/2024** : Uber Eats - 29,99€\n- **05/10/2024** : Uber Eats - 29,99€\n- **03/10/2024** : Uber Eats - 21,00€\n- **02/04/2024** : Uber Eats - 34,40€\n\n**Transactions antérieures (2021) :**\nDes montants similaires apparaissent également en 2021, montrant une certaine régularité dans vos habitudes de commande.\n\n---\n\n### 💡 Observations pour vos finances\n\n**Point d'attention :** \nJ'ai détecté une dépense inhabituelle chez Uber de **45,06€** le 9 décembre 2024. Ce montant est significativement plus élevé que votre moyenne habituelle de **30,95€** pour ce type de dépenses.\n\n**Tendance observée :**\n- Vos commandes Uber Eats tournent généralement autour de 25-35€\n- Vous semblez commander plus fréquemment en fin d'année\n- La plupart de vos dépenses Uber sont catégorisées en \"Alimentation\"\n\n**Conseil pratique :**\nPour mieux maîtriser vos dépenses alimentaires, vous pourriez :\n- Identifier les commandes exceptionnelles (comme celle à 45,06€) et voir si elles correspondent à des occasions spéciales\n- Comparer le coût des livraisons avec la préparation de repas maison pour les jours où vous êtes moins pressé\n\nSouhaitez-vous que je vous aide à analyser d'autres catégories de dépenses ? 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 12 transactions",
+        "description": "Débits: 371.40€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 12,
+          "currency": "EUR",
+          "total_debit": 371.4000053405762
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 45.06€ chez Uber - Montant 1.8σ de la moyenne (30.95€, σ=7.91€)",
+        "confidence": 0.878357994091435,
+        "data_support": {
+          "transaction_id": 19873,
+          "amount": 45.06,
+          "merchant_name": "Uber",
+          "anomaly_score": 1.783579940914351,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 29626.17999999202,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:03:46.388738"
+}

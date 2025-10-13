@@ -1,0 +1,19 @@
+{
+  "question_id": "D014",
+  "category": "D_temporel",
+  "question": "Mes achats en janvier 2025",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 39088.93299999181,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:22:43.601105"
+}

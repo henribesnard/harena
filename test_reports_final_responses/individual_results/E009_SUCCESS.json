@@ -1,0 +1,19 @@
+{
+  "question_id": "E009",
+  "category": "E_transaction",
+  "question": "Mes virements SEPA",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 39382.12309998926,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:33:50.336124"
+}

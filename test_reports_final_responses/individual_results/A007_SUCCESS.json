@@ -1,0 +1,51 @@
+{
+  "question_id": "A007",
+  "category": "A_montant",
+  "question": "Mes revenus de plus de 1500 euros",
+  "response_text": {
+    "message": "### 📊 Résumé de vos revenus supérieurs à 1500€\n\nJ'ai analysé vos transactions et voici ce que je constate : vous avez **141 transactions** de plus de 1500€ pour un **total de crédits impressionnant de 544 591,44€** ! C'est une belle somme qui reflète une situation financière solide.\n\n### 💰 Détail de vos principales transactions\n\nVos revenus proviennent principalement de plusieurs sources :\n\n**🏢 Salaires réguliers :**\n- **Catamania** : Votre principal employeur avec des salaires mensuels entre 2 200€ et 2 700€\n- **Atos** : Ancien employeur avec des salaires autour de 2 100€ - 2 600€\n- **CPAM** : Revenus complémentaires variables (1 500€ - 4 500€)\n- **Boinet SAS** : Salaire ponctuel de 1 507,48€\n\n**👨‍👩‍👧‍👦 Virements familiaux :**\n- Virements réguliers de Henri et Claudie Hounwanou (1 900€ - 2 500€)\n- Transferts internes entre vos comptes\n\n**💳 Prêts et transactions exceptionnelles :**\n- Plusieurs prêts Real Prêt (1 572€ - 5 000€)\n- **Transaction exceptionnelle** : Virement de 104 343,41€ lié à une vente immobilière\n\n### 💡 Observations pour votre situation financière\n\n**Points forts :**\n- Revenus stables et diversifiés avec plusieurs sources\n- Salaires réguliers bien établis\n- Épargne visible grâce aux transferts entre comptes\n\n**Attention particulière :**\n- Une transaction très importante de **104 343,41€** a été détectée - il s'agit d'un montant exceptionnellement élevé par rapport à vos transactions habituelles. C'est lié à une vente immobilière, ce qui explique ce montant inhabituel.\n\n**Suggestions :**\n1. **Capitalisez sur cette stabilité** : Avec des revenus aussi réguliers, vous pourriez envisager des placements à moyen terme\n2. **Surveillez vos prêts** : Vous avez plusieurs prêts en cours - assurez-vous que les remboursements sont bien planifiés\n3. **Optimisez l'épargne** : La transaction exceptionnelle de 104k€ pourrait être placée pour générer des revenus complémentaires\n\nVoulez-vous que je vous aide à analyser plus en détail une période spécifique ou certaines catégories de dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 141 transactions",
+        "description": "Crédits: 544591.44€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 141,
+          "currency": "EUR",
+          "total_credit": 544591.4416503906
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 104343.41€ chez None - Montant 8.3σ de la moyenne (3862.35€, σ=12114.95€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 21548,
+          "amount": 104343.41,
+          "merchant_name": "None",
+          "anomaly_score": 8.293969375844053,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 34293.88519999338,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:50:40.292473"
+}

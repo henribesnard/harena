@@ -1,0 +1,51 @@
+{
+  "question_id": "A002",
+  "category": "A_montant",
+  "question": "Mes dépenses de plus de 500 euros",
+  "response_text": {
+    "message": "### 📊 Résumé de vos dépenses supérieures à 500€\n\nVoici un aperçu de vos transactions les plus importantes ! J'ai identifié **201 transactions** dépassant 500€, pour un total impressionnant de **387 050,06€**. C'est une vision très complète de vos principales dépenses sur plusieurs années.\n\n### 💰 Détail de vos principales transactions\n\n**Vos plus grosses dépenses récurrentes :**\n\n- **Prêts immobiliers** : Mensualités régulières autour de 725-755€ pour votre prêt 10001349274\n- **Garde d'enfants** : Paiements réguliers de 680€ à Sylvie pour la garde\n- **Virements familiaux** : Transferts fréquents vers Henri et Claudie Hounwanou (500-2000€)\n- **Impôts** : Prélèvements du Trésor Public (975-2643€)\n\n**Vos dépenses exceptionnelles les plus importantes :**\n- **Remboursement de prêt anticipé** : 50 514,57€ (juillet 2023)\n- **Autres remboursements de prêts** : 23 168,69€ et 6 666,80€\n- **Transferts Western Union/Moneygram** : Transactions d'aide internationale (613-1499€)\n- **Chèques importants** : Jusqu'à 5 000€\n\n### 🔍 Observations pour votre budget\n\n**Points d'attention :**\n- Votre **prêt immobilier** représente une charge récurrente importante\n- Les **transferts d'aide internationale** (Western Union, Moneygram) sont fréquents et significatifs\n- Vous effectuez de **nombreux virements familiaux** réguliers\n- Les **paiements pour la garde d'enfants** sont stables mensuellement\n\n**Recommandations :**\n1. **Planifiez vos grosses échéances** : Les remboursements de prêts et impôts sont prévisibles\n2. **Suivez vos transferts familiaux** : Ces montants importants méritent une budgétisation spécifique\n3. **Anticipez les dépenses exceptionnelles** : Les remboursements anticipés de prêts montrent une bonne gestion de l'endettement\n\nVoulez-vous que je vous aide à analyser plus en détail une catégorie spécifique de dépenses ? 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 201 transactions",
+        "description": "Débits: 387050.06€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 201,
+          "currency": "EUR",
+          "total_debit": 387050.0595703125
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 50514.57€ chez None - Montant 8.9σ de la moyenne (1925.62€, σ=5464.87€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 21625,
+          "amount": 50514.57,
+          "merchant_name": "None",
+          "anomaly_score": 8.891150557127087,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 34535.36860001623,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:47:22.110561"
+}

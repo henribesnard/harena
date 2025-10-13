@@ -1,0 +1,52 @@
+{
+  "question_id": "D013",
+  "category": "D_temporel",
+  "question": "Mes transactions le mois dernier",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nVoici un aperçu de vos transactions du mois dernier ! Vous avez effectué **31 transactions** au total :\n- **Dépenses totales** : 2 562,83 €\n- **Revenus totaux** : 1 089,35 €\n- **Solde net** : -1 473,48 €\n\nVotre mois a été marqué par d'importantes charges fixes (prêts, assurances) et quelques revenus significatifs, notamment des virements familiaux.\n\n**2. Description claire de vos transactions**\n\n**Revenus principaux :**\n- **Virement CAF** : 249,35 € (aide sociale)\n- **Virement de Claudie Hounwanou** : 840,00 € (virement familial)\n\n**Dépenses récurrentes importantes :**\n- **Échéances de prêts** : 1 069,08 € (3 prêts différents)\n- **Assurances** : 154,06 € (assurance habitation et autres)\n- **Garde d'enfants** : 680,00 € (virement à Sylvie)\n- **Forfait Free** : 39,99 € (téléphone/internet)\n- **Énergie** : 77,33 € (Engie)\n\n**Dépenses courantes :**\n- **Alimentation** : 66,54 € (Intermarché, Carrefour, Lidl, Auchan)\n- **Retraits espèces** : 70,00 €\n- **Restaurant** : 11,70 € (Feuillette)\n- **Abonnement Claude.ai** : 21,60 €\n- **Transports** : 1,80 € (péages Cofiroute)\n- **Amende** : 75,00 € (Trésor public)\n- **Jeux** : 10,00 € (FDJ)\n\n**Virements familiaux sortants :**\n- 100,00 € (Nathan et William)\n- 39,00 € (Christelle Chabot)\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Points d'attention :**\n- Vos charges fixes (prêts + assurances) représentent près de 50% de vos dépenses totales\n- Le virement de 840,00 € est inhabituellement élevé par rapport à vos transactions habituelles\n- Vous avez effectué plusieurs petits achats alimentaires répartis sur le mois\n\n💡 **Suggestions :**\n- Pourriez-vous regrouper vos courses alimentaires pour réduire le nombre de transactions ?\n- Les 70,00 € de retraits espèces pourraient être mieux suivis si vous les budgetisez\n- Le poste \"jeux d'argent\" (10,00 €) mérite une attention particulière dans votre budget\n\nVoulez-vous que nous analysions plus en détail une catégorie spécifique de vos dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 31 transactions",
+        "description": "Débits: 2562.83€ | Crédits: 1089.35€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 31,
+          "currency": "EUR",
+          "total_debit": 2562.829981803894,
+          "total_credit": 1089.3500061035156
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 840.00€ chez None - Montant 3.3σ de la moyenne (117.81€, σ=221.01€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2025090502,
+          "amount": 840.0,
+          "merchant_name": "None",
+          "anomaly_score": 3.2675987868923566,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 34788.61879999749,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:22:04.009588"
+}

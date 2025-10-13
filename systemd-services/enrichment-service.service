@@ -1,0 +1,16 @@
+[Unit]
+Description=Harena Enrichment Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/harena
+Environment="PATH=/home/ubuntu/harena/env/bin"
+EnvironmentFile=/home/ubuntu/harena/.env
+ExecStart=/home/ubuntu/harena/env/bin/uvicorn enrichment_service.main:app --host 0.0.0.0 --port 8003
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

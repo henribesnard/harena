@@ -1,0 +1,19 @@
+{
+  "question_id": "B015",
+  "category": "B_vendeur",
+  "question": "Mes achats Auchan Supermarc St Lidl Netflix Com Paris",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 40982.89769998519,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:04:46.947694"
+}

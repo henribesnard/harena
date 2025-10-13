@@ -1,0 +1,51 @@
+{
+  "question_id": "B001",
+  "category": "B_vendeur",
+  "question": "Mes dépenses Netflix ?",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos dépenses Netflix**\n\nVoici un aperçu complet de vos transactions Netflix ! Vous avez effectué **80 transactions** pour un total de **1 050,20€** depuis 2020. C'est votre principal service de streaming avec des paiements très réguliers chaque mois.\n\n**2. Détails de vos transactions récentes**\n\nVoici vos dernières transactions Netflix :\n- **5 juin 2025** : 7,99€ (Netflix)\n- **5 mai 2025** : 13,49€ (Netflix)\n- **7 avril 2025** : 13,49€ (Netflix)\n- **5 mars 2025** : 13,49€ (Netflix)\n- **5 février 2025** : 13,49€ (Netflix)\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Changement de tarif récent** : Votre dernière transaction à 7,99€ représente une **réduction significative** par rapport au tarif habituel de 13,49€. Cela pourrait indiquer que vous avez changé d'abonnement ou bénéficié d'une offre promotionnelle.\n\n💰 **Dépense mensuelle stable** : Pendant la majeure partie de la période, vous avez payé **13,49€ par mois**, ce qui représente environ **162€ par an** pour ce service.\n\n📊 **Double facturation occasionnelle** : J'observe parfois des transactions dupliquées le même mois (comme en décembre 2024 avec deux transactions le 4 décembre). Cela pourrait être dû à des ajustements de facturation ou à des changements de carte.\n\n💡 **Suggestion** : Avec votre nouveau tarif à 7,99€, vous économiserez environ **66€ par an** ! C'est une belle optimisation de votre budget streaming.\n\nVoulez-vous que je vous aide à analyser vos autres abonnements pour voir s'il y a d'autres économies possibles ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 80 transactions",
+        "description": "Débits: 1050.20€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 80,
+          "currency": "EUR",
+          "total_debit": 1050.1999816894531
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 7.99€ chez Netflix - Montant 5.2σ de la moyenne (13.13€, σ=0.99€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2025060506,
+          "amount": 7.99,
+          "merchant_name": "Netflix",
+          "anomaly_score": 5.204215501576438,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 26232.72800000268,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T20:58:17.322483"
+}

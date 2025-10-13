@@ -1,0 +1,19 @@
+{
+  "question_id": "D006",
+  "category": "D_temporel",
+  "question": "Mes dépenses du 1er mai",
+  "response_text": {
+    "message": "Bonjour ! J'ai consulté vos transactions financières pour la période du 1er mai, mais je n'ai trouvé aucune donnée pour cette date spécifique.\n\n**Résumé personnel :**\n- Aucune transaction enregistrée pour le 1er mai\n- Total des transactions : 0\n- Montant total des dépenses : 0,00 €\n\n**Observations utiles :**\nIl semble que vous n'ayez effectué aucune transaction ce jour-là, ou bien que les données ne soient pas encore disponibles dans votre compte. Cela pourrait être dû à plusieurs raisons :\n- Vous n'avez pas utilisé vos moyens de paiement ce jour-là\n- Les transactions peuvent mettre quelques jours à apparaître\n- Il pourrait y avoir un délai dans la synchronisation des données\n\n**Actions suggérées :**\n- Vérifiez si vous avez bien sélectionné la bonne période\n- Consultez vos relevés bancaires directement si besoin\n- N'hésitez pas à me demander une autre période si vous souhaitez analyser vos dépenses sur un autre intervalle de temps\n\nJe reste à votre disposition pour analyser d'autres périodes ou répondre à vos questions sur vos finances ! 💰",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 19986.659399990458,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:17:50.111125"
+}

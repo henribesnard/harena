@@ -1,0 +1,19 @@
+{
+  "question_id": "B008",
+  "category": "B_vendeur",
+  "question": "Restaurant McDonald",
+  "response_text": {
+    "message": "1. **Résumé personnel des résultats**\nJe n'ai trouvé aucune transaction chez McDonald's dans votre historique récent. Il semble que vous n'ayez pas effectué d'achats dans ce restaurant avec votre compte actuellement suivi.\n\n2. **Descriptions des transactions**\nMalheureusement, je ne peux pas vous fournir de détails spécifiques sur des transactions McDonald's puisque aucune n'a été enregistrée dans vos données.\n\n3. **Observations utiles pour vos finances**\nC'est une bonne nouvelle si vous cherchiez à réduire vos dépenses en restauration rapide ! Si vous pensiez avoir effectué des paiements chez McDonald's récemment, cela pourrait signifier que :\n- La transaction n'a pas encore été enregistrée\n- Le paiement a été effectué avec un autre moyen de paiement\n- Le marchand est apparu sous un nom différent dans votre relevé\n\n**Action suggérée** : Vérifiez vos autres comptes ou attendez quelques jours si l'achat est très récent. Si vous souhaitez suivre spécifiquement ce type de dépenses, je peux vous aider à analyser vos habitudes de restauration une fois que les données seront disponibles !",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 20077.136000007158,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:01:36.383573"
+}

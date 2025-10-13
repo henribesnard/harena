@@ -1,0 +1,19 @@
+{
+  "question_id": "D024",
+  "category": "D_temporel",
+  "question": "Mes dépenses du 15 septembre",
+  "response_text": {
+    "message": "Bonjour ! J'ai vérifié vos transactions pour le 15 septembre, mais il semble qu'aucune dépense n'ait été enregistrée pour cette date spécifique.\n\n**Résumé de vos résultats :**\n- Aucune transaction trouvée pour le 15 septembre\n- Total des dépenses : 0,00 €\n\n**Observations pour vos finances :**\nC'est une excellente nouvelle ! Un jour sans dépenses enregistrées peut indiquer que vous avez bien géré votre budget ce jour-là, ou peut-être que vous avez utilisé principalement des espèces pour vos achats.\n\n**Actions suggérées :**\n- Si vous pensez qu'il devrait y avoir des transactions pour cette date, vérifiez si elles pourraient apparaître sous une autre date\n- Pensez à noter vos dépenses en espèces pour avoir une vision complète de vos finances\n- Profitez de cette journée sans dépenses pour faire le point sur vos objectifs d'épargne\n\nY a-t-il une autre période que vous souhaiteriez que j'analyse pour vous ?",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 20932.98319997848,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:27:03.326562"
+}

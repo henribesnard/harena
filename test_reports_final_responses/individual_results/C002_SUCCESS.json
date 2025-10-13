@@ -1,0 +1,19 @@
+{
+  "question_id": "C002",
+  "category": "C_categorie",
+  "question": "Mes frais de transport",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer.",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 39183.30150001566,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:07:10.593763"
+}

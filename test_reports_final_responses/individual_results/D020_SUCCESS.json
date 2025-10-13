@@ -1,0 +1,19 @@
+{
+  "question_id": "D020",
+  "category": "D_temporel",
+  "question": "Mes achats cette semaine",
+  "response_text": {
+    "message": "Bonjour ! J'ai vérifié vos transactions pour cette semaine, mais je ne vois aucun achat enregistré dans votre compte pour cette période.\n\n**Résumé de vos résultats cette semaine :**\n- Aucune transaction trouvée\n- Total des dépenses : 0,00 €\n\n**Observations pour vos finances :**\nIl semble que vous n'ayez effectué aucun achat cette semaine, ou bien que les transactions n'aient pas encore été enregistrées dans votre compte. C'est une excellente nouvelle pour votre budget si c'est intentionnel !\n\n**Actions suggérées :**\n- Si vous pensez qu'il devrait y avoir des transactions, vérifiez auprès de votre banque\n- Profitez de cette période sans dépenses pour renforcer votre épargne\n- C'est le moment idéal pour revoir vos objectifs financiers\n\nN'hésitez pas à me donner plus de détails si vous cherchez des transactions spécifiques ! 😊",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 17309.095200005686,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:24:40.398682"
+}

@@ -1,0 +1,51 @@
+{
+  "question_id": "C004",
+  "category": "C_categorie",
+  "question": "Mes dépenses santé",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats santé**\n\nJe vois que vous avez effectué **140 transactions santé** pour un total de **2 099,53 €** sur les dernières années. Vos dépenses santé sont principalement réparties entre les consultations médicales et les achats en pharmacie, avec une régularité qui montre un bon suivi de votre santé.\n\n**2. Description claire de vos transactions**\n\nVos dépenses santé se répartissent en deux catégories principales :\n\n**Consultations médicales :**\n- **Dr Guilbert** (Val Chat) : consultations à 26,50 € et 31,50 €\n- **Dr El Aoufir** (Château) : consultations à 7,95 €, 9,00 €, 9,45 € et 10,50 €\n- **Doctolib** : réservations de consultations à 25,00 €\n- **Dr Pueyo** (Château) : consultations à 7,95 €, 9,45 €, 18,35 € et 31,50 €\n- **Dr Gatay Pauline** : consultations à 7,50 € et 9,00 €\n\n**Pharmacies :**\n- **Pharmacie Versailles Châtillon** : vos achats les plus fréquents (environ 6,50 € en moyenne)\n- **Pharmacie Mutualiste** : achats plus importants (30,40 € et 34,77 €)\n- **Pharmacie de L'Épend** : vos achats réguliers\n\n**3. Observations utiles pour vos finances**\n\n**Points positifs :**\n- Vos dépenses santé sont relativement stables et prévisibles\n- Vous semblez avoir une mutuelle qui prend en charge une partie des frais\n- La majorité de vos consultations sont au tarif conventionné\n\n**Attention particulière :**\n- Une dépense inhabituelle de **87,00 €** a été détectée chez le **Dr Bensaid** en septembre 2022 - c'est plus de 5 fois la moyenne de vos dépenses santé habituelles\n- Certains mois présentent des pics de dépenses (avril 2024 : 47,00 € en pharmacie)\n\n**Conseils pratiques :**\n- Pensez à conserver tous vos justificatifs pour le remboursement mutuelle\n- Surveillez les dépassements d'honoraires qui peuvent alourdir votre budget\n- N'hésitez pas à demander des devis pour les soins importants à l'avance\n\nVotre suivi médical semble régulier et bien organisé ! 📊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 140 transactions",
+        "description": "Débits: 2099.53€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 140,
+          "currency": "EUR",
+          "total_debit": 2099.529996037483
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 87.00€ chez None - Montant 5.3σ de la moyenne (15.00€, σ=13.48€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2022093003,
+          "amount": 87.0,
+          "merchant_name": "None",
+          "anomaly_score": 5.3397336201734955,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 31892.248499993002,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:08:23.980582"
+}

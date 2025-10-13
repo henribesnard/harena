@@ -1,0 +1,51 @@
+{
+  "question_id": "B012",
+  "category": "B_vendeur",
+  "question": "Mes achats chez Google",
+  "response_text": {
+    "message": "### 1. Résumé personnel de vos résultats\n\nJ'ai analysé vos 128 transactions chez Google sur les dernières années, et voici ce qui ressort :\n\n**Total dépensé : 1 187,18 €** chez Google depuis 2020\n- Toutes vos transactions sont classées en \"Abonnements\"\n- Vous avez plusieurs services Google récurrents\n\n### 2. Description claire de vos services Google\n\nVoici les principaux services que vous utilisez régulièrement :\n\n**📱 Abonnements récurrents :**\n- **Google One** (1,99€/mois) - stockage cloud\n- **YouTube Premium** (11,99€/mois) - vidéos sans pub\n- **YouTube Music** (9,99€/mois) - streaming musical\n- **Google Play Apps** - achats d'applications (montants variables)\n\n**💻 Services professionnels :**\n- **Google Cloud** - deux transactions importantes (124,30€ et 119,71€) qui semblent ponctuelles\n\n**🎯 Points remarquables :**\n- Votre abonnement Google One est très stable à 1,99€ depuis des années\n- YouTube Premium est passé de 9,99€ à 11,99€ récemment\n- Vous avez des achats occasionnels sur Google Play Store\n\n### 3. Observations utiles pour vos finances\n\n**💰 Optimisation possible :**\n- Vous pourriez vérifier si YouTube Music et YouTube Premium ne se chevauchent pas, car YouTube Premium inclut déjà YouTube Music\n- Les transactions Google Cloud sont significatives (plus de 120€) - assurez-vous qu'elles correspondent bien à votre utilisation réelle\n\n**📊 Suivi recommandé :**\n- Vos abonnements Google représentent environ 25-30€ par mois en moyenne\n- Les dépenses Google Cloud méritent une attention particulière étant donné leur montant élevé\n\n**💡 Action concrète :**\nJe vous suggère de faire le point sur l'utilité de chaque service - certains pourraient potentiellement être consolidés ou supprimés si sous-utilisés.\n\nSouhaitez-vous que je vous aide à analyser plus en détail l'un de ces services en particulier ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 128 transactions",
+        "description": "Débits: 1187.18€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 128,
+          "currency": "EUR",
+          "total_debit": 1187.1799926757812
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 124.30€ chez Google - Montant 5.5σ de la moyenne (9.27€, σ=20.76€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2025010208,
+          "amount": 124.3,
+          "merchant_name": "Google",
+          "anomaly_score": 5.5416520510989695,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 29710.56099998532,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:03:16.260100"
+}

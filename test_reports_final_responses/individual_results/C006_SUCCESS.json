@@ -1,0 +1,19 @@
+{
+  "question_id": "C006",
+  "category": "C_categorie",
+  "question": "Mes factures d'énergie",
+  "response_text": {
+    "message": "1. **Résumé personnel de vos résultats**  \nJe ne vois aucune transaction récente liée à vos factures d'énergie dans vos données actuelles. Cela peut signifier que ces dépenses n'ont pas encore été enregistrées ou qu'elles sont classées différemment.\n\n2. **Aucune transaction trouvée**  \nAucune dépense identifiée comme \"énergie\" (ex. : électricité, gaz, chauffage) n’apparaît dans votre historique récent.\n\n3. **Observation utile pour vos finances**  \nSi vous payez habituellement ces factures par virement, prélèvement automatique ou carte, vérifiez que le libellé correspond bien à vos fournisseurs d'énergie (ex. : EDF, Engie, etc.). Si ces transactions sont manquantes, cela pourrait être dû à un délai de traitement ou à une catégorisation différente.  \n\n💡 **Action suggérée** :  \n- Vérifiez vos relevés bancaires récents pour repérer ces paiements.  \n- Si besoin, je peux vous aider à analyser d’autres catégories de dépenses ! 😊",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 18091.203500021948,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:09:17.914571"
+}

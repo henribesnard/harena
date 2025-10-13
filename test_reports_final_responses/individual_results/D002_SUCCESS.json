@@ -1,0 +1,51 @@
+{
+  "question_id": "D002",
+  "category": "D_temporel",
+  "question": "Mes achats de mai",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nVoici un aperçu complet de vos achats pour le mois de mai ! Vous avez effectué **65 transactions** pour un total de **997,36€** de dépenses. C'est un mois assez actif avec des dépenses principalement concentrées dans l'alimentation, ce qui représente la majeure partie de votre budget.\n\n**2. Description claire de vos transactions**\n\nVos dépenses se répartissent comme suit :\n\n**🛒 Alimentation (752,45€)** - Vos courses principales chez :\n- **Lidl** : De nombreux petits achats récurrents (2,49€ à 111,54€)\n- **Carrefour** : Courses régulières (20,13€ à 51,60€)\n- **Auchan** et **Intermarché** : Compléments de courses\n- **Max Exotique** : Quelques courses spécialisées\n\n**⛽ Carburant (75,00€)**\n- **Total** : Deux pleins d'essence (25€ et 50€)\n\n**📦 Achats en ligne (71,09€)**\n- **Amazon** : Trois commandes (16,50€, 31,44€ et 23,15€)\n\n**🚗 Transport (44,10€)**\n- **Cofiroute** : De nombreux péages à 0,90€\n- **SNCF** : Deux billets de train à 10€\n- **Fil Bleu** : Transport urbain (16€)\n\n**👕 Vêtements (38,80€)**\n- **Mistigriff** : Achat vestimentaire\n\n**🏠 Entretien maison (15,31€)**\n- **Action** et **Marché Affaires** : Produits pour la maison\n\n**3. Observations utiles pour vos finances**\n\n**🚨 Point d'attention** : J'ai détecté une dépense inhabituelle chez **Lidl de 111,54€** le 28 mai, bien au-dessus de vos achats habituels dans cette enseigne. Cela pourrait être une grosse course mensuelle ou un achat exceptionnel.\n\n**💡 Conseils pratiques** :\n- Vos nombreux petits achats alimentaires (souvent <10€) pourraient être regroupés pour optimiser vos déplacements\n- Les péages fréquents (Cofiroute) représentent une dépense récurrente à prendre en compte dans votre budget transport\n- Vos achats Amazon sont modérés, ce qui est positif pour maîtriser les dépenses en ligne\n\n**📊 Suggestion** : Pensez-vous à faire un budget mensuel pour l'alimentation ? Cela pourrait vous aider à mieux planifier vos courses et éviter les dépenses imprévues comme celle de 111,54€.\n\nY a-t-il une catégorie de dépenses sur laquelle vous souhaiteriez plus de détails ? 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 65 transactions",
+        "description": "Débits: 997.36€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 65,
+          "currency": "EUR",
+          "total_debit": 997.3599996343255
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 111.54€ chez Lidl - Montant 5.2σ de la moyenne (15.34€, σ=18.44€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2025053006,
+          "amount": 111.54,
+          "merchant_name": "Lidl",
+          "anomaly_score": 5.216204625583925,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 36156.996899982914,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:15:24.275925"
+}

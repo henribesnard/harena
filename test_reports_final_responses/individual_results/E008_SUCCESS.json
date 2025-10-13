@@ -1,0 +1,51 @@
+{
+  "question_id": "E008",
+  "category": "E_transaction",
+  "question": "Mes chèques émis",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nVoici un aperçu complet de vos chèques émis ! J'ai analysé vos 160 transactions par chèque, qui représentent un total de **36 845,56 €** de débits sur votre compte. C'est intéressant de voir que vous utilisez encore régulièrement les chèques pour vos paiements.\n\n**2. Description claire de vos transactions**\n\nVos chèques émis montrent une grande variété de montants, allant de petits paiements (7 €) à des transactions plus importantes. Voici quelques observations notables :\n\n- **Chèques récents** : Votre dernier chèque date du 30 juin 2025 (18,45 €)\n- **Montants réguliers** : Plusieurs chèques de 14 €, 30 €, 48 € et 55 € qui semblent correspondre à des paiements récurrents\n- **Transactions importantes** : \n  - Chèque de 5 000 € le 24 mai 2022\n  - Chèque de 4 500 € le 19 juin 2023\n  - Chèque de 2 600 € le 18 février 2020\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Insight important** : J'ai détecté une dépense inhabituelle de 5 000 € qui se situe à plus de 6 écarts-types de votre moyenne habituelle (230,28 €). Cette transaction pourrait correspondre à un achat exceptionnel ou un règlement important.\n\n💡 **Conseils pratiques** :\n- Pensez à noter le bénéficiaire de chaque chèque dans votre carnet pour mieux suivre vos dépenses\n- Vérifiez si certains de ces paiements pourraient être automatisés par virement pour simplifier votre gestion\n- Les chèques de montants similaires et réguliers pourraient être regroupés pour optimiser votre trésorerie\n\nSouhaitez-vous que je vous aide à analyser plus en détail certaines périodes ou montants spécifiques ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 160 transactions",
+        "description": "Débits: 36845.56€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 160,
+          "currency": "EUR",
+          "total_debit": 36845.56003189087
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 5000.00€ chez None - Montant 6.8σ de la moyenne (230.28€, σ=699.82€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2022052401,
+          "amount": 5000.0,
+          "merchant_name": "None",
+          "anomaly_score": 6.815619032650879,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 28358.20010001771,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:33:10.451895"
+}

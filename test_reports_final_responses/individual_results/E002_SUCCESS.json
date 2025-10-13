@@ -1,0 +1,51 @@
+{
+  "question_id": "E002",
+  "category": "E_transaction",
+  "question": "Liste mes virements reçus",
+  "response_text": {
+    "message": "### 📊 Résumé de vos virements reçus\n\nVoici un aperçu complet de vos virements entrants ! Vous avez reçu **512 transactions** pour un montant total de **440 286,69 €**. C'est une belle somme qui est venue alimenter votre compte au fil du temps.\n\n### 💰 Détail des transactions principales\n\nVos virements proviennent principalement de plusieurs sources récurrentes :\n\n**🏦 Sources principales :**\n- **Claudie Hounwanou** : De nombreux virements instantanés réguliers (50€ à 1 300€)\n- **Henri Hounwanou** : Virements réguliers (500€, 1 000€, 2 000€)\n- **Nathan Hounwanou** : Virements fréquents de 50€ et 100€\n- **William Hounwanou** : Également des virements réguliers de 50€ et 100€\n\n**💳 Plateformes de paiement :**\n- **PayPal** : Plusieurs virements de montants variables\n- **Western Union** : Un virement important de 1 393,65€\n- **Leetchi** : Virements via Mangopay\n- **Boursorama** : Virements internes\n\n### 🔍 Observations pour vos finances\n\n**Points remarquables :**\n- **Régularité** : Vous recevez des virements très réguliers de membres de votre famille, ce qui montre une belle solidarité financière\n- **Transaction exceptionnelle** : Un virement très important de **104 343,41 €** provenant de \"SAS Signature Et Conseils Notair\" lié à une vente immobilière\n- **Diversité des sources** : Votre compte bénéficie de multiples sources de revenus\n\n**💡 Suggestions :**\n- Ces virements réguliers pourraient être planifiés dans votre budget mensuel\n- Le virement exceptionnel de 104k€ mériterait peut-être une allocation spécifique (épargne, investissement, projet particulier)\n- La régularité des petits virements (50€) pourrait être optimisée avec des virements programmés\n\nVoulez-vous que je vous aide à analyser comment ces fonds sont utilisés ou à optimiser la gestion de ces entrées d'argent ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 512 transactions",
+        "description": "Crédits: 440286.69€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 512,
+          "currency": "EUR",
+          "total_credit": 440286.6924325526
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 104343.41€ chez None - Montant 15.9σ de la moyenne (859.93€, σ=6513.17€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 21548,
+          "amount": 104343.41,
+          "merchant_name": "None",
+          "anomaly_score": 15.888350846568896,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 35331.463199981954,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:29:22.731054"
+}

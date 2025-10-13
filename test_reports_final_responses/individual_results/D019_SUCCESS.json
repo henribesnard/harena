@@ -1,0 +1,19 @@
+{
+  "question_id": "D019",
+  "category": "D_temporel",
+  "question": "Mes dépenses aujourd'hui",
+  "response_text": {
+    "message": "1. **Résumé personnel de vos résultats**\nJe vois que vous n'avez effectué aucune transaction aujourd'hui ! C'est une excellente nouvelle pour votre budget quotidien.\n\n2. **Descriptions claires des transactions**\nAucune transaction n'a été enregistrée pour aujourd'hui dans votre compte. Cela signifie qu'aucun achat, retrait ou paiement n'a été effectué aujourd'hui.\n\n3. **Observations utiles pour vos finances**\nC'est une belle journée d'économie ! Profitez-en pour :\n- Mettre de côté l'argent que vous n'avez pas dépensé\n- Réfléchir à vos objectifs financiers à court terme\n- Planifier vos dépenses essentielles des prochains jours\n\nSi vous pensez qu'il devrait y avoir des transactions aujourd'hui, n'hésitez pas à vérifier auprès de votre banque ou à me fournir plus de détails pour que je puisse vous aider à les retrouver !",
+    "structured_data": []
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 18185.56610000087,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:24:22.586262"
+}

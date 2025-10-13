@@ -1,0 +1,51 @@
+{
+  "question_id": "D007",
+  "category": "D_temporel",
+  "question": "Mes dépenses du 5 mars",
+  "response_text": {
+    "message": "### 1. Résumé personnel de vos résultats\n\nLe 5 mars a été une journée chargée pour votre compte avec **10 transactions** pour un total de **1 160,91 € de débits**. C'est une journée marquée par plusieurs prélèvements importants, notamment vos échéances de prêt et vos abonnements récurrents.\n\n### 2. Description claire de vos transactions\n\nVoici le détail de toutes vos opérations du 5 mars :\n\n- **Saur** : 43,00 € - Facture d'eau (prélèvement automatique)\n- **Canal Sat** : 35,19 € - Abonnement Canal+ (streaming)\n- **Prêt** : 117,11 € - Échéance de prêt avec intérêts différés\n- **Google** : 5,49 € - Achat sur Google Play (abonnement/applications)\n- **Netflix** : 13,49 € - Abonnement mensuel (streaming)\n- **Winamax** : 25,00 € - Paris sportifs\n- **Intermarché** : 7,00 € - Courses alimentaires\n- **Avanssur** : 80,66 € - Prélèvement d'assurance\n- **Crédit Agricole** : 79,00 € - Prélèvement pour crédit renouvelable\n- **Prêt** : 754,97 € - Échéance principale de prêt\n\n### 3. Observations utiles pour vos finances\n\n**Points importants à noter :**\n\n💰 **Dépense exceptionnelle** : Votre échéance de prêt de 754,97 € représente une somme significative dans votre journée. C'est plus de 65% du total de vos dépenses du 5 mars.\n\n📊 **Répartition des dépenses** :\n- **Prêts** : 951,08 € (82% du total)\n- **Abonnements** : 53,68 € (streaming + assurance)\n- **Autres** : 156,15 € (eau, alimentation, paris sportifs)\n\n**Suggestions concrètes :**\n\n1. **Planification des échéances** : Vos prêts représentent la majeure partie de vos dépenses ce jour-là. Vérifiez si ces dates d'échéance correspondent à vos rentrées d'argent pour éviter les tensions de trésorerie.\n\n2. **Abonnements récurrents** : Vous avez 3 abonnements streaming (Canal+, Netflix, Google Play) qui totalisent 54,17 € par mois. Une vérification régulière de leur utilité pourrait être bénéfique.\n\n3. **Suivi des paris sportifs** : Les 25 € chez Winamax - si c'est récurrent, cela mérite un suivi particulier dans votre budget loisirs.\n\nVoulez-vous que nous analysions une période plus longue pour mieux comprendre vos habitudes de dépenses ? 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 10 transactions",
+        "description": "Débits: 1160.91€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 10,
+          "currency": "EUR",
+          "total_debit": 1160.9099731445312
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Dépense inhabituelle détectée (Analytics)",
+        "description": "Dépense de 754.97€ chez None - Montant 2.8σ de la moyenne (116.09€, σ=227.46€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 2025030510,
+          "amount": 754.97,
+          "merchant_name": "None",
+          "anomaly_score": 2.8087493338714546,
+          "method": "zscore",
+          "threshold_exceeded": true,
+          "transaction_type": "debit",
+          "analytics_agent_used": true
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ]
+  },
+  "response_length": 2,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 32661.67359999963,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-13T21:18:23.275396"
+}

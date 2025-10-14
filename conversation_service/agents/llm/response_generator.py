@@ -965,11 +965,12 @@ PROFIL UTILISATEUR:
 
             # Tronquer si nécessaire avec warning
             if len(filtered_results) > max_transactions:
-                logger.warning(
-                    f"Réduction du nombre de transactions pour le LLM: "
-                    f"{len(filtered_results)} → {max_transactions} (limite tokens)"
+                logger.info(
+                    f"🔄 Contexte LLM: {len(filtered_results)} → {max_transactions} transactions (limite config appliquée)"
                 )
                 filtered_results = filtered_results[:max_transactions]
+            else:
+                logger.info(f"✅ Contexte LLM: {len(filtered_results)} transactions envoyées au modèle")
 
             # Construire le résumé avec TOUTES les transactions filtrées
             results_summary = f"DONNEES TROUVEES ({len(filtered_results)} transactions"
@@ -1376,11 +1377,10 @@ PROFIL UTILISATEUR:
         self,
         filtered_transactions: List[Dict[str, Any]]
     ) -> int:
-        """Calcule le nombre maximum de transactions à inclure sans dépasser les limites de tokens
+        """Limite le nombre de transactions basé sur la configuration MAX_TRANSACTIONS_IN_CONTEXT
 
-        Limite DeepSeek : 128K tokens
-        Budget alloué aux transactions : 80K tokens (laisse 48K pour le reste du contexte)
-        Estimation : ~55 tokens par transaction filtrée (6 champs)
+        SANS calcul de tokens pour optimiser la performance (requête utilisateur).
+        Utilise directement le paramètre configuré dans .env pour éviter les calculs coûteux.
 
         Args:
             filtered_transactions: Liste des transactions déjà filtrées
@@ -1388,20 +1388,15 @@ PROFIL UTILISATEUR:
         Returns:
             Nombre maximum de transactions à inclure dans le contexte
         """
+        from config_service.config import settings
 
-        MAX_TOKENS_FOR_TRANSACTIONS = 80000  # Budget token pour les transactions
-        AVG_TOKENS_PER_TRANSACTION = 55      # Estimation après filtrage à 6 champs
+        # Utiliser la limite configurée (sans calcul de tokens)
+        max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(filtered_transactions))
 
-        # Calcul du nombre max basé sur le budget tokens
-        max_based_on_tokens = MAX_TOKENS_FOR_TRANSACTIONS // AVG_TOKENS_PER_TRANSACTION
-
-        # Limite de sécurité : maximum 1500 transactions
-        max_transactions = min(max_based_on_tokens, 1500, len(filtered_transactions))
-
-        logger.debug(
-            f"Calcul limite transactions: {len(filtered_transactions)} disponibles, "
-            f"max basé tokens: {max_based_on_tokens}, limite retenue: {max_transactions}"
-        )
+        if len(filtered_transactions) > max_transactions:
+            logger.debug(
+                f"Application limite config: {len(filtered_transactions)} → {max_transactions} transactions"
+            )
 
         return max_transactions
 

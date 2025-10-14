@@ -388,16 +388,19 @@ class ConversationOrchestrator:
             # === STAGE 4: QUERY EXECUTION ===
             stage_start = datetime.now()
             current_stage = PipelineStage.QUERY_EXECUTION
-            
+
             query_execution_result = await self._execute_query_execution(
                 query_build_result.query, request
             )
-            
+
             metrics.stage_timings["query_execution"] = self._get_stage_time(stage_start)
-            
+
             if not query_execution_result.success:
                 # On continue meme si pas de resultats (reponse generale possible)
                 logger.warning(f"Query execution warning: {query_execution_result.error_message}")
+            else:
+                # Log du nombre de résultats récupérés
+                logger.info(f"📊 Résultats recherche: {query_execution_result.total_hits} trouvés, {len(query_execution_result.results)} récupérés")
             
             # === STAGE 5: RESPONSE GENERATION ===
             stage_start = datetime.now()

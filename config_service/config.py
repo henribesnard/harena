@@ -555,6 +555,18 @@ class GlobalSettings(BaseSettings):
     LEXICAL_CACHE_SIZE: int = int(os.environ.get("LEXICAL_CACHE_SIZE", "1000"))
     QUERY_CACHE_SIZE: int = int(os.environ.get("QUERY_CACHE_SIZE", "1000"))
 
+    # ==========================================
+    # CONFIGURATION CONTEXTE LLM ET TOKENS
+    # ==========================================
+    # Limite maximale de transactions à envoyer au LLM (SANS calcul de tokens pour la performance)
+    MAX_TRANSACTIONS_IN_CONTEXT: int = int(os.environ.get("MAX_TRANSACTIONS_IN_CONTEXT", "100"))
+    # Contexte global maximum (inclut tout: transactions + agrégations + prompts + historique + output)
+    MAX_CONTEXT_TOKENS: int = int(os.environ.get("MAX_CONTEXT_TOKENS", "128000"))
+    # Max tokens pour la génération de réponse
+    RESPONSE_GENERATION_MAX_TOKENS: int = int(os.environ.get("RESPONSE_GENERATION_MAX_TOKENS", "8000"))
+    # Temperature pour la génération de réponse
+    RESPONSE_GENERATION_TEMPERATURE: float = float(os.environ.get("RESPONSE_GENERATION_TEMPERATURE", "0.7"))
+
     # Variables de configuration manquantes pour compatibilité
 
     @field_validator('DEEPSEEK_API_KEY')

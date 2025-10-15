@@ -6,7 +6,9 @@
     "user_id": "{{user_id}}",
     "query": "{{merchant_query}}",
     "filters": {
-      "merchant_name": "{% if merchants %}{{merchants}}{% elif merchant_name %}{{merchant_name}}{% else %}null{% endif %}",
+      "date": "<<date_range>>",
+      "amount_abs": "<<amount_range>>",
+      "merchant_name": "<<merchant_name>>",
       "transaction_type": "{{transaction_type}}"
     },
     "sort": [
@@ -26,17 +28,16 @@
       "source": "entities.merchant_query",
       "default": ""
     },
-    "merchants": {
+    "date_range": {
       "required": false,
-      "type": "array",
-      "source": "entities.merchants",
-      "description": "Liste des marchands (cas pluriel)"
+      "type": "object",
+      "source": "entities.date_range"
     },
     "merchant_name": {
       "required": false,
-      "type": "string",
+      "type": "merchant_name",
       "source": "entities.merchant_name",
-      "description": "Un seul marchand (cas singulier normalisé)"
+      "description": "Marchand converti en liste"
     },
     "transaction_type": {
       "required": false,
@@ -44,6 +45,12 @@
       "source": "entities.transaction_type",
       "allowed_values": ["debit", "credit"],
       "default": ""
+    },
+    "amount_range": {
+      "required": false,
+      "type": "object",
+      "source": "entities.montant",
+      "description": "Filtre sur le montant (amount + operator)"
     }
   },
   "parameter_selection": {

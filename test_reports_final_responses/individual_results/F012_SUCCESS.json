@@ -1,0 +1,18 @@
+{
+  "question_id": "F012",
+  "category": "F_complexe",
+  "question": "Mes dépenses restaurants avec des pourboires",
+  "response_text": {
+    "message": "Je vois que vous cherchez à analyser vos dépenses en restaurants avec pourboires, mais je n'ai trouvé aucune transaction correspondante dans vos données récentes.\n\n**Résumé personnel :**\nAucune dépense restaurant avec pourboire n'a été enregistrée dans la période analysée. Votre total de transactions est actuellement à zéro pour cette catégorie.\n\n**Transactions trouvées :**\nAucune transaction restaurant avec pourboire identifiée dans vos relevés.\n\n**Observations utiles :**\nCela pourrait signifier que :\n- Vous n'avez pas fréquenté de restaurants récemment\n- Les transactions peuvent être catégorisées différemment dans votre compte\n- Les pourboires pourraient être inclus dans le montant total sans distinction\n\n**Actions suggérées :**\n- Vérifiez si vos transactions restaurant sont classées dans une autre catégorie\n- Consultez une période plus longue pour voir si des dépenses existent\n- Pensez à noter manuellement vos pourboires si vous souhaitez un suivi plus précis\n\nSouhaitez-vous que je recherche dans d'autres catégories ou sur une période différente ?"
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 28337.63420000014,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:31:37.112652"
+}

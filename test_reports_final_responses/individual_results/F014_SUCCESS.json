@@ -1,0 +1,18 @@
+{
+  "question_id": "F014",
+  "category": "F_complexe",
+  "question": "Mes dépenses restaurant de 25 euros maximum ce mois",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 47808.083500000066,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:33:13.310325"
+}

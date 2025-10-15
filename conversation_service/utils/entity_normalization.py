@@ -31,14 +31,18 @@ OPERATION_TYPE_MAPPINGS = {
     "paiement carte": "card",
     "achat carte": "card",
     
-    "retrait": "withdrawal",
-    "retraits": "withdrawal",
-    "retrait dab": "withdrawal",
-    "withdrawal": "withdrawal",
-    
-    "carte différée": "deferred_debit_card",
-    "carte differee": "deferred_debit_card",
-    "deferred_debit_card": "deferred_debit_card",
+    "retrait": "card",
+    "retraits": "card",
+    "retrait dab": "card",
+    "retrait atm": "card",
+    "retrait espèces": "card",
+    "retrait especes": "card",
+
+    "cheque": "check",
+    "chèque": "check",
+    "chéque": "check",
+    "chq": "check",
+    "check": "check",
     
     "inconnu": "unknown",
     "unknown": "unknown",
@@ -132,7 +136,7 @@ def normalize_operation_types(operation_types: List[str]) -> List[str]:
         
         # Si aucune correspondance, log et garde la valeur originale si elle semble valide
         if not found:
-            if clean_op in ["card", "transfer", "direct_debit", "withdrawal", "deferred_debit_card", "unknown"]:
+            if clean_op in ["card", "check", "transfer", "direct_debit", "unknown"]:
                 # C'est déjà une valeur Elasticsearch valide
                 if clean_op not in normalized:
                     normalized.append(clean_op)
@@ -408,7 +412,7 @@ def get_supported_elasticsearch_values() -> Dict[str, List[str]]:
     Retourne les valeurs supportées par Elasticsearch pour chaque champ
     """
     return {
-        "operation_type": ["card", "withdrawal", "deferred_debit_card", "unknown", "direct_debit", "transfer"],
+        "operation_type": ["card", "check", "direct_debit", "transfer", "unknown"],
         "transaction_type": ["debit", "credit"],
         "account_type": ["card", "checking"]
     }

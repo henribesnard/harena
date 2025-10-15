@@ -1,0 +1,16 @@
+{
+  "question_id": "A019",
+  "category": "A_montant",
+  "question": "Mes transactions de 75 euros ou moins",
+  "response_text": "[EXCEPTION: ('Connection aborted.', ConnectionResetError(10054, 'Une connexion existante a dû être fermée par l’hôte distant', None, 10054, None))]",
+  "response_length": 0,
+  "has_response": false,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 764.4617999999355,
+  "api_success": false,
+  "error_message": "('Connection aborted.', ConnectionResetError(10054, 'Une connexion existante a dû être fermée par l’hôte distant', None, 10054, None))",
+  "timestamp": "2025-10-14T07:25:33.441189"
+}

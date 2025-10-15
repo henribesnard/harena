@@ -1,0 +1,18 @@
+{
+  "question_id": "M001",
+  "category": "M_robustesse",
+  "question": "Mes dépenses en chinois: 我的网飞支出",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 91.7345000016212,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T06:41:42.930174"
+}

@@ -7,10 +7,10 @@
     "query": "{% if query %}{{query}}{% else %}{% endif %}",
     "filters": {
       "transaction_type": "{{transaction_type}}",
-      "merchant_name": "{% if merchants %}{{merchants}}{% elif merchant_name %}['{{merchant_name}}']{% endif %}",
+      "merchant_name": "<<merchant_name>>",
       "category_name": "{{ categories if categories else null }}",
-      "amount_abs": "{{amount}}",
-      "date": "{{ date_range if date_range else null }}"
+      "amount_abs": "<<amount>>",
+      "date": "<<date_range>>"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -39,15 +39,9 @@
     },
     "merchant_name": {
       "required": false,
-      "type": "string",
+      "type": "merchant_name",
       "source": "entities.merchant_name",
-      "description": "Marchand unique (normalisé depuis merchant)"
-    },
-    "merchants": {
-      "required": false,
-      "type": "array",
-      "source": "entities.merchants",
-      "description": "Liste des marchands (pluriel)"
+      "description": "Marchand converti en liste"
     },
     "categories": {
       "required": false,

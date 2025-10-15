@@ -1,0 +1,266 @@
+{
+  "question_id": "F007",
+  "category": "F_complexe",
+  "question": "Mes achats Amazon entre 50 et 100 euros en juin",
+  "response_text": {
+    "message": "**1. Résumé personnel de vos résultats**\n\nAprès analyse de vos transactions, je constate que **vous n'avez effectué aucun achat chez Amazon entre 50 et 100 euros au mois de juin**. J'ai parcouru l'ensemble de vos transactions et aucune ne correspond à ce critère spécifique.\n\n**2. Description claire des transactions**\n\nDans la période analysée, voici les principales catégories de dépenses que j'ai identifiées :\n\n- **Prélèvements récurrents** : Assurances (Avanssur, Mncap, Caae), abonnements (Free, Adlpartner, OpenAI)\n- **Virements réguliers** : Pension alimentaire (250€), garde d'enfants (680€), virements familiaux\n- **Dépenses courantes** : Énergie (Engie), eau (Saur), frais bancaires\n- **Retraits d'espèces** : Principalement entre 20€ et 100€\n\n**3. Observations utiles pour vos finances**\n\n🔍 **Points d'attention :**\n- Vous avez plusieurs abonnements récurrents (OpenAI, Adlpartner, etc.) qui représentent une charge mensuelle\n- Les frais bancaires liés aux transactions internationales apparaissent régulièrement\n- Votre budget inclut des engagements familiaux importants (pension alimentaire, garde d'enfants)\n\n💡 **Suggestions :**\n- Si vous souhaitez suivre spécifiquement vos achats Amazon, je peux vous aider à analyser une période différente\n- Pourriez-vous vérifier si vos achats Amazon ont été effectués avec un autre moyen de paiement (carte différente, compte joint) ?\n- Pensez à regrouper vos recherches par marchand pour une vision plus complète\n\n**N'hésitez pas à préciser votre recherche si vous souhaitez que j'analyse une autre période ou d'autres critères !** 😊",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 6017 transactions",
+        "description": "Débits: 440104.66€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 6017,
+          "currency": "EUR",
+          "total_debit": 440104.66034407355
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "recommendation",
+        "title": "Optimisez vos abonnements",
+        "description": "Vous avez 13 abonnements actifs (Openai, Adlpartner, claudeAI...). Vous pourriez économiser en consolidant ou en choisissant une offre groupée. Économie estimée: 718€",
+        "confidence": 1.0,
+        "data_support": {
+          "recommendation_id": "opt_sub_1760423242.237359",
+          "recommendation_type": "optimize_subscriptions",
+          "estimated_savings": 718.2760000000001,
+          "cta_text": "Voir mes abonnements",
+          "cta_action": "show_subscriptions_detail",
+          "merchants": [
+            "Openai",
+            "Adlpartner",
+            "claudeAI",
+            "Google",
+            "Netflix",
+            "... 8 more items"
+          ],
+          "total_monthly_cost": 3591.38,
+          "count": 13
+        },
+        "actionable": true,
+        "priority": 1
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Transaction inhabituelle détectée",
+        "description": "2643.00€ chez Trésor public  - Montant 3.4x écart-type au-dessus de la moyenne (73.14€)",
+        "confidence": 0.95,
+        "data_support": {
+          "transaction_id": 475,
+          "amount": 2643.0,
+          "merchant": "Trésor public ",
+          "date": "2025-10-12T21:50:59.159252+00:00",
+          "anomaly_score": 3.4353353440624037,
+          "method": "zscore"
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ],
+    "visualizations": [
+      {
+        "type": "chart",
+        "chart_type": "line",
+        "title": "Evolution des transactions",
+        "config": {
+          "type": "line",
+          "data": {
+            "labels": [
+              "2024-01-01",
+              "2024-01-02",
+              "2024-01-03",
+              "2024-01-04",
+              "2024-01-05",
+              "... 362 more items"
+            ],
+            "datasets": [
+              {
+                "label": "Depenses",
+                "data": [
+                  175.20000000000002,
+                  160.33,
+                  127.11999999999999,
+                  224.70000000000002,
+                  134.51999999999998,
+                  "... 362 more items"
+                ],
+                "borderColor": "rgb(255, 99, 132)",
+                "backgroundColor": "rgba(255, 99, 132, 0.1)",
+                "tension": 0.3,
+                "fill": true
+              },
+              {
+                "label": "Revenus",
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  "... 362 more items"
+                ],
+                "borderColor": "rgb(75, 192, 192)",
+                "backgroundColor": "rgba(75, 192, 192, 0.1)",
+                "tension": 0.3,
+                "fill": true
+              }
+            ]
+          },
+          "options": {
+            "responsive": true,
+            "plugins": {
+              "legend": {
+                "position": "top"
+              },
+              "title": {
+                "display": true,
+                "text": "Evolution des transactions dans le temps"
+              },
+              "tooltip": {
+                "callbacks": {
+                  "label": "function(context) { return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '€'; }"
+                }
+              }
+            },
+            "scales": {
+              "y": {
+                "beginAtZero": true,
+                "ticks": {
+                  "callback": "function(value) { return value.toFixed(0) + '€'; }"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "chart",
+        "chart_type": "pie",
+        "title": "Repartition des depenses par categorie",
+        "config": {
+          "type": "pie",
+          "data": {
+            "labels": [
+              "Non categorise",
+              "Virement sortants",
+              "Alimentation",
+              "Autres",
+              "Aide",
+              "... 4 more items"
+            ],
+            "datasets": [
+              {
+                "data": [
+                  210685.7399999997,
+                  57321.51,
+                  27302.789999999997,
+                  18904.760000000013,
+                  16457.67,
+                  "... 4 more items"
+                ],
+                "backgroundColor": [
+                  "rgb(255, 99, 132)",
+                  "rgb(54, 162, 235)",
+                  "rgb(255, 206, 86)",
+                  "rgb(75, 192, 192)",
+                  "rgb(153, 102, 255)",
+                  "... 4 more items"
+                ],
+                "borderWidth": 1
+              }
+            ]
+          },
+          "options": {
+            "responsive": true,
+            "plugins": {
+              "legend": {
+                "position": "right"
+              },
+              "title": {
+                "display": true,
+                "text": "Repartition des depenses par categorie"
+              },
+              "tooltip": {
+                "callbacks": {
+                  "label": "function(context) { var label = context.label || ''; var value = context.parsed || 0; var total = context.dataset.data.reduce((a, b) => a + b, 0); var percentage = ((value / total) * 100).toFixed(1); return label + ': ' + value.toFixed(2) + '€ (' + percentage + '%)'; }"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "chart",
+        "chart_type": "bar",
+        "title": "Top 10 marchands",
+        "config": {
+          "type": "bar",
+          "data": {
+            "labels": [
+              "Marchand inconnu",
+              "Western union",
+              " Engie",
+              "Leclerc",
+              "Amazon",
+              "... 5 more items"
+            ],
+            "datasets": [
+              {
+                "label": "Montant des depenses",
+                "data": [
+                  314969.0600000002,
+                  15414.749999999998,
+                  9342.560000000001,
+                  8906.679999999998,
+                  6620.609999999995,
+                  "... 5 more items"
+                ],
+                "backgroundColor": "rgba(54, 162, 235, 0.6)",
+                "borderColor": "rgb(54, 162, 235)",
+                "borderWidth": 1
+              }
+            ]
+          },
+          "options": {
+            "responsive": true,
+            "plugins": {
+              "legend": {
+                "display": false
+              },
+              "title": {
+                "display": true,
+                "text": "Top 10 des marchands par montant"
+              },
+              "tooltip": {
+                "callbacks": {
+                  "label": "function(context) { return context.parsed.y.toFixed(2) + '€'; }"
+                }
+              }
+            },
+            "scales": {
+              "y": {
+                "beginAtZero": true,
+                "ticks": {
+                  "callback": "function(value) { return value.toFixed(0) + '€'; }"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 45777.66369999972,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:27:52.830879"
+}

@@ -43,20 +43,23 @@ class TemplateEngine:
         self.templates_dir = templates_dir or Path(__file__).parent.parent / "templates" / "query"
         self.compiled_templates: Dict[str, CompiledTemplate] = {}
         self.jinja_env = Environment()
-        
+
         # Ajout de fonctions helpers pour les templates
         self.jinja_env.globals['to_es_amount_filter'] = self._to_elasticsearch_amount_filter
         self.jinja_env.globals['is_defined_and_not_none'] = self._is_defined_and_not_none
 
+        # Ajout de filtres Jinja2 personnalisés
+        self.jinja_env.filters['tojson'] = json.dumps
+
         # Variables globales pour les templates
         self.jinja_env.globals['all_months'] = self._get_all_months()
-        
+
         self.cache_stats = {
             "hits": 0,
             "misses": 0,
             "compilations": 0
         }
-        
+
         logger.info(f"TemplateEngine initialized with directory: {self.templates_dir}")
 
     def _get_all_months(self) -> Dict[str, int]:
@@ -134,8 +137,14 @@ class TemplateEngine:
                 )
             
             # Compiler le template Jinja2
+            # Utiliser l'environnement Jinja2 configuré avec le filtre tojson
             parameters_json = json.dumps(template_data["parameters"])
-            jinja_template = Template(parameters_json)
+
+            # Remplacer les placeholders <<var>> par {{var|tojson}} pour les objets
+            # Cela permet d'avoir un template JSON valide tout en supportant les objets Jinja2
+            parameters_json = re.sub(r'"<<(\w+)>>"', r'{{\1|tojson}}', parameters_json)
+
+            jinja_template = self.jinja_env.from_string(parameters_json)
             
             # Calculer la durée de cache
             optimizations = template_data.get("optimizations", {})
@@ -187,21 +196,21 @@ class TemplateEngine:
         try:
             # Préparer les données pour le template
             template_context = self._prepare_template_context(template, parameters)
-            
+
             # Rendre le template
             rendered_json = template.jinja_template.render(**template_context)
-            
+
             # Parser le JSON résultant
             rendered_query = json.loads(rendered_json)
-            
+
             # Post-traitement
             cleaned_query = self._post_process_query(template, rendered_query)
-            
+
             # Restaurer les types corrects des paramètres
             typed_query = self._restore_parameter_types(template, cleaned_query)
-            
+
             return typed_query
-            
+
         except Exception as e:
             logger.error(f"Error rendering template {template.name}: {e}")
             raise
@@ -209,11 +218,14 @@ class TemplateEngine:
     def _prepare_template_context(self, template: CompiledTemplate, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Prépare le contexte pour le template Jinja2"""
         context = {}
-        
+
         for param_name, param_config in template.parameter_mappings.items():
             value = self._extract_parameter_value(param_config, parameters)
             context[param_name] = value
-            
+            # Log pour debugging des valeurs extraites
+            if param_name in ["text_query", "merchant_name", "amount_range", "date_range", "transaction_type", "operation_type"]:
+                logger.info(f"📝 Template context: {param_name} = {value} (type: {type(value).__name__})")
+
         return context
 
     def _extract_parameter_value(self, param_config: Dict[str, Any], parameters: Dict[str, Any]) -> Any:
@@ -225,7 +237,49 @@ class TemplateEngine:
         
         # Parser le chemin source (ex: "entities.periode_temporelle.date")
         value = self._get_nested_value(parameters, source)
-        
+
+        # Cas spécial : supporter "merchants" (liste) et "merchant_name" (renommé par orchestrateur)
+        if source == "entities.merchant" and value is None and "entities" in parameters:
+            entities = parameters.get("entities", {})
+            # Essayer "merchant_name" (renommé par l'orchestrateur)
+            if "merchant_name" in entities:
+                value = entities["merchant_name"]
+                logger.info(f"Using 'merchant_name' instead of 'merchant': {value}")
+            # Essayer de récupérer "merchants" (liste) si "merchant" (string) n'existe pas
+            elif "merchants" in entities:
+                value = entities["merchants"]
+                logger.info(f"Using 'merchants' list instead of single 'merchant': {value}")
+
+        # Cas spécial : si on cherche entities.montant mais que amount et operator sont séparés
+        if source == "entities.montant" and value is None and "entities" in parameters:
+            entities = parameters.get("entities", {})
+            # Essayer de construire l'objet montant depuis amount + operator séparés
+            if "amount" in entities and "operator" in entities:
+                value = {
+                    "amount": entities["amount"],
+                    "operator": entities["operator"]
+                }
+                logger.info(f"Constructed montant object from separated amount={entities['amount']} and operator={entities['operator']}")
+            # Ou depuis amount_min + amount_max pour les plages
+            elif "amount_min" in entities and "amount_max" in entities:
+                value = {
+                    "min": entities["amount_min"],
+                    "max": entities["amount_max"],
+                    "operator": "range"
+                }
+                logger.info(f"Constructed montant range from amount_min={entities['amount_min']} and amount_max={entities['amount_max']}")
+
+        # Cas spécial : transaction_type peut être string directe ou objet imbriqué
+        # Template attend "entities.transaction_type" mais LLM peut renvoyer string OU dict
+        if source == "entities.transaction_type" and value is not None:
+            # Si c'est déjà une string, OK
+            if isinstance(value, str):
+                pass  # Garder tel quel
+            # Si c'est un dict avec transaction_type imbriqué, l'extraire
+            elif isinstance(value, dict) and "transaction_type" in value:
+                value = value["transaction_type"]
+                logger.info(f"Extracted nested transaction_type: {value}")
+
         # Transformer les entités de période relative en objets de date
         if param_config.get("type") == "object" and isinstance(value, str):
             value = self._transform_date_range(value)
@@ -296,10 +350,14 @@ class TemplateEngine:
                 return str(value)
             elif param_type == "merchant_name":
                 # Normalisation pour les noms de marchands (première lettre majuscule)
-                # Mais ne pas casser les listes !
+                # TOUJOURS retourner une liste pour cohérence avec les agrégations
                 if isinstance(value, list):
-                    return value
-                return str(value).strip().title() if value else value
+                    # Normaliser chaque élément de la liste
+                    return [str(v).strip().title() for v in value]
+                elif value:
+                    # Convertir un marchand unique en liste d'un élément
+                    return [str(value).strip().title()]
+                return None
             elif param_type == "object":
                 # Pour les objets, on garde tel quel - la transformation se fera dans _remove_null_values
                 return value
@@ -503,6 +561,24 @@ class TemplateEngine:
                 days_to_last_saturday = days_since_monday + 2
                 start_of_weekend = today - relativedelta(days=days_to_last_saturday)
 
+            end_of_weekend = start_of_weekend + relativedelta(days=1)  # Dimanche
+            return {
+                "gte": start_of_weekend.isoformat(),
+                "lte": end_of_weekend.isoformat()
+            }
+
+        elif date_range_lower in ["last_weekend", "le weekend dernier", "weekend dernier"]:
+            # Weekend dernier (toujours le samedi-dimanche précédent)
+            days_since_monday = today.weekday()
+            # Calculer le samedi dernier
+            if days_since_monday >= 5:  # Si on est samedi (5) ou dimanche (6)
+                # Le weekend dernier commence samedi il y a 7 jours
+                days_to_last_saturday = days_since_monday + 2
+            else:
+                # Le weekend dernier commence samedi il y a (jours depuis lundi + 2) jours
+                days_to_last_saturday = days_since_monday + 2
+
+            start_of_weekend = today - relativedelta(days=days_to_last_saturday)
             end_of_weekend = start_of_weekend + relativedelta(days=1)  # Dimanche
             return {
                 "gte": start_of_weekend.isoformat(),
@@ -1181,6 +1257,12 @@ class TemplateEngine:
             for k, v in obj.items():
                 # Cas spécial: le champ 'query' doit être préservé même s'il est vide (pour Elasticsearch multi_match)
                 preserve_empty = (k == "query")
+
+                # Cas spécial: transaction_type="all" ne doit pas créer de filtre
+                # "all" signifie pas de filtre sur le type de transaction
+                if k == "transaction_type" and v == "all":
+                    logger.info("⚠️ Skipping transaction_type='all' filter (no filter needed when requesting all types)")
+                    continue
 
                 # Exclure les valeurs null ET les chaînes "None" (de Jinja2)
                 # MAIS garder les objets sérialisés qui ressemblent à des dicts Python

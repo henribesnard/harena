@@ -4,12 +4,12 @@
   "target_intention": "TRANSACTION_SEARCH.simple",
   "parameters": {
     "user_id": "{{user_id}}",
-    "query": "{% if query %}{{query}}{% else %}{% endif %}",
+    "query": "{{query}}",
     "filters": {
-      "transaction_type": "{{transaction_type}}"{% if merchants or merchant_name %},
-      "merchant_name": "{% if merchants %}{{merchants}}{% else %}['{{merchant_name}}']{% endif %}"{% endif %}{% if categories %},
-      "category_name": "{{ categories }}"{% endif %}{% if date_range %},
-      "date": "{{ date_range }}"{% endif %}
+      "transaction_type": "{{transaction_type}}",
+      "merchant_name": "<<merchant_name>>",
+      "category_name": "{{categories}}",
+      "date": "<<date_range>>"
     },
     "sort": [
       {"date": {"order": "desc"}}
@@ -38,15 +38,9 @@
     },
     "merchant_name": {
       "required": false,
-      "type": "string",
+      "type": "merchant_name",
       "source": "entities.merchant_name",
-      "description": "Marchand unique (normalisé depuis merchant)"
-    },
-    "merchants": {
-      "required": false,
-      "type": "array",
-      "source": "entities.merchants",
-      "description": "Liste des marchands (pluriel)"
+      "description": "Marchand converti en liste"
     },
     "categories": {
       "required": false,

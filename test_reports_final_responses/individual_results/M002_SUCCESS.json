@@ -1,0 +1,18 @@
+{
+  "question_id": "M002",
+  "category": "M_robustesse",
+  "question": "Mes achats with English words mixed",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 56.3689999980852,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T06:41:43.488292"
+}

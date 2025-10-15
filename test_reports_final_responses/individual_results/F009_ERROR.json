@@ -1,0 +1,16 @@
+{
+  "question_id": "F009",
+  "category": "F_complexe",
+  "question": "Mes achats alimentaires inférieurs à 25 euros en mai",
+  "response_text": "[EXCEPTION: HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=60)]",
+  "response_length": 0,
+  "has_response": false,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 2085404.4087000003,
+  "api_success": false,
+  "error_message": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=60)",
+  "timestamp": "2025-10-14T08:11:59.753327"
+}

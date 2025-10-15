@@ -233,8 +233,9 @@ class QueryBuilder:
                 return True, template
         
         # Fallback : chercher un template par défaut
-        default_templates = ["default", "simple", "base"]
-        
+        # composite est le template universel qui gère toutes les combinaisons d'entités
+        default_templates = ["composite", "default", "simple", "base"]
+
         for template_candidate in default_templates:
             template = await self.template_engine.load_template(intent_group, template_candidate)
             if template:

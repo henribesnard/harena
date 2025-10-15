@@ -1,0 +1,18 @@
+{
+  "question_id": "H002",
+  "category": "H_recherche",
+  "question": "Trouve 'livraison nourriture'",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 27.992399998765904,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T06:41:14.999021"
+}

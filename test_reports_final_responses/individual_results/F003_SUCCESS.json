@@ -1,0 +1,18 @@
+{
+  "question_id": "F003",
+  "category": "F_complexe",
+  "question": "Mes revenus Netflix supérieurs à 50 euros ce mois",
+  "response_text": {
+    "message": "Bonjour ! J'ai bien reçu votre demande concernant vos transactions Netflix supérieures à 50 euros ce mois-ci.\n\n**Résumé personnel**\nJe ne trouve malheureusement aucune transaction Netflix dans vos données ce mois-ci, ni aucune transaction en général d'ailleurs. Votre compte ne montre aucune activité financière enregistrée pour la période demandée.\n\n**Description des transactions**\nAucune transaction Netflix n'a été identifiée dans vos relevés. Cela pourrait signifier que :\n- Le paiement Netflix n'a pas encore été prélevé ce mois-ci\n- Le montant est inférieur à 50 euros\n- La transaction est classée sous un autre nom de marchand\n\n**Observations utiles**\nVotre compte montre un solde de 0,00€ en transactions ce mois-ci, ce qui est assez inhabituel. Je vous suggère de :\n- Vérifier directement sur votre compte Netflix le montant et la date du dernier prélèvement\n- Contrôler si le paiement apparaît sous une autre dénomination dans vos relevés\n- Patienter quelques jours si la date de prélèvement habituelle n'est pas encore passée\n\nN'hésitez pas à me fournir plus de détails si vous souhaitez que je recherche autre chose dans vos transactions !"
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 34355.6152000001,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:24:46.151279"
+}

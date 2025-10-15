@@ -1,0 +1,18 @@
+{
+  "question_id": "F008",
+  "category": "F_complexe",
+  "question": "Mes dépenses restaurant de plus de 40 euros ce mois",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 45580.2235000001,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T07:37:13.827943"
+}

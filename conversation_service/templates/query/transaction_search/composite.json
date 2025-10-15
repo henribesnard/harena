@@ -6,11 +6,12 @@
     "user_id": "{{user_id}}",
     "query": "{{text_query}}",
     "filters": {
-      "date": "{{date_range}}",
-      "amount_abs": "{{amount_range}}",
+      "date": "<<date_range>>",
+      "amount_abs": "<<amount_range>>",
       "transaction_type": "{{transaction_type}}",
-      "merchant_name": "{{merchant_name}}",
-      "category_name": "{{category_name}}"
+      "merchant_name": "<<merchant_name>>",
+      "category_name": "{{category_name}}",
+      "operation_type": "{{operation_type}}"
     },
     "sort": [
       {"date": {"order": "desc"}},
@@ -27,12 +28,12 @@
     "text_query": {
       "required": false,
       "type": "string",
-      "source": "entities.text_search.query"
+      "source": "entities.query"
     },
     "date_range": {
       "required": false,
       "type": "object",
-      "source": "entities.periode_temporelle"
+      "source": "entities.date_range"
     },
     "amount_range": {
       "required": false,
@@ -42,18 +43,24 @@
     "transaction_type": {
       "required": false,
       "type": "string",
-      "source": "entities.transaction_type.transaction_type",
-      "allowed_values": ["credit", "debit"]
+      "source": "entities.transaction_type",
+      "allowed_values": ["credit", "debit", "all"]
     },
     "merchant_name": {
       "required": false,
       "type": "merchant_name",
-      "source": "entities.merchant_name"
+      "source": "entities.merchant"
     },
     "category_name": {
       "required": false,
       "type": "string",
-      "source": "entities.category_search.category_name"
+      "source": "entities.categories"
+    },
+    "operation_type": {
+      "required": false,
+      "type": "string",
+      "source": "entities.operation_type",
+      "allowed_values": ["card", "check", "direct_debit", "transfer", "unknown"]
     },
     "page_size": {
       "required": false,

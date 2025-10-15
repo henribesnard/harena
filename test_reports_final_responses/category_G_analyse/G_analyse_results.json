@@ -1,0 +1,92 @@
+{
+  "category": "G_analyse",
+  "timestamp": "2025-10-14T06:41:14.395651",
+  "total_questions": 12,
+  "api_successful": 12,
+  "responses_received": 12,
+  "success_rate": 100.0,
+  "avg_response_length": 3.0,
+  "detailed_results": [
+    {
+      "question_id": "G001",
+      "question": "Combien j'ai dépensé ce mois ?",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+      },
+      "response_length": 3,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 48.01950000182842,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "G002",
+      "question": "Quel est mon budget restaurant ?",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+      },
+      "response_length": 3,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 74.53670000177226,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "G003",
+      "question": "Ma moyenne de dépenses par jour",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+      },
+      "response_length": 3,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 89.01639999749023,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "G004",
+      "question": "Mon plus gros achat du mois",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+      },
+      "response_length": 3,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 64.02140000136569,
+      "api_success": true,
+      "error_message": null
+    },
+    {
+      "question_id": "G005",
+      "question": "Combien je gagne par mois ?",
+      "response_text": {
+        "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+      },
+      "response_length": 3,
+      "has_response": true,
+      "intent_detected": null,
+      "transactions_found": 0,
+      "insights_count": 0,
+      "visualizations_count": 0,
+      "latency_ms": 43.39640000034706,
+      "api_success": true,
+      "error_message": null
+    },
+    "... 7 more items"
+  ]
+}

@@ -151,14 +151,25 @@ class FinalResponseTester:
             data = response.json()
 
             # EXTRACTION DE LA RÉPONSE FINALE
+            # Gestion de la nouvelle structure de réponse avec objet { message, structured_data, visualizations }
             response_text = data.get("response", "")
+
+            # Si response est un objet avec un champ "message", extraire ce champ
+            if isinstance(response_text, dict) and "message" in response_text:
+                actual_message = response_text.get("message", "")
+                response_text = actual_message
+
+            # Fallbacks pour d'autres formats
             if not response_text:
-                # Essayer d'autres champs possibles
                 response_text = data.get("response_text", "")
             if not response_text:
                 response_text = data.get("message", "")
             if not response_text:
                 response_text = data.get("text", "")
+
+            # S'assurer que response_text est une chaîne
+            if not isinstance(response_text, str):
+                response_text = ""
 
             response_length = len(response_text)
             has_response = response_length > 0
@@ -189,8 +200,19 @@ class FinalResponseTester:
             if "total_hits" in data:
                 transactions_found = data["total_hits"]
 
-            insights_count = len(data.get("insights", []))
-            visualizations_count = len(data.get("data_visualizations", []))
+            # Extraction de structured_data et visualizations depuis la nouvelle structure
+            response_obj = data.get("response", {})
+            insights_count = 0
+            visualizations_count = 0
+
+            if isinstance(response_obj, dict):
+                # Extraire depuis la nouvelle structure
+                insights_count = len(response_obj.get("structured_data", []))
+                visualizations_count = len(response_obj.get("visualizations", []))
+            else:
+                # Ancienne structure (fallback)
+                insights_count = len(data.get("insights", []))
+                visualizations_count = len(data.get("data_visualizations", []))
 
             return FinalResponseResult(
                 question_id=question_id,
@@ -226,6 +248,35 @@ class FinalResponseTester:
                 error_message=str(e)
             )
 
+    def clean_response_data(self, data: Any, max_array_length: int = 10) -> Any:
+        """Nettoie les données de réponse en limitant les grands tableaux et en supprimant les nulls inutiles"""
+        if isinstance(data, dict):
+            cleaned = {}
+            for key, value in data.items():
+                # D'abord, vérifier si c'est un tableau de nulls avant nettoyage récursif
+                if isinstance(value, list):
+                    non_null_items = [item for item in value if item is not None]
+                    if not non_null_items:
+                        # Tableau vide ou que des nulls - indiquer combien il y en avait
+                        if len(value) > 0:
+                            cleaned[key] = f"[{len(value)} null values omitted]"
+                        continue
+                    # Si on a des items non-null, continuer avec le nettoyage récursif
+                    cleaned_value = self.clean_response_data(value, max_array_length)
+                else:
+                    # Nettoyer récursivement pour les non-listes
+                    cleaned_value = self.clean_response_data(value, max_array_length)
+
+                cleaned[key] = cleaned_value
+            return cleaned
+        elif isinstance(data, list):
+            # Limiter la longueur des tableaux longs
+            if len(data) > max_array_length:
+                return [self.clean_response_data(item, max_array_length) for item in data[:max_array_length]] + [f"... {len(data) - max_array_length} more items"]
+            return [self.clean_response_data(item, max_array_length) for item in data]
+        else:
+            return data
+
     def save_individual_result(self, result: FinalResponseResult):
         """Sauvegarde immédiate d'un résultat individuel"""
         try:
@@ -237,12 +288,17 @@ class FinalResponseTester:
             filename = f"{result.question_id}_{status}.json"
             filepath = results_dir / filename
 
+            # Nettoyer response_text si c'est un objet complexe
+            cleaned_response = result.response_text
+            if isinstance(result.response_text, (dict, list)):
+                cleaned_response = self.clean_response_data(result.response_text, max_array_length=5)
+
             # Données complètes du résultat
             result_dict = {
                 "question_id": result.question_id,
                 "category": result.category,
                 "question": result.question,
-                "response_text": result.response_text,
+                "response_text": cleaned_response,
                 "response_length": result.response_length,
                 "has_response": result.has_response,
                 "intent_detected": result.intent_detected,
@@ -419,7 +475,7 @@ class FinalResponseTester:
                 {
                     "question_id": r.question_id,
                     "question": r.question,
-                    "response_text": r.response_text,
+                    "response_text": self.clean_response_data(r.response_text, max_array_length=5) if isinstance(r.response_text, (dict, list)) else r.response_text,
                     "response_length": r.response_length,
                     "has_response": r.has_response,
                     "intent_detected": r.intent_detected,
@@ -533,8 +589,11 @@ class FinalResponseTester:
                 if result.has_response and example_count < 3:
                     print(f"\n{result.question_id}: {result.question}")
                     print(f"Reponse ({result.response_length} chars):")
-                    response_preview = result.response_text[:200]
-                    if len(result.response_text) > 200:
+
+                    # S'assurer que response_text est une chaîne
+                    response_str = result.response_text if isinstance(result.response_text, str) else str(result.response_text)
+                    response_preview = response_str[:200]
+                    if len(response_str) > 200:
                         response_preview += "..."
                     print(f"\"{response_preview}\"")
                     example_count += 1

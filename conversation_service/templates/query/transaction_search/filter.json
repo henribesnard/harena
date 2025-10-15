@@ -6,7 +6,7 @@
     "user_id": "{{user_id}}",
     "query": "{% if query %}{{query}}{% else %}{% endif %}",
     "filters": {
-      "merchant_name": "{% if merchants %}{{merchants}}{% elif merchant_name %}['{{merchant_name}}']{% endif %}",
+      "merchant_name": "<<merchant_name>>",
       "transaction_type": "{{transaction_type}}",
       "operation_type": "{{operation_type}}",
       "amount_abs": "{% if montant %}{{to_es_amount_filter(montant)}}{% else %}null{% endif %}",
@@ -69,7 +69,7 @@
       "required": false,
       "type": "string",
       "source": "entities.operation_type",
-      "allowed_values": ["direct_debit", "transfer", "card_payment", "check", "cash_withdrawal", "standing_order"],
+      "allowed_values": ["card", "check", "direct_debit", "transfer", "unknown"],
       "default": ""
     },
     "date_range": {

@@ -1,0 +1,16 @@
+{
+  "question_id": "I001",
+  "category": "I_edge_cases",
+  "question": "",
+  "response_text": "[ERROR HTTP 422]",
+  "response_length": 0,
+  "has_response": false,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 14.60149999911664,
+  "api_success": false,
+  "error_message": "HTTP 422: {\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"message\"],\"msg\":\"Value error, Le message ne peut pas être vide\",\"input\":\"\",\"ctx\":{\"error\":{}}}]}",
+  "timestamp": "2025-10-14T06:41:18.912026"
+}

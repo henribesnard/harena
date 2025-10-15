@@ -1,0 +1,18 @@
+{
+  "question_id": "F017",
+  "category": "F_complexe",
+  "question": "Mes retraits d'espèces d'au minimum 50 euros cette semaine",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 46327.58540000032,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:35:41.451863"
+}

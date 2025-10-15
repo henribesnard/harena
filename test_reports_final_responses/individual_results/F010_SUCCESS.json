@@ -1,0 +1,267 @@
+{
+  "question_id": "F010",
+  "category": "F_complexe",
+  "question": "Toutes mes transactions Uber du dernier trimestre",
+  "response_text": {
+    "message": "Je vois que vous cherchez vos transactions Uber du dernier trimestre, mais après avoir analysé vos données, je constate qu'il n'y a **aucune transaction Uber** dans votre historique récent.\n\n**Résumé de vos transactions du dernier trimestre :**\n- 6726 transactions au total\n- Débits : 440 104,66€\n- Crédits : 426 878,57€\n- Solde net : -13 226,09€\n\n**Principales catégories de dépenses identifiées :**\n- Prêts immobiliers (mensualités régulières autour de 754€)\n- Pension alimentaire (250€ par mois)\n- Garde d'enfants (680€ par mois)\n- Assurances diverses\n- Abonnements (Free, Openai, etc.)\n- Retraits d'espèces fréquents\n\n**Observations pour vos finances :**\n1. **Absence de dépenses Uber** - C'est une bonne nouvelle pour votre budget transport !\n2. **Optimisation possible** : Vous avez plusieurs abonnements (Openai, Adlpartner, etc.) qui pourraient être consolidés pour réaliser des économies\n3. **Gestion des retraits** : Vous effectuez des retraits d'espèces réguliers, ce qui génère parfois des frais bancaires\n\n**Actions concrètes :**\n- Continuez à privilégier les moyens de transport alternatifs à Uber\n- Revoyez vos abonnements pour potentiellement économiser jusqu'à 730€ par an\n- Surveillez vos frais bancaires liés aux retraits d'espèces\n\nSouhaitez-vous que j'analyse une autre catégorie spécifique de vos dépenses ?",
+    "structured_data": [
+      {
+        "type": "financial_summary",
+        "title": "Résumé financier : 6726 transactions",
+        "description": "Débits: 440104.66€ | Crédits: 426878.57€",
+        "confidence": 1.0,
+        "data_support": {
+          "transaction_count": 6726,
+          "currency": "EUR",
+          "total_debit": 440104.66034407355,
+          "total_credit": 426878.56582452357
+        },
+        "actionable": false,
+        "priority": 0
+      },
+      {
+        "type": "recommendation",
+        "title": "Optimisez vos abonnements",
+        "description": "Vous avez 14 abonnements actifs (Openai, Adlpartner, Maison créative ...). Vous pourriez économiser en consolidant ou en choisissant une offre groupée. Économie estimée: 730€",
+        "confidence": 1.0,
+        "data_support": {
+          "recommendation_id": "opt_sub_1760423404.075773",
+          "recommendation_type": "optimize_subscriptions",
+          "estimated_savings": 729.7560000000001,
+          "cta_text": "Voir mes abonnements",
+          "cta_action": "show_subscriptions_detail",
+          "merchants": [
+            "Openai",
+            "Adlpartner",
+            "Maison créative ",
+            "claudeAI",
+            "Google",
+            "... 9 more items"
+          ],
+          "total_monthly_cost": 3648.78,
+          "count": 14
+        },
+        "actionable": true,
+        "priority": 1
+      },
+      {
+        "type": "unusual_transaction",
+        "title": "Transaction inhabituelle détectée",
+        "description": "4148.27€ chez None - Montant 2.7x écart-type au-dessus de la moyenne (128.90€)",
+        "confidence": 0.9056561130668704,
+        "data_support": {
+          "transaction_id": 1245,
+          "amount": 4148.27,
+          "merchant": null,
+          "date": "2025-10-12T21:50:24.371919+00:00",
+          "anomaly_score": 2.716968339200611,
+          "method": "zscore"
+        },
+        "actionable": true,
+        "priority": 1
+      }
+    ],
+    "visualizations": [
+      {
+        "type": "chart",
+        "chart_type": "line",
+        "title": "Evolution des transactions",
+        "config": {
+          "type": "line",
+          "data": {
+            "labels": [
+              "2024-01-01",
+              "2024-01-02",
+              "2024-01-03",
+              "2024-01-04",
+              "2024-01-05",
+              "... 362 more items"
+            ],
+            "datasets": [
+              {
+                "label": "Depenses",
+                "data": [
+                  175.20000000000002,
+                  160.33,
+                  127.11999999999999,
+                  224.70000000000002,
+                  134.51999999999998,
+                  "... 362 more items"
+                ],
+                "borderColor": "rgb(255, 99, 132)",
+                "backgroundColor": "rgba(255, 99, 132, 0.1)",
+                "tension": 0.3,
+                "fill": true
+              },
+              {
+                "label": "Revenus",
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  "... 362 more items"
+                ],
+                "borderColor": "rgb(75, 192, 192)",
+                "backgroundColor": "rgba(75, 192, 192, 0.1)",
+                "tension": 0.3,
+                "fill": true
+              }
+            ]
+          },
+          "options": {
+            "responsive": true,
+            "plugins": {
+              "legend": {
+                "position": "top"
+              },
+              "title": {
+                "display": true,
+                "text": "Evolution des transactions dans le temps"
+              },
+              "tooltip": {
+                "callbacks": {
+                  "label": "function(context) { return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '€'; }"
+                }
+              }
+            },
+            "scales": {
+              "y": {
+                "beginAtZero": true,
+                "ticks": {
+                  "callback": "function(value) { return value.toFixed(0) + '€'; }"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "chart",
+        "chart_type": "pie",
+        "title": "Repartition des depenses par categorie",
+        "config": {
+          "type": "pie",
+          "data": {
+            "labels": [
+              "Non categorise",
+              "Virement sortants",
+              "Alimentation",
+              "Autres",
+              "Aide",
+              "... 4 more items"
+            ],
+            "datasets": [
+              {
+                "data": [
+                  210685.7399999997,
+                  57321.51,
+                  27302.789999999997,
+                  18904.760000000013,
+                  16457.67,
+                  "... 4 more items"
+                ],
+                "backgroundColor": [
+                  "rgb(255, 99, 132)",
+                  "rgb(54, 162, 235)",
+                  "rgb(255, 206, 86)",
+                  "rgb(75, 192, 192)",
+                  "rgb(153, 102, 255)",
+                  "... 4 more items"
+                ],
+                "borderWidth": 1
+              }
+            ]
+          },
+          "options": {
+            "responsive": true,
+            "plugins": {
+              "legend": {
+                "position": "right"
+              },
+              "title": {
+                "display": true,
+                "text": "Repartition des depenses par categorie"
+              },
+              "tooltip": {
+                "callbacks": {
+                  "label": "function(context) { var label = context.label || ''; var value = context.parsed || 0; var total = context.dataset.data.reduce((a, b) => a + b, 0); var percentage = ((value / total) * 100).toFixed(1); return label + ': ' + value.toFixed(2) + '€ (' + percentage + '%)'; }"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "chart",
+        "chart_type": "bar",
+        "title": "Top 10 marchands",
+        "config": {
+          "type": "bar",
+          "data": {
+            "labels": [
+              "Marchand inconnu",
+              "Western union",
+              " Engie",
+              "Leclerc",
+              "Amazon",
+              "... 5 more items"
+            ],
+            "datasets": [
+              {
+                "label": "Montant des depenses",
+                "data": [
+                  314969.0600000002,
+                  15414.749999999998,
+                  9342.560000000001,
+                  8906.679999999998,
+                  6620.609999999995,
+                  "... 5 more items"
+                ],
+                "backgroundColor": "rgba(54, 162, 235, 0.6)",
+                "borderColor": "rgb(54, 162, 235)",
+                "borderWidth": 1
+              }
+            ]
+          },
+          "options": {
+            "responsive": true,
+            "plugins": {
+              "legend": {
+                "display": false
+              },
+              "title": {
+                "display": true,
+                "text": "Top 10 des marchands par montant"
+              },
+              "tooltip": {
+                "callbacks": {
+                  "label": "function(context) { return context.parsed.y.toFixed(2) + '€'; }"
+                }
+              }
+            },
+            "scales": {
+              "y": {
+                "beginAtZero": true,
+                "ticks": {
+                  "callback": "function(value) { return value.toFixed(0) + '€'; }"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 59750.03310000011,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:30:30.044159"
+}

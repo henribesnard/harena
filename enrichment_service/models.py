@@ -197,6 +197,7 @@ class StructuredTransaction:
             is_future=tx.future,
             is_deleted=tx.deleted,
             category_name=category_name,  # ✅ Nom récupéré automatiquement
+            merchant_name=tx.merchant_name,  # ✅ Marchand récupéré depuis PostgreSQL
             balance_check_passed=balance_check_passed,
             quality_score=quality_score,
 

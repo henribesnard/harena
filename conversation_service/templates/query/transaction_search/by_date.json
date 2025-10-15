@@ -5,7 +5,7 @@
   "parameters": {
     "user_id": "{{user_id}}",
     "filters": {
-      "date": "{{date_range}}",
+      "date": "<<date_range>>",
       "transaction_type": "{{transaction_type}}",
       "category_name": "{{ categories if categories else null }}"
     },

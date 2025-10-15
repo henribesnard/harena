@@ -1,1 +1,0 @@
-# Tests suite for Harena project - New Architecture v2.0

@@ -307,18 +307,35 @@ class IntentClassifier:
    - Si "Bitcoin" N'EST PAS dans les catégories → query: "bitcoin crypto cryptomonnaie", transaction_type: "debit"
    - Si "spatial" N'EST PAS dans les catégories → query: "spatial espace astronomie", transaction_type: "debit"
 
-5. OPERATION_TYPE (SEULEMENT 6 VALEURS AUTORISÉES) :
-   - "paiements par carte" → operation_type: "card"
-   - "retraits espèces" → operation_type: "withdrawal"
-   - "cartes à débit différé" → operation_type: "deferred_debit_card"
-   - "prélèvements automatiques" → operation_type: "direct_debit"
-   - "virements" → operation_type: "transfer"
+5. TYPES DE TRANSACTION vs TYPES D'OPÉRATION (DISTINCTION CRITIQUE) :
+
+   🚨 RÈGLE FONDAMENTALE 🚨
+   - transaction_type: UNIQUEMENT "credit" OU "debit" (sens du flux d'argent)
+   - operation_type: type d'opération bancaire (carte, virement, retrait, etc.)
+
+   📊 TRANSACTION_TYPE (2 VALEURS SEULEMENT):
+   - "credit": argent qui RENTRE (salaire, virement reçu, remboursement, revenus)
+   - "debit": argent qui SORT (achats, paiements, retraits, virements sortants, dépenses)
+
+   🏦 OPERATION_TYPE (5 VALEURS AUTORISÉES - LISTE STRICTE EN BASE):
+   - "paiements par carte" → operation_type: "card", transaction_type: "debit"
+   - "retraits espèces" / "retraits d'argent" / "retraits DAB/ATM" → operation_type: "card", transaction_type: "debit"
+   - "prélèvements automatiques" → operation_type: "direct_debit", transaction_type: "debit"
+   - "virements" / "virements SEPA" / "transferts" → operation_type: "transfer" (PAS transaction_type!)
+   - "virements reçus" → operation_type: "transfer", transaction_type: "credit"
+   - "virements envoyés" / "virements sortants" → operation_type: "transfer", transaction_type: "debit"
+   - "abonnements récurrents" → operation_type: "direct_debit", transaction_type: "debit"
+   - "paiements contactless" / "sans contact" → operation_type: "card", transaction_type: "debit"
+   - "chèques" → operation_type: "check", transaction_type: "debit"
    - "opérations non identifiées" → operation_type: "unknown"
-   - "abonnements récurrents" → operation_type: "direct_debit"
-   - "paiements contactless" → operation_type: "card"
-   - "virements SEPA" → operation_type: "transfer"
-   - "chèques" → operation_type: "unknown"
-   - RÈGLE : NE PAS INVENTER - utiliser seulement: card, withdrawal, deferred_debit_card, unknown, direct_debit, transfer
+
+   ⚠️ RÈGLES CRITIQUES:
+   - NE JAMAIS utiliser "transfer" comme transaction_type → c'est TOUJOURS un operation_type
+   - Pour "virements", TOUJOURS extraire: operation_type="transfer" + transaction_type (credit OU debit selon contexte)
+   - Si le contexte ne précise pas le sens → ne pas mettre transaction_type (ou "all")
+   - NE PAS INVENTER de valeurs - VALEURS STRICTES: card, check, direct_debit, transfer, unknown
+   - Les retraits d'argent/espèces sont des opérations "card", PAS "withdrawal"
+   - Les chèques sont "check", PAS "unknown"
 
 === RÈGLES IMPORTANTES ===
 
@@ -334,11 +351,17 @@ class IntentClassifier:
 
 ✅ RAPPEL : Utiliser UNIQUEMENT les catégories listées dans le contexte dynamique ci-dessous
 
-• ACHATS GÉNÉRIQUES :
-  - "Mes achats" SEUL (sans marchand/catégorie/produit/filtre temporel ou autre) → categories: [catégories d'achats listées dans le contexte], transaction_type: "debit"
+• ACHATS GÉNÉRIQUES vs ACHATS SPÉCIFIQUES :
+  - "Mes achats" SEUL (sans marchand/catégorie/produit/filtre temporel ou autre) → categories: [toutes catégories d'achats listées dans le contexte], transaction_type: "debit"
+  - "Mes achats [catégorie spécifique]" (ex: "achats en ligne", "achats alimentaires") → categories: ["[catégorie spécifique]"], transaction_type: "debit"
   - SI période temporelle présente ("du weekend", "de mai", "d'hier", etc.) → NE JAMAIS extraire categories ! Retourner UNIQUEMENT: transaction_type: "debit", date_range: [période]
   - SI marchand présent → merchant: "[marchand]", transaction_type: "debit" (PAS de categories)
   - SI produit spécifique présent → query: "[produit] [mots-clés]", transaction_type: "debit" (PAS de categories)
+
+  ⚠️ ATTENTION CATÉGORIES SPÉCIFIQUES:
+  - "Mes achats en ligne" → categories: ["achats en ligne"] SEULEMENT (PAS toutes les catégories d'achats!)
+  - "Mes achats alimentaires" → categories: ["Alimentation"] SEULEMENT
+  - "Mes achats Tesla" → merchant: "Tesla" (PAS de categories)
 
   ⚠️ ATTENTION PRODUITS SPÉCIFIQUES :
   - "Mes achats Bitcoin" → query: "bitcoin crypto" (Bitcoin n'est PAS une catégorie, c'est un produit spécifique)
@@ -944,7 +967,39 @@ EXEMPLES:
             "entity_type": "operator"
         }
     ],
-    "reasoning": "Recherche de virements avec montant supérieur ou égal à 500 euros"
+    "reasoning": "Recherche de virements avec montant >= 500 euros - operation_type=transfer (PAS transaction_type)"
+}"""
+            },
+            {
+                "user": "Mes achats en ligne du week-end dernier",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_period",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "date_range",
+            "value": "last_weekend",
+            "confidence": 0.95,
+            "span": [19, 39],
+            "entity_type": "temporal"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 10],
+            "entity_type": "transaction_type"
+        },
+        {
+            "name": "categories",
+            "value": ["achats en ligne"],
+            "confidence": 0.95,
+            "span": [11, 22],
+            "entity_type": "category"
+        }
+    ],
+    "reasoning": "Achats en ligne d'une période spécifique - catégorie 'achats en ligne' UNIQUEMENT (pas toutes les catégories!)"
 }"""
             },
             {

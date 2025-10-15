@@ -1,0 +1,18 @@
+{
+  "question_id": "G008",
+  "category": "G_analyse",
+  "question": "Compare mes revenus de mai à ceux de juin",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 41.00740000285441,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T06:41:11.517884"
+}

@@ -1,0 +1,18 @@
+{
+  "question_id": "F011",
+  "category": "F_complexe",
+  "question": "Mes achats en ligne du week-end dernier",
+  "response_text": {
+    "message": "1. **Résumé personnel des résultats**  \nJe vois que vous cherchez à faire le point sur vos achats en ligne du week-end dernier, mais je n’ai trouvé aucune transaction correspondante dans vos données. Cela peut signifier que vous n’avez effectué aucun achat en ligne durant cette période, ou bien que les transactions n’ont pas encore été enregistrées.\n\n2. **Descriptions claires des transactions avec noms de marchands**  \nAucune transaction n’a été identifiée pour le week-end dernier. Si vous avez effectué des achats en ligne, il est possible qu’ils n’apparaissent pas encore dans votre relevé ou qu’ils aient été classés différemment.\n\n3. **Observations utiles pour vos finances**  \nC’est une bonne nouvelle si vous avez réussi à éviter les dépenses en ligne ce week-end ! Si toutefois vous pensez qu’il manque des transactions, je vous suggère de vérifier directement votre relevé bancaire ou d’attendre quelques jours pour que les opérations soient intégrées. N’hésitez pas à me tenir au courant si vous avez d’autres questions ou si vous souhaitez examiner une période différente 😊."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": "transaction_search",
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 37717.68010000051,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:31:08.272851"
+}

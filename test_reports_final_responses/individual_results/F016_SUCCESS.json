@@ -1,0 +1,18 @@
+{
+  "question_id": "F016",
+  "category": "F_complexe",
+  "question": "Mes paiements par carte de 15 euros ou moins",
+  "response_text": {
+    "message": "J'ai des difficultes e formuler une reponse. Veuillez reessayer."
+  },
+  "response_length": 3,
+  "has_response": true,
+  "intent_detected": null,
+  "transactions_found": 0,
+  "insights_count": 0,
+  "visualizations_count": 0,
+  "latency_ms": 54950.02639999984,
+  "api_success": true,
+  "error_message": null,
+  "timestamp": "2025-10-14T08:34:54.622268"
+}

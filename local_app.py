@@ -89,6 +89,71 @@ _configure_logging()
 _ensure_named_logger_filehandler()
 logger = logging.getLogger("harena_local")
 
+# Variable globale pour savoir si on doit logger (éviter duplications lors du reload)
+_should_log_router_inclusion = True
+
+# Détecte si nous sommes dans le process reloader parent d'uvicorn
+def _is_reload_parent():
+    """Retourne True si on est dans le process parent du reloader uvicorn
+
+    Solution simple : on regarde si c'est la première fois qu'on charge les routers.
+    À cause du reload mode d'uvicorn, create_app() est appelé 2 fois :
+    1. Dans le process parent (reloader)
+    2. Dans le process enfant (worker)
+
+    On utilise une variable globale pour ne logger qu'une seule fois.
+    """
+    global _should_log_router_inclusion
+    if _should_log_router_inclusion:
+        _should_log_router_inclusion = False
+        return False  # Première fois = on log
+    else:
+        return True  # Deuxième fois = on skip
+
+# Filtre pour éviter les logs dupliqués en mode reload
+class DeduplicationFilter(logging.Filter):
+    """Filtre qui garde trace des logs récents pour éviter les doublons"""
+    def __init__(self):
+        super().__init__()
+        self._recent_logs = {}
+        self._window = 0.5  # Fenêtre de 0.5 secondes pour considérer un log comme dupliqué (réduit pour mieux détecter)
+
+    def filter(self, record):
+        import time
+        # Créer une clé unique basée sur le message et le niveau
+        key = f"{record.levelname}:{record.getMessage()}"
+        current_time = time.time()
+
+        # Vérifier si ce log a déjà été émis récemment
+        if key in self._recent_logs:
+            last_time = self._recent_logs[key]
+            if current_time - last_time < self._window:
+                return False  # Bloquer le log dupliqué
+
+        # Enregistrer ce log
+        self._recent_logs[key] = current_time
+
+        # Nettoyer les vieux logs (garder max 200 entrées pour plus de coverage)
+        if len(self._recent_logs) > 200:
+            cutoff = current_time - self._window
+            self._recent_logs = {k: v for k, v in self._recent_logs.items() if v > cutoff}
+
+        return True
+
+# Appliquer le filtre de déduplication de manière globale
+dedup_filter = DeduplicationFilter()
+
+# Appliquer le filtre à TOUS les handlers existants du root logger
+root_logger = logging.getLogger()
+root_logger.addFilter(dedup_filter)
+for handler in root_logger.handlers:
+    handler.addFilter(dedup_filter)
+
+# Appliquer aussi au logger local
+logger.addFilter(dedup_filter)
+for handler in logger.handlers:
+    handler.addFilter(dedup_filter)
+
 # Attacher explicitement les loggers Uvicorn d'accès/erreurs au même fichier pour visibilité
 def _attach_uvicorn_loggers():
     try:
@@ -133,6 +198,7 @@ class ServiceLoader:
         self.conversation_service_error = None
         self.metric_service_initialized = False
         self.metric_service_error = None
+        self.should_log = True  # Par défaut, logger activé
 
     def load_service_router(self, app: FastAPI, service_name: str, router_path: str, prefix: str):
         """Charge et enregistre un router de service"""
@@ -170,28 +236,32 @@ class ServiceLoader:
                     from sqlalchemy import text
                     with engine.connect() as conn:
                         conn.execute(text("SELECT 1"))
-                    logger.info(f"OK {service_name}: Connexion DB OK")
+                    if self.should_log:
+                        logger.info(f"OK {service_name}: Connexion DB OK")
                     return True
                 except Exception as e:
                     logger.error(f"❌ {service_name}: Connexion DB échouée - {str(e)}")
                     return False
-            
+
             # Pour les autres services, essayer d'importer le main
             try:
                 main_module = __import__(f"{module_path}.main", fromlist=["app"])
-                
+
                 # Vérifier l'existence de l'app
                 if hasattr(main_module, "app") or hasattr(main_module, "create_app"):
-                    logger.info(f"OK {service_name}: Module principal OK")
+                    if self.should_log:
+                        logger.info(f"OK {service_name}: Module principal OK")
                     return True
                 else:
-                    logger.warning(f"⚠️ {service_name}: Pas d'app FastAPI trouvée")
+                    if self.should_log:
+                        logger.warning(f"⚠️ {service_name}: Pas d'app FastAPI trouvée")
                     return False
             except ImportError:
                 # Si pas de main.py, c'est pas forcément un problème (comme db_service)
-                logger.info(f"ℹ️ {service_name}: Pas de main.py (normal pour certains services)")
+                if self.should_log:
+                    logger.info(f"ℹ️ {service_name}: Pas de main.py (normal pour certains services)")
                 return True
-                
+
         except Exception as e:
             logger.error(f"❌ {service_name}: Échec vérification - {str(e)}")
             return False
@@ -203,7 +273,19 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("BOOT Demarrage Harena Finance Platform - LOCAL DEV")
+        # Ne logger que dans le process worker (éviter duplication dans le reloader)
+        import multiprocessing
+        is_main_process = multiprocessing.current_process().name == 'MainProcess'
+        is_reload_parent = hasattr(sys, '_called_from_test') or 'StatReload' in str(type(sys.modules.get('__main__')))
+
+        # On veut logger uniquement dans le process uvicorn worker, pas dans le reloader parent
+        should_log = not (is_main_process and 'uvicorn' in sys.modules)
+
+        if should_log:
+            logger.info("BOOT Demarrage Harena Finance Platform - LOCAL DEV")
+        else:
+            # Process parent du reloader, on skip les logs verbeux
+            pass
         
         # Test DB critique
         try:
@@ -211,7 +293,8 @@ def create_app():
             from sqlalchemy import text
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            logger.info("OK Base de données connectée")
+            if should_log:
+                logger.info("OK Base de données connectée")
         except Exception as e:
             logger.error(f"❌ DB critique: {e}")
             raise RuntimeError("Database connection failed")
@@ -226,6 +309,9 @@ def create_app():
             ("metric_service", "metric_service"),
         ]
         
+        # Sauvegarder should_log dans loader pour utilisation dans check_service_health
+        loader.should_log = should_log
+
         for service_name, module_path in services_health:
             loader.check_service_health(service_name, module_path)
         
@@ -233,53 +319,61 @@ def create_app():
         # pour garantir leur présence dans l'OpenAPI schema
 
         # 3. Enrichment Service - VERSION ELASTICSEARCH UNIQUEMENT (INCHANGÉ)
-        logger.info("INFO Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
+        if should_log:
+            logger.info("INFO Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
         try:
             # Vérifier BONSAI_URL pour enrichment_service
             bonsai_url = settings.BONSAI_URL
             if not bonsai_url:
-                logger.warning("⚠️ BONSAI_URL non configurée - enrichment_service sera en mode dégradé")
+                if should_log:
+                    logger.warning("⚠️ BONSAI_URL non configurée - enrichment_service sera en mode dégradé")
                 enrichment_elasticsearch_available = False
                 enrichment_init_success = False
             else:
-                logger.info(f"CONF BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
+                if should_log:
+                    logger.info(f"CONF BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
                 enrichment_elasticsearch_available = True
-                
+
                 # Initialiser les composants enrichment_service
                 try:
-                    logger.info("INFO Initialisation des composants enrichment_service...")
+                    if should_log:
+                        logger.info("INFO Initialisation des composants enrichment_service...")
                     from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
                     from enrichment_service.core.processor import ElasticsearchTransactionProcessor
-                    
+
                     # Créer et initialiser le client Elasticsearch pour enrichment
                     enrichment_elasticsearch_client = ElasticsearchClient()
                     await enrichment_elasticsearch_client.initialize()
-                    logger.info("OK Enrichment Elasticsearch client initialisé")
-                    
+                    if should_log:
+                        logger.info("OK Enrichment Elasticsearch client initialisé")
+
                     # Créer le processeur
                     enrichment_processor = ElasticsearchTransactionProcessor(enrichment_elasticsearch_client)
-                    logger.info("OK Enrichment processor créé")
-                    
+                    if should_log:
+                        logger.info("OK Enrichment processor créé")
+
                     # Injecter dans les routes enrichment_service
                     import enrichment_service.api.routes as enrichment_routes
                     enrichment_routes.elasticsearch_client = enrichment_elasticsearch_client
                     enrichment_routes.elasticsearch_processor = enrichment_processor
-                    logger.info("OK Instances injectées dans enrichment_service routes")
-                    
+                    if should_log:
+                        logger.info("OK Instances injectées dans enrichment_service routes")
+
                     enrichment_init_success = True
-                    
+
                 except Exception as e:
                     logger.error(f"❌ Erreur initialisation composants enrichment: {e}")
                     enrichment_init_success = False
-            
+
             # Note: Router enrichment_service inclus dans create_app()
             routes_count = 8  # Nombre approximatif pour les statuts
-            
+
             if enrichment_elasticsearch_available and enrichment_init_success:
-                logger.info(f"OK enrichment_service: {routes_count} routes sur /api/v1/enrichment (AVEC initialisation)")
+                if should_log:
+                    logger.info(f"OK enrichment_service: {routes_count} routes sur /api/v1/enrichment (AVEC initialisation)")
                 loader.services_status["enrichment_service"] = {
-                    "status": "ok", 
-                    "routes": routes_count, 
+                    "status": "ok",
+                    "routes": routes_count,
                     "prefix": "/api/v1/enrichment",
                     "architecture": "elasticsearch_only",
                     "version": "2.0.0-elasticsearch",
@@ -287,7 +381,8 @@ def create_app():
                     "initialized": True
                 }
             else:
-                logger.warning(f"⚠️ enrichment_service: {routes_count} routes chargées en mode dégradé")
+                if should_log:
+                    logger.warning(f"⚠️ enrichment_service: {routes_count} routes chargées en mode dégradé")
                 loader.services_status["enrichment_service"] = {
                     "status": "degraded", 
                     "routes": routes_count, 
@@ -309,46 +404,54 @@ def create_app():
             }
 
         # 4. Search Service - VERSION FINALE CORRIGÉE
-        logger.info("INFO Chargement et initialisation du search_service...")
+        if should_log:
+            logger.info("INFO Chargement et initialisation du search_service...")
         try:
             # Vérifier BONSAI_URL
             bonsai_url = settings.BONSAI_URL
             if not bonsai_url:
                 raise ValueError("BONSAI_URL n'est pas configurée")
-            
-            logger.info(f"CONF BONSAI_URL configurée: {bonsai_url[:50]}...")
-            
+
+            if should_log:
+                logger.info(f"CONF BONSAI_URL configurée: {bonsai_url[:50]}...")
+
             # OK CORRECTION CRITIQUE : Import correct de mes classes corrigées
             from search_service.core.elasticsearch_client import ElasticsearchClient  # OK CORRIGÉ
             from search_service.core.search_engine import SearchEngine
             from search_service.api.routes import router as search_router, initialize_search_engine
-            
+
             # Initialiser le client Elasticsearch directement
-            logger.info("CONF Initialisation du client Elasticsearch...")
+            if should_log:
+                logger.info("CONF Initialisation du client Elasticsearch...")
             elasticsearch_client = ElasticsearchClient()
             await elasticsearch_client.initialize()
-            logger.info("OK Client Elasticsearch initialisé")
-            
+            if should_log:
+                logger.info("OK Client Elasticsearch initialisé")
+
             # Test de connexion
             health = await elasticsearch_client.health_check()
             if health.get("status") != "healthy":
-                logger.warning(f"⚠️ Elasticsearch health: {health}")
+                if should_log:
+                    logger.warning(f"⚠️ Elasticsearch health: {health}")
             else:
-                logger.info("OK Test de connexion Elasticsearch réussi")
-            
+                if should_log:
+                    logger.info("OK Test de connexion Elasticsearch réussi")
+
             # OK CORRECTION FINALE : Initialisation directe du moteur avec mes corrections
             search_engine = SearchEngine(
                 elasticsearch_client=elasticsearch_client,
                 cache_enabled=True
             )
-            logger.info("INIT SearchEngine initialisé avec TOUTES mes corrections!")
-            
+            if should_log:
+                logger.info("INIT SearchEngine initialisé avec TOUTES mes corrections!")
+
             # Injecter dans les routes
             initialize_search_engine(elasticsearch_client)
-            
+
             # Note: Router search_service inclus dans create_app()
             routes_count = 5  # Nombre approximatif pour les statuts
-            logger.info(f"OK search_service: {routes_count} routes sur /api/v1/search")
+            if should_log:
+                logger.info(f"OK search_service: {routes_count} routes sur /api/v1/search")
             
             # Mettre dans app.state
             app.state.service_initialized = True
@@ -367,12 +470,13 @@ def create_app():
                 "architecture": "corrected_final_v2"  # OK Version marquée
             }
             
-            logger.info("🎉 search_service: Complètement initialisé avec corrections FINALES!")
+            if should_log:
+                logger.info("🎉 search_service: Complètement initialisé avec corrections FINALES!")
             
         except Exception as e:
             error_msg = f"Erreur initialisation search_service: {str(e)}"
             logger.error(f"❌ {error_msg}")
-            logger.error(f"❌ Stacktrace: ", exc_info=True)
+            logger.error(f"❌ Stacktrace: ")  # exc_info supprimé
             
             # Marquer l'échec
             app.state.service_initialized = False
@@ -389,7 +493,8 @@ def create_app():
             }
 
         # 5. Conversation Service v2.0
-        logger.info("💬 Chargement et initialisation du conversation_service v2.0...")
+        if should_log:
+            logger.info("💬 Chargement et initialisation du conversation_service v2.0...")
         try:
             # Import de la nouvelle architecture v2.0
             from conversation_service.api.routes.conversation import router as conversation_router
@@ -416,9 +521,11 @@ def create_app():
             }
 
             if conversation_initialized:
-                logger.info("OK conversation_service v2.0: Pipeline complet initialise (5 stages)")
+                if should_log:
+                    logger.info("OK conversation_service v2.0: Pipeline complet initialise (5 stages)")
             else:
-                logger.warning(f"WARNING conversation_service v2.0: Echec initialisation - {app_state.initialization_error}")
+                if should_log:
+                    logger.warning(f"WARNING conversation_service v2.0: Echec initialisation - {app_state.initialization_error}")
 
         except Exception as e:
             logger.error(f"ERROR conversation_service v2.0: {e}")
@@ -431,14 +538,16 @@ def create_app():
             }
 
         # 6. Metric Service
-        logger.info("📊 Chargement et initialisation du metric_service...")
+        if should_log:
+            logger.info("📊 Chargement et initialisation du metric_service...")
         try:
             # Initialiser Redis cache pour metric_service
             from metric_service.core.cache import cache_manager
 
             # Connecter Redis
             await cache_manager.connect()
-            logger.info("OK Metric Service: Redis cache connecté")
+            if should_log:
+                logger.info("OK Metric Service: Redis cache connecté")
 
             # Note: Router metric_service inclus dans create_app()
             routes_count = 9  # Trends (2) + Health (4) + Patterns (1) + Forecasts (2)
@@ -463,12 +572,13 @@ def create_app():
                 ]
             }
 
-            logger.info("OK metric_service: Initialisé avec Prophet ML forecasting")
+            if should_log:
+                logger.info("OK metric_service: Initialisé avec Prophet ML forecasting")
 
         except Exception as e:
             error_msg = f"Erreur initialisation metric_service: {str(e)}"
             logger.error(f"❌ {error_msg}")
-            logger.error(f"❌ Stacktrace: ", exc_info=True)
+            logger.error(f"❌ Stacktrace: ")  # exc_info supprimé
 
             loader.metric_service_initialized = False
             loader.metric_service_error = error_msg
@@ -481,20 +591,23 @@ def create_app():
 
         # Compter les services réussis (INCHANGÉ)
         successful_services = len([s for s in loader.services_status.values() if s.get("status") in ["ok", "degraded"]])
-        logger.info(f"OK Démarrage terminé: {successful_services} services chargés")
-        
+        if should_log:
+            logger.info(f"OK Démarrage terminé: {successful_services} services chargés")
+
         # Rapport final détaillé
         ok_services = [name for name, status in loader.services_status.items() if status.get("status") == "ok"]
         degraded_services = [name for name, status in loader.services_status.items() if status.get("status") == "degraded"]
         failed_services = [name for name, status in loader.services_status.items() if status.get("status") == "error"]
-        
-        logger.info(f"📊 Services OK: {', '.join(ok_services)}")
-        if degraded_services:
+
+        if should_log:
+            logger.info(f"📊 Services OK: {', '.join(ok_services)}")
+        if degraded_services and should_log:
             logger.warning(f"⚠️ Services dégradés mais fonctionnels: {', '.join(degraded_services)}")
         if failed_services:
             logger.error(f"❌ Services en erreur d'initialisation: {', '.join(failed_services)}")
 
-        logger.info("🎉 Plateforme Harena complètement déployée!")
+        if should_log:
+            logger.info("🎉 Plateforme Harena complètement déployée!")
 
         try:
             yield
@@ -548,12 +661,13 @@ def create_app():
     # ========================================
     # INCLUSION DES ROUTERS (déplacé du lifespan)
     # ========================================
-    
+
     # 1. User Service
     try:
         from user_service.api.endpoints.users import router as user_router
         app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
-        logger.info("OK user_service router included")
+        if not _is_reload_parent():
+            logger.info("OK user_service router included")
     except Exception as e:
         logger.error(f"❌ User Service router: {e}")
 
@@ -572,7 +686,8 @@ def create_app():
             module = __import__(module_path, fromlist=["router"])
             router = getattr(module, "router")
             app.include_router(router, prefix=prefix, tags=[tag])
-            logger.info(f"OK {module_path.split('.')[-1]} router included")
+            if not _is_reload_parent():
+                logger.info(f"OK {module_path.split('.')[-1]} router included")
         except Exception as e:
             logger.error(f"❌ {module_path}: {e}")
 
@@ -580,7 +695,8 @@ def create_app():
     try:
         from enrichment_service.api.routes import router as enrichment_router
         app.include_router(enrichment_router, prefix="/api/v1/enrichment", tags=["enrichment"])
-        logger.info("OK enrichment_service router included")
+        if not _is_reload_parent():
+            logger.info("OK enrichment_service router included")
     except Exception as e:
         logger.error(f"❌ Enrichment Service router: {e}")
 
@@ -588,7 +704,8 @@ def create_app():
     try:
         from search_service.api.routes import router as search_router
         app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-        logger.info("OK search_service router included")
+        if not _is_reload_parent():
+            logger.info("OK search_service router included")
     except Exception as e:
         logger.error(f"❌ Search Service router: {e}")
 
@@ -596,7 +713,8 @@ def create_app():
     try:
         from conversation_service.api.routes.conversation import router as conversation_router
         app.include_router(conversation_router, tags=["conversation"])
-        logger.info("OK conversation_service v2.0 router included (Architecture Complete)")
+        if not _is_reload_parent():
+            logger.info("OK conversation_service v2.0 router included (Architecture Complete)")
     except Exception as e:
         logger.error(f"ERROR Conversation Service v2.0 router: {e}")
 
@@ -618,7 +736,8 @@ def create_app():
             router = getattr(module, "router")
             routes_count = len(router.routes) if hasattr(router, 'routes') else 0
             app.include_router(router, prefix=prefix, tags=[tag])
-            logger.info(f"OK {module_path.split('.')[-1]} router included - {routes_count} routes on {prefix}")
+            if not _is_reload_parent():
+                logger.info(f"OK {module_path.split('.')[-1]} router included - {routes_count} routes on {prefix}")
         except Exception as e:
             logger.error(f"❌ {module_path}: {e}")
             import traceback

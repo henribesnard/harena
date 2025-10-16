@@ -1,33 +1,68 @@
-# EC2 All-in-One avec Docker Compose
-# Héberge: Backend, PostgreSQL, Redis, Elasticsearch
-
-# Security Group
+# Security Group for All-in-One Instance
 resource "aws_security_group" "allinone" {
   name        = "harena-allinone-sg-${var.environment}"
-  description = "Security group for all-in-one EC2"
+  description = "Security group for Harena all-in-one instance"
   vpc_id      = var.vpc_id
 
-  # HTTP pour le backend API
-  ingress {
-    from_port   = 8000
-    to_port     = 8001
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Backend API"
-  }
+  # SSH via SSM (no inbound needed)
 
-  # PostgreSQL pour accès dev (DBeaver, etc.)
+  # PostgreSQL - accessible from your IP only
   ingress {
+    description = "PostgreSQL from allowed IP"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "PostgreSQL database access"
+    cidr_blocks = [var.allowed_ip]
   }
 
-  # SSH via SSM uniquement (pas de port 22 ouvert)
+  # Redis - accessible from your IP only
+  ingress {
+    description = "Redis from allowed IP"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ip]
+  }
 
+  # Elasticsearch - accessible from your IP only
+  ingress {
+    description = "Elasticsearch from allowed IP"
+    from_port   = 9200
+    to_port     = 9200
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ip]
+  }
+
+  # Backend API - public access
+  ingress {
+    description = "Backend API"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Frontend HTTP - public access
+  ingress {
+    description = "Frontend HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Frontend HTTPS - public access
+  ingress {
+    description = "Frontend HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Outbound - allow all
   egress {
+    description = "Allow all outbound"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -39,9 +74,9 @@ resource "aws_security_group" "allinone" {
   }
 }
 
-# IAM Role
-resource "aws_iam_role" "ec2" {
-  name = "harena-ec2-allinone-role-${var.environment}"
+# IAM Role for EC2 (SSM access)
+resource "aws_iam_role" "ec2_role" {
+  name = "harena-ec2-role-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -57,145 +92,103 @@ resource "aws_iam_role" "ec2" {
   })
 
   tags = {
-    Name = "harena-ec2-allinone-role-${var.environment}"
+    Name = "harena-ec2-role-${var.environment}"
   }
 }
 
-# SSM Access
-resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.ec2.name
+# Attach SSM policy
+resource "aws_iam_role_policy_attachment" "ssm_policy" {
+  role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# CloudWatch Logs
-resource "aws_iam_role_policy_attachment" "cloudwatch" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-}
-
-# ECR Access Policy
-resource "aws_iam_policy" "ecr_access" {
-  name        = "harena-ec2-ecr-access-${var.environment}"
-  description = "Allow EC2 to pull images from ECR"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:DescribeRepositories",
-          "ecr:ListImages"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          "arn:aws:s3:::${var.backup_s3_bucket}",
-          "arn:aws:s3:::${var.backup_s3_bucket}/*"
-        ]
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecr" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = aws_iam_policy.ecr_access.arn
-}
-
 # Instance Profile
-resource "aws_iam_instance_profile" "ec2" {
-  name = "harena-ec2-allinone-profile-${var.environment}"
-  role = aws_iam_role.ec2.name
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "harena-ec2-profile-${var.environment}"
+  role = aws_iam_role.ec2_role.name
+
+  tags = {
+    Name = "harena-ec2-profile-${var.environment}"
+  }
 }
 
-# Ubuntu 22.04 ARM64 AMI
-data "aws_ami" "ubuntu_arm" {
+# Get latest Amazon Linux 2023 ARM64 AMI
+data "aws_ami" "amazon_linux_2023_arm" {
   most_recent = true
-  owners      = ["099720109477"]
+  owners      = ["amazon"]
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-*"]
+    values = ["al2023-ami-*-arm64"]
   }
 
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+
+  filter {
+    name   = "architecture"
+    values = ["arm64"]
+  }
 }
 
-# User data pour installer Docker et Docker Compose
+# User Data Script
 locals {
-  user_data = templatefile("${path.module}/user_data.sh", {
+  user_data = templatefile("${path.module}/user-data.sh", {
     db_name          = var.db_name
     db_username      = var.db_username
     db_password      = var.db_password
     redis_auth_token = var.redis_auth_token
-    deepseek_api_key = var.deepseek_api_key
     secret_key       = var.secret_key
-    environment      = var.environment
+    deepseek_api_key = var.deepseek_api_key
   })
 }
 
 # EC2 Instance
 resource "aws_instance" "allinone" {
-  ami           = data.aws_ami.ubuntu_arm.id
-  instance_type = var.instance_type
-
-  # Spot ou On-Demand
-  instance_market_options {
-    market_type = var.use_spot_instances ? "spot" : null
-
-    dynamic "spot_options" {
-      for_each = var.use_spot_instances ? [1] : []
-      content {
-        max_price          = var.spot_max_price
-        spot_instance_type = "one-time"
-      }
-    }
-  }
-
-  subnet_id                   = var.public_subnet_id
-  vpc_security_group_ids      = [aws_security_group.allinone.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2.name
-  associate_public_ip_address = true
+  ami                    = data.aws_ami.amazon_linux_2023_arm.id
+  instance_type          = var.instance_type
+  subnet_id              = var.public_subnet_id
+  vpc_security_group_ids = [aws_security_group.allinone.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
   root_block_device {
-    volume_size           = var.ebs_volume_size
     volume_type           = "gp3"
+    volume_size           = var.ebs_volume_size
+    delete_on_termination = false
     encrypted             = true
-    delete_on_termination = true
+
+    tags = {
+      Name = "harena-allinone-root-${var.environment}"
+    }
   }
 
   user_data = local.user_data
 
-  tags = {
-    Name = "harena-allinone-${var.environment}"
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
   }
 
-  lifecycle {
-    create_before_destroy = true
+  tags = {
+    Name         = "harena-allinone-${var.environment}"
+    Architecture = "All-in-One"
   }
 }
 
-# Elastic IP (optionnel mais recommandé)
+# Elastic IP
 resource "aws_eip" "allinone" {
-  instance = aws_instance.allinone.id
-  domain   = "vpc"
+  domain = "vpc"
 
   tags = {
     Name = "harena-allinone-eip-${var.environment}"
   }
+}
+
+# Associate Elastic IP
+resource "aws_eip_association" "allinone" {
+  instance_id   = aws_instance.allinone.id
+  allocation_id = aws_eip.allinone.id
 }

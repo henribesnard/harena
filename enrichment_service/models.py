@@ -206,6 +206,7 @@ class StructuredTransaction:
     def to_elasticsearch_document(self) -> Dict[str, Any]:
         """Convertit en document Elasticsearch."""
         doc = {
+            "document_type": "transaction",  # 🔧 Type de document pour différenciation
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
             "account_id": self.account_id,  # 🔗 Lien vers index accounts

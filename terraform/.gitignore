@@ -1,20 +1,23 @@
-# Terraform
+# Terraform files
 .terraform/
 *.tfstate
 *.tfstate.*
-*.tfstate.backup
+*.tfplan
 .terraform.lock.hcl
-crash.log
-crash.*.log
 
 # Sensitive files
 terraform.tfvars
 *.auto.tfvars
+
+# Logs
+*.log
+
+# Crash files
+crash.log
+crash.*.log
+
+# Override files
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-
-# CLI configuration
-.terraformrc
-terraform.rc

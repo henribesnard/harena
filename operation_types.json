@@ -1,0 +1,31 @@
+{
+  "operation_types": [
+    "Carte",
+    "Pr\u00e9l\u00e8vement",
+    "Virement",
+    "carte",
+    "Ch\u00e8que"
+  ],
+  "details": [
+    {
+      "type": "Carte",
+      "count": 4099
+    },
+    {
+      "type": "Pr\u00e9l\u00e8vement",
+      "count": 1360
+    },
+    {
+      "type": "Virement",
+      "count": 917
+    },
+    {
+      "type": "carte",
+      "count": 183
+    },
+    {
+      "type": "Ch\u00e8que",
+      "count": 167
+    }
+  ]
+}

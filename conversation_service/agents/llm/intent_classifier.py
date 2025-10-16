@@ -317,25 +317,29 @@ class IntentClassifier:
    - "credit": argent qui RENTRE (salaire, virement reçu, remboursement, revenus)
    - "debit": argent qui SORT (achats, paiements, retraits, virements sortants, dépenses)
 
-   🏦 OPERATION_TYPE (5 VALEURS AUTORISÉES - LISTE STRICTE EN BASE):
-   - "paiements par carte" → operation_type: "card", transaction_type: "debit"
-   - "retraits espèces" / "retraits d'argent" / "retraits DAB/ATM" → operation_type: "card", transaction_type: "debit"
-   - "prélèvements automatiques" → operation_type: "direct_debit", transaction_type: "debit"
-   - "virements" / "virements SEPA" / "transferts" → operation_type: "transfer" (PAS transaction_type!)
-   - "virements reçus" → operation_type: "transfer", transaction_type: "credit"
-   - "virements envoyés" / "virements sortants" → operation_type: "transfer", transaction_type: "debit"
-   - "abonnements récurrents" → operation_type: "direct_debit", transaction_type: "debit"
-   - "paiements contactless" / "sans contact" → operation_type: "card", transaction_type: "debit"
-   - "chèques" → operation_type: "check", transaction_type: "debit"
-   - "opérations non identifiées" → operation_type: "unknown"
+   🏦 OPERATION_TYPE (4 VALEURS STRICTES - LISTE EXACTE DE LA BASE):
+   ⚠️ VALEURS AUTORISÉES UNIQUEMENT (casse importante):
+   1. "Carte" (majuscule) - 4,099 transactions
+   2. "Prélèvement" (majuscule + accents) - 1,360 transactions
+   3. "Virement" (majuscule) - 917 transactions
+   4. "Chèque" (majuscule + accent) - 167 transactions
 
-   ⚠️ RÈGLES CRITIQUES:
-   - NE JAMAIS utiliser "transfer" comme transaction_type → c'est TOUJOURS un operation_type
-   - Pour "virements", TOUJOURS extraire: operation_type="transfer" + transaction_type (credit OU debit selon contexte)
-   - Si le contexte ne précise pas le sens → ne pas mettre transaction_type (ou "all")
-   - NE PAS INVENTER de valeurs - VALEURS STRICTES: card, check, direct_debit, transfer, unknown
-   - Les retraits d'argent/espèces sont des opérations "card", PAS "withdrawal"
-   - Les chèques sont "check", PAS "unknown"
+   📋 RÈGLES DE MAPPING (requête utilisateur → operation_type):
+   - "paiements par carte" / "achats carte" / "paiements contactless" → operation_type: "Carte"
+   - "retraits espèces" / "retrait DAB" / "retrait ATM" → operation_type: "Carte" (⚠️ PAS "retrait"!)
+   - "prélèvements automatiques" / "prélèvement SEPA" / "abonnements" → operation_type: "Prélèvement"
+   - "virements" / "virements SEPA" / "transferts bancaires" → operation_type: "Virement"
+   - "chèques" / "paiements par chèque" → operation_type: "Chèque"
+
+   🚨 RÈGLES CRITIQUES OPERATION_TYPE:
+   - NE JAMAIS inventer de valeurs (ex: "card", "direct_debit", "transfer", "withdrawal", "unknown")
+   - TOUJOURS utiliser les valeurs EXACTES de la base: "Carte", "Prélèvement", "Virement", "Chèque"
+   - Respecter STRICTEMENT la casse (majuscules + accents)
+   - NE PAS confondre operation_type avec transaction_type:
+     * operation_type = moyen de paiement (Carte, Prélèvement, Virement, Chèque)
+     * transaction_type = sens du flux (debit, credit, all)
+   - Les retraits d'espèces sont "Carte", PAS une catégorie séparée!
+   - Si l'utilisateur ne précise pas le moyen de paiement → NE PAS extraire operation_type
 
 === RÈGLES IMPORTANTES ===
 

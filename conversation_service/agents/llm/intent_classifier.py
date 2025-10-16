@@ -326,7 +326,6 @@ class IntentClassifier:
 
    📋 RÈGLES DE MAPPING (requête utilisateur → operation_type):
    - "paiements par carte" / "achats carte" / "paiements contactless" → operation_type: "Carte"
-   - "retraits espèces" / "retrait DAB" / "retrait ATM" → operation_type: "Carte" (⚠️ PAS "retrait"!)
    - "prélèvements automatiques" / "prélèvement SEPA" / "abonnements" → operation_type: "Prélèvement"
    - "virements" / "virements SEPA" / "transferts bancaires" → operation_type: "Virement"
    - "chèques" / "paiements par chèque" → operation_type: "Chèque"
@@ -338,7 +337,7 @@ class IntentClassifier:
    - NE PAS confondre operation_type avec transaction_type:
      * operation_type = moyen de paiement (Carte, Prélèvement, Virement, Chèque)
      * transaction_type = sens du flux (debit, credit, all)
-   - Les retraits d'espèces sont "Carte", PAS une catégorie séparée!
+   - ⚠️ RETRAITS ESPÈCES: Utiliser la catégorie "Retrait especes" (PAS operation_type)
    - Si l'utilisateur ne précise pas le moyen de paiement → NE PAS extraire operation_type
 
 === RÈGLES IMPORTANTES ===
@@ -768,6 +767,31 @@ EXEMPLES:
 }"""
             },
             {
+                "user": "Mes retraits espèces",
+                "assistant": """{
+    "intent_group": "transaction_search",
+    "intent_subtype": "by_category",
+    "confidence": 0.90,
+    "entities": [
+        {
+            "name": "categories",
+            "value": ["Retrait especes"],
+            "confidence": 0.95,
+            "span": [4, 20],
+            "entity_type": "categories"
+        },
+        {
+            "name": "transaction_type",
+            "value": "debit",
+            "confidence": 0.95,
+            "span": [4, 12],
+            "entity_type": "transaction_type"
+        }
+    ],
+    "reasoning": "Retraits espèces - utiliser la catégorie 'Retrait especes' spécifique (pas operation_type)"
+}"""
+            },
+            {
                 "user": "Mes achats du weekend",
                 "assistant": """{
     "intent_group": "transaction_search",
@@ -951,7 +975,7 @@ EXEMPLES:
     "entities": [
         {
             "name": "operation_type",
-            "value": "transfer",
+            "value": "Virement",
             "confidence": 0.95,
             "span": [4, 12],
             "entity_type": "operation_type"
@@ -971,7 +995,7 @@ EXEMPLES:
             "entity_type": "operator"
         }
     ],
-    "reasoning": "Recherche de virements avec montant >= 500 euros - operation_type=transfer (PAS transaction_type)"
+    "reasoning": "Recherche de virements avec montant >= 500 euros - operation_type=Virement (valeur française correcte)"
 }"""
             },
             {

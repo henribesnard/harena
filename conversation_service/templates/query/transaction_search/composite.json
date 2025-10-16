@@ -60,7 +60,7 @@
       "required": false,
       "type": "string",
       "source": "entities.operation_type",
-      "allowed_values": ["card", "check", "direct_debit", "transfer", "unknown"]
+      "allowed_values": ["Carte", "Chèque", "Prélèvement", "Virement"]
     },
     "page_size": {
       "required": false,

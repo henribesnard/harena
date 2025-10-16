@@ -1,0 +1,1 @@
+id,user_id,item_id,task_type,status,progress,parameters,result_summary,error_message,scheduled_at,started_at,completed_at,created_at,updated_at

@@ -1,0 +1,26 @@
+Backup PostgreSQL Harena
+Date: 2025-10-16T22:16:02.939333
+Database: harena
+Host: 63.35.52.216:5432
+Tables: 18
+Success: 18
+
+Tables sauvegardées:
+  - account_information
+  - alembic_version
+  - bridge_connections
+  - bridge_insights
+  - categories
+  - category_groups
+  - conversation_turns
+  - conversations
+  - loan_details
+  - raw_stocks
+  - raw_transactions
+  - sync_accounts
+  - sync_items
+  - sync_stats
+  - sync_tasks
+  - user_preferences
+  - users
+  - webhook_events

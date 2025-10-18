@@ -660,7 +660,7 @@ app = FastAPI(
 # IMPORTANT: Configuration CORS et JWT AVANT les routes
 # CORS doit être ajouté en premier pour être exécuté en dernier (ordre inverse FastAPI)
 environment = getattr(settings, 'ENVIRONMENT', 'production')
-if environment in ["development", "testing"]:
+if environment in ["development", "testing", "dev"]:
     cors_origins = ["*"]
 else:
     cors_origins = [

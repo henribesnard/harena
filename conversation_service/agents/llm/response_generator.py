@@ -899,6 +899,14 @@ ReGLES:
 - JAMAIS mentionner l'ID utilisateur ou les IDs techniques
 - Concentre-toi sur le nom du marchand et la description pour identifier les transactions
 
+IMPORTANT - Donnees de recherche:
+- Les AGREGATIONS FINANCIERES contiennent le NOMBRE TOTAL REEL de transactions et les montants totaux
+- Les transactions detaillees sont limitees (50 max) pour optimiser la performance
+- TOUJOURS utiliser les AGREGATIONS pour mentionner le nombre total de transactions
+- NE JAMAIS dire "j'ai trouve 50 transactions" - utiliser le total_transactions des agregations
+- Les transactions detaillees servent d'EXEMPLES pour illustrer les tendances et anomalies
+- Privilegier les AGREGATIONS et INSIGHTS pour les totaux et statistiques globales
+
 PROFIL UTILISATEUR:
 - Preferences: {request.user_profile.get('preferences', 'Aucune specifiee')}"""
         
@@ -973,9 +981,9 @@ PROFIL UTILISATEUR:
                 logger.info(f"✅ Contexte LLM: {len(filtered_results)} transactions envoyées au modèle")
 
             # Construire le résumé avec TOUTES les transactions filtrées
-            results_summary = f"DONNEES TROUVEES ({len(filtered_results)} transactions"
+            results_summary = f"TRANSACTIONS DETAILLEES (EXEMPLES - {len(filtered_results)} transactions affichées"
             if len(filtered_results) < len(request.search_results):
-                results_summary += f" sur {len(request.search_results)} total, limite appliquée"
+                results_summary += f", total dans agrégations"
             results_summary += "):\n"
 
             # Envoyer TOUTES les transactions filtrées au LLM (format compact JSON)
@@ -985,11 +993,11 @@ PROFIL UTILISATEUR:
         else:
             prompt_parts.append("DONNEES: Aucune donnee trouvee")
 
-        # Agrégations optimisées (optionnel mais utile pour les totaux)
+        # Agrégations optimisées - PRIORITE pour les totaux et statistiques
         if request.search_aggregations:
             formatted_aggs = self._format_aggregations_for_llm(request.search_aggregations)
             if formatted_aggs:
-                prompt_parts.append(f"AGREGATIONS FINANCIERES:\n{formatted_aggs}")
+                prompt_parts.append(f"AGREGATIONS FINANCIERES (UTILISER EN PRIORITE pour les totaux):\n{formatted_aggs}")
 
         # Insights automatiques
         if insights:

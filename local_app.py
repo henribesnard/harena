@@ -322,16 +322,16 @@ def create_app():
         if should_log:
             logger.info("INFO Chargement et initialisation enrichment_service (Elasticsearch uniquement)...")
         try:
-            # Vérifier BONSAI_URL pour enrichment_service
-            bonsai_url = settings.BONSAI_URL
-            if not bonsai_url:
+            # Vérifier ELASTICSEARCH_URL pour enrichment_service
+            elasticsearch_url = settings.ELASTICSEARCH_URL
+            if not elasticsearch_url:
                 if should_log:
-                    logger.warning("⚠️ BONSAI_URL non configurée - enrichment_service sera en mode dégradé")
+                    logger.warning("⚠️ ELASTICSEARCH_URL non configurée - enrichment_service sera en mode dégradé")
                 enrichment_elasticsearch_available = False
                 enrichment_init_success = False
             else:
                 if should_log:
-                    logger.info(f"CONF BONSAI_URL configurée pour enrichment: {bonsai_url[:50]}...")
+                    logger.info(f"CONF ELASTICSEARCH_URL configurée pour enrichment: {elasticsearch_url[:50]}...")
                 enrichment_elasticsearch_available = True
 
                 # Initialiser les composants enrichment_service
@@ -391,7 +391,7 @@ def create_app():
                     "version": "2.0.0-elasticsearch",
                     "elasticsearch_available": enrichment_elasticsearch_available,
                     "initialized": enrichment_init_success,
-                    "error": "BONSAI_URL not configured" if not enrichment_elasticsearch_available else "Initialization failed"
+                    "error": "ELASTICSEARCH_URL not configured" if not enrichment_elasticsearch_available else "Initialization failed"
                 }
                 
         except Exception as e:
@@ -407,13 +407,13 @@ def create_app():
         if should_log:
             logger.info("INFO Chargement et initialisation du search_service...")
         try:
-            # Vérifier BONSAI_URL
-            bonsai_url = settings.BONSAI_URL
-            if not bonsai_url:
-                raise ValueError("BONSAI_URL n'est pas configurée")
+            # Vérifier ELASTICSEARCH_URL
+            elasticsearch_url = settings.ELASTICSEARCH_URL
+            if not elasticsearch_url:
+                raise ValueError("ELASTICSEARCH_URL n'est pas configurée")
 
             if should_log:
-                logger.info(f"CONF BONSAI_URL configurée: {bonsai_url[:50]}...")
+                logger.info(f"CONF ELASTICSEARCH_URL configurée: {elasticsearch_url[:50]}...")
 
             # OK CORRECTION CRITIQUE : Import correct de mes classes corrigées
             from search_service.core.elasticsearch_client import ElasticsearchClient  # OK CORRIGÉ

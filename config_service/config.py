@@ -68,20 +68,21 @@ class GlobalSettings(BaseSettings):
     LOG_TO_FILE: bool = os.environ.get("LOG_TO_FILE", "False").lower() == "true"
     
     # ==========================================
-    # CONFIGURATION ELASTICSEARCH / SEARCHBOX / BONSAI
+    # CONFIGURATION ELASTICSEARCH
     # ==========================================
-    SEARCHBOX_URL: str = os.environ.get("SEARCHBOX_URL", "")
-    SEARCHBOX_API_KEY: str = os.environ.get("SEARCHBOX_API_KEY", "")
-    BONSAI_URL: str = os.environ.get("BONSAI_URL", "")
-    BONSAI_ACCESS_KEY: str = os.environ.get("BONSAI_ACCESS_KEY", "")
-    BONSAI_SECRET_KEY: str = os.environ.get("BONSAI_SECRET_KEY", "")
-    DISABLE_INDEX_TEMPLATE: bool = os.environ.get("DISABLE_INDEX_TEMPLATE", "False").lower() == "true"
-    
-    # Configuration Elasticsearch générale
+    # URL Elasticsearch (prioritaire - AWS ou autre)
+    ELASTICSEARCH_URL: str = os.environ.get("ELASTICSEARCH_URL", "")
     ELASTICSEARCH_HOST: str = os.environ.get("ELASTICSEARCH_HOST", "localhost")
     ELASTICSEARCH_PORT: int = int(os.environ.get("ELASTICSEARCH_PORT", "9200"))
     ELASTICSEARCH_INDEX: str = os.environ.get("ELASTICSEARCH_INDEX", "harena_transactions")
-    ELASTICSEARCH_URL: str = os.environ.get("ELASTICSEARCH_URL", "")
+    DISABLE_INDEX_TEMPLATE: bool = os.environ.get("DISABLE_INDEX_TEMPLATE", "False").lower() == "true"
+
+    # Legacy: BONSAI/SEARCHBOX (remplacé par ELASTICSEARCH_URL)
+    SEARCHBOX_URL: str = os.environ.get("SEARCHBOX_URL", "")
+    SEARCHBOX_API_KEY: str = os.environ.get("SEARCHBOX_API_KEY", "")
+    BONSAI_URL: str = os.environ.get("BONSAI_URL", "")  # Obsolète: utiliser ELASTICSEARCH_URL
+    BONSAI_ACCESS_KEY: str = os.environ.get("BONSAI_ACCESS_KEY", "")
+    BONSAI_SECRET_KEY: str = os.environ.get("BONSAI_SECRET_KEY", "")
     
     # ==========================================
     # CONFIGURATION QDRANT POUR LE STOCKAGE VECTORIEL
@@ -219,10 +220,11 @@ class GlobalSettings(BaseSettings):
     # ==========================================
     # URLS DES SERVICES
     # ==========================================
-    USER_SERVICE_URL: str = os.environ.get("USER_SERVICE_URL", "")
-    SYNC_SERVICE_URL: str = os.environ.get("SYNC_SERVICE_URL", "")
+    USER_SERVICE_URL: str = os.environ.get("USER_SERVICE_URL", "http://localhost:3000")
+    SYNC_SERVICE_URL: str = os.environ.get("SYNC_SERVICE_URL", "http://localhost:3004")
     TRANSACTION_VECTOR_SERVICE_URL: str = os.environ.get("TRANSACTION_VECTOR_SERVICE_URL", "")
-    SEARCH_SERVICE_URL: str = os.environ.get("SEARCH_SERVICE_URL", "http://localhost:8002/api/v1")
+    # IMPORTANT: NE PAS inclure /api/v1 ici car query_executor.py l'ajoute déjà
+    SEARCH_SERVICE_URL: str = os.environ.get("SEARCH_SERVICE_URL", "http://localhost:3001")
     
     # ==========================================
     # CONFIGURATION CORS

@@ -4,6 +4,17 @@ Bienvenue dans la documentation des API backend Harena déployées sur AWS.
 
 ## 📖 Fichiers disponibles
 
+### 🔍 Infrastructure Elasticsearch
+
+- **[BONSAI_CONFIGURATION.md](./BONSAI_CONFIGURATION.md)**
+  Configuration complète du cluster Bonsai en production (credentials, tests, monitoring)
+
+- **[ELASTICSEARCH_MIGRATION_GUIDE.md](./ELASTICSEARCH_MIGRATION_GUIDE.md)**
+  Guide complet de migration vers AWS ou autre service Elasticsearch
+
+- **[ELASTICSEARCH_MAPPING_DIFFERENCES.md](../ELASTICSEARCH_MAPPING_DIFFERENCES.md)**
+  Analyse comparative des mappings entre Bonsai et AWS
+
 ### 🚀 Pour commencer rapidement
 
 - **[BACKEND_ENDPOINTS_QUICK_REFERENCE.md](./BACKEND_ENDPOINTS_QUICK_REFERENCE.md)**

@@ -43,20 +43,20 @@ async def lifespan(app: FastAPI):
     # Vérification des configurations critiques
     config_issues = []
 
-    if not settings.BONSAI_URL and not getattr(settings, 'ELASTICSEARCH_URL', None):
-        config_issues.append("BONSAI_URL ou ELASTICSEARCH_URL non définie")
-        logger.warning("⚠️ BONSAI_URL non définie. Tentative avec ELASTICSEARCH_URL...")
+    if not settings.ELASTICSEARCH_URL:
+        config_issues.append("ELASTICSEARCH_URL non définie")
+        logger.warning("⚠️ ELASTICSEARCH_URL non définie")
 
-    if config_issues and not getattr(settings, 'ELASTICSEARCH_URL', None):
+    if config_issues:
         logger.error(f"❌ Problèmes de configuration détectés: {', '.join(config_issues)}")
         logger.error("💡 Service désactivé car Elasticsearch non configuré")
         # Ne pas raise l'erreur, juste logger et continuer sans Elasticsearch
         elasticsearch_client = None
         elasticsearch_processor = None
-    
+
     # 1. Initialisation du client Elasticsearch (si configuré)
     elasticsearch_success = False
-    if not config_issues or getattr(settings, 'ELASTICSEARCH_URL', None):
+    if not config_issues:
         try:
             elasticsearch_client = ElasticsearchClient()
             await elasticsearch_client.initialize()
@@ -178,7 +178,7 @@ async def health_check():
             "elasticsearch": {
                 "available": elasticsearch_available,
                 "initialized": elasticsearch_initialized,
-                "url_configured": bool(settings.BONSAI_URL),
+                "url_configured": bool(settings.ELASTICSEARCH_URL),
                 "index_name": elasticsearch_client.index_name if elasticsearch_client else None
             }
         },
@@ -237,7 +237,7 @@ async def advanced_diagnostic():
             "environment": settings.ENVIRONMENT
         },
         "configuration": {
-            "bonsai_url_set": bool(settings.BONSAI_URL),
+            "elasticsearch_url_set": bool(settings.ELASTICSEARCH_URL),
             "cors_origins_set": bool(settings.CORS_ORIGINS)
         },
         "elasticsearch_status": {},

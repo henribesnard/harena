@@ -118,8 +118,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Routes principales
-    app.include_router(router)
+    # Routes principales avec préfixe API v1
+    app.include_router(router, prefix="/api/v1/search")
     
     # Route de santé globale
     @app.get("/")

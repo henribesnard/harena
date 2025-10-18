@@ -235,7 +235,7 @@ few sample debit and credit transactions for 2025:
 ```
 
 This script runs `search_service/scripts/seed_transactions.py` and requires an
-Elasticsearch instance accessible via the `BONSAI_URL` environment variable
+Elasticsearch instance accessible via the `ELASTICSEARCH_URL` environment variable
 or a local node at `http://localhost:9200`.
 
 ## Elasticsearch index migration

@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Services applicatifs
+  # ============================================
+  # Note: PostgreSQL, Redis et Elasticsearch sont sur AWS (63.35.52.216)
+
+  # User Service - Gestion des utilisateurs et authentification
+  user_service:
+    build:
+      context: .
+      dockerfile: user_service/Dockerfile
+    container_name: harena_user_service
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
+      - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+    volumes:
+      - ./user_service:/app/user_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+
+  # Search Service - Recherche et indexation
+  search_service:
+    build:
+      context: .
+      dockerfile: search_service/Dockerfile
+    container_name: harena_search_service
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - REDIS_URL=${REDIS_URL}
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+    volumes:
+      - ./search_service:/app/search_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+
+  # Metric Service - Métriques et analytics
+  metric_service:
+    build:
+      context: .
+      dockerfile: metric_service/Dockerfile
+    container_name: harena_metric_service
+    ports:
+      - "3002:3002"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+    volumes:
+      - ./metric_service:/app/metric_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+
+  # Conversation Service - IA conversationnelle
+  conversation_service:
+    build:
+      context: .
+      dockerfile: conversation_service/Dockerfile
+    container_name: harena_conversation_service
+    ports:
+      - "3003:3003"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - API_V1_STR=${API_V1_STR}
+      - SEARCH_SERVICE_URL=http://harena_search_service:3001
+      - ENVIRONMENT=dev
+    volumes:
+      - ./conversation_service:/app/conversation_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+
+  # Sync Service - Synchronisation Bridge API
+  sync_service:
+    build:
+      context: .
+      dockerfile: sync_service/Dockerfile
+    container_name: harena_sync_service
+    ports:
+      - "3004:3004"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
+      - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
+      - BRIDGE_API_URL=${BRIDGE_API_URL}
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+    volumes:
+      - ./sync_service:/app/sync_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+
+  # Enrichment Service - Enrichissement des transactions
+  enrichment_service:
+    build:
+      context: .
+      dockerfile: enrichment_service/Dockerfile
+    container_name: harena_enrichment_service
+    ports:
+      - "3005:3005"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - REDIS_URL=${REDIS_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+    volumes:
+      - ./enrichment_service:/app/enrichment_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+
+networks:
+  harena-network:
+    driver: bridge

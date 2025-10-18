@@ -14,7 +14,7 @@ import os
 from config_service.config import settings
 
 # Ensure an Elasticsearch endpoint is configured for local runs
-os.environ.setdefault("BONSAI_URL", settings.BONSAI_URL or "http://localhost:9200")
+os.environ.setdefault("ELASTICSEARCH_URL", settings.ELASTICSEARCH_URL or "http://localhost:9200")
 
 from enrichment_service.storage.elasticsearch_client import ElasticsearchClient
 from enrichment_service.models import TransactionInput, StructuredTransaction

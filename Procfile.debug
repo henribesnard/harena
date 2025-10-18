@@ -1,1 +1,0 @@
-web: gunicorn heroku_app:app --log-file=- --log-level=debug --timeout=300 --preload

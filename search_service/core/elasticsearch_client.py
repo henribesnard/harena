@@ -14,35 +14,35 @@ _client_lock = threading.Lock()
 class ElasticsearchClient:
     """
     Client Elasticsearch unifié pour le search service
-    Basé sur BONSAI_URL et compatible avec l'architecture existante
+    Compatible avec AWS Elasticsearch et autres providers
     """
-    
+
     def __init__(self):
-        self.base_url = self._resolve_bonsai_url()
+        self.base_url = self._resolve_elasticsearch_url()
         self.index_name = settings.ELASTICSEARCH_INDEX
         self.session: Optional[aiohttp.ClientSession] = None
         self.ssl_context = ssl.create_default_context()
-        
+
         # Headers pour Elasticsearch
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
-        
+
         logger.info(f"✅ ElasticsearchClient initialized")
         logger.info(f"🔗 URL: {self.base_url}")
         logger.info(f"📋 Index: {self.index_name}")
-    
-    def _resolve_bonsai_url(self) -> str:
-        """Résout l'URL Bonsai depuis la configuration"""
-        if settings.BONSAI_URL and settings.BONSAI_URL.strip():
-            url = settings.BONSAI_URL.strip()
-            logger.info(f"🔗 Using BONSAI_URL: {url}")
+
+    def _resolve_elasticsearch_url(self) -> str:
+        """Résout l'URL Elasticsearch depuis la configuration"""
+        if settings.ELASTICSEARCH_URL and settings.ELASTICSEARCH_URL.strip():
+            url = settings.ELASTICSEARCH_URL.strip()
+            logger.info(f"🔗 Using ELASTICSEARCH_URL: {url}")
             return url
         else:
             raise RuntimeError(
-                "❌ BONSAI_URL not configured. Please set BONSAI_URL in your .env file.\n"
-                "Example: BONSAI_URL=https://your-cluster.eu-west-1.bonsaisearch.net:443"
+                "❌ ELASTICSEARCH_URL not configured. Please set ELASTICSEARCH_URL in your .env file.\n"
+                "Example: ELASTICSEARCH_URL=https://your-cluster.region.es.amazonaws.com:443"
             )
     
     async def initialize(self):

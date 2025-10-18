@@ -18,10 +18,10 @@ from enrichment_service.storage.index_management import ensure_template_and_poli
 logger = logging.getLogger("enrichment_service.elasticsearch")
 
 class ElasticsearchClient:
-    """Client HTTP pour indexer dans Bonsai Elasticsearch - Support dual index."""
-    
+    """Client HTTP pour indexer dans Elasticsearch - Support dual index."""
+
     def __init__(self):
-        self.base_url = settings.BONSAI_URL
+        self.base_url = settings.ELASTICSEARCH_URL
         self.transactions_index = "harena_transactions"  # Index des transactions (nettoyé)
         self.accounts_index = "harena_accounts"         # Nouvel index des comptes
         self.index_name = self.transactions_index  # Rétrocompatibilité
@@ -29,11 +29,11 @@ class ElasticsearchClient:
         self._initialized = False
         # Batch size used as a starting point for adaptive bulk indexing
         self.default_batch_size = 500
-        
+
     async def initialize(self):
         """Initialise la connexion Elasticsearch."""
         if not self.base_url:
-            raise ValueError("BONSAI_URL is required")
+            raise ValueError("ELASTICSEARCH_URL is required")
         
         # Créer une session HTTP persistante
         ssl_context = ssl.create_default_context()

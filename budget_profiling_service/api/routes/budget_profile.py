@@ -4,7 +4,7 @@ Routes API pour le profilage budgétaire
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import logging
 
 from budget_profiling_service.api.dependencies import get_db, get_current_user_id
@@ -57,12 +57,33 @@ class MonthlyAggregateResponse(BaseModel):
 
 
 class AnalyzeProfileRequest(BaseModel):
-    """Requête pour analyser le profil"""
+    """Requête pour analyser le profil avec validation renforcée"""
     months_analysis: Optional[int] = Field(
         default=None,
-        ge=1,
         description="Nombre de mois à analyser (None = toutes les transactions disponibles)"
     )
+
+    @field_validator('months_analysis')
+    @classmethod
+    def validate_months(cls, v: Optional[int]) -> Optional[int]:
+        """
+        Valide le nombre de mois demandé
+
+        Règles:
+        - None est accepté (analyse complète)
+        - Minimum: 1 mois
+        - Maximum: 60 mois (5 ans)
+        """
+        if v is None:
+            return v
+
+        if v < 1:
+            raise ValueError("months_analysis doit être au moins 1")
+
+        if v > 60:
+            raise ValueError("months_analysis ne peut pas dépasser 60 mois (5 ans)")
+
+        return v
 
 
 # ===== ENDPOINTS =====

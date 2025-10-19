@@ -21,8 +21,9 @@ class FixedChargeDetector:
 
     Critères de détection:
     - Récurrence mensuelle stable (±5 jours autour de la même date)
-    - Montant identique ou avec faible variance (±10%)
+    - Montant identique ou avec faible variance (±15%)
     - Minimum 3 occurrences pour confirmer
+    - Filtrage des marchands variables connus
     """
 
     # Catégories typiques de charges fixes
@@ -38,9 +39,41 @@ class FixedChargeDetector:
         'abonnements'
     ]
 
+    # Marchands variables connus (à exclure de la détection)
+    VARIABLE_MERCHANT_PATTERNS = [
+        'CARREFOUR', 'LECLERC', 'AUCHAN', 'INTERMARCHE', 'LIDL', 'ALDI',  # Supermarchés
+        'SHELL', 'TOTAL', 'BP', 'ESSO', 'AVIA',  # Stations essence
+        'AMAZON', 'FNAC', 'CDISCOUNT', 'EBAY',  # E-commerce
+        'RESTAURANT', 'BOULANGERIE', 'CAFE', 'BRASSERIE', 'PIZZERIA',  # Restauration
+        'UBER', 'BOLT', 'TAXI',  # Transport
+        'SNCF', 'RATP',  # Transport public
+        'PHARMACIE',  # Santé variable
+        'DECATHLON', 'SPORT',  # Sport/loisirs
+    ]
+
+    # Montant minimum pour considérer comme charge fixe (évite petits achats récurrents)
+    MIN_AMOUNT_THRESHOLD = 5.0
+
     def __init__(self, db_session: Session):
         self.db = db_session
         self.transaction_service = TransactionService(db_session)
+
+    def _is_known_variable_merchant(self, merchant_name: str) -> bool:
+        """
+        Vérifie si le marchand est connu pour être variable
+        (évite les faux positifs)
+
+        Args:
+            merchant_name: Nom du marchand
+
+        Returns:
+            True si le marchand est variable, False sinon
+        """
+        if not merchant_name:
+            return False
+
+        merchant_upper = merchant_name.upper()
+        return any(pattern in merchant_upper for pattern in self.VARIABLE_MERCHANT_PATTERNS)
 
     def detect_fixed_charges(
         self,
@@ -85,6 +118,11 @@ class FixedChargeDetector:
             # Analyser chaque groupe
             detected_charges = []
             for merchant, txs in merchant_groups.items():
+                # Filtrer les marchands variables connus
+                if self._is_known_variable_merchant(merchant):
+                    logger.debug(f"Exclusion marchand variable: {merchant}")
+                    continue
+
                 # Besoin d'au moins min_occurrences
                 if len(txs) < min_occurrences:
                     continue
@@ -98,6 +136,14 @@ class FixedChargeDetector:
                 )
 
                 if charge_info and charge_info['recurrence_confidence'] >= 0.7:
+                    # Vérifier montant minimum (évite petits achats récurrents)
+                    if charge_info['avg_amount'] < self.MIN_AMOUNT_THRESHOLD:
+                        logger.debug(
+                            f"Montant trop faible pour {merchant}: "
+                            f"{charge_info['avg_amount']:.2f}€"
+                        )
+                        continue
+
                     detected_charges.append(charge_info)
 
             logger.info(f"Détecté {len(detected_charges)} charges fixes")

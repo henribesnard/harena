@@ -58,8 +58,8 @@ class BudgetProfiler:
             avg_expenses = sum(m['total_expenses'] for m in monthly_aggregates) / len(monthly_aggregates)
             avg_savings = avg_income - avg_expenses
 
-            # 3. Taux d'épargne
-            savings_rate = (avg_savings / avg_income * 100) if avg_income > 0 else 0.0
+            # 3. Taux d'épargne (avec gestion robuste)
+            savings_rate = self._calculate_savings_rate(avg_savings, avg_income)
 
             # 4. Récupérer charges fixes
             fixed_charges = self.fixed_charge_detector.get_user_fixed_charges(user_id)
@@ -118,6 +118,33 @@ class BudgetProfiler:
         except Exception as e:
             logger.error(f"Erreur calcul profil: {e}", exc_info=True)
             return self._empty_profile()
+
+    def _calculate_savings_rate(self, avg_savings: float, avg_income: float) -> float:
+        """
+        Calcule le taux d'épargne avec gestion robuste des cas limites
+
+        Args:
+            avg_savings: Épargne moyenne mensuelle (peut être négative)
+            avg_income: Revenus moyens mensuels
+
+        Returns:
+            Taux d'épargne en pourcentage (-100 à +100)
+        """
+        if avg_income <= 0:
+            logger.warning(f"Revenus nuls ou négatifs ({avg_income}), taux d'épargne indéterminé")
+            return 0.0
+
+        rate = (avg_savings / avg_income) * 100
+
+        # Limiter à des valeurs réalistes
+        if rate > 100:
+            logger.warning(f"Taux d'épargne anormalement élevé: {rate:.2f}% (limité à 100%)")
+            return 100.0
+        elif rate < -100:
+            logger.warning(f"Taux d'épargne anormalement bas: {rate:.2f}% (limité à -100%)")
+            return -100.0
+
+        return round(rate, 2)
 
     def _categorize_expenses(
         self,

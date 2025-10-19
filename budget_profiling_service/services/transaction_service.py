@@ -3,7 +3,7 @@ Service de récupération et préparation des transactions pour analyse
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func, case, extract
 from sqlalchemy.orm import Session
 import logging
 
@@ -122,7 +122,7 @@ class TransactionService:
         months: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        Agrégations mensuelles (revenus, dépenses)
+        Agrégations mensuelles (revenus, dépenses) - OPTIMISÉ DB-SIDE
 
         Args:
             user_id: ID utilisateur
@@ -141,39 +141,71 @@ class TransactionService:
             ]
         """
         try:
-            transactions = self.get_user_transactions(
-                user_id,
-                months_back=months
+            # Calculer date de début
+            if months is None:
+                start_date = datetime(2000, 1, 1)
+            else:
+                start_date = datetime.now() - timedelta(days=30 * months)
+
+            end_date = datetime.now()
+
+            logger.info(f"Agrégats mensuels user {user_id} (DB-side) de {start_date} à {end_date}")
+
+            # Agrégation DB-side avec GROUP BY sur année/mois
+            query = (
+                select(
+                    # Colonnes groupées
+                    extract('year', RawTransaction.date).label('year'),
+                    extract('month', RawTransaction.date).label('month'),
+                    # Agrégations
+                    func.sum(
+                        case(
+                            (RawTransaction.amount > 0, RawTransaction.amount),
+                            else_=0
+                        )
+                    ).label('total_income'),
+                    func.sum(
+                        case(
+                            (RawTransaction.amount < 0, func.abs(RawTransaction.amount)),
+                            else_=0
+                        )
+                    ).label('total_expenses'),
+                    func.count(RawTransaction.id).label('transaction_count')
+                )
+                .where(
+                    and_(
+                        RawTransaction.user_id == user_id,
+                        RawTransaction.date >= start_date,
+                        RawTransaction.date <= end_date,
+                        RawTransaction.deleted == False
+                    )
+                )
+                .group_by(
+                    extract('year', RawTransaction.date),
+                    extract('month', RawTransaction.date)
+                )
+                .order_by('year', 'month')
             )
 
-            # Grouper par mois
-            monthly_data = {}
-            for tx in transactions:
-                month_key = tx['date'].strftime('%Y-%m')
+            result_set = self.db.execute(query)
 
-                if month_key not in monthly_data:
-                    monthly_data[month_key] = {
-                        'month': month_key,
-                        'total_income': 0.0,
-                        'total_expenses': 0.0,
-                        'transaction_count': 0
-                    }
+            # Formater résultats
+            results = []
+            for row in result_set:
+                month_str = f"{int(row.year)}-{int(row.month):02d}"
+                total_income = float(row.total_income or 0)
+                total_expenses = float(row.total_expenses or 0)
 
-                if tx['is_credit']:
-                    monthly_data[month_key]['total_income'] += tx['amount']
-                elif tx['is_debit']:
-                    monthly_data[month_key]['total_expenses'] += abs(tx['amount'])
+                results.append({
+                    'month': month_str,
+                    'total_income': round(total_income, 2),
+                    'total_expenses': round(total_expenses, 2),
+                    'net_cashflow': round(total_income - total_expenses, 2),
+                    'transaction_count': int(row.transaction_count or 0)
+                })
 
-                monthly_data[month_key]['transaction_count'] += 1
-
-            # Calculer net cashflow et trier
-            result = []
-            for month_key in sorted(monthly_data.keys()):
-                data = monthly_data[month_key]
-                data['net_cashflow'] = data['total_income'] - data['total_expenses']
-                result.append(data)
-
-            return result
+            logger.info(f"Agrégats calculés: {len(results)} mois")
+            return results
 
         except Exception as e:
             logger.error(f"Erreur calcul agrégats mensuels: {e}", exc_info=True)
@@ -185,7 +217,7 @@ class TransactionService:
         months: Optional[int] = None
     ) -> Dict[str, float]:
         """
-        Répartition des dépenses par catégorie (MOYENNES MENSUELLES)
+        Répartition des dépenses par catégorie (MOYENNES MENSUELLES) - OPTIMISÉ DB-SIDE
 
         Returns:
             {
@@ -196,40 +228,77 @@ class TransactionService:
             }
         """
         try:
-            transactions = self.get_user_transactions(
-                user_id,
-                months_back=months
+            # Calculer date de début
+            if months is None:
+                start_date = datetime(2000, 1, 1)
+            else:
+                start_date = datetime.now() - timedelta(days=30 * months)
+
+            end_date = datetime.now()
+
+            logger.info(f"Breakdown catégories user {user_id} (DB-side) de {start_date} à {end_date}")
+
+            # 1. Compter le nombre de mois distincts (pour calculer moyennes)
+            months_query = (
+                select(
+                    func.count(
+                        func.distinct(
+                            func.concat(
+                                extract('year', RawTransaction.date),
+                                '-',
+                                extract('month', RawTransaction.date)
+                            )
+                        )
+                    ).label('nb_months')
+                )
+                .where(
+                    and_(
+                        RawTransaction.user_id == user_id,
+                        RawTransaction.date >= start_date,
+                        RawTransaction.date <= end_date,
+                        RawTransaction.deleted == False
+                    )
+                )
             )
 
-            if not transactions:
-                return {}
-
-            # Grouper transactions par mois pour compter les mois TOTAUX (avec n'importe quelle transaction)
-            all_months = set()
-            for tx in transactions:
-                month_key = f"{tx['date'].year}-{tx['date'].month:02d}"
-                all_months.add(month_key)
-
-            nb_months = len(all_months)
+            nb_months_result = self.db.execute(months_query)
+            nb_months = nb_months_result.scalar() or 0
 
             if nb_months == 0:
+                logger.warning(f"Aucun mois trouvé pour user {user_id}")
                 return {}
 
-            # Grouper par catégorie (seulement dépenses)
-            category_totals = {}
-            for tx in transactions:
-                if tx['is_debit']:
-                    category = tx['category']
-                    if category not in category_totals:
-                        category_totals[category] = 0.0
-                    category_totals[category] += abs(tx['amount'])
+            # 2. Agrégation par catégorie (seulement débits)
+            category_query = (
+                select(
+                    Category.category_name,
+                    func.sum(func.abs(RawTransaction.amount)).label('total_amount')
+                )
+                .join(Category, RawTransaction.category_id == Category.category_id, isouter=True)
+                .where(
+                    and_(
+                        RawTransaction.user_id == user_id,
+                        RawTransaction.date >= start_date,
+                        RawTransaction.date <= end_date,
+                        RawTransaction.deleted == False,
+                        RawTransaction.amount < 0  # Seulement débits
+                    )
+                )
+                .group_by(Category.category_name)
+            )
 
-            # Diviser par le nombre de mois RÉELS (tous mois avec transactions)
-            category_averages = {
-                cat: total / nb_months
-                for cat, total in category_totals.items()
-            }
+            result_set = self.db.execute(category_query)
 
+            # 3. Calculer moyennes mensuelles
+            category_averages = {}
+            for row in result_set:
+                category_name = row.category_name or 'uncategorized'
+                total_amount = float(row.total_amount or 0)
+                avg_amount = total_amount / nb_months
+
+                category_averages[category_name] = round(avg_amount, 2)
+
+            logger.info(f"Breakdown calculé: {len(category_averages)} catégories sur {nb_months} mois")
             return category_averages
 
         except Exception as e:

@@ -31,6 +31,12 @@ services:
     networks:
       - harena-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "user_service"
 
   # Search Service - Recherche et indexation
   search_service:
@@ -54,6 +60,12 @@ services:
     networks:
       - harena-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "search_service"
 
   # Metric Service - Métriques et analytics
   metric_service:
@@ -75,6 +87,12 @@ services:
     networks:
       - harena-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "metric_service"
 
   # Conversation Service - IA conversationnelle
   conversation_service:
@@ -102,6 +120,12 @@ services:
     networks:
       - harena-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "conversation_service"
 
   # Sync Service - Synchronisation Bridge API
   sync_service:
@@ -126,6 +150,12 @@ services:
     networks:
       - harena-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "sync_service"
 
   # Enrichment Service - Enrichissement des transactions
   enrichment_service:
@@ -150,6 +180,43 @@ services:
     networks:
       - harena-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "enrichment_service"
+
+  # Budget Profiling Service - Profilage budgétaire et recommandations
+  budget_profiling_service:
+    build:
+      context: .
+      dockerfile: budget_profiling_service/Dockerfile
+    container_name: harena_budget_profiling_service
+    ports:
+      - "3006:3006"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+      - BUDGET_PROFILING_ENABLED=true
+      - BUDGET_PROFILING_LOG_LEVEL=INFO
+      - BUDGET_PROFILING_PORT=3006
+    volumes:
+      - ./budget_profiling_service:/app/budget_profiling_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "budget_profiling_service"
 
 networks:
   harena-network:

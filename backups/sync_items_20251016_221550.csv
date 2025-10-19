@@ -1,2 +1,0 @@
-id,user_id,bridge_item_id,status,status_code_info,status_description,provider_id,account_types,needs_user_action,last_successful_refresh,last_try_refresh,created_at,updated_at
-1,3,867137,0,active,Compte manuel,,,False,,,2025-10-15 18:43:59.552125+00:00,2025-10-15 18:43:59.552125+00:00

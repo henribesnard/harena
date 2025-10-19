@@ -33,8 +33,16 @@ class User(Base, TimestampMixin):
     
     # NOUVEAU : Relations conversations IA
     conversations = relationship(
-        "Conversation", 
-        back_populates="user", 
+        "Conversation",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+    # NOUVEAU : Relation profil budgétaire
+    budget_profile = relationship(
+        "UserBudgetProfile",
+        back_populates="user",
+        uselist=False,
         cascade="all, delete-orphan"
     )
 

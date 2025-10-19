@@ -1,2 +1,0 @@
-id,email,password_hash,first_name,last_name,is_active,is_superuser,created_at,updated_at
-3,henri@example.com,$2b$12$OS9c2Bsibb.bUDC4HF24GemAxxNcFTqK/p.S6g8bcU4SFE6Mp81nu,Henri,Hounwanou,True,False,2025-10-15 18:43:59.465637+00:00,2025-10-15 18:43:59.465637+00:00

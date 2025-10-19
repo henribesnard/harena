@@ -74,6 +74,7 @@ config.json
 !QUICK_START.md
 !AWS_SETUP_SUMMARY.md
 !README.md
+!budget_profiling_service/PROFILING_CALCULATION_GUIDE.md
 
 
 # Dossiers de données locales ou volumineuses
@@ -83,6 +84,13 @@ uploads/
 analyse_specifique/
 architecture/
 harena_front/
+backups/
+docs/
+logs/
+resultat_ok/
+test_reports_final_responses/
+test_reports_query_extraction/
+scripts/
 
 # Fichiers Docker
 .dockerignore

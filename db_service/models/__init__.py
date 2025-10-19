@@ -26,6 +26,15 @@ from db_service.models.metrics import (
     UserMetricsConfig
 )
 
+# Import modèles budget profiling
+from db_service.models.budget_profiling import (
+    UserBudgetProfile,
+    FixedCharge,
+    SavingsGoal,
+    BudgetRecommendation,
+    SeasonalPattern
+)
+
 # Exporter seulement les modèles qui existent réellement
 __all__ = [
     # Modèles utilisateur
@@ -39,5 +48,8 @@ __all__ = [
     'Conversation', 'ConversationTurn',
 
     # Modèles métriques
-    'MetricsCache', 'MetricsHistory', 'UserMetricsConfig'
+    'MetricsCache', 'MetricsHistory', 'UserMetricsConfig',
+
+    # Modèles budget profiling
+    'UserBudgetProfile', 'FixedCharge', 'SavingsGoal', 'BudgetRecommendation', 'SeasonalPattern'
 ]

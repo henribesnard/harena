@@ -218,6 +218,103 @@ services:
         max-file: "3"
         tag: "budget_profiling_service"
 
+  # Conversation Service V2 - Nouvelle architecture Text-to-SQL avec DeepSeek
+  conversation_service_v2:
+    build:
+      context: .
+      dockerfile: conversation_service_v2/Dockerfile.prod
+    container_name: harena_conversation_v2
+    ports:
+      - "3007:3007"
+    environment:
+      # App Configuration
+      - APP_PORT=3007
+      - APP_ENV=production
+      - APP_DEBUG=false
+
+      # AWS Resources (same as other services)
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - POSTGRES_HOST=63.35.52.216
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=harena
+      - POSTGRES_USER=harena_admin
+      - POSTGRES_PASSWORD=HaReNa2024SecureDbPassword123
+      - REDIS_HOST=63.35.52.216
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=HaReNa2024-Redis-Auth-Token-Secure-Key-123456
+
+      # DeepSeek API
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_API_URL=${DEEPSEEK_API_URL}
+
+      # JWT (same key as other services)
+      - JWT_SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+
+      # API
+      - API_V1_STR=${API_V1_STR}
+      - ENVIRONMENT=dev
+    volumes:
+      - ./conversation_service_v2:/app/conversation_service_v2
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env:/app/.env
+    networks:
+      - harena-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "conversation_service_v2"
+
+  # Conversation Service V3 - LangChain Autonomous Agents avec Auto-Correction
+  conversation_service_v3:
+    build:
+      context: ./conversation_service_v3
+      dockerfile: Dockerfile
+    container_name: harena_conversation_v3
+    ports:
+      - "3008:3008"
+    environment:
+      # Service Configuration
+      - SERVICE_NAME=conversation_service_v3
+      - SERVICE_VERSION=3.0.0
+      - HOST=0.0.0.0
+      - PORT=3008
+
+      # External Services
+      - SEARCH_SERVICE_URL=http://harena_metric_service:3002
+
+      # OpenAI API
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=gpt-4o-mini
+      - LLM_RESPONSE_MODEL=gpt-4o
+      - LLM_TEMPERATURE=0.1
+
+      # Agent Configuration
+      - MAX_CORRECTION_ATTEMPTS=2
+      - QUERY_TIMEOUT_SECONDS=30
+
+      # Logging
+      - LOG_LEVEL=INFO
+
+      # API Prefix
+      - API_V3_PREFIX=/api/v3
+    networks:
+      - harena-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "conversation_service_v3"
+    depends_on:
+      - metric_service
+
 networks:
   harena-network:
     driver: bridge

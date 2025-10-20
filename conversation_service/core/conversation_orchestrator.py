@@ -236,8 +236,16 @@ class ConversationOrchestrator:
             else:
                 logger.info("Aucune entité extraite")
 
+            # === ROUTING: CHECK IF ANALYTICS REQUIRED (NEW PRIORITY) ===
+            if classification_result.requires_analytics:
+                logger.info(f"🔍 Analytics required - type: {classification_result.analytics_type}")
+
+                # TODO: Route to analytics_agent here
+                # For now, log and continue to standard pipeline
+                logger.warning("Analytics agent routing not yet implemented - using standard pipeline")
+
             # === ROUTING: CHECK IF COMPLEX QUERY NEEDS REASONING AGENT ===
-            if self.reasoning_agent and self._is_complex_query(classification_result, request.user_message):
+            elif self.reasoning_agent and self._is_complex_query(classification_result, request.user_message):
                 logger.info(f"Complex query detected - routing to Reasoning Agent")
 
                 # Use Reasoning Agent for complex multi-step queries
@@ -252,7 +260,9 @@ class ConversationOrchestrator:
                             "classified_intent": {
                                 "intent_group": classification_result.intent_group,
                                 "intent_subtype": classification_result.intent_subtype,
-                                "confidence": classification_result.confidence
+                                "confidence": classification_result.confidence,
+                                "requires_analytics": classification_result.requires_analytics,
+                                "analytics_type": classification_result.analytics_type
                             },
                             "conversation_context": context_result["context_snapshot"]
                         }

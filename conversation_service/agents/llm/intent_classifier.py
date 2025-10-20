@@ -62,6 +62,10 @@ class ClassificationResult:
     model_used: str
     fallback_used: bool = False
     error_message: Optional[str] = None
+    # NEW: Analytics detection
+    requires_analytics: bool = False
+    analytics_type: Optional[str] = None  # "comparison", "trend", "anomaly", "pivot"
+    comparison_periods: List[str] = None  # e.g., ["2025-05", "2025-06"]
 
 class IntentClassifier:
     """
@@ -382,6 +386,32 @@ class IntentClassifier:
 
 {categories_context}
 
+=== DÉTECTION D'ANALYSES AVANCÉES ===
+
+🔍 DÉTECTION DE COMPARAISON (requires_analytics: true, analytics_type: "comparison"):
+   - Mots-clés: "compare", "comparer", "comparaison", "vs", "versus", "différence", "variation"
+   - Périodes multiples: "mai vs juin", "ce mois vs mois dernier", "2024 vs 2025"
+   - Formulations: "entre mai et juin", "du mois d'avril au mois de mai"
+
+   EXEMPLES:
+   - "Compare mes dépenses de mai à celles de juin" → requires_analytics: true, analytics_type: "comparison", comparison_periods: ["2025-05", "2025-06"]
+   - "Différence entre mes achats de janvier et février" → requires_analytics: true, analytics_type: "comparison", comparison_periods: ["2025-01", "2025-02"]
+   - "Mes dépenses ce mois vs mois dernier" → requires_analytics: true, analytics_type: "comparison", comparison_periods: ["this_month", "last_month"]
+
+🔍 DÉTECTION DE TENDANCE (requires_analytics: true, analytics_type: "trend"):
+   - Mots-clés: "évolution", "progression", "tendance", "trend", "historique sur"
+   - Formulations: "évolution de mes dépenses", "tendance de mes achats"
+
+   EXEMPLES:
+   - "Évolution de mes dépenses restaurants sur 6 mois" → requires_analytics: true, analytics_type: "trend"
+   - "Tendance de mes achats en ligne" → requires_analytics: true, analytics_type: "trend"
+
+🔍 DÉTECTION D'ANOMALIE (requires_analytics: true, analytics_type: "anomaly"):
+   - Mots-clés: "inhabituel", "anormal", "suspect", "étrange", "bizarre"
+   - Formulations: "transactions inhabituelles", "dépenses anormales"
+
+🔍 SI AUCUN CRITÈRE → requires_analytics: false, analytics_type: null
+
 === FORMAT DE RÉPONSE ===
 OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
 
@@ -412,10 +442,42 @@ OBLIGATOIRE : Utiliser JSON OUTPUT uniquement. Format strict :
             "entity_type": "transaction_type"
         }}
     ],
-    "reasoning": "Recherche de dépenses supérieures à 100 euros"
+    "reasoning": "Recherche de dépenses supérieures à 100 euros",
+    "requires_analytics": false,
+    "analytics_type": null,
+    "comparison_periods": null
 }}
 
-🚨 OBLIGATOIRE: transaction_type TOUJOURS présent dans entities
+🔍 EXEMPLES AVEC ANALYTICS:
+
+1. Question: "Compare mes dépenses de mai à celles de juin"
+{{
+    "intent_group": "transaction_search",
+    "intent_subtype": "comparison",
+    "confidence": 0.95,
+    "entities": [...],
+    "reasoning": "Comparaison des dépenses entre deux mois",
+    "requires_analytics": true,
+    "analytics_type": "comparison",
+    "comparison_periods": ["2025-05", "2025-06"]
+}}
+
+2. Question: "Évolution de mes achats en ligne sur 6 mois"
+{{
+    "intent_group": "transaction_search",
+    "intent_subtype": "trend",
+    "confidence": 0.93,
+    "entities": [...],
+    "reasoning": "Analyse de tendance sur 6 mois",
+    "requires_analytics": true,
+    "analytics_type": "trend",
+    "comparison_periods": null
+}}
+
+🚨 OBLIGATOIRE:
+- transaction_type TOUJOURS présent dans entities
+- requires_analytics TOUJOURS présent (true ou false)
+- Si requires_analytics: true → analytics_type OBLIGATOIRE ("comparison", "trend", "anomaly", "pivot")
 
 === RÈGLES STRICTES ===
 - TOUJOURS répondre en JSON valide
@@ -515,6 +577,15 @@ EXEMPLES:
         # VALIDATION POST-LLM: Appliquer règle d'exclusion mutuelle query/categories/merchant
         entities = self._apply_mutual_exclusion_rule(entities, request.user_message)
 
+        # NOUVEAU: Extraction des champs analytics
+        requires_analytics = classification_data.get("requires_analytics", False)
+        analytics_type = classification_data.get("analytics_type")
+        comparison_periods = classification_data.get("comparison_periods")
+
+        # Log si analytics détecté
+        if requires_analytics:
+            logger.info(f"🔍 Analytics détecté: type={analytics_type}, periods={comparison_periods}")
+
         return ClassificationResult(
             success=True,
             intent_group=intent_group,
@@ -525,7 +596,10 @@ EXEMPLES:
             reasoning=reasoning,
             processing_time_ms=self._get_processing_time(start_time),
             model_used=llm_response.model_used,
-            fallback_used=False
+            fallback_used=False,
+            requires_analytics=requires_analytics,
+            analytics_type=analytics_type,
+            comparison_periods=comparison_periods or []
         )
     
     async def _fallback_classification(

@@ -8,6 +8,7 @@ from enum import Enum
 
 class AgentRole(Enum):
     """Rôles des agents dans le pipeline"""
+    INTENT_ROUTER = "intent_router"
     QUERY_ANALYZER = "query_analyzer"
     ELASTICSEARCH_BUILDER = "elasticsearch_builder"
     QUERY_VALIDATOR = "query_validator"

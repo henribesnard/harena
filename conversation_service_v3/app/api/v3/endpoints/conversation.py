@@ -4,6 +4,7 @@ WITH PERSISTENCE - Saves conversations to PostgreSQL
 """
 import logging
 import time
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
@@ -209,6 +210,60 @@ async def analyze_conversation_stream(
                 context=[]
             )
 
+            # === ÉTAPE 0: Routage d'intention (NOUVEAU) ===
+            logger.info("Step 0: Intent classification (stream)")
+            intent_response = await orch.intent_router.classify_intent(user_query)
+
+            if not intent_response.success:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to classify intent'})}\n\n"
+                return
+
+            intent_classification = intent_response.data
+            logger.info(f"Intent classified (stream): {intent_classification.category.value}, requires_search={intent_classification.requires_search}")
+
+            # === CAS 1: Réponse conversationnelle (pas de recherche) ===
+            if not intent_classification.requires_search:
+                logger.info("Conversational intent detected (stream), responding directly")
+
+                # Utiliser la réponse suggérée ou générer une réponse persona
+                if intent_classification.suggested_response:
+                    response_text = intent_classification.suggested_response
+                else:
+                    response_text = orch.intent_router.get_persona_response(
+                        intent_classification.category
+                    )
+
+                # Envoyer response_start
+                yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+
+                # Streamer la réponse mot par mot pour simuler le streaming
+                words = response_text.split(' ')
+                for i, word in enumerate(words):
+                    chunk = word + (' ' if i < len(words) - 1 else '')
+                    accumulated_response += chunk
+                    chunk_data = {'type': 'response_chunk', 'content': chunk}
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                    await asyncio.sleep(0.05)  # Petit délai pour effet de streaming
+
+                processing_time_ms = int((time.time() - start_time) * 1000)
+
+                # Envoyer response_end
+                end_metadata = {
+                    'type': 'response_end',
+                    'metadata': {
+                        'total_results': 0,
+                        'response_length': len(accumulated_response),
+                        'processing_time_ms': processing_time_ms,
+                        'intent': intent_classification.category.value,
+                        'requires_search': False
+                    }
+                }
+                yield f"data: {json.dumps(end_metadata)}\n\n"
+                return
+
+            # === CAS 2: Pipeline financier complet (recherche requise) ===
+            logger.info("Financial intent detected (stream), proceeding with search pipeline")
+
             # === ÉTAPE 1-3: Pipeline jusqu'à la récupération des résultats ===
             logger.info("Step 1: Analyzing user query")
             analysis_response = await orch.query_analyzer.analyze(user_query)
@@ -249,7 +304,8 @@ async def analyze_conversation_stream(
                 saved_conversation_id = conversation.id
 
                 # Envoyer l'ID de conversation immédiatement
-                yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': saved_conversation_id})}\n\n"
+                conv_id_data = {'type': 'conversation_id', 'conversation_id': saved_conversation_id}
+                yield f"data: {json.dumps(conv_id_data)}\n\n"
             except Exception as persist_error:
                 logger.error(f"❌ Failed to create conversation: {persist_error}", exc_info=True)
 
@@ -260,7 +316,8 @@ async def analyze_conversation_stream(
                 original_query_analysis=query_analysis.__dict__ if hasattr(query_analysis, '__dict__') else None
             ):
                 accumulated_response += chunk
-                yield f"data: {json.dumps({'type': 'response_chunk', 'content': chunk})}\n\n"
+                chunk_data = {'type': 'response_chunk', 'content': chunk}
+                yield f"data: {json.dumps(chunk_data)}\n\n"
 
             # Calculer le temps de traitement
             processing_time_ms = int((time.time() - start_time) * 1000)
@@ -292,7 +349,15 @@ async def analyze_conversation_stream(
                     logger.error(f"❌ Failed to save turn: {persist_error}", exc_info=True)
 
             # Envoyer response_end avec metadata
-            yield f"data: {json.dumps({'type': 'response_end', 'metadata': {'total_results': search_results.total, 'response_length': len(accumulated_response), 'processing_time_ms': processing_time_ms}})}\n\n"
+            end_data = {
+                'type': 'response_end',
+                'metadata': {
+                    'total_results': search_results.total,
+                    'response_length': len(accumulated_response),
+                    'processing_time_ms': processing_time_ms
+                }
+            }
+            yield f"data: {json.dumps(end_data)}\n\n"
 
         except Exception as e:
             logger.error(f"Error in stream: {str(e)}", exc_info=True)

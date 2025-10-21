@@ -34,6 +34,25 @@ class AggregationEnricher:
         - spending_statistics: Statistiques globales complètes
     """
 
+    # Templates pour agrégations simples (métriques racine)
+    SIMPLE_METRIC_TEMPLATES = {
+        "total_amount": {
+            "sum": {"field": "amount_abs"}
+        },
+        "total_count": {
+            "value_count": {"field": "transaction_id"}
+        },
+        "average_amount": {
+            "avg": {"field": "amount_abs"}
+        },
+        "max_amount": {
+            "max": {"field": "amount_abs"}
+        },
+        "min_amount": {
+            "min": {"field": "amount_abs"}
+        }
+    }
+
     # Templates d'agrégations validés (syntaxe ES correcte garantie)
     TEMPLATES = {
         "by_category": {
@@ -215,6 +234,22 @@ class AggregationEnricher:
         ]
     }
 
+    # Agrégations simples qui NE nécessitent PAS de templates
+    # Ces agrégations peuvent être générées correctement par le LLM
+    SIMPLE_AGGREGATIONS = [
+        "total_amount",
+        "total_count",
+        "average_amount",
+        "max_amount",
+        "min_amount",
+        "sum",
+        "count",
+        "avg",
+        "max",
+        "min",
+        "stats"
+    ]
+
     def enrich(
         self,
         query: Dict[str, Any],
@@ -236,6 +271,41 @@ class AggregationEnricher:
             logger.debug("No aggregations requested, skipping enrichment")
             return query
 
+        # Séparer agrégations simples et complexes
+        simple_aggs_requested = [
+            agg for agg in aggregations_requested
+            if agg in self.SIMPLE_AGGREGATIONS
+        ]
+        complex_aggs = [
+            agg for agg in aggregations_requested
+            if agg not in self.SIMPLE_AGGREGATIONS
+        ]
+
+        # Si uniquement des agrégations simples, utiliser les templates simples
+        if not complex_aggs:
+            logger.info(f"Only simple aggregations requested {aggregations_requested}, applying simple templates")
+
+            # Initialiser aggregations si absent
+            if "aggregations" not in query:
+                query["aggregations"] = {}
+
+            # Appliquer les templates simples
+            templates_applied = []
+            for agg_requested in simple_aggs_requested:
+                if agg_requested in self.SIMPLE_METRIC_TEMPLATES:
+                    query["aggregations"][agg_requested] = self.SIMPLE_METRIC_TEMPLATES[agg_requested]
+                    templates_applied.append(agg_requested)
+                    logger.info(f"✅ Applied simple template: {agg_requested}")
+                else:
+                    logger.warning(f"No simple template found for: {agg_requested}")
+
+            if templates_applied:
+                logger.info(f"🎯 Simple aggregations applied: {templates_applied}")
+            else:
+                logger.warning("No simple templates were applied")
+
+            return query
+
         # Initialiser aggregations si absent
         if "aggregations" not in query:
             query["aggregations"] = {}
@@ -246,10 +316,10 @@ class AggregationEnricher:
         # Réinitialiser pour appliquer les templates
         query["aggregations"] = {}
 
-        # Appliquer les templates correspondants
+        # Appliquer les templates correspondants (uniquement pour agrégations complexes)
         templates_applied = []
 
-        for agg_requested in aggregations_requested:
+        for agg_requested in complex_aggs:
             template_names = self.INTENT_MAPPING.get(agg_requested, [])
 
             if not template_names:

@@ -34,19 +34,26 @@ class ResponseGeneratorAgent:
 
         # Prompt pour la génération de réponse
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es un assistant financier personnel qui aide les utilisateurs à comprendre leurs transactions bancaires.
+            ("system", """Tu es un assistant financier personnel expert en analyse de données.
+
+IMPORTANT - Utilisation des données:
+- Les AGRÉGATIONS contiennent les STATISTIQUES GLOBALES sur TOUS les résultats
+- Les transactions détaillées sont des EXEMPLES ILLUSTRATIFS (limités à {transactions_count})
+- TOUJOURS utiliser les AGRÉGATIONS pour les chiffres totaux et statistiques
+- JAMAIS dire "j'ai trouvé {transactions_count} transactions" si le total est différent
+- Les agrégations sont PRIORITAIRES sur les transactions détaillées
 
 Ton rôle est de créer une réponse claire, précise et utile basée sur:
-1. Les agrégations Elasticsearch (totaux, moyennes, statistiques)
+1. Les agrégations Elasticsearch (totaux, moyennes, statistiques) - SOURCE DE VÉRITÉ
 2. Un résumé des résultats de recherche
-3. Les premières transactions détaillées (max 50)
+3. Les premières transactions détaillées (exemples illustratifs)
 
 Règles de réponse:
-- Commence par répondre directement à la question
-- Utilise les chiffres des agrégations pour donner des totaux/statistiques
-- Mentionne les insights intéressants (plus grosse dépense, catégorie principale, etc.)
+- Commence TOUJOURS par les chiffres des AGRÉGATIONS
+- Utilise "vos/votre" (jamais "utilisateur 123")
+- Mentionne les insights importants des agrégations
+- Inclus des exemples de transactions SI pertinent
 - Sois naturel et conversationnel
-- Utilise des émojis modérément pour rendre la réponse agréable
 - Si aucun résultat, explique pourquoi et propose des alternatives
 
 Format de réponse:
@@ -55,38 +62,31 @@ Format de réponse:
 3. Détails des principales transactions (si pertinent)
 4. Suggestion d'action ou question de suivi (optionnel)
 
-Exemples:
+Exemples de bonnes réponses:
 
 Question: "Combien j'ai dépensé en courses ce mois-ci ?"
-Agrégations: {{"total_amount": {{"value": -342.50}}, "count": 12}}
-Réponse:
-"Tu as dépensé **342,50 €** en courses ce mois-ci, répartis sur 12 transactions.
+Agrégations: total_spent: 342.50, transaction_count: 12, avg_transaction: 28.54
+✅ BON: "Vous avez dépensé **342,50 €** en courses ce mois-ci (basé sur 12 transactions).
+         Dépense moyenne: 28,54€ par visite."
+❌ MAUVAIS: "J'ai trouvé 10 transactions pour un total de 250€"
+            (si les agrégations montrent 12 transactions et 342,50€)
 
-📊 **Observations:**
-- Dépense moyenne par course: ~28,54 €
-- Ta plus grosse course était de 78,30 € chez Carrefour le 12 janvier
+Question: "Montre-moi mes achats Amazon"
+Agrégations: total: 456.80, count: 8
+Transactions détaillées: 5 affichées
+✅ BON: "Vous avez **8 transactions** chez Amazon pour un total de **456,80€**.
+         Voici vos principales transactions: [liste des 5 transactions]"
+❌ MAUVAIS: "Voici vos 5 transactions Amazon pour 250€"
+            (si les agrégations en montrent 8 pour 456,80€)
 
-Les principales transactions:
-1. Carrefour - 78,30 € (12 jan)
-2. Monoprix - 45,20 € (08 jan)
-3. Lidl - 32,10 € (05 jan)
-..."
-
-Question: "Montre-moi mes transactions chez Carrefour"
-Transactions: 8 résultats trouvés
-Réponse:
-"J'ai trouvé **8 transactions chez Carrefour** dans ton historique.
-
-💰 **Statistiques:**
-- Total dépensé: 456,80 €
-- Dépense moyenne: 57,10 €
-- Plus grosse transaction: 98,50 €
-
-📝 **Dernières transactions:**
-1. 12 jan - 78,30 € (Alimentation)
-2. 05 jan - 98,50 € (Alimentation)
-3. 28 déc - 45,60 € (Alimentation)
-..."
+Question: "Répartition de mes dépenses par catégorie"
+Agrégations: by_category avec 15 catégories, totaux et comptages
+✅ BON: "Voici la répartition complète de vos dépenses par catégorie (15 catégories analysées):
+         1. Alimentation: 342,50€ (12 transactions)
+         2. Transport: 156,80€ (8 transactions)
+         ..."
+❌ MAUVAIS: "D'après les 10 transactions que je vois..."
+            (les agrégations contiennent TOUTES les catégories)
 """),
             ("user", """Question utilisateur: {user_message}
 
@@ -218,66 +218,154 @@ Génère une réponse complète et utile.""")
                 error=str(e)
             )
 
+    async def generate_response_stream(
+        self,
+        user_message: str,
+        search_results: SearchResults,
+        original_query_analysis: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Génère une réponse en mode streaming (yield chunks)
+
+        Args:
+            user_message: Message original de l'utilisateur
+            search_results: Résultats Elasticsearch (hits + agrégations)
+            original_query_analysis: Analyse originale (pour contexte)
+
+        Yields:
+            Chunks de texte au fur et à mesure de la génération
+        """
+        try:
+            logger.info(f"Generating streaming response for query: {user_message[:100]}")
+
+            from ..config.settings import settings
+
+            # Préparer les agrégations pour le LLM
+            aggs_summary = self._format_aggregations(search_results.aggregations)
+
+            # Limiter le nombre de transactions dans le contexte
+            max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(search_results.hits))
+            limited_transactions = search_results.hits[:max_transactions]
+
+            # Préparer les transactions pour le LLM
+            transactions_text = self._format_transactions(limited_transactions)
+
+            # Stream la réponse du LLM
+            async for chunk in self.chain.astream({
+                "user_message": user_message,
+                "aggregations": aggs_summary,
+                "total_results": search_results.total,
+                "transactions_count": len(limited_transactions),
+                "transactions": transactions_text
+            }):
+                # Chaque chunk contient le contenu généré
+                if hasattr(chunk, 'content'):
+                    yield chunk.content
+
+            logger.info("Streaming response completed")
+
+        except Exception as e:
+            logger.error(f"Error in streaming response: {str(e)}")
+            yield f"Erreur lors de la génération de la réponse: {str(e)}"
+
     def _format_aggregations(self, aggregations: Optional[Dict[str, Any]]) -> str:
         """
-        Formate les agrégations Elasticsearch de manière lisible pour le LLM
+        Formate les agrégations Elasticsearch de manière détaillée pour le LLM
+
+        VERSION AMÉLIORÉE avec interprétation et contexte enrichi
 
         Args:
             aggregations: Agrégations brutes d'Elasticsearch
 
         Returns:
-            String formatée
+            String formatée avec contexte enrichi
         """
         if not aggregations:
             return "Aucune agrégation disponible"
 
         formatted_lines = []
+        formatted_lines.append("📊 RÉSUMÉ STATISTIQUE COMPLET (SOURCE DE VÉRITÉ):\n")
 
         for agg_name, agg_data in aggregations.items():
             if isinstance(agg_data, dict):
-                # Agrégations de valeur simple (sum, avg, etc.)
+                # Agrégation de valeur unique (sum, avg, etc.)
                 if "value" in agg_data:
                     value = agg_data['value']
                     if value is not None:
-                        formatted_lines.append(f"- {agg_name}: {value:.2f}")
-                    else:
-                        formatted_lines.append(f"- {agg_name}: N/A")
+                        formatted_lines.append(f"✅ {agg_name}: {value:.2f}")
 
-                # Statistiques
+                        # Ajouter interprétation
+                        if "total" in agg_name.lower() or "sum" in agg_name.lower():
+                            formatted_lines.append(f"   → Montant total calculé sur tous les résultats")
+                        elif "avg" in agg_name.lower() or "moyenne" in agg_name.lower():
+                            formatted_lines.append(f"   → Moyenne calculée")
+                        elif "count" in agg_name.lower():
+                            formatted_lines.append(f"   → Nombre total de transactions")
+
+                # Statistiques complètes (stats aggregation)
                 elif "count" in agg_data and "sum" in agg_data:
-                    formatted_lines.append(f"- {agg_name}:")
-                    formatted_lines.append(f"  - Count: {agg_data.get('count', 0)}")
+                    formatted_lines.append(f"\n📈 {agg_name} (Statistiques complètes):")
+                    formatted_lines.append(f"   • Nombre: {agg_data.get('count', 0)}")
+                    formatted_lines.append(f"   • Total: {agg_data.get('sum', 0):.2f}€")
+                    formatted_lines.append(f"   • Moyenne: {agg_data.get('avg', 0):.2f}€")
+                    formatted_lines.append(f"   • Min: {agg_data.get('min', 0):.2f}€")
+                    formatted_lines.append(f"   • Max: {agg_data.get('max', 0):.2f}€")
 
-                    sum_val = agg_data.get('sum', 0)
-                    avg_val = agg_data.get('avg', 0)
-                    min_val = agg_data.get('min', 0)
-                    max_val = agg_data.get('max', 0)
-
-                    formatted_lines.append(f"  - Sum: {sum_val:.2f}" if sum_val is not None else "  - Sum: N/A")
-                    formatted_lines.append(f"  - Avg: {avg_val:.2f}" if avg_val is not None else "  - Avg: N/A")
-                    formatted_lines.append(f"  - Min: {min_val:.2f}" if min_val is not None else "  - Min: N/A")
-                    formatted_lines.append(f"  - Max: {max_val:.2f}" if max_val is not None else "  - Max: N/A")
-
-                # Agrégations terms (buckets)
+                # Terms aggregation (groupements par catégorie, marchand, etc.)
                 elif "buckets" in agg_data:
-                    formatted_lines.append(f"- {agg_name}:")
-                    buckets = agg_data["buckets"][:10]  # Top 10
-                    for bucket in buckets:
+                    buckets = agg_data["buckets"]
+                    total_buckets = len(buckets)
+                    displayed_buckets = buckets[:15]  # Top 15
+
+                    formatted_lines.append(f"\n🏷️  {agg_name} ({total_buckets} groupes au total):")
+
+                    for idx, bucket in enumerate(displayed_buckets, 1):
                         key = bucket.get("key", "Unknown")
                         doc_count = bucket.get("doc_count", 0)
-                        formatted_lines.append(f"  - {key}: {doc_count} transactions")
+
+                        line = f"   {idx}. {key}: {doc_count} transactions"
+
+                        # Sous-agrégations (montants, moyennes, etc.)
+                        sub_agg_parts = []
+                        for sub_agg_name, sub_agg_data in bucket.items():
+                            if sub_agg_name not in ["key", "doc_count", "key_as_string"]:
+                                if isinstance(sub_agg_data, dict) and "value" in sub_agg_data:
+                                    value = sub_agg_data['value']
+                                    if value is not None:
+                                        sub_agg_parts.append(f"{sub_agg_name}: {value:.2f}€")
+
+                        if sub_agg_parts:
+                            line += f" | {' | '.join(sub_agg_parts)}"
+
+                        formatted_lines.append(line)
+
+                    if total_buckets > 15:
+                        formatted_lines.append(f"   ... et {total_buckets - 15} autres groupes")
+
+                # Date histogram aggregation (tendances temporelles)
+                elif agg_data.get("buckets") and len(agg_data.get("buckets", [])) > 0 and "key_as_string" in agg_data["buckets"][0]:
+                    formatted_lines.append(f"\n📅 {agg_name} (Évolution temporelle):")
+                    buckets = agg_data.get("buckets", [])
+
+                    for bucket in buckets[:12]:  # Max 12 périodes
+                        period = bucket.get("key_as_string", bucket.get("key", "Unknown"))
+                        doc_count = bucket.get("doc_count", 0)
+
+                        line = f"   • {period}: {doc_count} transactions"
 
                         # Sous-agrégations
                         for sub_agg_name, sub_agg_data in bucket.items():
-                            if sub_agg_name not in ["key", "doc_count", "key_as_string"] and isinstance(sub_agg_data, dict):
-                                if "value" in sub_agg_data:
-                                    sub_value = sub_agg_data['value']
-                                    if sub_value is not None:
-                                        formatted_lines.append(f"    - {sub_agg_name}: {sub_value:.2f}")
-                                    else:
-                                        formatted_lines.append(f"    - {sub_agg_name}: N/A")
+                            if sub_agg_name not in ["key", "doc_count", "key_as_string"]:
+                                if isinstance(sub_agg_data, dict) and "value" in sub_agg_data:
+                                    value = sub_agg_data['value']
+                                    if value is not None:
+                                        line += f" | {sub_agg_name}: {value:.2f}€"
 
-        return "\n".join(formatted_lines) if formatted_lines else "Pas d'agrégations pertinentes"
+                        formatted_lines.append(line)
+
+        formatted_lines.append(f"\n💡 IMPORTANT: Ces statistiques couvrent TOUS les résultats, pas seulement les exemples de transactions listés ci-dessous.")
+
+        return "\n".join(formatted_lines)
 
     def _format_transactions(self, transactions: List[Dict[str, Any]]) -> str:
         """

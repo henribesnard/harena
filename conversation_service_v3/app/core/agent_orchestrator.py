@@ -13,9 +13,12 @@ from ..models import (
     UserQuery, QueryAnalysis, ElasticsearchQuery, SearchResults,
     ConversationResponse, AgentResponse
 )
+from ..agents.intent_router_agent import IntentRouterAgent
 from ..agents.query_analyzer_agent import QueryAnalyzerAgent
 from ..agents.elasticsearch_builder_agent import ElasticsearchBuilderAgent
 from ..agents.response_generator_agent import ResponseGeneratorAgent
+from ..models.intent import IntentCategory
+from ..core.aggregation_enricher import AggregationEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +46,20 @@ class AgentOrchestrator:
         llm_model: str = "gpt-4o-mini"
     ):
         # Initialiser les agents
+        self.intent_router = IntentRouterAgent(llm_model=llm_model)
         self.query_analyzer = QueryAnalyzerAgent(llm_model=llm_model)
         self.query_builder = ElasticsearchBuilderAgent(llm_model=llm_model)
         self.response_generator = ResponseGeneratorAgent(llm_model="gpt-4o")
+
+        # Initialiser l'enrichisseur d'agrégations
+        self.aggregation_enricher = AggregationEnricher()
 
         self.search_service_url = search_service_url
         self.max_correction_attempts = max_correction_attempts
 
         # HTTP client pour search_service
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        # Timeout augmenté pour laisser le temps aux agrégations complexes de s'exécuter
+        self.http_client = httpx.AsyncClient(timeout=60.0)
 
         # Statistiques
         self.stats = {
@@ -59,7 +67,9 @@ class AgentOrchestrator:
             "successful_queries": 0,
             "failed_queries": 0,
             "corrections_needed": 0,
-            "avg_pipeline_time_ms": 0
+            "avg_pipeline_time_ms": 0,
+            "conversational_responses": 0,
+            "searches_avoided": 0
         }
 
         logger.info(f"AgentOrchestrator initialized with search_service: {search_service_url}")
@@ -84,6 +94,52 @@ class AgentOrchestrator:
 
         try:
             logger.info(f"Processing query for user {user_query.user_id}: {user_query.message[:100]}")
+
+            # === ÉTAPE 0: Routage d'intention (NOUVEAU) ===
+            logger.info("Step 0: Intent classification")
+            intent_response = await self.intent_router.classify_intent(user_query)
+
+            if not intent_response.success:
+                return self._create_error_response(
+                    f"Failed to classify intent: {intent_response.error}"
+                )
+
+            intent_classification = intent_response.data
+            logger.info(f"Intent classified: {intent_classification.category.value}, requires_search={intent_classification.requires_search}")
+
+            # === CAS 1: Réponse conversationnelle (pas de recherche) ===
+            if not intent_classification.requires_search:
+                self.stats["conversational_responses"] += 1
+                self.stats["searches_avoided"] += 1
+                self.stats["successful_queries"] += 1
+
+                # Utiliser la réponse suggérée ou générer une réponse persona
+                if intent_classification.suggested_response:
+                    response_text = intent_classification.suggested_response
+                else:
+                    response_text = self.intent_router.get_persona_response(
+                        intent_classification.category
+                    )
+
+                pipeline_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                self._update_avg_time(pipeline_time_ms)
+
+                logger.info(f"Conversational response generated in {pipeline_time_ms}ms")
+
+                return ConversationResponse(
+                    success=True,
+                    message=response_text,
+                    search_results=None,
+                    metadata={
+                        "pipeline_time_ms": pipeline_time_ms,
+                        "intent": intent_classification.category.value,
+                        "requires_search": False,
+                        "confidence": intent_classification.confidence
+                    }
+                )
+
+            # === CAS 2: Pipeline financier complet (recherche requise) ===
+            logger.info("Financial intent detected, proceeding with search pipeline")
 
             # === ÉTAPE 1: Analyse de la requête ===
             logger.info("Step 1: Analyzing user query")
@@ -113,6 +169,32 @@ class AgentOrchestrator:
             es_query: ElasticsearchQuery = build_response.data
             logger.info(f"Query built: size={es_query.size}, has_aggs={es_query.aggregations is not None}")
             logger.info(f"Generated ES query: {json.dumps(es_query.query, ensure_ascii=False, indent=2)}")
+
+            # === ÉTAPE 2.5: Enrichissement des agrégations avec templates ===
+            # Enrichir avec templates si agrégations complexes demandées
+            if query_analysis.aggregations_needed:
+                logger.info(f"Enriching query with aggregation templates: {query_analysis.aggregations_needed}")
+
+                es_query.query = self.aggregation_enricher.enrich(
+                    query=es_query.query,
+                    aggregations_requested=query_analysis.aggregations_needed
+                )
+
+                logger.info(f"Query after enrichment: {json.dumps(es_query.query.get('aggregations', {}), ensure_ascii=False, indent=2)}")
+            else:
+                # Fallback: Détecter depuis le message si pas détecté par QueryAnalyzer
+                detected_templates = self.aggregation_enricher.detect_from_query_text(
+                    user_query.message
+                )
+
+                if detected_templates:
+                    logger.info(f"Detected aggregation templates from message: {detected_templates}")
+                    es_query.query = self.aggregation_enricher.enrich(
+                        query=es_query.query,
+                        aggregations_requested=detected_templates
+                    )
+
+                    logger.info(f"Query after fallback enrichment: {json.dumps(es_query.query.get('aggregations', {}), ensure_ascii=False, indent=2)}")
 
             # === ÉTAPE 3: Exécution de la query (avec auto-correction) ===
             logger.info("Step 3: Executing query with auto-correction")
@@ -154,6 +236,8 @@ class AgentOrchestrator:
 
             # Ajouter les métadonnées de pipeline
             conversation_response.metadata["pipeline_time_ms"] = pipeline_time_ms
+            conversation_response.metadata["intent"] = intent_classification.category.value
+            conversation_response.metadata["requires_search"] = True
             conversation_response.metadata["query_analysis"] = {
                 "intent": query_analysis.intent,
                 "confidence": query_analysis.confidence,
@@ -447,13 +531,19 @@ class AgentOrchestrator:
         if self.stats["successful_queries"] > 0:
             correction_rate = self.stats["corrections_needed"] / self.stats["successful_queries"]
 
+        conversational_rate = 0.0
+        if self.stats["total_queries"] > 0:
+            conversational_rate = self.stats["conversational_responses"] / self.stats["total_queries"]
+
         return {
             "orchestrator": {
                 **self.stats,
                 "success_rate": success_rate,
-                "correction_rate": correction_rate
+                "correction_rate": correction_rate,
+                "conversational_rate": conversational_rate
             },
             "agents": {
+                "intent_router": self.intent_router.get_stats(),
                 "query_analyzer": self.query_analyzer.get_stats(),
                 "query_builder": self.query_builder.get_stats(),
                 "response_generator": self.response_generator.get_stats()
@@ -479,6 +569,7 @@ class AgentOrchestrator:
                 "orchestrator": "healthy",
                 "search_service": "healthy" if search_service_healthy else "unhealthy",
                 "agents": {
+                    "intent_router": "initialized",
                     "query_analyzer": "initialized",
                     "query_builder": "initialized",
                     "response_generator": "initialized"

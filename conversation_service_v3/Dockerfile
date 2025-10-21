@@ -2,14 +2,24 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copier les requirements
-COPY requirements.txt .
+# Installer les dépendances système pour PostgreSQL
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Installer les dépendances
+# Copier les requirements depuis conversation_service_v3
+COPY conversation_service_v3/requirements.txt .
+
+# Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier le code de l'application
-COPY ./app ./app
+# Copier les dépendances partagées (db_service, config_service)
+COPY db_service /app/db_service
+COPY config_service /app/config_service
+
+# Copier le code de l'application v3
+COPY conversation_service_v3/app /app/app
 
 # Exposer le port
 EXPOSE 3008

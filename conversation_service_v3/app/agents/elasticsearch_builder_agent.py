@@ -17,6 +17,11 @@ from ..models import (
 from ..schemas.elasticsearch_schema import (
     ELASTICSEARCH_SCHEMA, get_schema_description, get_query_template
 )
+from .function_definitions import (
+    SEARCH_TRANSACTIONS_FUNCTION,
+    AGGREGATION_TEMPLATES,
+    get_all_templates_description
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,72 +46,15 @@ class ElasticsearchBuilderAgent:
 
         self.schema_description = get_schema_description()
 
-        # Définition du function calling schema - RÉSOUT TOUS LES PROBLÈMES
-        self.search_query_function = {
-            "name": "generate_search_query",
-            "description": "Génère une requête de recherche au format search_service pour des transactions financières",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "integer",
-                        "description": "ID de l'utilisateur (obligatoire)"
-                    },
-                    "filters": {
-                        "type": "object",
-                        "description": "Filtres à appliquer sur les transactions",
-                        "properties": {
-                            "transaction_type": {
-                                "type": "string",
-                                "enum": ["debit", "credit"],
-                                "description": "Type de transaction: 'debit' pour dépenses, 'credit' pour revenus"
-                            },
-                            "amount_abs": {
-                                "type": "object",
-                                "description": "Filtre sur le MONTANT ABSOLU. IMPORTANT: 'plus de X' = {'gt': X} (EXCLUT X), 'au moins X' = {'gte': X} (INCLUT X). Utiliser 'gt', 'gte', 'lt', 'lte' comme clés.",
-                                "additionalProperties": True
-                            },
-                            "category_name": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Liste des catégories à filtrer"
-                            },
-                            "merchant_name": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Liste des marchands à filtrer"
-                            },
-                            "date": {
-                                "type": "object",
-                                "description": "Plage de dates au format {'gte': 'YYYY-MM-DD', 'lte': 'YYYY-MM-DD'}",
-                                "additionalProperties": True
-                            }
-                        }
-                    },
-                    "sort": {
-                        "type": "array",
-                        "description": "OBLIGATOIRE: Critères de tri. Par défaut: [{'date': {'order': 'desc'}}] pour trier par date décroissante",
-                        "items": {"type": "object"},
-                        "minItems": 1
-                    },
-                    "page_size": {
-                        "type": "integer",
-                        "description": "Nombre de résultats par page",
-                        "default": 50,
-                        "minimum": 1,
-                        "maximum": 200
-                    },
-                    "aggregations": {
-                        "type": "object",
-                        "description": "Agrégations Elasticsearch. IMPORTANT: Toujours utiliser 'amount_abs' (valeur absolue) pour les stats de montants, JAMAIS 'amount'",
-                        "additionalProperties": True
-                    }
-                },
-                "required": ["user_id", "filters", "sort", "page_size"]
-            }
-        }
+        # Utiliser la définition complète de la fonction depuis function_definitions
+        # Ajuster le nom pour correspondre à l'usage interne
+        self.search_query_function = SEARCH_TRANSACTIONS_FUNCTION.copy()
+        self.search_query_function["name"] = "generate_search_query"
 
-        # Prompt simplifié pour function calling avec exemples concrets
+        # Obtenir la description des templates disponibles
+        templates_description = get_all_templates_description()
+
+        # Prompt enrichi pour function calling avec templates et exemples
         self.build_prompt_text = """Génère une requête de recherche pour: {intent}
 
 Contexte:
@@ -116,26 +64,101 @@ Contexte:
 - Agrégations demandées: {aggregations}
 - Période: {time_range}
 
+TEMPLATES D'AGRÉGATIONS DISPONIBLES:
+
+""" + templates_description + """
+
 RÈGLES CRITIQUES:
 1. "plus de X euros" = amount_abs: {{"gt": X}} → EXCLUT X (strictement supérieur)
 2. "au moins X euros" = amount_abs: {{"gte": X}} → INCLUT X (supérieur ou égal)
 3. "dépenses" = transaction_type: "debit"
 4. "revenus" = transaction_type: "credit"
-5. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}]
+5. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}] (OBLIGATOIRE)
 6. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
+7. Pour les filtres merchant_name et category_name, utiliser {{"match": "valeur"}} pour recherche floue
+8. TOUJOURS ajouter des agrégations de base (total, count) pour donner des statistiques utiles
+9. Si l'intent indique "statistics" ou "analyze", utiliser les templates d'agrégations disponibles
+10. page_size doit être >= 1 (JAMAIS 0). Pour les queries d'agrégations, utiliser page_size: 10
 
-EXEMPLE pour "Mes dépenses de plus de 100 euros":
+EXEMPLES D'UTILISATION:
+
+Exemple 1 - "Mes dépenses de plus de 100 euros":
 {{
     "user_id": {user_id},
     "filters": {{
         "transaction_type": "debit",
-        "amount_abs": {{"gt": 100}}  ← gt car "plus de" EXCLUT 100
+        "amount_abs": {{"gt": 100}}
     }},
     "sort": [{{"date": {{"order": "desc"}}}}],
     "page_size": 50,
     "aggregations": {{
         "transaction_count": {{"value_count": {{"field": "transaction_id"}}}},
-        "total_amount": {{"sum": {{"field": "amount_abs"}}}}  ← amount_abs!
+        "total_amount": {{"sum": {{"field": "amount_abs"}}}}
+    }}
+}}
+
+Exemple 2 - "Combien j'ai dépensé en restaurants ce mois?":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "category_name": {{"match": "restaurant"}},
+        "transaction_type": "debit",
+        "date": {{"gte": "2025-10-01T00:00:00Z", "lte": "2025-10-31T23:59:59Z"}}
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 10,
+    "aggregations": {{
+        "total_spent": {{"sum": {{"field": "amount_abs"}}}},
+        "transaction_count": {{"value_count": {{"field": "transaction_id"}}}},
+        "avg_transaction": {{"avg": {{"field": "amount_abs"}}}}
+    }}
+}}
+
+Exemple 3 - "Évolution mensuelle de mes dépenses sur 6 mois":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "transaction_type": "debit",
+        "date": {{"gte": "2025-04-01T00:00:00Z", "lte": "2025-10-31T23:59:59Z"}}
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 10,
+    "aggregations": {{
+        "monthly_breakdown": {{
+            "date_histogram": {{
+                "field": "date",
+                "calendar_interval": "month",
+                "format": "yyyy-MM"
+            }},
+            "aggs": {{
+                "total_spent": {{"sum": {{"field": "amount_abs"}}}},
+                "transaction_count": {{"value_count": {{"field": "transaction_id"}}}}
+            }}
+        }}
+    }}
+}}
+
+Exemple 4 - "Répartition de mes dépenses par catégorie":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "transaction_type": "debit"
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 10,
+    "aggregations": {{
+        "by_category": {{
+            "terms": {{
+                "field": "category_name.keyword",
+                "size": 20,
+                "order": {{"total_amount": "desc"}}
+            }},
+            "aggs": {{
+                "total_amount": {{"sum": {{"field": "amount_abs"}}}},
+                "transaction_count": {{"value_count": {{"field": "transaction_id"}}}},
+                "avg_transaction": {{"avg": {{"field": "amount_abs"}}}}
+            }}
+        }}
     }}
 }}"""
 
@@ -230,6 +253,10 @@ Corrige cette query pour qu'elle fonctionne.""")
             # S'assurer que user_id est présent
             if "user_id" not in result:
                 result["user_id"] = user_id
+
+            # Nettoyer les agrégations (enlever les champs "name" invalides ajoutés par le LLM)
+            if "aggregations" in result and result["aggregations"]:
+                result["aggregations"] = self._clean_aggregations(result["aggregations"])
 
             # Construire l'objet ElasticsearchQuery
             # Le résultat contient: {user_id, filters, sort, page_size, aggregations}
@@ -430,6 +457,69 @@ Corrige cette query pour qu'elle fonctionne.""")
         elif isinstance(obj, list):
             for idx, item in enumerate(obj):
                 self._check_fields_in_dict(item, valid_fields, errors, warnings, f"{path}[{idx}]")
+
+    def _clean_aggregations(self, aggs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Nettoie les agrégations en enlevant les champs invalides ajoutés par le LLM
+
+        Problèmes corrigés:
+        1. Champs "name" invalides qui causent "Expected [START_OBJECT] under [name]"
+        2. Multiples types d'agrégation dans le même objet (ex: sum + value_count)
+
+        Args:
+            aggs: Agrégations à nettoyer
+
+        Returns:
+            Agrégations nettoyées
+        """
+        if not isinstance(aggs, dict):
+            return aggs
+
+        AGG_TYPES = ["sum", "avg", "min", "max", "stats", "value_count", "terms", "date_histogram", "cardinality"]
+
+        cleaned = {}
+        for agg_name, agg_def in aggs.items():
+            if isinstance(agg_def, dict):
+                # Trouver tous les types d'agrégation dans cet objet
+                agg_types_found = [key for key in agg_def.keys() if key in AGG_TYPES]
+
+                if len(agg_types_found) > 1:
+                    # PROBLÈME: Multiple types dans une seule agrégation
+                    # Solution: Garder le premier type, créer des agrégations séparées pour les autres
+                    logger.warning(f"Multiple aggregation types in '{agg_name}': {agg_types_found}. Splitting...")
+
+                    # Garder le premier type dans l'agrégation principale
+                    main_type = agg_types_found[0]
+                    cleaned[agg_name] = {main_type: agg_def[main_type]}
+
+                    # Créer de nouvelles agrégations pour les autres types
+                    for idx, other_type in enumerate(agg_types_found[1:], 1):
+                        new_agg_name = f"{agg_name}_{other_type}"
+                        cleaned[new_agg_name] = {other_type: agg_def[other_type]}
+                        logger.info(f"Created separate aggregation: {new_agg_name}")
+
+                    # Gérer les sous-agrégations (aggs) s'il y en a
+                    if "aggs" in agg_def:
+                        cleaned[agg_name]["aggs"] = self._clean_aggregations(agg_def["aggs"])
+
+                else:
+                    # Une seule agrégation : copier en nettoyant
+                    cleaned_agg = {}
+                    for key, value in agg_def.items():
+                        if key == "name":
+                            # Ignorer le champ "name" invalide
+                            logger.debug(f"Removed invalid 'name' field from aggregation '{agg_name}'")
+                            continue
+                        elif key == "aggs" and isinstance(value, dict):
+                            # Nettoyer récursivement les sous-agrégations
+                            cleaned_agg[key] = self._clean_aggregations(value)
+                        else:
+                            cleaned_agg[key] = value
+                    cleaned[agg_name] = cleaned_agg
+            else:
+                cleaned[agg_name] = agg_def
+
+        return cleaned
 
     def _validate_aggregations(
         self,

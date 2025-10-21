@@ -1,6 +1,8 @@
-# Conversation Service v3 - LangChain Autonomous Agents
+# Conversation Service V3 🚀
 
-Architecture révolutionnaire basée sur des agents LangChain autonomes avec capacité d'auto-correction.
+**Architecture LangChain avec Agents Autonomes + API 100% Compatible V1**
+
+Architecture révolutionnaire basée sur des agents LangChain autonomes avec capacité d'auto-correction, tout en restant **100% compatible** avec l'API de conversation_service v1.
 
 ## 🎯 Nouveautés v3
 
@@ -71,35 +73,49 @@ docker run -p 3008:3008 \
   conversation_service_v3
 ```
 
-## 📡 API Endpoints
+## 📡 API Endpoints (Compatible V1)
 
-### POST /api/v3/conversation/ask
-Pose une question sur les transactions financières.
+### POST /api/v1/conversation/{user_id}
+Endpoint principal compatible avec conversation_service v1.
 
 **Request:**
 ```json
 {
-  "user_id": 1,
-  "message": "Combien j'ai dépensé en courses ce mois-ci ?",
-  "conversation_id": "conv_123",
-  "context": []
+  "client_info": {
+    "platform": "web",
+    "version": "1.0.0"
+  },
+  "message": "Mes dépenses de plus de 100 euros",
+  "message_type": "text",
+  "priority": "normal"
 }
+```
+
+**Headers:**
+```
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Tu as dépensé **342,50 €** en courses ce mois-ci...",
-  "total_results": 12,
-  "aggregations_summary": "...",
-  "metadata": {
-    "pipeline_time_ms": 1234,
-    "query_analysis": {
-      "intent": "aggregate",
-      "confidence": 0.95
+  "user_id": 3,
+  "message": "Mes dépenses de plus de 100 euros",
+  "status": "completed",
+  "response": {
+    "message": "Voici vos dépenses...",
+    "structured_data": {
+      "total_results": 42,
+      "aggregations_summary": "Total: 1234.56€"
     }
-  }
+  },
+  "search_summary": {
+    "found_results": true,
+    "total_results": 42
+  },
+  "metadata": {},
+  "architecture": "v3_langchain_agents"
 }
 ```
 

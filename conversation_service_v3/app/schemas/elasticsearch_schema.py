@@ -20,6 +20,12 @@ ELASTICSEARCH_SCHEMA = {
             "description": "Montant de la transaction en euros (positif ou négatif)",
             "aggregatable": True
         },
+        "amount_abs": {
+            "type": "float",
+            "description": "Valeur absolue du montant de la transaction (toujours positif)",
+            "aggregatable": True,
+            "note": "À utiliser pour filtrer par montant sans se soucier du signe"
+        },
         "date": {
             "type": "date",
             "format": "yyyy-MM-dd",
@@ -61,6 +67,36 @@ ELASTICSEARCH_SCHEMA = {
             "type": "keyword",
             "description": "Nom du compte bancaire",
             "aggregatable": True
+        },
+        "account_id": {
+            "type": "long",
+            "description": "Identifiant du compte bancaire",
+            "aggregatable": True
+        },
+        "transaction_id": {
+            "type": "keyword",
+            "description": "Identifiant unique de la transaction (utilisé pour compter les transactions)",
+            "aggregatable": True
+        },
+        "currency_code": {
+            "type": "keyword",
+            "description": "Code de la devise (ex: EUR, USD)",
+            "aggregatable": True
+        },
+        "month_year": {
+            "type": "keyword",
+            "description": "Mois et année au format YYYY-MM",
+            "aggregatable": True
+        },
+        "weekday": {
+            "type": "keyword",
+            "description": "Jour de la semaine (ex: monday, tuesday)",
+            "aggregatable": True
+        },
+        "searchable_text": {
+            "type": "text",
+            "description": "Champ textuel combiné pour la recherche full-text",
+            "analyzable": True
         }
     },
     "common_aggregations": {
@@ -91,52 +127,76 @@ ELASTICSEARCH_SCHEMA = {
             "description": "Statistiques complètes (min, max, avg, sum, count)"
         }
     },
-    "query_examples": {
+    "search_service_format_examples": {
         "filter_by_category": {
-            "description": "Filtrer par catégorie",
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"user_id": "<USER_ID>"}},
-                        {"term": {"category_name": "<CATEGORY>"}}
-                    ]
-                }
+            "description": "Filtrer par catégorie - Format search_service",
+            "request": {
+                "user_id": 3,
+                "filters": {
+                    "category_name": ["Alimentation"]
+                },
+                "sort": [{"date": {"order": "desc"}}],
+                "page_size": 50
             }
         },
         "filter_by_amount_range": {
-            "description": "Filtrer par plage de montants",
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"user_id": "<USER_ID>"}},
-                        {"range": {"amount": {"gte": "<MIN>", "lte": "<MAX>"}}}
-                    ]
-                }
+            "description": "Filtrer par plage de montants - Format search_service",
+            "request": {
+                "user_id": 3,
+                "filters": {
+                    "amount_abs": {"gte": 50, "lte": 200}
+                },
+                "sort": [{"date": {"order": "desc"}}],
+                "page_size": 50
             }
         },
         "filter_by_date_range": {
-            "description": "Filtrer par période",
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"user_id": "<USER_ID>"}},
-                        {"range": {"date": {"gte": "<START_DATE>", "lte": "<END_DATE>"}}}
-                    ]
-                }
+            "description": "Filtrer par période - Format search_service",
+            "request": {
+                "user_id": 3,
+                "filters": {
+                    "date": {"gte": "2025-01-01", "lte": "2025-01-31"}
+                },
+                "sort": [{"date": {"order": "desc"}}],
+                "page_size": 50
             }
         },
         "aggregate_by_category": {
-            "description": "Agrégation par catégorie avec somme",
-            "query": {
-                "bool": {
-                    "must": [{"term": {"user_id": "<USER_ID>"}}]
+            "description": "Agrégation par catégorie avec somme - Format search_service",
+            "request": {
+                "user_id": 3,
+                "filters": {},
+                "sort": [{"date": {"order": "desc"}}],
+                "page_size": 50,
+                "aggregations": {
+                    "by_category": {
+                        "terms": {"field": "category_name", "size": 20},
+                        "aggs": {
+                            "total_amount": {"sum": {"field": "amount"}}
+                        }
+                    }
                 }
-            },
-            "aggs": {
-                "by_category": {
-                    "terms": {"field": "category_name", "size": 20},
-                    "aggs": {
-                        "total_amount": {"sum": {"field": "amount"}}
+            }
+        },
+        "expenses_above_amount": {
+            "description": "Dépenses supérieures à un montant - Format search_service",
+            "request": {
+                "user_id": 3,
+                "filters": {
+                    "transaction_type": "debit",
+                    "amount_abs": {"gt": 100}
+                },
+                "sort": [{"date": {"order": "desc"}}],
+                "page_size": 50,
+                "aggregations": {
+                    "transaction_count": {
+                        "value_count": {"field": "transaction_id"}
+                    },
+                    "total_debit": {
+                        "filter": {"term": {"transaction_type": "debit"}},
+                        "aggs": {
+                            "sum_amount": {"sum": {"field": "amount_abs"}}
+                        }
                     }
                 }
             }
@@ -160,8 +220,17 @@ def get_schema_description() -> str:
     for agg_name, agg_info in ELASTICSEARCH_SCHEMA["common_aggregations"].items():
         desc += f"- **{agg_name}**: {agg_info['description']}\n"
 
+    desc += "\n## IMPORTANT: Search Service Format Examples\n"
+    desc += "You MUST generate queries in the search_service format (NOT Elasticsearch DSL):\n\n"
+    for example_name, example_info in ELASTICSEARCH_SCHEMA["search_service_format_examples"].items():
+        desc += f"### {example_name}\n"
+        desc += f"{example_info['description']}\n"
+        import json
+        desc += f"```json\n{json.dumps(example_info['request'], indent=2, ensure_ascii=False)}\n```\n\n"
+
     return desc
 
 def get_query_template(template_name: str) -> dict:
-    """Retourne un template de query prêt à être modifié"""
-    return ELASTICSEARCH_SCHEMA["query_examples"].get(template_name, {})
+    """Retourne un template de query au format search_service"""
+    example = ELASTICSEARCH_SCHEMA["search_service_format_examples"].get(template_name, {})
+    return example.get("request", {})

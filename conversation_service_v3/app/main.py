@@ -2,10 +2,16 @@
 Main FastAPI application for conversation_service_v3
 Architecture basée sur agents LangChain autonomes avec auto-correction
 """
+import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement du fichier .env
+# IMPORTANT: load_dotenv() doit être appelé AVANT d'importer settings
+load_dotenv()
 
 from .config.settings import settings
 from .api.v3.endpoints import conversation
@@ -72,8 +78,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclure les routes
-app.include_router(conversation.router, prefix=settings.API_V3_PREFIX)
+# Inclure les routes - Le router a déjà le prefix /api/v1/conversation
+app.include_router(conversation.router)
 
 
 @app.get("/")

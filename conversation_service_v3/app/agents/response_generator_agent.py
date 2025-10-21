@@ -4,6 +4,7 @@ Utilise les agrégations + résumé + transactions pour créer une réponse pert
 """
 import logging
 import json
+import os
 from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -25,6 +26,7 @@ class ResponseGeneratorAgent:
     """
 
     def __init__(self, llm_model: str = "gpt-4o", temperature: float = 0.3):
+        # ChatOpenAI charge automatiquement OPENAI_API_KEY depuis l'environnement
         self.llm = ChatOpenAI(
             model=llm_model,
             temperature=temperature
@@ -119,6 +121,11 @@ Génère une réponse complète et utile.""")
         """
         Génère une réponse finale basée sur les résultats de recherche
 
+        OPTIMISATION: Ne met en contexte que:
+        - Le résumé de la recherche (total, etc.)
+        - Les agrégations complètes
+        - Les N premières transactions (défini par MAX_TRANSACTIONS_IN_CONTEXT)
+
         Args:
             user_message: Message original de l'utilisateur
             search_results: Résultats Elasticsearch (hits + agrégations)
@@ -130,18 +137,40 @@ Génère une réponse complète et utile.""")
         try:
             logger.info(f"Generating response for query: {user_message[:100]}")
 
-            # Préparer les agrégations pour le LLM
+            from ..config.settings import settings
+
+            # Préparer les agrégations pour le LLM (toujours complètes)
             aggs_summary = self._format_aggregations(search_results.aggregations)
 
-            # Préparer les transactions pour le LLM
-            transactions_text = self._format_transactions(search_results.hits[:50])  # Max 50
+            # Limiter le nombre de transactions dans le contexte
+            max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(search_results.hits))
+            limited_transactions = search_results.hits[:max_transactions]
+
+            # DEBUG: Log pour identifier le problème
+            logger.info(f"Transactions received: {len(search_results.hits)}, Limited to: {len(limited_transactions)}")
+            if len(limited_transactions) > 0:
+                logger.info(f"🔍 First transaction keys: {list(limited_transactions[0].keys())}")
+                logger.debug(f"🔍 First transaction full: {json.dumps(limited_transactions[0], indent=2, default=str)}")
+            else:
+                logger.warning("⚠️ No transactions in search_results.hits despite total > 0")
+
+            if len(search_results.hits) > max_transactions:
+                logger.debug(
+                    f"Context limitation: {len(search_results.hits)} → {max_transactions} transactions"
+                )
+
+            # Préparer les transactions pour le LLM (limitées)
+            transactions_text = self._format_transactions(limited_transactions)
+
+            # DEBUG: Log formatted transactions
+            logger.info(f"🔍 Formatted transactions (first 500 chars): {transactions_text[:500]}")
 
             # Invoquer le LLM
             result = await self.chain.ainvoke({
                 "user_message": user_message,
                 "aggregations": aggs_summary,
                 "total_results": search_results.total,
-                "transactions_count": len(search_results.hits[:50]),
+                "transactions_count": len(limited_transactions),
                 "transactions": transactions_text
             })
 
@@ -208,16 +237,26 @@ Génère une réponse complète et utile.""")
             if isinstance(agg_data, dict):
                 # Agrégations de valeur simple (sum, avg, etc.)
                 if "value" in agg_data:
-                    formatted_lines.append(f"- {agg_name}: {agg_data['value']:.2f}")
+                    value = agg_data['value']
+                    if value is not None:
+                        formatted_lines.append(f"- {agg_name}: {value:.2f}")
+                    else:
+                        formatted_lines.append(f"- {agg_name}: N/A")
 
                 # Statistiques
                 elif "count" in agg_data and "sum" in agg_data:
                     formatted_lines.append(f"- {agg_name}:")
                     formatted_lines.append(f"  - Count: {agg_data.get('count', 0)}")
-                    formatted_lines.append(f"  - Sum: {agg_data.get('sum', 0):.2f}")
-                    formatted_lines.append(f"  - Avg: {agg_data.get('avg', 0):.2f}")
-                    formatted_lines.append(f"  - Min: {agg_data.get('min', 0):.2f}")
-                    formatted_lines.append(f"  - Max: {agg_data.get('max', 0):.2f}")
+
+                    sum_val = agg_data.get('sum', 0)
+                    avg_val = agg_data.get('avg', 0)
+                    min_val = agg_data.get('min', 0)
+                    max_val = agg_data.get('max', 0)
+
+                    formatted_lines.append(f"  - Sum: {sum_val:.2f}" if sum_val is not None else "  - Sum: N/A")
+                    formatted_lines.append(f"  - Avg: {avg_val:.2f}" if avg_val is not None else "  - Avg: N/A")
+                    formatted_lines.append(f"  - Min: {min_val:.2f}" if min_val is not None else "  - Min: N/A")
+                    formatted_lines.append(f"  - Max: {max_val:.2f}" if max_val is not None else "  - Max: N/A")
 
                 # Agrégations terms (buckets)
                 elif "buckets" in agg_data:
@@ -232,7 +271,11 @@ Génère une réponse complète et utile.""")
                         for sub_agg_name, sub_agg_data in bucket.items():
                             if sub_agg_name not in ["key", "doc_count", "key_as_string"] and isinstance(sub_agg_data, dict):
                                 if "value" in sub_agg_data:
-                                    formatted_lines.append(f"    - {sub_agg_name}: {sub_agg_data['value']:.2f}")
+                                    sub_value = sub_agg_data['value']
+                                    if sub_value is not None:
+                                        formatted_lines.append(f"    - {sub_agg_name}: {sub_value:.2f}")
+                                    else:
+                                        formatted_lines.append(f"    - {sub_agg_name}: N/A")
 
         return "\n".join(formatted_lines) if formatted_lines else "Pas d'agrégations pertinentes"
 
@@ -252,14 +295,15 @@ Génère une réponse complète et utile.""")
         formatted_lines = []
 
         for idx, transaction in enumerate(transactions[:50], 1):  # Max 50
-            source = transaction.get("_source", {})
+            # search_service retourne les transactions avec les champs directement
+            # (pas de wrapper _source comme Elasticsearch brut)
 
             # Extraire les informations clés
-            date = source.get("date", "Date inconnue")
-            amount = source.get("amount", 0)
-            merchant = source.get("merchant_name", "Marchand inconnu")
-            category = source.get("category_name", "")
-            description = source.get("primary_description", "")
+            date = transaction.get("date", "Date inconnue")
+            amount = transaction.get("amount", 0)
+            merchant = transaction.get("merchant_name", "Marchand inconnu")
+            category = transaction.get("category_name", "")
+            description = transaction.get("primary_description", "")
 
             # Formater le montant
             amount_str = f"{abs(amount):.2f} €"

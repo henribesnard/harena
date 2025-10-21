@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     MAX_CORRECTION_ATTEMPTS: int = int(os.getenv("MAX_CORRECTION_ATTEMPTS", "2"))
     QUERY_TIMEOUT_SECONDS: int = int(os.getenv("QUERY_TIMEOUT_SECONDS", "30"))
 
+    # Context optimization - Limite le nombre de transactions dans le contexte LLM
+    MAX_TRANSACTIONS_IN_CONTEXT: int = int(os.getenv("MAX_TRANSACTIONS_IN_CONTEXT", "50"))
+
     # CORS
     CORS_ORIGINS: list = [
         "http://localhost:3000",

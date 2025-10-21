@@ -4,6 +4,7 @@ Utilise LangChain pour comprendre l'intention et extraire les entités
 """
 import logging
 import json
+import os
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -27,6 +28,7 @@ class QueryAnalyzerAgent:
     """
 
     def __init__(self, llm_model: str = "gpt-4o-mini", temperature: float = 0.1):
+        # ChatOpenAI charge automatiquement OPENAI_API_KEY depuis l'environnement
         self.llm = ChatOpenAI(
             model=llm_model,
             temperature=temperature

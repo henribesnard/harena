@@ -4,6 +4,7 @@ Utilise LangChain avec capacité d'auto-correction
 """
 import logging
 import json
+import os
 from typing import Dict, Any, Optional, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -32,73 +33,111 @@ class ElasticsearchBuilderAgent:
     """
 
     def __init__(self, llm_model: str = "gpt-4o-mini", temperature: float = 0.0):
+        # ChatOpenAI charge automatiquement OPENAI_API_KEY depuis l'environnement
         self.llm = ChatOpenAI(
             model=llm_model,
             temperature=temperature  # Température basse pour plus de cohérence
         )
 
         self.schema_description = get_schema_description()
-        self.parser = JsonOutputParser()
 
-        # Prompt pour la construction initiale
-        self.build_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es un expert Elasticsearch spécialisé dans la construction de queries pour des données de transactions financières.
+        # Définition du function calling schema - RÉSOUT TOUS LES PROBLÈMES
+        self.search_query_function = {
+            "name": "generate_search_query",
+            "description": "Génère une requête de recherche au format search_service pour des transactions financières",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "integer",
+                        "description": "ID de l'utilisateur (obligatoire)"
+                    },
+                    "filters": {
+                        "type": "object",
+                        "description": "Filtres à appliquer sur les transactions",
+                        "properties": {
+                            "transaction_type": {
+                                "type": "string",
+                                "enum": ["debit", "credit"],
+                                "description": "Type de transaction: 'debit' pour dépenses, 'credit' pour revenus"
+                            },
+                            "amount_abs": {
+                                "type": "object",
+                                "description": "Filtre sur le MONTANT ABSOLU. IMPORTANT: 'plus de X' = {'gt': X} (EXCLUT X), 'au moins X' = {'gte': X} (INCLUT X). Utiliser 'gt', 'gte', 'lt', 'lte' comme clés.",
+                                "additionalProperties": True
+                            },
+                            "category_name": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Liste des catégories à filtrer"
+                            },
+                            "merchant_name": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Liste des marchands à filtrer"
+                            },
+                            "date": {
+                                "type": "object",
+                                "description": "Plage de dates au format {'gte': 'YYYY-MM-DD', 'lte': 'YYYY-MM-DD'}",
+                                "additionalProperties": True
+                            }
+                        }
+                    },
+                    "sort": {
+                        "type": "array",
+                        "description": "OBLIGATOIRE: Critères de tri. Par défaut: [{'date': {'order': 'desc'}}] pour trier par date décroissante",
+                        "items": {"type": "object"},
+                        "minItems": 1
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "description": "Nombre de résultats par page",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 200
+                    },
+                    "aggregations": {
+                        "type": "object",
+                        "description": "Agrégations Elasticsearch. IMPORTANT: Toujours utiliser 'amount_abs' (valeur absolue) pour les stats de montants, JAMAIS 'amount'",
+                        "additionalProperties": True
+                    }
+                },
+                "required": ["user_id", "filters", "sort", "page_size"]
+            }
+        }
 
-Schéma Elasticsearch:
-{schema}
+        # Prompt simplifié pour function calling avec exemples concrets
+        self.build_prompt_text = """Génère une requête de recherche pour: {intent}
 
-Règles IMPORTANTES:
-1. TOUJOURS inclure le filtre user_id dans la query
-2. Pour les agrégations, utiliser EXACTEMENT la syntaxe Elasticsearch
-3. Les dates doivent être au format YYYY-MM-DD
-4. Les montants sont en float
-5. Pour "ce mois-ci", utiliser la date actuelle: {current_date}
-6. TOUJOURS limiter les résultats (size: 50 par défaut)
-7. Pour les agrégations, inclure les sous-agrégations nécessaires
+Contexte:
+- User ID: {user_id}
+- Date actuelle: {current_date}
+- Filtres détectés: {filters}
+- Agrégations demandées: {aggregations}
+- Période: {time_range}
 
-Structure de réponse attendue:
+RÈGLES CRITIQUES:
+1. "plus de X euros" = amount_abs: {{"gt": X}} → EXCLUT X (strictement supérieur)
+2. "au moins X euros" = amount_abs: {{"gte": X}} → INCLUT X (supérieur ou égal)
+3. "dépenses" = transaction_type: "debit"
+4. "revenus" = transaction_type: "credit"
+5. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}]
+6. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
+
+EXEMPLE pour "Mes dépenses de plus de 100 euros":
 {{
-  "query": {{
-    "bool": {{
-      "must": [...],
-      "filter": [
-        {{"term": {{"user_id": USER_ID}}}}
-      ]
+    "user_id": {user_id},
+    "filters": {{
+        "transaction_type": "debit",
+        "amount_abs": {{"gt": 100}}  ← gt car "plus de" EXCLUT 100
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 50,
+    "aggregations": {{
+        "transaction_count": {{"value_count": {{"field": "transaction_id"}}}},
+        "total_amount": {{"sum": {{"field": "amount_abs"}}}}  ← amount_abs!
     }}
-  }},
-  "aggs": {{...}},  // Optionnel
-  "size": 50,
-  "sort": [...]  // Optionnel
-}}
-
-Exemples d'agrégations courantes:
-- Total par catégorie:
-  "aggs": {{
-    "by_category": {{
-      "terms": {{"field": "category_name", "size": 20}},
-      "aggs": {{
-        "total_amount": {{"sum": {{"field": "amount"}}}}
-      }}
-    }}
-  }}
-
-- Statistiques sur les montants:
-  "aggs": {{
-    "amount_stats": {{"stats": {{"field": "amount"}}}}
-  }}
-
-Retourne UNIQUEMENT le JSON de la query, sans texte additionnel."""),
-            ("user", """Analyse de la requête utilisateur:
-Intent: {intent}
-Filtres: {filters}
-Agrégations demandées: {aggregations}
-Plage temporelle: {time_range}
-
-User ID: {user_id}
-Date actuelle: {current_date}
-
-Construis la query Elasticsearch correspondante.""")
-        ])
+}}"""
 
         # Prompt pour l'auto-correction
         self.correction_prompt = ChatPromptTemplate.from_messages([
@@ -130,8 +169,8 @@ User ID: {user_id}
 Corrige cette query pour qu'elle fonctionne.""")
         ])
 
-        self.build_chain = self.build_prompt | self.llm | self.parser
-        self.correction_chain = self.correction_prompt | self.llm | self.parser
+        # Pas de chain pour function calling, on appelle directement le LLM
+        self.correction_chain = self.correction_prompt | self.llm | JsonOutputParser()
 
         self.stats = {
             "queries_built": 0,
@@ -149,6 +188,7 @@ Corrige cette query pour qu'elle fonctionne.""")
     ) -> AgentResponse:
         """
         Construit une query Elasticsearch à partir de l'analyse
+        UTILISE FUNCTION CALLING pour garantir le bon format
 
         Args:
             query_analysis: Analyse de la requête utilisateur
@@ -161,22 +201,42 @@ Corrige cette query pour qu'elle fonctionne.""")
         try:
             logger.info(f"Building Elasticsearch query for intent: {query_analysis.intent}")
 
-            # Invoquer le LLM pour construire la query
-            result = await self.build_chain.ainvoke({
-                "schema": self.schema_description,
-                "intent": query_analysis.intent,
-                "filters": json.dumps(query_analysis.filters, ensure_ascii=False),
-                "aggregations": json.dumps(query_analysis.aggregations_needed, ensure_ascii=False),
-                "time_range": json.dumps(query_analysis.time_range, ensure_ascii=False) if query_analysis.time_range else "Non spécifié",
-                "user_id": user_id,
-                "current_date": current_date
-            })
+            # Préparer le message pour function calling
+            prompt_message = self.build_prompt_text.format(
+                intent=query_analysis.intent,
+                filters=json.dumps(query_analysis.filters, ensure_ascii=False),
+                aggregations=json.dumps(query_analysis.aggregations_needed, ensure_ascii=False),
+                time_range=json.dumps(query_analysis.time_range, ensure_ascii=False) if query_analysis.time_range else "Non spécifié",
+                user_id=user_id,
+                current_date=current_date
+            )
+
+            # Appeler le LLM avec function calling (utiliser predict_messages pour function calling)
+            from langchain.schema import HumanMessage
+            response = await self.llm.apredict_messages(
+                [HumanMessage(content=prompt_message)],
+                functions=[self.search_query_function],
+                function_call={"name": "generate_search_query"}
+            )
+
+            # Extraire le résultat de la function call
+            # apredict_messages retourne un AIMessage directement
+            function_call = response.additional_kwargs.get("function_call")
+            if not function_call:
+                raise ValueError("No function call in LLM response")
+
+            result = json.loads(function_call["arguments"])
+
+            # S'assurer que user_id est présent
+            if "user_id" not in result:
+                result["user_id"] = user_id
 
             # Construire l'objet ElasticsearchQuery
+            # Le résultat contient: {user_id, filters, sort, page_size, aggregations}
             es_query = ElasticsearchQuery(
-                query=result.get("query", {}),
-                aggregations=result.get("aggs"),
-                size=result.get("size", 50),
+                query=result,  # Format search_service complet
+                aggregations=result.get("aggregations"),
+                size=result.get("page_size", 50),
                 sort=result.get("sort")
             )
 
@@ -185,11 +245,10 @@ Corrige cette query pour qu'elle fonctionne.""")
 
             if not validation.is_valid:
                 logger.warning(f"Query validation failed: {validation.errors}")
-                # Ne pas retourner d'erreur, juste logger les warnings
 
             self.stats["queries_built"] += 1
 
-            logger.info(f"Query built successfully. Size: {es_query.size}, Has aggs: {es_query.aggregations is not None}")
+            logger.info(f"Query built successfully with function calling. Size: {es_query.size}, Has aggs: {es_query.aggregations is not None}")
 
             return AgentResponse(
                 success=True,
@@ -197,12 +256,13 @@ Corrige cette query pour qu'elle fonctionne.""")
                 agent_role=AgentRole.ELASTICSEARCH_BUILDER,
                 metadata={
                     "validation": validation,
-                    "intent": query_analysis.intent
+                    "intent": query_analysis.intent,
+                    "used_function_calling": True
                 }
             )
 
         except Exception as e:
-            logger.error(f"Error building query: {str(e)}")
+            logger.error(f"Error building query with function calling: {str(e)}")
             return AgentResponse(
                 success=False,
                 data=None,
@@ -293,7 +353,7 @@ Corrige cette query pour qu'elle fonctionne.""")
 
     def _validate_query(self, query: ElasticsearchQuery, user_id: int) -> QueryValidationResult:
         """
-        Valide une query Elasticsearch
+        Valide une query au format search_service
 
         Args:
             query: Query à valider
@@ -310,28 +370,27 @@ Corrige cette query pour qu'elle fonctionne.""")
             errors.append("Query is empty")
             return QueryValidationResult(is_valid=False, errors=errors)
 
-        # Vérifier la structure bool
-        if "bool" not in query.query:
-            warnings.append("Query should use bool structure for better performance")
+        # Vérifier le format search_service (doit avoir user_id, filters, etc.)
+        if "bool" in query.query or "must" in query.query or "filter" in query.query:
+            errors.append("Query is in Elasticsearch DSL format instead of search_service format")
+            errors.append("Expected format: {user_id, filters, sort, page_size, aggregations}")
 
-        # Vérifier le filtre user_id
-        user_id_found = False
-        if "bool" in query.query:
-            for clause_type in ["must", "filter"]:
-                if clause_type in query.query["bool"]:
-                    for clause in query.query["bool"][clause_type]:
-                        if "term" in clause and "user_id" in clause["term"]:
-                            user_id_found = True
-                            # Vérifier la valeur
-                            if clause["term"]["user_id"] != user_id:
-                                errors.append(f"Wrong user_id in query: expected {user_id}")
+        # Vérifier le user_id au niveau racine
+        if "user_id" not in query.query:
+            errors.append("Missing user_id at root level - SECURITY ISSUE")
+        elif query.query.get("user_id") != user_id:
+            errors.append(f"Wrong user_id in query: expected {user_id}, got {query.query.get('user_id')}")
 
-        if not user_id_found:
-            errors.append("Missing user_id filter - SECURITY ISSUE")
+        # Vérifier que filters existe (peut être vide)
+        if "filters" not in query.query:
+            warnings.append("Missing 'filters' field in search_service format")
 
         # Vérifier les champs dans les filtres
         valid_fields = set(ELASTICSEARCH_SCHEMA["fields"].keys())
-        self._check_fields_in_dict(query.query, valid_fields, errors, warnings)
+        if "filters" in query.query and isinstance(query.query["filters"], dict):
+            for field_name in query.query["filters"].keys():
+                if field_name not in valid_fields:
+                    errors.append(f"Unknown field '{field_name}' in filters")
 
         # Vérifier les agrégations si présentes
         if query.aggregations:

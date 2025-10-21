@@ -5,6 +5,7 @@ Pipeline: Analyze → Build Query → Execute → Correct (if needed) → Genera
 import logging
 import asyncio
 import httpx
+import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -111,6 +112,7 @@ class AgentOrchestrator:
 
             es_query: ElasticsearchQuery = build_response.data
             logger.info(f"Query built: size={es_query.size}, has_aggs={es_query.aggregations is not None}")
+            logger.info(f"Generated ES query: {json.dumps(es_query.query, ensure_ascii=False, indent=2)}")
 
             # === ÉTAPE 3: Exécution de la query (avec auto-correction) ===
             logger.info("Step 3: Executing query with auto-correction")
@@ -249,17 +251,20 @@ class AgentOrchestrator:
             Exception: Si l'exécution échoue (pour permettre la correction)
         """
         try:
-            # Construire la query complète
-            full_query = {
-                "query": es_query.query,
-                "size": es_query.size
-            }
+            # NOTE: es_query.query contient maintenant directement le format search_service
+            # Format: {user_id, filters, sort, page_size, aggregations}
+            # On l'envoie DIRECTEMENT à search_service sans transformation!
 
-            if es_query.aggregations:
-                full_query["aggs"] = es_query.aggregations
+            search_payload = es_query.query  # Le format search_service complet généré par l'agent
 
-            if es_query.sort:
-                full_query["sort"] = es_query.sort
+            # S'assurer que user_id est présent (au cas où)
+            if "user_id" not in search_payload:
+                search_payload["user_id"] = user_id
+
+            # CRITIQUE: S'assurer que sort est TOUJOURS présent (obligatoire pour search_service)
+            if "sort" not in search_payload or not search_payload.get("sort"):
+                search_payload["sort"] = [{"date": {"order": "desc"}}]
+                logger.debug("Added default sort criteria")
 
             # Headers
             headers = {
@@ -269,30 +274,34 @@ class AgentOrchestrator:
                 headers["Authorization"] = f"Bearer {jwt_token}"
 
             # Appel à search_service
-            url = f"{self.search_service_url}/api/search/query"
+            url = f"{self.search_service_url}/api/v1/search/search"
+            logger.info(f"Search payload: {json.dumps(search_payload, ensure_ascii=False, indent=2)}")
             logger.debug(f"Calling search_service: {url}")
 
             response = await self.http_client.post(
                 url,
-                json=full_query,
+                json=search_payload,
                 headers=headers
             )
 
             if response.status_code == 200:
                 data = response.json()
 
-                # Parser la réponse Elasticsearch
-                hits = data.get("hits", {}).get("hits", [])
-                total = data.get("hits", {}).get("total", {}).get("value", 0)
+                # Parser la réponse de search_service (format custom, pas Elasticsearch brut)
+                # search_service retourne: {results: [...], total_hits: X, aggregations: {...}}
+                transactions = data.get("results", [])
+                total = data.get("total_hits", 0)
                 aggregations = data.get("aggregations")
-                took = data.get("took", 0)
+                took = data.get("response_metadata", {}).get("processing_time_ms", 0)
 
                 search_results = SearchResults(
-                    hits=hits,
-                    total=total,
+                    hits=transactions,  # search_service appelle ça "results"
+                    total=total,  # search_service appelle ça "total_hits"
                     aggregations=aggregations,
                     took_ms=took
                 )
+
+                logger.info(f"✅ Parsed {len(transactions)} transactions from {total} total results")
 
                 logger.debug(f"Search successful: {total} results, took {took}ms")
                 return search_results
@@ -340,6 +349,82 @@ class AgentOrchestrator:
                 "timestamp": datetime.now().isoformat()
             }
         )
+
+    def _extract_filters_from_es_query(self, es_query: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extrait les filtres d'une query Elasticsearch et les convertit au format search_service
+
+        Args:
+            es_query: Query Elasticsearch avec structure {"bool": {"must": [...], "filter": [...]}}
+
+        Returns:
+            Dict de filtres au format search_service {"field": {"operator": value}}
+        """
+        filters = {}
+
+        try:
+            # Structure typique: {"bool": {"must": [...], "filter": [...]}}
+            if isinstance(es_query, dict) and "bool" in es_query:
+                bool_query = es_query["bool"]
+
+                # Extraire les conditions de "must"
+                must_conditions = bool_query.get("must", [])
+                for condition in must_conditions:
+                    if isinstance(condition, dict):
+                        # Range query: {"range": {"amount": {"gte": 100}}}
+                        if "range" in condition:
+                            for field, range_value in condition["range"].items():
+                                filters[field] = range_value
+
+                        # Term query: {"term": {"transaction_type": "debit"}}
+                        elif "term" in condition:
+                            for field, term_value in condition["term"].items():
+                                filters[field] = term_value
+
+                        # Terms query: {"terms": {"category_name": ["food", "restaurant"]}}
+                        elif "terms" in condition:
+                            for field, terms_values in condition["terms"].items():
+                                filters[field] = terms_values
+
+                        # Match query: {"match": {"merchant_name": "carrefour"}}
+                        elif "match" in condition:
+                            for field, match_value in condition["match"].items():
+                                filters[field] = match_value
+
+                # Extraire les conditions de "filter" (sauf user_id qui est déjà dans le payload)
+                filter_conditions = bool_query.get("filter", [])
+                for condition in filter_conditions:
+                    if isinstance(condition, dict):
+                        # Range query
+                        if "range" in condition:
+                            for field, range_value in condition["range"].items():
+                                filters[field] = range_value
+
+                        # Term query
+                        elif "term" in condition:
+                            for field, term_value in condition["term"].items():
+                                # Ne pas inclure user_id dans filters car déjà dans payload
+                                if field != "user_id":
+                                    filters[field] = term_value
+
+                        # Terms query
+                        elif "terms" in condition:
+                            for field, terms_values in condition["terms"].items():
+                                if field != "user_id":
+                                    filters[field] = terms_values
+
+                        # Match query
+                        elif "match" in condition:
+                            for field, match_value in condition["match"].items():
+                                if field != "user_id":
+                                    filters[field] = match_value
+
+        except Exception as e:
+            logger.warning(f"Error extracting filters from ES query: {str(e)}")
+            # En cas d'erreur, retourner un dict vide
+            return {}
+
+        return filters
 
     def _update_avg_time(self, pipeline_time_ms: int):
         """Met à jour le temps moyen de pipeline"""

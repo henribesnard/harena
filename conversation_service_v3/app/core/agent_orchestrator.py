@@ -16,6 +16,7 @@ from ..models import (
 from ..agents.query_analyzer_agent import QueryAnalyzerAgent
 from ..agents.elasticsearch_builder_agent import ElasticsearchBuilderAgent
 from ..agents.response_generator_agent import ResponseGeneratorAgent
+from ..core.aggregation_enricher import AggregationEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,15 @@ class AgentOrchestrator:
         self.query_builder = ElasticsearchBuilderAgent(llm_model=llm_model)
         self.response_generator = ResponseGeneratorAgent(llm_model="gpt-4o")
 
+        # Initialiser l'enrichisseur d'agrégations
+        self.aggregation_enricher = AggregationEnricher()
+
         self.search_service_url = search_service_url
         self.max_correction_attempts = max_correction_attempts
 
         # HTTP client pour search_service
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        # Timeout augmenté pour laisser le temps aux agrégations complexes de s'exécuter
+        self.http_client = httpx.AsyncClient(timeout=60.0)
 
         # Statistiques
         self.stats = {
@@ -113,6 +118,32 @@ class AgentOrchestrator:
             es_query: ElasticsearchQuery = build_response.data
             logger.info(f"Query built: size={es_query.size}, has_aggs={es_query.aggregations is not None}")
             logger.info(f"Generated ES query: {json.dumps(es_query.query, ensure_ascii=False, indent=2)}")
+
+            # === ÉTAPE 2.5: Enrichissement des agrégations avec templates ===
+            # Enrichir avec templates si agrégations complexes demandées
+            if query_analysis.aggregations_needed:
+                logger.info(f"Enriching query with aggregation templates: {query_analysis.aggregations_needed}")
+
+                es_query.query = self.aggregation_enricher.enrich(
+                    query=es_query.query,
+                    aggregations_requested=query_analysis.aggregations_needed
+                )
+
+                logger.info(f"Query after enrichment: {json.dumps(es_query.query.get('aggregations', {}), ensure_ascii=False, indent=2)}")
+            else:
+                # Fallback: Détecter depuis le message si pas détecté par QueryAnalyzer
+                detected_templates = self.aggregation_enricher.detect_from_query_text(
+                    user_query.message
+                )
+
+                if detected_templates:
+                    logger.info(f"Detected aggregation templates from message: {detected_templates}")
+                    es_query.query = self.aggregation_enricher.enrich(
+                        query=es_query.query,
+                        aggregations_requested=detected_templates
+                    )
+
+                    logger.info(f"Query after fallback enrichment: {json.dumps(es_query.query.get('aggregations', {}), ensure_ascii=False, indent=2)}")
 
             # === ÉTAPE 3: Exécution de la query (avec auto-correction) ===
             logger.info("Step 3: Executing query with auto-correction")

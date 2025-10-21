@@ -1,0 +1,112 @@
+[
+  {
+    "id": 1,
+    "category": "Agrégations simples",
+    "question": "Combien j'ai dépensé en total"
+  },
+  {
+    "id": 2,
+    "category": "Agrégations simples",
+    "question": "Mes depenses de plus de 50 euros"
+  },
+  {
+    "id": 3,
+    "category": "Agrégations simples",
+    "question": "Nombre total de mes transactions"
+  },
+  {
+    "id": 4,
+    "category": "Agrégations par catégorie",
+    "question": "Repartition de mes depenses par categorie"
+  },
+  {
+    "id": 5,
+    "category": "Agrégations par catégorie",
+    "question": "Combien j'ai dépensé en alimentation"
+  },
+  {
+    "id": 6,
+    "category": "Agrégations par catégorie",
+    "question": "Mes principales catégories de dépenses"
+  },
+  {
+    "id": 7,
+    "category": "Agrégations par marchand",
+    "question": "Ou je depense le plus"
+  },
+  {
+    "id": 8,
+    "category": "Agrégations par marchand",
+    "question": "Mes achats chez Amazon"
+  },
+  {
+    "id": 9,
+    "category": "Agrégations par marchand",
+    "question": "Top 5 des marchands où je dépense"
+  },
+  {
+    "id": 10,
+    "category": "Agrégations temporelles",
+    "question": "Evolution mensuelle de mes depenses"
+  },
+  {
+    "id": 11,
+    "category": "Agrégations temporelles",
+    "question": "Mes depenses ce mois-ci"
+  },
+  {
+    "id": 12,
+    "category": "Agrégations temporelles",
+    "question": "Tendance hebdomadaire de mes dépenses"
+  },
+  {
+    "id": 13,
+    "category": "Filtres complexes",
+    "question": "Mes depenses alimentaires de plus de 20 euros"
+  },
+  {
+    "id": 14,
+    "category": "Filtres complexes",
+    "question": "Transactions chez Carrefour supérieures à 30€"
+  },
+  {
+    "id": 15,
+    "category": "Filtres complexes",
+    "question": "Mes achats en ligne entre 10 et 50 euros"
+  },
+  {
+    "id": 16,
+    "category": "Recherches spécifiques",
+    "question": "Mes paiements de prêt"
+  },
+  {
+    "id": 17,
+    "category": "Recherches spécifiques",
+    "question": "Mes virements sortants"
+  },
+  {
+    "id": 18,
+    "category": "Recherches spécifiques",
+    "question": "Retraits d'espèces"
+  },
+  {
+    "id": 19,
+    "category": "Statistiques globales",
+    "question": "Résumé de mes finances"
+  },
+  {
+    "id": 20,
+    "category": "Statistiques globales",
+    "question": "Statistiques complètes de mes dépenses"
+  },
+  {
+    "id": 21,
+    "category": "Comparaisons",
+    "question": "Quelles sont mes dépenses récurrentes"
+  },
+  {
+    "id": 22,
+    "category": "Comparaisons",
+    "question": "Mes dépenses les plus importantes"
+  }
+]

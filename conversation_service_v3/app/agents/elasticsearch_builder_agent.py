@@ -254,6 +254,10 @@ Corrige cette query pour qu'elle fonctionne.""")
             if "user_id" not in result:
                 result["user_id"] = user_id
 
+            # Nettoyer les agrégations (enlever les champs "name" invalides ajoutés par le LLM)
+            if "aggregations" in result and result["aggregations"]:
+                result["aggregations"] = self._clean_aggregations(result["aggregations"])
+
             # Construire l'objet ElasticsearchQuery
             # Le résultat contient: {user_id, filters, sort, page_size, aggregations}
             es_query = ElasticsearchQuery(
@@ -453,6 +457,69 @@ Corrige cette query pour qu'elle fonctionne.""")
         elif isinstance(obj, list):
             for idx, item in enumerate(obj):
                 self._check_fields_in_dict(item, valid_fields, errors, warnings, f"{path}[{idx}]")
+
+    def _clean_aggregations(self, aggs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Nettoie les agrégations en enlevant les champs invalides ajoutés par le LLM
+
+        Problèmes corrigés:
+        1. Champs "name" invalides qui causent "Expected [START_OBJECT] under [name]"
+        2. Multiples types d'agrégation dans le même objet (ex: sum + value_count)
+
+        Args:
+            aggs: Agrégations à nettoyer
+
+        Returns:
+            Agrégations nettoyées
+        """
+        if not isinstance(aggs, dict):
+            return aggs
+
+        AGG_TYPES = ["sum", "avg", "min", "max", "stats", "value_count", "terms", "date_histogram", "cardinality"]
+
+        cleaned = {}
+        for agg_name, agg_def in aggs.items():
+            if isinstance(agg_def, dict):
+                # Trouver tous les types d'agrégation dans cet objet
+                agg_types_found = [key for key in agg_def.keys() if key in AGG_TYPES]
+
+                if len(agg_types_found) > 1:
+                    # PROBLÈME: Multiple types dans une seule agrégation
+                    # Solution: Garder le premier type, créer des agrégations séparées pour les autres
+                    logger.warning(f"Multiple aggregation types in '{agg_name}': {agg_types_found}. Splitting...")
+
+                    # Garder le premier type dans l'agrégation principale
+                    main_type = agg_types_found[0]
+                    cleaned[agg_name] = {main_type: agg_def[main_type]}
+
+                    # Créer de nouvelles agrégations pour les autres types
+                    for idx, other_type in enumerate(agg_types_found[1:], 1):
+                        new_agg_name = f"{agg_name}_{other_type}"
+                        cleaned[new_agg_name] = {other_type: agg_def[other_type]}
+                        logger.info(f"Created separate aggregation: {new_agg_name}")
+
+                    # Gérer les sous-agrégations (aggs) s'il y en a
+                    if "aggs" in agg_def:
+                        cleaned[agg_name]["aggs"] = self._clean_aggregations(agg_def["aggs"])
+
+                else:
+                    # Une seule agrégation : copier en nettoyant
+                    cleaned_agg = {}
+                    for key, value in agg_def.items():
+                        if key == "name":
+                            # Ignorer le champ "name" invalide
+                            logger.debug(f"Removed invalid 'name' field from aggregation '{agg_name}'")
+                            continue
+                        elif key == "aggs" and isinstance(value, dict):
+                            # Nettoyer récursivement les sous-agrégations
+                            cleaned_agg[key] = self._clean_aggregations(value)
+                        else:
+                            cleaned_agg[key] = value
+                    cleaned[agg_name] = cleaned_agg
+            else:
+                cleaned[agg_name] = agg_def
+
+        return cleaned
 
     def _validate_aggregations(
         self,

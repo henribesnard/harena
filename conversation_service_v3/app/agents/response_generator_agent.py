@@ -218,6 +218,56 @@ Génère une réponse complète et utile.""")
                 error=str(e)
             )
 
+    async def generate_response_stream(
+        self,
+        user_message: str,
+        search_results: SearchResults,
+        original_query_analysis: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Génère une réponse en mode streaming (yield chunks)
+
+        Args:
+            user_message: Message original de l'utilisateur
+            search_results: Résultats Elasticsearch (hits + agrégations)
+            original_query_analysis: Analyse originale (pour contexte)
+
+        Yields:
+            Chunks de texte au fur et à mesure de la génération
+        """
+        try:
+            logger.info(f"Generating streaming response for query: {user_message[:100]}")
+
+            from ..config.settings import settings
+
+            # Préparer les agrégations pour le LLM
+            aggs_summary = self._format_aggregations(search_results.aggregations)
+
+            # Limiter le nombre de transactions dans le contexte
+            max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(search_results.hits))
+            limited_transactions = search_results.hits[:max_transactions]
+
+            # Préparer les transactions pour le LLM
+            transactions_text = self._format_transactions(limited_transactions)
+
+            # Stream la réponse du LLM
+            async for chunk in self.chain.astream({
+                "user_message": user_message,
+                "aggregations": aggs_summary,
+                "total_results": search_results.total,
+                "transactions_count": len(limited_transactions),
+                "transactions": transactions_text
+            }):
+                # Chaque chunk contient le contenu généré
+                if hasattr(chunk, 'content'):
+                    yield chunk.content
+
+            logger.info("Streaming response completed")
+
+        except Exception as e:
+            logger.error(f"Error in streaming response: {str(e)}")
+            yield f"Erreur lors de la génération de la réponse: {str(e)}"
+
     def _format_aggregations(self, aggregations: Optional[Dict[str, Any]]) -> str:
         """
         Formate les agrégations Elasticsearch de manière détaillée pour le LLM

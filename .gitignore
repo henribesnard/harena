@@ -101,6 +101,16 @@ test_output/
 test_enrichissement.py
 test_reports_query_extraction/
 
+# Conversation Service v4 (experimental - not tracked)
+conversation_service_v4/
+
+# Fichiers de test temporaires
+test_*.py
+test_*.json
+response*.json
+*_logs.txt
+*_pip_list.txt
+
 # Dépendances Node.js (si vous ajoutez un frontend plus tard)
 node_modules/
 npm-debug.log*

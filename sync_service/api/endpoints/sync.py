@@ -12,7 +12,7 @@ from datetime import datetime
 
 from db_service.session import get_db
 from user_service.api.deps import get_current_active_user
-from db_service.models.user import User
+from db_service.models.user import User, BridgeConnection
 from db_service.models.sync import SyncItem
 import logging
 
@@ -24,14 +24,40 @@ from sync_service.sync_manager.item_handler import create_reconnect_session
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+async def require_bridge_connection(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    Dépendance pour vérifier qu'une connexion Bridge existe.
+
+    Lève une HTTPException 428 (Precondition Required) si aucune connexion n'existe.
+    L'utilisateur doit d'abord connecter son compte Bridge via POST /users/bridge/connect.
+    """
+    bridge_connection = db.query(BridgeConnection).filter(
+        BridgeConnection.user_id == current_user.id
+    ).first()
+
+    if not bridge_connection:
+        logger.warning(f"User {current_user.id} attempted sync operation without Bridge connection")
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="Bridge connection required. Please connect your bank account first using POST /users/bridge/connect"
+        )
+
+    return current_user
+
 @router.get("/status")
 async def get_sync_status(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_bridge_connection),
     db: Session = Depends(get_db)
 ):
     """
     Récupère l'état actuel de synchronisation pour l'utilisateur.
-    
+
+    Nécessite une connexion Bridge active.
+
     Returns:
         Dict: État global de synchronisation incluant statuts SQL et vectoriels
     """
@@ -40,13 +66,15 @@ async def get_sync_status(
 @router.post("/refresh")
 async def refresh_sync(
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_bridge_connection),
     db: Session = Depends(get_db)
 ):
     """
     Déclenche une nouvelle synchronisation pour tous les items de l'utilisateur.
     Vérifie d'abord si les items existent, les crée si nécessaire, puis lance la synchronisation.
-    
+
+    Nécessite une connexion Bridge active.
+
     Returns:
         Dict: Statut de démarrage de la synchronisation
     """
@@ -116,15 +144,17 @@ async def refresh_sync(
 @router.post("/reconnect/{bridge_item_id}")
 async def reconnect_item(
     bridge_item_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_bridge_connection),
     db: Session = Depends(get_db)
 ):
     """
     Crée une session de reconnexion pour un item en erreur.
-    
+
+    Nécessite une connexion Bridge active.
+
     Args:
         bridge_item_id: ID de l'item Bridge à reconnecter
-        
+
     Returns:
         Dict: URL de reconnexion à utiliser par le frontend
     """
@@ -153,15 +183,17 @@ async def reconnect_item(
 async def sync_single_item(
     bridge_item_id: int,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_bridge_connection),
     db: Session = Depends(get_db)
 ):
     """
     Déclenche une synchronisation pour un seul item spécifique.
-    
+
+    Nécessite une connexion Bridge active.
+
     Args:
         bridge_item_id: ID de l'item Bridge à synchroniser
-        
+
     Returns:
         Dict: Statut de démarrage de la synchronisation
     """

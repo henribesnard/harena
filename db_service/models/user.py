@@ -46,6 +46,19 @@ class User(Base, TimestampMixin):
         cascade="all, delete-orphan"
     )
 
+    @property
+    def has_bridge_connection(self) -> bool:
+        """
+        Vérifie si l'utilisateur a une connexion Bridge active.
+
+        Returns:
+            bool: True si une connexion Bridge existe avec un UUID valide
+        """
+        return (
+            len(self.bridge_connections) > 0 and
+            self.bridge_connections[0].bridge_user_uuid is not None
+        )
+
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}')>"
 

@@ -24,30 +24,18 @@ async def register_user(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Créer un nouvel utilisateur et l'enregistrer auprès de Bridge API.
-    
-    Note: Les administrateurs (is_superuser=True) ne nécessitent pas de compte Bridge
-    car ils n'ont pas besoin d'accéder à des données financières personnelles.
+    Créer un nouvel utilisateur.
+
+    La connexion à Bridge API est désormais optionnelle et peut être effectuée
+    ultérieurement via l'endpoint /bridge/connect.
     """
     # Créer l'utilisateur en base
     db_user = users.create_user(db, user_in)
-    
-    # Créer l'utilisateur Bridge SEULEMENT pour les utilisateurs normaux
-    if not db_user.is_superuser:
-        try:
-            await bridge.create_bridge_user(db, db_user)
-        except Exception as e:
-            # En cas d'échec Bridge pour un utilisateur normal, on annule la création
-            db.delete(db_user)
-            db.commit()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create Bridge user: {str(e)}"
-            )
-    else:
-        # Pour les admins, on log juste qu'on ne crée pas de compte Bridge
-        logger.info(f"Admin user {db_user.id} created without Bridge account (not required)")
-    
+
+    # L'utilisateur est créé SANS connexion Bridge par défaut
+    # La connexion peut être ajoutée plus tard via /bridge/connect
+    logger.info(f"User {db_user.id} created without Bridge connection (can be added later)")
+
     return db_user
 
 
@@ -109,6 +97,40 @@ async def update_user_me(
     return updated_user
 
 
+@router.post("/bridge/connect", response_model=BridgeConnectionInDB)
+async def connect_bridge_account(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    """
+    Connecter le compte utilisateur à Bridge API.
+
+    Cette étape est optionnelle et peut être effectuée après l'inscription.
+    Elle permet à l'utilisateur de synchroniser ses comptes bancaires.
+    """
+    # Vérifier si une connexion existe déjà
+    existing_connection = db.query(bridge.BridgeConnection).filter(
+        bridge.BridgeConnection.user_id == current_user.id
+    ).first()
+
+    if existing_connection:
+        logger.info(f"Bridge connection already exists for user {current_user.id}")
+        return existing_connection
+
+    try:
+        bridge_connection = await bridge.create_bridge_user(db, current_user)
+        logger.info(f"Bridge connection created successfully for user {current_user.id}")
+        return bridge_connection
+    except Exception as e:
+        # Cette fois, on ne supprime PAS l'utilisateur
+        # On retourne juste une erreur
+        logger.error(f"Failed to connect Bridge for user {current_user.id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to connect Bridge: {str(e)}"
+        )
+
+
 @router.get("/bridge/connection", response_model=BridgeConnectionInDB)
 async def get_bridge_connection(
     db: Session = Depends(get_db),
@@ -116,16 +138,23 @@ async def get_bridge_connection(
 ) -> Any:
     """
     Get Bridge API connection information.
+
+    Retourne une erreur 404 si aucune connexion n'existe.
+    Utilisez /bridge/connect pour créer une connexion.
     """
     # Vérifier si une connexion existe
     bridge_connection = db.query(bridge.BridgeConnection).filter(
         bridge.BridgeConnection.user_id == current_user.id
     ).first()
-    
+
     if not bridge_connection:
-        # Créer une connexion si aucune n'existe
-        bridge_connection = await bridge.create_bridge_user(db, current_user)
-    
+        # NE PAS créer automatiquement
+        # Retourner un message indiquant que l'utilisateur doit se connecter
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Bridge connection found. Please connect your bank account first using POST /bridge/connect"
+        )
+
     return bridge_connection
 
 

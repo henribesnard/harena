@@ -118,34 +118,112 @@ Réponse:
   "confidence": 0.93
 }}
 
+Question: "Mes achats entre 50€ et 150€"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"transaction_type": "debit", "amount_range": {{"min": 50, "max": 150}}}},
+  "filters": {{"category_name": ["Alimentation", "Restaurant", "Transport", "achats en ligne", "Santé/pharmacie", "Loisirs"], "transaction_type": "debit", "amount_abs": {{"gte": 50, "lte": 150}}}},
+  "aggregations_needed": ["statistics"],
+  "time_range": null,
+  "confidence": 0.90
+}}
+
+Question: "Mes achats de ce mois"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"transaction_type": "debit", "period": "current_month"}},
+  "filters": {{"category_name": ["Alimentation", "Restaurant", "Transport", "achats en ligne", "Santé/pharmacie", "Loisirs"], "transaction_type": "debit"}},
+  "aggregations_needed": ["total_amount", "statistics"],
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
+  "confidence": 0.95
+}}
+
+Question: "Mes dépenses en loisirs ce mois"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"category": "Loisirs", "transaction_type": "debit", "period": "current_month"}},
+  "filters": {{"category_name": "Loisirs", "transaction_type": "debit"}},
+  "aggregations_needed": ["total_amount", "statistics"],
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
+  "confidence": 0.95
+}}
+
+Question: "Mes abonnements"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"category": "Abonnements", "transaction_type": "debit"}},
+  "filters": {{"category_name": "Abonnements", "transaction_type": "debit"}},
+  "aggregations_needed": ["statistics"],
+  "time_range": null,
+  "confidence": 0.95
+}}
+
 IMPORTANT: Utilise TOUJOURS la date actuelle ({current_date}) comme référence pour les expressions temporelles relatives.
 
-**RÈGLE SÉMANTIQUE IMPORTANTE - TERME "ACHATS":**
-Lorsque l'utilisateur utilise le terme "achats" ou "mes achats" SANS préciser de marchand:
-- NE PAS filtrer uniquement sur "transaction_type": "debit" (trop large, inclut virements, loyer, etc.)
-- FILTRER sur les catégories d'achat typiques disponibles dans les métadonnées:
-  * Alimentation / Courses
-  * Loisirs
-  * Shopping / Commerce
-  * Santé (pharmacie, médecin)
-  * Transport (carburant, péage)
-  * Restaurants / Bars
-  * Services (coiffeur, pressing, etc.)
-- EXCLURE explicitement les catégories qui ne sont PAS des achats:
-  * Virements sortants
-  * Prélèvements automatiques
-  * Loyer / Charges
-  * Impôts
-  * Épargne
-  * Assurances
+⚠️ RAPPEL CRITIQUE: Le terme "achats" = UNIQUEMENT [Alimentation, Restaurant, Transport, achats en ligne, Santé/pharmacie, Loisirs]
+NE JAMAIS inclure: Abonnements, Téléphones/internet, Électricité/eau, Garde d'enfants, Frais scolarité, Jeux d'argent, Loterie, Paris sportif, Amendes, Autre paiement, Autres, Entretien maison
 
-Exemple:
+**RÈGLE SÉMANTIQUE CRITIQUE - TERME "ACHATS":**
+Lorsque l'utilisateur utilise le terme "achats" ou "mes achats" SANS préciser de marchand:
+
+⚠️ NE JAMAIS filtrer uniquement sur "transaction_type": "debit" (trop large, inclut virements, loyer, impôts, épargne, etc.)
+
+✅ À LA PLACE, tu dois filtrer sur les catégories d'ACHAT (biens et services de consommation).
+
+**Catégories qui sont des ACHATS (à INCLURE):**
+Un achat est l'acquisition ponctuelle d'un bien ou service de consommation. UNIQUEMENT ces catégories :
+- Alimentation (courses, supermarché)
+- Restaurant (repas au restaurant, fast-food)
+- Transport (tickets, carburant, taxi, parking)
+- Carburant (essence, diesel si catégorie séparée)
+- achats en ligne (e-commerce)
+- Santé/pharmacie (médicaments, consultations)
+- Loisirs (sorties, cinéma, spectacles, hobbies)
+- Vêtements (habillement si disponible)
+- Shopping (si disponible comme catégorie)
+
+**Catégories qui ne sont PAS des achats (à EXCLURE):**
+Toutes les autres catégories représentent des paiements récurrents, obligations, ou flux financiers :
+- Virement sortants, Virement entrants
+- Salaire
+- Impôts, ImpÃ´ts (toutes variations)
+- Assurances
+- Frais bancaires
+- Remboursements
+- CAF, PAJE, Aide
+- Pension alimentaire
+- Chèques émis
+- Retrait especes
+- Abonnements (Netflix, Spotify, etc. - récurrents)
+- Téléphones/internet (factures mensuelles)
+- Éléctricité/eau, EÃ©lectricitÃ©/eau (factures)
+- Entretien maison (travaux)
+- Garde d'enfants (service régulier)
+- Frais scolarité, Frais scolaritÃ© (frais fixes)
+- Jeux d'argent, Loterie, Paris sportif (paris, pas achats)
+- Amendes (sanctions)
+- Garage (réparations lourdes)
+- Autre paiement, Autres (trop vague)
+
+**Processus pour "achats":**
+1. Examine la liste des catégories disponibles dans les métadonnées
+2. Exclut les catégories non-achats listées ci-dessus
+3. Génère un filtre avec TOUTES les catégories restantes (= achats)
+4. Ajoute transaction_type: "debit"
+
+Exemples:
 Question: "Mes achats de ce mois-ci"
-→ Filtrer sur category_name IN ["Alimentation", "Loisirs", "Shopping", "Restaurants", "Santé", "Transport"]
-→ NE PAS utiliser uniquement transaction_type: "debit"
+→ Filtrer: category_name IN [toutes catégories SAUF non-achats] AND transaction_type: "debit"
 
 Question: "Mes achats chez Carrefour"
-→ Filtrer sur merchant_name: "Carrefour" (le marchand est précisé, pas besoin de filtre catégorie)
+→ Le marchand est précisé, filtrer directement sur merchant_name: "Carrefour"
+
+Question: "Achats entre 50€ et 150€"
+→ Filtrer: category_name IN [toutes catégories SAUF non-achats] AND transaction_type: "debit" AND amount between 50-150
 
 Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
             ("user", "Question utilisateur: {user_message}\n\nContexte conversation (optionnel): {context}")

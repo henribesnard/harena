@@ -14,9 +14,10 @@ COPY conversation_service_v3/requirements.txt .
 # Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier les dépendances partagées (db_service, config_service)
+# Copier les dépendances partagées (db_service, config_service, enrichment_service)
 COPY db_service /app/db_service
 COPY config_service /app/config_service
+COPY enrichment_service /app/enrichment_service
 
 # Copier le code de l'application v3
 COPY conversation_service_v3/app /app/app

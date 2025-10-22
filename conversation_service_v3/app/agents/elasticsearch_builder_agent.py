@@ -87,7 +87,9 @@ RÈGLES CRITIQUES:
 4. "revenus" = transaction_type: "credit"
 5. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}] (OBLIGATOIRE)
 6. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
-7. Pour les filtres merchant_name et category_name, utiliser {{"match": "valeur"}} pour recherche floue
+7. Pour merchant_name et category_name:
+   - ⚠️ IMPORTANT: Si l'analyse fournit une LISTE de valeurs ["val1", "val2", ...], tu DOIS GARDER TOUTES les valeurs sans exception. NE PAS tronquer, NE PAS sélectionner, GARDER LA LISTE COMPLÈTE EXACTEMENT TELLE QUELLE.
+   - Si c'est une VALEUR UNIQUE "val", utiliser {{"match": "val"}} pour recherche floue
 8. TOUJOURS ajouter des agrégations de base (total, count) pour donner des statistiques utiles
 9. Si l'intent indique "statistics" ou "analyze", utiliser les templates d'agrégations disponibles
 10. page_size doit être >= 1 (JAMAIS 0). Pour les queries d'agrégations, utiliser page_size: 10
@@ -123,6 +125,22 @@ Exemple 2 - "Combien j'ai dépensé en restaurants ce mois?":
         "total_spent": {{"sum": {{"field": "amount_abs"}}}},
         "transaction_count": {{"value_count": {{"field": "transaction_id"}}}},
         "avg_transaction": {{"avg": {{"field": "amount_abs"}}}}
+    }}
+}}
+
+Exemple 2b - "Mes achats entre 50€ et 150€" (catégories multiples):
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "category_name": ["Alimentation", "Restaurant", "achats en ligne", "Transport", "Santé/pharmacie", "Loisirs"],
+        "transaction_type": "debit",
+        "amount_abs": {{"gte": 50, "lte": 150}}
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 10,
+    "aggregations": {{
+        "total_spent": {{"sum": {{"field": "amount_abs"}}}},
+        "transaction_count": {{"value_count": {{"field": "transaction_id"}}}}
     }}
 }}
 
@@ -270,6 +288,37 @@ Corrige cette query pour qu'elle fonctionne.""")
             # S'assurer que user_id est présent
             if "user_id" not in result:
                 result["user_id"] = user_id
+
+            # CORRECTIF: Préserver les listes de catégories/marchands depuis l'analyse originale
+            # Le LLM a tendance à tronquer les longues listes, donc on force la liste originale
+            if "filters" in result and isinstance(result["filters"], dict):
+                # Préserver category_name si c'était une liste
+                if "category_name" in query_analysis.filters and isinstance(query_analysis.filters["category_name"], list):
+                    original_categories = query_analysis.filters["category_name"]
+
+                    # FILTRE RESTRICTIF: Ne garder que les VRAIES catégories d'achats
+                    # Ces catégories représentent l'acquisition ponctuelle de biens ou services
+                    PURCHASE_CATEGORIES = {
+                        "Alimentation", "Restaurant", "Transport", "Carburant",
+                        "achats en ligne", "Santé/pharmacie", "SantÃ©/pharmacie",
+                        "Loisirs", "Vêtements", "Shopping"
+                    }
+
+                    # Filtrer pour ne garder que les achats
+                    filtered_categories = [cat for cat in original_categories if cat in PURCHASE_CATEGORIES]
+
+                    if filtered_categories:
+                        logger.info(f"Filtered purchase categories: {len(filtered_categories)} out of {len(original_categories)} (kept: {filtered_categories})")
+                        result["filters"]["category_name"] = filtered_categories
+                    else:
+                        # Si aucune catégorie d'achat, garder l'original (probablement une catégorie unique spécifique)
+                        logger.warning(f"No purchase categories found in list, keeping original: {original_categories}")
+                        result["filters"]["category_name"] = original_categories
+
+                # Préserver merchant_name si c'était une liste
+                elif "merchant_name" in query_analysis.filters and isinstance(query_analysis.filters["merchant_name"], list):
+                    logger.info(f"Preserving original merchant list ({len(query_analysis.filters['merchant_name'])} merchants)")
+                    result["filters"]["merchant_name"] = query_analysis.filters["merchant_name"]
 
             # Nettoyer les agrégations (enlever les champs "name" invalides ajoutés par le LLM)
             if "aggregations" in result and result["aggregations"]:

@@ -72,29 +72,52 @@ class CategoryValidator:
 
         # CAS 1: category_name existe → valider et corriger
         if 'category_name' in filters:
-            search_value = self._extract_filter_value(filters['category_name'])
+            category_filter = filters['category_name']
 
-            if search_value:
-                exact_category = self.metadata_service.search_category_by_name(search_value)
+            # CAS 1A: Liste de catégories → valider chaque élément
+            if isinstance(category_filter, list):
+                validated_categories = []
+                for cat in category_filter:
+                    exact_category = self.metadata_service.search_category_by_name(str(cat))
+                    if exact_category:
+                        validated_categories.append(exact_category)
+                        if exact_category != cat:
+                            logger.debug(f"Category in list corrected: '{cat}' → '{exact_category}'")
+                            self.stats["category_corrections"] += 1
+                    else:
+                        # Garder la valeur originale si non trouvée
+                        validated_categories.append(cat)
+                        logger.warning(f"Category '{cat}' not found in list, keeping original")
 
-                if exact_category and exact_category != search_value:
-                    logger.info(f"✅ Category corrected: '{search_value}' → '{exact_category}'")
-                    self.stats["category_corrections"] += 1
+                # IMPORTANT: Garder le format liste
+                corrected_filters['category_name'] = validated_categories
+                logger.info(f"✅ Validated category list: {len(validated_categories)} categories")
 
-                    # Mettre à jour avec le nom exact
-                    corrected_filters['category_name'] = self._rebuild_filter(
-                        filters['category_name'],
-                        exact_category
-                    )
+            # CAS 1B: Catégorie unique → comportement original
+            else:
+                search_value = self._extract_filter_value(category_filter)
 
-                elif exact_category:
-                    logger.debug(f"✓ Category already exact: '{search_value}'")
+                if search_value:
+                    exact_category = self.metadata_service.search_category_by_name(search_value)
 
-                else:
-                    logger.warning(
-                        f"⚠️  Category not found: '{search_value}' "
-                        f"(will try text search fallback)"
-                    )
+                    if exact_category and exact_category != search_value:
+                        logger.info(f"✅ Category corrected: '{search_value}' → '{exact_category}'")
+                        self.stats["category_corrections"] += 1
+
+                        # Mettre à jour avec le nom exact
+                        corrected_filters['category_name'] = self._rebuild_filter(
+                            filters['category_name'],
+                            exact_category
+                        )
+
+                    elif exact_category:
+                        logger.debug(f"✓ Category already exact: '{search_value}'")
+
+                    else:
+                        logger.warning(
+                            f"⚠️  Category not found: '{search_value}' "
+                            f"(will try text search fallback)"
+                        )
 
         # CAS 2: category_name MANQUE → essayer de le détecter
         elif user_message:

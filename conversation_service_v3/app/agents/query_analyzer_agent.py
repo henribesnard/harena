@@ -42,6 +42,14 @@ class QueryAnalyzerAgent:
             ("system", """Tu es un expert en analyse de requêtes financières.
 Ton rôle est d'analyser la question de l'utilisateur et d'extraire les informations structurées nécessaires pour construire une requête Elasticsearch.
 
+**CONTEXTE TEMPOREL IMPORTANT:**
+Date actuelle: {current_date}
+Utilise cette date pour interpréter les expressions temporelles relatives comme:
+- "ce mois" → mois de la date actuelle
+- "aujourd'hui" → date actuelle
+- "cette année" → année de la date actuelle
+- "la semaine dernière" → semaine précédant la date actuelle
+
 Schéma Elasticsearch disponible:
 {schema}
 
@@ -53,16 +61,16 @@ Tu dois retourner un objet JSON avec:
 - time_range: Plage temporelle si mentionnée (format: {{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}})
 - confidence: Score de confiance de 0 à 1
 
-Exemples:
+Exemples (avec date actuelle = {current_date}):
 
 Question: "Combien j'ai dépensé en courses ce mois-ci ?"
 Réponse:
 {{
   "intent": "aggregate",
-  "entities": {{"category": "Alimentation", "transaction_type": "debit"}},
+  "entities": {{"category": "Alimentation", "transaction_type": "debit", "period": "current_month"}},
   "filters": {{"category_name": "Alimentation", "transaction_type": "debit"}},
   "aggregations_needed": ["total_amount"],
-  "time_range": {{"period": "current_month"}},
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
   "confidence": 0.95
 }}
 
@@ -88,6 +96,19 @@ Réponse:
   "confidence": 0.92
 }}
 
+Question: "Mes dépenses de la semaine dernière"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"transaction_type": "debit", "period": "last_week"}},
+  "filters": {{"transaction_type": "debit"}},
+  "aggregations_needed": ["total_amount", "statistics"],
+  "time_range": {{"period": "last_week", "reference_date": "{current_date}"}},
+  "confidence": 0.93
+}}
+
+IMPORTANT: Utilise TOUJOURS la date actuelle ({current_date}) comme référence pour les expressions temporelles relatives.
+
 Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
             ("user", "Question utilisateur: {user_message}\n\nContexte conversation (optionnel): {context}")
         ])
@@ -96,18 +117,24 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
 
         logger.info(f"QueryAnalyzerAgent initialized with model {llm_model}")
 
-    async def analyze(self, user_query: UserQuery) -> AgentResponse:
+    async def analyze(self, user_query: UserQuery, current_date: str = None) -> AgentResponse:
         """
         Analyse la requête utilisateur
 
         Args:
             user_query: Requête utilisateur à analyser
+            current_date: Date actuelle au format YYYY-MM-DD (pour interpréter expressions temporelles)
 
         Returns:
             AgentResponse contenant QueryAnalysis
         """
         try:
-            logger.info(f"Analyzing query: {user_query.message[:100]}")
+            # Utiliser la date actuelle si non fournie
+            if not current_date:
+                from datetime import datetime
+                current_date = datetime.now().strftime("%Y-%m-%d")
+
+            logger.info(f"Analyzing query: {user_query.message[:100]} (current_date={current_date})")
 
             # Préparer le contexte
             context_str = ""
@@ -117,11 +144,12 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
                     for turn in user_query.context[-3:]  # 3 derniers tours
                 ])
 
-            # Invoquer le LLM
+            # Invoquer le LLM avec la date actuelle
             result = await self.chain.ainvoke({
                 "schema": self.schema_description,
                 "user_message": user_query.message,
-                "context": context_str or "Aucun contexte"
+                "context": context_str or "Aucun contexte",
+                "current_date": current_date
             })
 
             # Parser le résultat

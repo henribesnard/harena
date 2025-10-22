@@ -207,7 +207,7 @@ Corrige cette query pour qu'elle fonctionne.""")
         self,
         query_analysis: QueryAnalysis,
         user_id: int,
-        current_date: str = "2025-01-15"
+        current_date: str = None
     ) -> AgentResponse:
         """
         Construit une query Elasticsearch à partir de l'analyse
@@ -216,11 +216,15 @@ Corrige cette query pour qu'elle fonctionne.""")
         Args:
             query_analysis: Analyse de la requête utilisateur
             user_id: ID de l'utilisateur
-            current_date: Date actuelle pour les calculs de période
+            current_date: Date actuelle pour les calculs de période (défaut: aujourd'hui)
 
         Returns:
             AgentResponse contenant ElasticsearchQuery
         """
+        # Utiliser la date actuelle si non fournie
+        if not current_date:
+            from datetime import datetime
+            current_date = datetime.now().strftime("%Y-%m-%d")
         try:
             logger.info(f"Building Elasticsearch query for intent: {query_analysis.intent}")
 

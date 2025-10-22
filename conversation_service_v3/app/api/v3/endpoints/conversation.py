@@ -331,7 +331,7 @@ async def analyze_conversation_stream(
                         elasticsearch_query=es_query.__dict__ if hasattr(es_query, '__dict__') else None,
                         search_results_summary={
                             "total": search_results.total,
-                            "aggregations_summary": orch.aggregation_enricher.format_aggregations(search_results.aggregations) if search_results.aggregations else None
+                            "aggregations_summary": orch.response_generator._format_aggregations(search_results.aggregations) if search_results.aggregations else None
                         },
                         processing_time_ms=processing_time_ms,
                         corrections_applied=0

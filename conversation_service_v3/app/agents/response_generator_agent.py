@@ -135,24 +135,36 @@ Génère une réponse complète et utile.""")
             AgentResponse contenant ConversationResponse
         """
         try:
-            logger.info(f"Generating response for query: {user_message[:100]}")
+            logger.info("Generating response for query")
+            logger.info("DEBUG: Line 139 - before import settings")
 
             from ..config.settings import settings
 
+            logger.info("DEBUG: Line 142 - after import settings")
+            # DEBUG: Log aggregations
+            logger.info("DEBUG: About to log aggregations")
+            logger.info(f"DEBUG: Aggregations type: {type(search_results.aggregations)}")
+
             # Préparer les agrégations pour le LLM (toujours complètes)
-            aggs_summary = self._format_aggregations(search_results.aggregations)
+            try:
+                logger.info("Step A: Starting aggregation formatting")
+                aggs_summary = self._format_aggregations(search_results.aggregations)
+                logger.info(f"Step A: Aggregations formatted successfully - length: {len(aggs_summary)}")
+            except Exception as agg_error:
+                logger.error(f"Step A ERROR: Error formatting aggregations: {agg_error}", exc_info=True)
+                aggs_summary = "Agrégations non disponibles (erreur de formatting)"
 
             # Limiter le nombre de transactions dans le contexte
+            logger.info("Step B: Limiting transactions")
             max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(search_results.hits))
             limited_transactions = search_results.hits[:max_transactions]
 
             # DEBUG: Log pour identifier le problème
             logger.info(f"Transactions received: {len(search_results.hits)}, Limited to: {len(limited_transactions)}")
             if len(limited_transactions) > 0:
-                logger.info(f"🔍 First transaction keys: {list(limited_transactions[0].keys())}")
-                logger.debug(f"🔍 First transaction full: {json.dumps(limited_transactions[0], indent=2, default=str)}")
+                logger.info(f"First transaction keys: {list(limited_transactions[0].keys())}")
             else:
-                logger.warning("⚠️ No transactions in search_results.hits despite total > 0")
+                logger.warning("No transactions in search_results.hits")
 
             if len(search_results.hits) > max_transactions:
                 logger.debug(
@@ -160,21 +172,35 @@ Génère une réponse complète et utile.""")
                 )
 
             # Préparer les transactions pour le LLM (limitées)
+            logger.debug("Step C: Formatting transactions")
             transactions_text = self._format_transactions(limited_transactions)
+            logger.debug(f"Step C: Transactions formatted - length: {len(transactions_text)}")
 
             # DEBUG: Log formatted transactions
-            logger.info(f"🔍 Formatted transactions (first 500 chars): {transactions_text[:500]}")
+            logger.debug(f"Transactions text preview: {transactions_text[:min(200, len(transactions_text))]}")
+
+            # S'assurer qu'aucune valeur n'est None (LangChain ne gère pas bien None)
+            total_results_safe = search_results.total if search_results.total is not None else 0
+
+            logger.debug("Step D: Preparing chain parameters")
+            logger.debug(f"Chain params: total_results={total_results_safe}, transactions_count={len(limited_transactions)}")
 
             # Invoquer le LLM
-            result = await self.chain.ainvoke({
+            logger.debug("Step E: Invoking LLM chain")
+            chain_params = {
                 "user_message": user_message,
                 "aggregations": aggs_summary,
-                "total_results": search_results.total,
+                "total_results": total_results_safe,
                 "transactions_count": len(limited_transactions),
                 "transactions": transactions_text
-            })
+            }
+            logger.debug(f"Chain params types: user_message={type(user_message)}, aggs={type(aggs_summary)}, total={type(total_results_safe)}, count={type(len(limited_transactions))}, trans={type(transactions_text)}")
+
+            result = await self.chain.ainvoke(chain_params)
+            logger.debug("Step E: LLM chain invoked successfully")
 
             response_text = result.content
+            logger.debug(f"Step F: Response text extracted - length: {len(response_text)}")
 
             # Créer la réponse de conversation
             conversation_response = ConversationResponse(
@@ -183,9 +209,9 @@ Génère une réponse complète et utile.""")
                 search_results=search_results,
                 aggregations_summary=aggs_summary,
                 metadata={
-                    "total_results": search_results.total,
+                    "total_results": total_results_safe,
                     "response_length": len(response_text),
-                    "took_ms": search_results.took_ms
+                    "took_ms": search_results.took_ms if search_results.took_ms is not None else 0
                 }
             )
 
@@ -205,12 +231,12 @@ Génère une réponse complète et utile.""")
                 agent_role=AgentRole.RESPONSE_GENERATOR,
                 metadata={
                     "response_length": len(response_text),
-                    "total_results": search_results.total
+                    "total_results": total_results_safe
                 }
             )
 
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
+            logger.error(f"Error generating response: {str(e)}", exc_info=True)
             return AgentResponse(
                 success=False,
                 data=None,
@@ -286,82 +312,114 @@ Génère une réponse complète et utile.""")
         formatted_lines = []
         formatted_lines.append("📊 RÉSUMÉ STATISTIQUE COMPLET (SOURCE DE VÉRITÉ):\n")
 
+        logger.debug(f"Formatting {len(aggregations)} aggregations")
+
         for agg_name, agg_data in aggregations.items():
-            if isinstance(agg_data, dict):
-                # Agrégation de valeur unique (sum, avg, etc.)
-                if "value" in agg_data:
-                    value = agg_data['value']
-                    if value is not None:
-                        formatted_lines.append(f"✅ {agg_name}: {value:.2f}")
+            try:
+                logger.debug(f"Processing aggregation: {agg_name}, type: {type(agg_data)}")
+                if isinstance(agg_data, dict):
+                    # Agrégation de valeur unique (sum, avg, etc.)
+                    if "value" in agg_data:
+                        value = agg_data['value']
+                        if value is not None:
+                            formatted_lines.append(f"✅ {agg_name}: {value:.2f}")
 
-                        # Ajouter interprétation
-                        if "total" in agg_name.lower() or "sum" in agg_name.lower():
-                            formatted_lines.append(f"   → Montant total calculé sur tous les résultats")
-                        elif "avg" in agg_name.lower() or "moyenne" in agg_name.lower():
-                            formatted_lines.append(f"   → Moyenne calculée")
-                        elif "count" in agg_name.lower():
-                            formatted_lines.append(f"   → Nombre total de transactions")
+                            # Ajouter interprétation
+                            if "total" in agg_name.lower() or "sum" in agg_name.lower():
+                                formatted_lines.append(f"   → Montant total calculé sur tous les résultats")
+                            elif "avg" in agg_name.lower() or "moyenne" in agg_name.lower():
+                                formatted_lines.append(f"   → Moyenne calculée")
+                            elif "count" in agg_name.lower():
+                                formatted_lines.append(f"   → Nombre total de transactions")
 
-                # Statistiques complètes (stats aggregation)
-                elif "count" in agg_data and "sum" in agg_data:
-                    formatted_lines.append(f"\n📈 {agg_name} (Statistiques complètes):")
-                    formatted_lines.append(f"   • Nombre: {agg_data.get('count', 0)}")
-                    formatted_lines.append(f"   • Total: {agg_data.get('sum', 0):.2f}€")
-                    formatted_lines.append(f"   • Moyenne: {agg_data.get('avg', 0):.2f}€")
-                    formatted_lines.append(f"   • Min: {agg_data.get('min', 0):.2f}€")
-                    formatted_lines.append(f"   • Max: {agg_data.get('max', 0):.2f}€")
+                    # Statistiques complètes (stats aggregation)
+                    elif "count" in agg_data and "sum" in agg_data:
+                        formatted_lines.append(f"\n📈 {agg_name} (Statistiques complètes):")
+                        formatted_lines.append(f"   • Nombre: {agg_data.get('count', 0)}")
 
-                # Terms aggregation (groupements par catégorie, marchand, etc.)
-                elif "buckets" in agg_data:
-                    buckets = agg_data["buckets"]
-                    total_buckets = len(buckets)
-                    displayed_buckets = buckets[:15]  # Top 15
+                        # Gérer les valeurs None (quand 0 résultats)
+                        sum_val = agg_data.get('sum') or 0
+                        avg_val = agg_data.get('avg') or 0
+                        min_val = agg_data.get('min') or 0
+                        max_val = agg_data.get('max') or 0
 
-                    formatted_lines.append(f"\n🏷️  {agg_name} ({total_buckets} groupes au total):")
+                        formatted_lines.append(f"   • Total: {sum_val:.2f}€")
+                        formatted_lines.append(f"   • Moyenne: {avg_val:.2f}€")
+                        formatted_lines.append(f"   • Min: {min_val:.2f}€")
+                        formatted_lines.append(f"   • Max: {max_val:.2f}€")
 
-                    for idx, bucket in enumerate(displayed_buckets, 1):
-                        key = bucket.get("key", "Unknown")
-                        doc_count = bucket.get("doc_count", 0)
+                    # Filter aggregation (ex: debit_stats, credit_stats)
+                    elif "doc_count" in agg_data:
+                        doc_count = agg_data.get("doc_count", 0)
+                        formatted_lines.append(f"\n📊 {agg_name}:")
+                        formatted_lines.append(f"   • Nombre: {doc_count} transactions")
 
-                        line = f"   {idx}. {key}: {doc_count} transactions"
-
-                        # Sous-agrégations (montants, moyennes, etc.)
-                        sub_agg_parts = []
-                        for sub_agg_name, sub_agg_data in bucket.items():
-                            if sub_agg_name not in ["key", "doc_count", "key_as_string"]:
-                                if isinstance(sub_agg_data, dict) and "value" in sub_agg_data:
-                                    value = sub_agg_data['value']
+                        # Parser les sous-agrégations
+                        for sub_agg_name, sub_agg_data in agg_data.items():
+                            if sub_agg_name != "doc_count" and isinstance(sub_agg_data, dict):
+                                if "value" in sub_agg_data:
+                                    value = sub_agg_data.get("value")
+                                    # Gérer None
                                     if value is not None:
-                                        sub_agg_parts.append(f"{sub_agg_name}: {value:.2f}€")
+                                        formatted_lines.append(f"   • {sub_agg_name}: {value:.2f}€")
+                                    else:
+                                        formatted_lines.append(f"   • {sub_agg_name}: 0.00€")
 
-                        if sub_agg_parts:
-                            line += f" | {' | '.join(sub_agg_parts)}"
+                    # Terms aggregation (groupements par catégorie, marchand, etc.)
+                    elif "buckets" in agg_data:
+                        buckets = agg_data["buckets"]
+                        total_buckets = len(buckets)
+                        displayed_buckets = buckets[:15]  # Top 15
 
-                        formatted_lines.append(line)
+                        formatted_lines.append(f"\n🏷️  {agg_name} ({total_buckets} groupes au total):")
 
-                    if total_buckets > 15:
-                        formatted_lines.append(f"   ... et {total_buckets - 15} autres groupes")
+                        for idx, bucket in enumerate(displayed_buckets, 1):
+                            key = bucket.get("key", "Unknown")
+                            doc_count = bucket.get("doc_count", 0)
 
-                # Date histogram aggregation (tendances temporelles)
-                elif agg_data.get("buckets") and len(agg_data.get("buckets", [])) > 0 and "key_as_string" in agg_data["buckets"][0]:
-                    formatted_lines.append(f"\n📅 {agg_name} (Évolution temporelle):")
-                    buckets = agg_data.get("buckets", [])
+                            line = f"   {idx}. {key}: {doc_count} transactions"
 
-                    for bucket in buckets[:12]:  # Max 12 périodes
-                        period = bucket.get("key_as_string", bucket.get("key", "Unknown"))
-                        doc_count = bucket.get("doc_count", 0)
+                            # Sous-agrégations (montants, moyennes, etc.)
+                            sub_agg_parts = []
+                            for sub_agg_name, sub_agg_data in bucket.items():
+                                if sub_agg_name not in ["key", "doc_count", "key_as_string"]:
+                                    if isinstance(sub_agg_data, dict) and "value" in sub_agg_data:
+                                        value = sub_agg_data['value']
+                                        if value is not None:
+                                            sub_agg_parts.append(f"{sub_agg_name}: {value:.2f}€")
 
-                        line = f"   • {period}: {doc_count} transactions"
+                            if sub_agg_parts:
+                                line += f" | {' | '.join(sub_agg_parts)}"
 
-                        # Sous-agrégations
-                        for sub_agg_name, sub_agg_data in bucket.items():
-                            if sub_agg_name not in ["key", "doc_count", "key_as_string"]:
-                                if isinstance(sub_agg_data, dict) and "value" in sub_agg_data:
-                                    value = sub_agg_data['value']
-                                    if value is not None:
-                                        line += f" | {sub_agg_name}: {value:.2f}€"
+                            formatted_lines.append(line)
 
-                        formatted_lines.append(line)
+                        if total_buckets > 15:
+                            formatted_lines.append(f"   ... et {total_buckets - 15} autres groupes")
+
+                    # Date histogram aggregation (tendances temporelles)
+                    elif agg_data.get("buckets") and len(agg_data.get("buckets", [])) > 0 and "key_as_string" in agg_data["buckets"][0]:
+                        formatted_lines.append(f"\n📅 {agg_name} (Évolution temporelle):")
+                        buckets = agg_data.get("buckets", [])
+
+                        for bucket in buckets[:12]:  # Max 12 périodes
+                            period = bucket.get("key_as_string", bucket.get("key", "Unknown"))
+                            doc_count = bucket.get("doc_count", 0)
+
+                            line = f"   • {period}: {doc_count} transactions"
+
+                            # Sous-agrégations
+                            for sub_agg_name, sub_agg_data in bucket.items():
+                                if sub_agg_name not in ["key", "doc_count", "key_as_string"]:
+                                    if isinstance(sub_agg_data, dict) and "value" in sub_agg_data:
+                                        value = sub_agg_data['value']
+                                        if value is not None:
+                                            line += f" | {sub_agg_name}: {value:.2f}€"
+
+                            formatted_lines.append(line)
+
+            except Exception as agg_error:
+                logger.error(f"Error formatting aggregation '{agg_name}': {agg_error}", exc_info=True)
+                formatted_lines.append(f"\n⚠️ {agg_name}: Erreur de formatting")
 
         formatted_lines.append(f"\n💡 IMPORTANT: Ces statistiques couvrent TOUS les résultats, pas seulement les exemples de transactions listés ci-dessous.")
 
@@ -388,13 +446,14 @@ Génère une réponse complète et utile.""")
 
             # Extraire les informations clés
             date = transaction.get("date", "Date inconnue")
-            amount = transaction.get("amount", 0)
+            amount = transaction.get("amount") or 0  # Gérer None
             merchant = transaction.get("merchant_name", "Marchand inconnu")
             category = transaction.get("category_name", "")
             description = transaction.get("primary_description", "")
 
-            # Formater le montant
-            amount_str = f"{abs(amount):.2f} €"
+            # Formater le montant (gérer None explicitement)
+            amount_safe = abs(amount) if amount is not None else 0
+            amount_str = f"{amount_safe:.2f} €"
             if amount < 0:
                 amount_str = f"-{amount_str}"
 

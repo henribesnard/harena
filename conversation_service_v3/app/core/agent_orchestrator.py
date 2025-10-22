@@ -141,9 +141,16 @@ class AgentOrchestrator:
             # === CAS 2: Pipeline financier complet (recherche requise) ===
             logger.info("Financial intent detected, proceeding with search pipeline")
 
+            # Calculer la date actuelle une fois pour tout le pipeline
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            logger.debug(f"Using current_date: {current_date}")
+
             # === ÉTAPE 1: Analyse de la requête ===
             logger.info("Step 1: Analyzing user query")
-            analysis_response = await self.query_analyzer.analyze(user_query)
+            analysis_response = await self.query_analyzer.analyze(
+                user_query=user_query,
+                current_date=current_date
+            )
 
             if not analysis_response.success:
                 return self._create_error_response(
@@ -158,7 +165,7 @@ class AgentOrchestrator:
             build_response = await self.query_builder.build_query(
                 query_analysis=query_analysis,
                 user_id=user_query.user_id,
-                current_date=datetime.now().strftime("%Y-%m-%d")
+                current_date=current_date
             )
 
             if not build_response.success:

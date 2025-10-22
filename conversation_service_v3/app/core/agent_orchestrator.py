@@ -19,6 +19,7 @@ from ..agents.elasticsearch_builder_agent import ElasticsearchBuilderAgent
 from ..agents.response_generator_agent import ResponseGeneratorAgent
 from ..models.intent import IntentCategory
 from ..core.aggregation_enricher import AggregationEnricher
+from ..core.category_validator import category_validator
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,25 @@ class AgentOrchestrator:
             logger.info(f"Query built: size={es_query.size}, has_aggs={es_query.aggregations is not None}")
             logger.info(f"Generated ES query: {json.dumps(es_query.query, ensure_ascii=False, indent=2)}")
 
+            # === ÉTAPE 2.3: Validation et correction automatique des catégories et operation_types ===
+            logger.info("Step 2.3: Validating and correcting filters (categories + operation_types)")
+            if 'filters' in es_query.query:
+                original_filters = es_query.query['filters'].copy()
+
+                # Passer le message utilisateur pour détection automatique si category manquante
+                corrected_filters = category_validator.validate_and_correct_filters(
+                    es_query.query['filters'],
+                    user_message=user_query.message
+                )
+
+                if corrected_filters != original_filters:
+                    es_query.query['filters'] = corrected_filters
+                    logger.info(f"✅ Filters corrected: {json.dumps(corrected_filters, ensure_ascii=False, indent=2)}")
+                    # Mettre à jour aussi query_analysis pour le fallback
+                    query_analysis.filters = corrected_filters
+                else:
+                    logger.debug("✓ Filters already valid, no correction needed")
+
             # === ÉTAPE 2.5: Enrichissement des agrégations avec templates ===
             # Enrichir avec templates si agrégations complexes demandées
             if query_analysis.aggregations_needed:
@@ -217,6 +237,59 @@ class AgentOrchestrator:
                     "Failed to execute query after multiple correction attempts"
                 )
 
+            # === ÉTAPE 3.5: Fallback textuel si 0 résultats avec filtre catégorie ===
+            # Si 0 résultats ET un filtre de catégorie était présent, tenter recherche textuelle
+            if (search_results.total == 0 and
+                query_analysis.filters.get('category_name')):
+
+                logger.warning("0 results with category filter, attempting text search fallback")
+
+                # Extraire la catégorie recherchée pour l'utiliser comme query texte
+                category_filter = query_analysis.filters.get('category_name', {})
+                if isinstance(category_filter, dict):
+                    search_text = category_filter.get('match') or category_filter.get('term', '')
+                else:
+                    search_text = str(category_filter)
+
+                if search_text:
+                    logger.info(f"Fallback: searching text for '{search_text}'")
+
+                    # Créer une nouvelle analyse sans filtre catégorie
+                    fallback_analysis = query_analysis.model_copy(deep=True)
+                    fallback_analysis.filters.pop('category_name', None)
+
+                    # Construire une nouvelle query avec recherche textuelle
+                    fallback_build = await self.query_builder.build_query(
+                        query_analysis=fallback_analysis,
+                        user_id=user_query.user_id,
+                        current_date=current_date
+                    )
+
+                    if fallback_build.success:
+                        fallback_query = fallback_build.data
+
+                        # Ajouter le paramètre query pour recherche textuelle
+                        if 'query' not in fallback_query.query:
+                            fallback_query.query['query'] = search_text
+
+                        # Exécuter la query de fallback
+                        fallback_results = await self._execute_with_correction(
+                            es_query=fallback_query,
+                            query_analysis=fallback_analysis,
+                            user_id=user_query.user_id,
+                            jwt_token=jwt_token
+                        )
+
+                        if fallback_results and fallback_results.total > 0:
+                            logger.info(f"Fallback successful: {fallback_results.total} results found with text search")
+                            search_results = fallback_results
+                            # Mettre à jour query_analysis pour la génération de réponse
+                            query_analysis = fallback_analysis
+                        else:
+                            logger.info("Fallback text search also returned 0 results")
+                    else:
+                        logger.warning(f"Failed to build fallback query: {fallback_build.error}")
+
             logger.info(f"Query executed successfully: {search_results.total} results found")
 
             # === ÉTAPE 4: Génération de la réponse ===
@@ -250,6 +323,8 @@ class AgentOrchestrator:
                 "confidence": query_analysis.confidence,
                 "aggregations_requested": query_analysis.aggregations_needed
             }
+            # Ajouter la requête Elasticsearch générée
+            conversation_response.metadata["elasticsearch_query"] = es_query.query
 
             return conversation_response
 

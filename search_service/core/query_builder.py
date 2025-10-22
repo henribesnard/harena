@@ -320,10 +320,20 @@ class QueryBuilder:
 
                 # LISTE: bool + should pour recherche partielle sur merchant_name, sinon terms exact
                 elif isinstance(value, list):
-                    # Cas spécial merchant_name: recherche partielle (contains)
+                    # Cas spécial merchant_name: recherche multi-champs (merchant_name + primary_description)
                     if field == "merchant_name":
-                        # Créer un bool/should avec match pour chaque marchand
-                        should_clauses = [{"match": {field: merchant}} for merchant in value]
+                        # Pour chaque marchand, chercher dans merchant_name OU primary_description
+                        should_clauses = []
+                        for merchant in value:
+                            should_clauses.append({
+                                "bool": {
+                                    "should": [
+                                        {"match": {"merchant_name": merchant}},
+                                        {"match": {"primary_description": merchant}}
+                                    ],
+                                    "minimum_should_match": 1
+                                }
+                            })
                         filter_list.append({
                             "bool": {
                                 "should": should_clauses,
@@ -405,8 +415,23 @@ class QueryBuilder:
         # 6. MATCH / MATCH_PHRASE FILTERS: support textuel et fallback keyword
         elif "match" in value:
             match_value = value["match"]
+            # Cas spécial merchant_name: recherche multi-champs (merchant_name + primary_description)
+            if field == "merchant_name":
+                if isinstance(match_value, dict):
+                    query_val = match_value.get("query", match_value)
+                else:
+                    query_val = match_value
+                return {
+                    "bool": {
+                        "should": [
+                            {"match": {"merchant_name": query_val}},
+                            {"match": {"primary_description": query_val}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
             # Pour les champs case-insensitive, toujours utiliser match
-            if field in case_insensitive_fields:
+            elif field in case_insensitive_fields:
                 if isinstance(match_value, dict):
                     return {"match": {field: match_value}}
                 else:

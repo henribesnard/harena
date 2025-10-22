@@ -22,6 +22,7 @@ from .function_definitions import (
     AGGREGATION_TEMPLATES,
     get_all_templates_description
 )
+from ..services.metadata_service import metadata_service
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,14 @@ class ElasticsearchBuilderAgent:
 
         self.schema_description = get_schema_description()
 
+        # Charger les métadonnées dynamiques (catégories, operation_types)
+        try:
+            self.metadata_prompt = metadata_service.get_full_metadata_prompt()
+            logger.info("Metadata loaded successfully for ElasticsearchBuilderAgent")
+        except Exception as e:
+            logger.error(f"Failed to load metadata: {e}")
+            self.metadata_prompt = ""
+
         # Utiliser la définition complète de la fonction depuis function_definitions
         # Ajuster le nom pour correspondre à l'usage interne
         self.search_query_function = SEARCH_TRANSACTIONS_FUNCTION.copy()
@@ -55,6 +64,7 @@ class ElasticsearchBuilderAgent:
         templates_description = get_all_templates_description()
 
         # Prompt enrichi pour function calling avec templates et exemples
+        # Injecter les métadonnées dynamiques avant les règles critiques
         self.build_prompt_text = """Génère une requête de recherche pour: {intent}
 
 Contexte:
@@ -67,6 +77,8 @@ Contexte:
 TEMPLATES D'AGRÉGATIONS DISPONIBLES:
 
 """ + templates_description + """
+
+{metadata}
 
 RÈGLES CRITIQUES:
 1. "plus de X euros" = amount_abs: {{"gt": X}} → EXCLUT X (strictement supérieur)
@@ -235,7 +247,8 @@ Corrige cette query pour qu'elle fonctionne.""")
                 aggregations=json.dumps(query_analysis.aggregations_needed, ensure_ascii=False),
                 time_range=json.dumps(query_analysis.time_range, ensure_ascii=False) if query_analysis.time_range else "Non spécifié",
                 user_id=user_id,
-                current_date=current_date
+                current_date=current_date,
+                metadata=self.metadata_prompt
             )
 
             # Appeler le LLM avec function calling (utiliser predict_messages pour function calling)

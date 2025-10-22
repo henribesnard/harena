@@ -12,6 +12,7 @@ from langchain_openai import ChatOpenAI
 
 from ..models import UserQuery, QueryAnalysis, AgentResponse, AgentRole
 from ..schemas.elasticsearch_schema import get_schema_description
+from ..services.metadata_service import metadata_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,14 @@ class QueryAnalyzerAgent:
         self.schema_description = get_schema_description()
         self.parser = JsonOutputParser()
 
+        # Charger les métadonnées dynamiques (catégories, operation_types)
+        try:
+            self.metadata_prompt = metadata_service.get_full_metadata_prompt()
+            logger.info("Metadata loaded successfully for QueryAnalyzerAgent")
+        except Exception as e:
+            logger.error(f"Failed to load metadata: {e}")
+            self.metadata_prompt = ""
+
         # Prompt template pour l'analyse
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """Tu es un expert en analyse de requêtes financières.
@@ -52,6 +61,8 @@ Utilise cette date pour interpréter les expressions temporelles relatives comme
 
 Schéma Elasticsearch disponible:
 {schema}
+
+{metadata}
 
 Tu dois retourner un objet JSON avec:
 - intent: L'intention ("search", "aggregate", "compare", "analyze", "stats")
@@ -109,6 +120,33 @@ Réponse:
 
 IMPORTANT: Utilise TOUJOURS la date actuelle ({current_date}) comme référence pour les expressions temporelles relatives.
 
+**RÈGLE SÉMANTIQUE IMPORTANTE - TERME "ACHATS":**
+Lorsque l'utilisateur utilise le terme "achats" ou "mes achats" SANS préciser de marchand:
+- NE PAS filtrer uniquement sur "transaction_type": "debit" (trop large, inclut virements, loyer, etc.)
+- FILTRER sur les catégories d'achat typiques disponibles dans les métadonnées:
+  * Alimentation / Courses
+  * Loisirs
+  * Shopping / Commerce
+  * Santé (pharmacie, médecin)
+  * Transport (carburant, péage)
+  * Restaurants / Bars
+  * Services (coiffeur, pressing, etc.)
+- EXCLURE explicitement les catégories qui ne sont PAS des achats:
+  * Virements sortants
+  * Prélèvements automatiques
+  * Loyer / Charges
+  * Impôts
+  * Épargne
+  * Assurances
+
+Exemple:
+Question: "Mes achats de ce mois-ci"
+→ Filtrer sur category_name IN ["Alimentation", "Loisirs", "Shopping", "Restaurants", "Santé", "Transport"]
+→ NE PAS utiliser uniquement transaction_type: "debit"
+
+Question: "Mes achats chez Carrefour"
+→ Filtrer sur merchant_name: "Carrefour" (le marchand est précisé, pas besoin de filtre catégorie)
+
 Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
             ("user", "Question utilisateur: {user_message}\n\nContexte conversation (optionnel): {context}")
         ])
@@ -144,9 +182,10 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
                     for turn in user_query.context[-3:]  # 3 derniers tours
                 ])
 
-            # Invoquer le LLM avec la date actuelle
+            # Invoquer le LLM avec la date actuelle et les métadonnées
             result = await self.chain.ainvoke({
                 "schema": self.schema_description,
+                "metadata": self.metadata_prompt,
                 "user_message": user_query.message,
                 "context": context_str or "Aucun contexte",
                 "current_date": current_date

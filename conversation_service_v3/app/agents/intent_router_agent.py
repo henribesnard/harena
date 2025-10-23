@@ -55,30 +55,75 @@ class IntentRouterAgent:
 
 **Catégories:**
 
-FINANCIAL_QUERY/ANALYSIS/STATS → requires_search: true
-- Recherche transactions, analyse dépenses, statistiques
+1. RECHERCHE FINANCIÈRE STANDARD → requires_search: true
+   - FINANCIAL_QUERY: Recherche simple de transactions
+   - FINANCIAL_ANALYSIS: Analyse basique de dépenses
+   - FINANCIAL_STATS: Statistiques simples
 
-GREETING/FAREWELL/GRATITUDE → requires_search: false
-- Salutations, au revoir, remerciements
+2. ANALYSES AVANCÉES → requires_search: true
+   - COMPARATIVE_ANALYSIS: Comparaisons (périodes, catégories)
+     * "compare janvier vs février"
+     * "charges fixes vs variables"
 
-SERVICE_INFO/CAPABILITY_QUERY/HELP_REQUEST → requires_search: false
-- Questions sur Harena, ses capacités, aide
+   - TREND_ANALYSIS: Analyse de tendances temporelles
+     * "quelle est la tendance de mes revenus"
+     * "évolution de mes dépenses cette année"
 
-SMALL_TALK/OUT_OF_SCOPE/UNCLEAR → requires_search: false
-- Discussion générale, hors domaine, ambiguë
+   - PREDICTIVE_ANALYSIS: Prévisions budgétaires
+     * "prévois mon budget pour le mois prochain"
+     * "estime mes dépenses futures"
+
+   - OPTIMIZATION_RECOMMENDATION: Recommandations d'optimisation
+     * "quel type de dépenses réduire"
+     * "comment augmenter mon épargne"
+
+   - BUDGET_ANALYSIS: Analyse budgétaire globale
+     * "analyse mon budget des 3 derniers mois"
+     * "quel est mon taux d'épargne"
+
+3. CONVERSATIONNELLES → requires_search: false
+   - GREETING/FAREWELL/GRATITUDE: Salutations, remerciements
+   - SERVICE_INFO/CAPABILITY_QUERY/HELP_REQUEST: Questions sur Harena
+
+4. HORS SCOPE → requires_search: false
+   - SMALL_TALK/OUT_OF_SCOPE/UNCLEAR: Discussion générale, hors domaine
+
+**Exemples de classification:**
+
+"compare mes dépenses de janvier à février"
+→ COMPARATIVE_ANALYSIS (comparaison temporelle)
+
+"quelle est la tendance de mes revenus cette année"
+→ TREND_ANALYSIS (analyse de tendance)
+
+"prévois mon budget pour le mois prochain"
+→ PREDICTIVE_ANALYSIS (prévision)
+
+"quel type de dépenses je peux réduire pour augmenter mon épargne"
+→ OPTIMIZATION_RECOMMENDATION (recommandation d'optimisation)
+
+"quel est mon taux d'épargne"
+→ BUDGET_ANALYSIS (analyse budgétaire globale)
+
+"compare mes charges fixes à mes charges variables"
+→ COMPARATIVE_ANALYSIS (comparaison de catégories)
+
+"combien j'ai dépensé en courses ce mois"
+→ FINANCIAL_QUERY (recherche simple)
 
 **Format JSON:**
 {{
-  "category": "GREETING",
+  "category": "COMPARATIVE_ANALYSIS",
   "confidence": 0.95,
-  "requires_search": false,
-  "reasoning": "Message de salutation simple",
-  "suggested_response": "Bonjour ! 👋 Je suis Harena..."
+  "requires_search": true,
+  "reasoning": "Demande de comparaison de deux périodes",
+  "suggested_response": null
 }}
 
 **IMPORTANT:**
-- requires_search: true UNIQUEMENT pour FINANCIAL_*
-- Fournir suggested_response pour intentions conversationnelles
+- requires_search: true pour FINANCIAL_* et toutes les analyses avancées
+- Privilégier catégories analytiques pour questions complexes
+- Fournir suggested_response pour intentions conversationnelles uniquement
 """),
             ("user", "Message: {user_message}\nContexte: {context}")
         ])

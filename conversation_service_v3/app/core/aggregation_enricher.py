@@ -179,6 +179,93 @@ class AggregationEnricher:
                     }
                 }
             }
+        },
+
+        "savings_rate_components": {
+            "income": {
+                "filter": {"term": {"transaction_type": "credit"}},
+                "aggs": {
+                    "total_income": {
+                        "sum": {"field": "amount"}
+                    },
+                    "income_count": {
+                        "value_count": {"field": "transaction_id"}
+                    }
+                }
+            },
+            "expenses": {
+                "filter": {"term": {"transaction_type": "debit"}},
+                "aggs": {
+                    "total_expenses": {
+                        "sum": {"field": "amount_abs"}
+                    },
+                    "expense_count": {
+                        "value_count": {"field": "transaction_id"}
+                    }
+                }
+            }
+        },
+
+        "fixed_vs_variable": {
+            "fixed_expenses": {
+                "filter": {
+                    "terms": {
+                        "category_name.keyword": [
+                            "Loyer", "Assurance", "Impôts", "Électricité/eau",
+                            "Abonnements", "Téléphones/internet", "Garde d'enfants",
+                            "Frais scolarité"
+                        ]
+                    }
+                },
+                "aggs": {
+                    "total_fixed": {
+                        "sum": {"field": "amount_abs"}
+                    },
+                    "by_category": {
+                        "terms": {
+                            "field": "category_name.keyword",
+                            "size": 20
+                        },
+                        "aggs": {
+                            "amount": {"sum": {"field": "amount_abs"}}
+                        }
+                    }
+                }
+            },
+            "variable_expenses": {
+                "filter": {
+                    "bool": {
+                        "must": [
+                            {"term": {"transaction_type": "debit"}}
+                        ],
+                        "must_not": [
+                            {
+                                "terms": {
+                                    "category_name.keyword": [
+                                        "Loyer", "Assurance", "Impôts", "Électricité/eau",
+                                        "Abonnements", "Téléphones/internet", "Garde d'enfants",
+                                        "Frais scolarité"
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                "aggs": {
+                    "total_variable": {
+                        "sum": {"field": "amount_abs"}
+                    },
+                    "by_category": {
+                        "terms": {
+                            "field": "category_name.keyword",
+                            "size": 20
+                        },
+                        "aggs": {
+                            "amount": {"sum": {"field": "amount_abs"}}
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -193,6 +280,13 @@ class AggregationEnricher:
         "by_weekday": ["by_weekday"],
         "spending_statistics": ["spending_statistics"],
         "overview": ["spending_statistics", "by_category"],
+
+        # Nouveaux templates analytiques
+        "savings_rate": ["savings_rate_components"],
+        "savings_components": ["savings_rate_components"],
+        "fixed_vs_variable": ["fixed_vs_variable"],
+        "fixed_variable": ["fixed_vs_variable"],
+        "charges_fixes": ["fixed_vs_variable"],
 
         # Alias courants (pour compatibilité avec QueryAnalyzer)
         "by_date": ["monthly_trend"],  # QueryAnalyzer retourne souvent "by_date"
@@ -231,6 +325,16 @@ class AggregationEnricher:
             "résumé", "statistiques", "vue d'ensemble",
             "bilan", "overview", "global", "aperçu",
             "résumé financier", "état financier"
+        ],
+        "savings_rate_components": [
+            "taux d'épargne", "taux épargne", "épargne",
+            "combien j'épargne", "revenus vs dépenses",
+            "revenus dépenses", "balance", "solde"
+        ],
+        "fixed_vs_variable": [
+            "charges fixes", "charges variables", "fixes vs variables",
+            "dépenses fixes", "dépenses variables", "récurrent",
+            "ponctuel", "fixe variable"
         ]
     }
 

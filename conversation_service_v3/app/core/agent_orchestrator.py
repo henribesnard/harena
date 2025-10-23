@@ -6,8 +6,11 @@ import logging
 import asyncio
 import httpx
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
+
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 
 from ..models import (
     UserQuery, QueryAnalysis, ElasticsearchQuery, SearchResults,
@@ -17,10 +20,12 @@ from ..agents.intent_router_agent import IntentRouterAgent
 from ..agents.query_analyzer_agent import QueryAnalyzerAgent
 from ..agents.elasticsearch_builder_agent import ElasticsearchBuilderAgent
 from ..agents.response_generator_agent import ResponseGeneratorAgent
+from ..agents.analytics_agent import AnalyticsAgent
 from ..models.intent import IntentCategory
 from ..core.aggregation_enricher import AggregationEnricher
 from ..core.category_validator import category_validator
 from ..services.redis_conversation_cache import RedisConversationCache
+from ..services.analytics_service import AnalyticsService
 from ..utils.token_counter import TokenCounter
 from ..config.settings import settings
 
@@ -54,9 +59,13 @@ class AgentOrchestrator:
         self.query_analyzer = QueryAnalyzerAgent(llm_model=llm_model)
         self.query_builder = ElasticsearchBuilderAgent(llm_model=llm_model)
         self.response_generator = ResponseGeneratorAgent(llm_model="gpt-4o")
+        self.analytics_agent = AnalyticsAgent(llm_model=llm_model)
 
         # Initialiser l'enrichisseur d'agrégations
         self.aggregation_enricher = AggregationEnricher()
+
+        # Initialiser le service d'analytics
+        self.analytics_service = AnalyticsService()
 
         self.search_service_url = search_service_url
         self.max_correction_attempts = max_correction_attempts
@@ -130,6 +139,10 @@ class AgentOrchestrator:
             intent_classification = intent_response.data
             logger.info(f"Intent classified: {intent_classification.category.value}, requires_search={intent_classification.requires_search}")
 
+            # Calculer la date actuelle une fois pour tout le pipeline
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            logger.debug(f"Using current_date: {current_date}")
+
             # === CAS 1: Réponse conversationnelle (pas de recherche) ===
             if not intent_classification.requires_search:
                 self.stats["conversational_responses"] += 1
@@ -189,12 +202,25 @@ class AgentOrchestrator:
                     }
                 )
 
-            # === CAS 2: Pipeline financier complet (recherche requise) ===
-            logger.info("Financial intent detected, proceeding with search pipeline")
+            # === CAS 2: Pipeline analytique (comparaisons, tendances, prévisions) ===
+            if intent_classification.category in [
+                IntentCategory.COMPARATIVE_ANALYSIS,
+                IntentCategory.TREND_ANALYSIS,
+                IntentCategory.PREDICTIVE_ANALYSIS,
+                IntentCategory.OPTIMIZATION_RECOMMENDATION,
+                IntentCategory.BUDGET_ANALYSIS
+            ]:
+                logger.info(f"Analytical intent detected: {intent_classification.category.value}")
+                return await self._handle_analytical_query(
+                    user_query=user_query,
+                    intent_classification=intent_classification,
+                    current_date=current_date,
+                    jwt_token=jwt_token,
+                    start_time=start_time
+                )
 
-            # Calculer la date actuelle une fois pour tout le pipeline
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            logger.debug(f"Using current_date: {current_date}")
+            # === CAS 3: Pipeline financier standard (recherche simple) ===
+            logger.info("Financial intent detected, proceeding with standard search pipeline")
 
             # === ÉTAPE 1: Analyse de la requête ===
             logger.info("Step 1: Analyzing user query")
@@ -584,6 +610,457 @@ class AgentOrchestrator:
         except Exception as e:
             # Re-lever l'exception pour permettre la correction
             raise
+
+    async def _handle_analytical_query(
+        self,
+        user_query: UserQuery,
+        intent_classification,
+        current_date: str,
+        jwt_token: Optional[str],
+        start_time: datetime
+    ) -> ConversationResponse:
+        """
+        Pipeline pour questions analytiques complexes
+
+        Étapes:
+        1. AnalyticsAgent.plan_analysis() → génère plan d'exécution
+        2. Exécuter N requêtes ES selon le plan
+        3. AnalyticsService.compute_insights() → calculs post-agrégation
+        4. ResponseGenerator avec insights enrichis
+
+        Args:
+            user_query: Requête utilisateur
+            intent_classification: Classification d'intention
+            current_date: Date actuelle
+            jwt_token: Token JWT
+            start_time: Timestamp de début
+
+        Returns:
+            ConversationResponse avec analyse complète
+        """
+        try:
+            logger.info("=== ANALYTICAL PIPELINE START ===")
+
+            # Étape 1: Planifier l'analyse
+            logger.info("Step 1: Planning analytical query")
+            plan_response = await self.analytics_agent.plan_analysis(
+                user_message=user_query.message,
+                intent=intent_classification.category,
+                current_date=current_date
+            )
+
+            if not plan_response.success:
+                return self._create_error_response(f"Failed to plan analysis: {plan_response.error}")
+
+            analysis_plan = plan_response.data
+            logger.info(f"Analysis plan: {len(analysis_plan.get('queries', []))} queries, operations: {analysis_plan.get('analytics_operations')}")
+
+            # Étape 2: Exécuter les requêtes ES selon le plan
+            logger.info("Step 2: Executing queries")
+            all_results = []
+
+            for idx, query_spec in enumerate(analysis_plan.get("queries", []), 1):
+                logger.info(f"Executing query {idx}/{len(analysis_plan['queries'])}")
+
+                # Construire la query ES à partir du spec
+                es_query = await self._build_query_from_spec(
+                    query_spec=query_spec,
+                    user_id=user_query.user_id,
+                    current_date=current_date
+                )
+
+                if not es_query:
+                    logger.warning(f"Failed to build query {idx}, skipping")
+                    continue
+
+                # Exécuter la query
+                search_results = await self._execute_with_correction(
+                    es_query=es_query,
+                    query_analysis=None,  # Pas besoin pour queries analytiques
+                    user_id=user_query.user_id,
+                    jwt_token=jwt_token
+                )
+
+                if search_results:
+                    all_results.append({
+                        "query_index": idx,
+                        "spec": query_spec,
+                        "results": search_results
+                    })
+                    logger.info(f"Query {idx} executed: {search_results.total} results")
+                else:
+                    logger.warning(f"Query {idx} returned no results")
+
+            if not all_results:
+                return self._create_error_response("No results from analytical queries")
+
+            # Étape 3: Calculer insights avec AnalyticsService
+            logger.info("Step 3: Computing insights")
+            insights = self._compute_analytical_insights(
+                analysis_plan=analysis_plan,
+                query_results=all_results
+            )
+
+            # Étape 4: Charger historique conversation
+            conversation_history = []
+            if self.conversation_cache:
+                try:
+                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+                    conversation_history = self.conversation_cache.get_conversation_history(
+                        user_id=user_query.user_id,
+                        conversation_id=conversation_id_int,
+                        include_system_message=False
+                    )
+                    logger.info(f"Loaded {len(conversation_history)} messages from history")
+                except Exception as e:
+                    logger.warning(f"Failed to load conversation history: {e}")
+
+            # Étape 5: Générer réponse analytique
+            logger.info("Step 4: Generating analytical response")
+            response_text = await self._generate_analytical_response(
+                user_message=user_query.message,
+                analysis_plan=analysis_plan,
+                insights=insights,
+                conversation_history=conversation_history
+            )
+
+            # Calculer temps pipeline
+            pipeline_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            self.stats["successful_queries"] += 1
+            self._update_avg_time(pipeline_time_ms)
+
+            logger.info(f"=== ANALYTICAL PIPELINE COMPLETE ({pipeline_time_ms}ms) ===")
+
+            # Sauvegarder dans Redis
+            if self.conversation_cache:
+                try:
+                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+
+                    self.conversation_cache.add_message(
+                        user_id=user_query.user_id,
+                        role="user",
+                        content=user_query.message,
+                        conversation_id=conversation_id_int
+                    )
+
+                    self.conversation_cache.add_message(
+                        user_id=user_query.user_id,
+                        role="assistant",
+                        content=response_text,
+                        conversation_id=conversation_id_int,
+                        metadata={
+                            "intent": intent_classification.category.value,
+                            "analytical": True,
+                            "operations": analysis_plan.get("analytics_operations")
+                        }
+                    )
+                    logger.info("✅ Analytical exchange saved to Redis")
+                except Exception as e:
+                    logger.warning(f"Failed to save analytical exchange: {e}")
+
+            return ConversationResponse(
+                success=True,
+                message=response_text,
+                search_results=all_results[0]["results"] if all_results else None,
+                metadata={
+                    "pipeline_time_ms": pipeline_time_ms,
+                    "intent": intent_classification.category.value,
+                    "analytical": True,
+                    "num_queries_executed": len(all_results),
+                    "operations": analysis_plan.get("analytics_operations"),
+                    "insights": insights
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in analytical pipeline: {str(e)}", exc_info=True)
+            return self._create_error_response(f"Analytical pipeline error: {str(e)}")
+
+    async def _build_query_from_spec(
+        self,
+        query_spec: Dict[str, Any],
+        user_id: int,
+        current_date: str
+    ) -> Optional[ElasticsearchQuery]:
+        """
+        Construit une query Elasticsearch à partir d'un spec du plan analytique
+
+        Args:
+            query_spec: Spécification de query du plan
+            user_id: ID utilisateur
+            current_date: Date actuelle
+
+        Returns:
+            ElasticsearchQuery construite
+        """
+        try:
+            # Créer une QueryAnalysis à partir du spec
+            filters = query_spec.get("filters", {})
+            aggregations = query_spec.get("aggregations", [])
+            time_range = query_spec.get("time_range")
+
+            query_analysis = QueryAnalysis(
+                intent="analytical",
+                entities=filters,
+                filters=filters,
+                aggregations_needed=aggregations,
+                time_range=time_range,
+                confidence=1.0
+            )
+
+            # Utiliser query_builder pour construire la query
+            build_response = await self.query_builder.build_query(
+                query_analysis=query_analysis,
+                user_id=user_id,
+                current_date=current_date
+            )
+
+            if not build_response.success:
+                logger.error(f"Failed to build query: {build_response.error}")
+                return None
+
+            es_query = build_response.data
+
+            # Enrichir avec templates d'agrégations si nécessaire
+            if aggregations:
+                es_query.query = self.aggregation_enricher.enrich(
+                    query=es_query.query,
+                    aggregations_requested=aggregations
+                )
+
+            # OPTIMISATION: Limiter la taille des résultats pour les requêtes analytiques
+            # Quand on ne s'intéresse qu'aux agrégations, pas besoin de récupérer beaucoup de documents
+            if aggregations and not es_query.query.get("size"):
+                # Limiter à 1 document au lieu de 10 par défaut (on ne s'intéresse qu'aux agrégations)
+                es_query.query["size"] = 1
+                logger.debug(f"Analytical query optimized: size limited to 1 (aggregations only)")
+
+            return es_query
+
+        except Exception as e:
+            logger.error(f"Error building query from spec: {str(e)}", exc_info=True)
+            return None
+
+    def _compute_analytical_insights(
+        self,
+        analysis_plan: Dict[str, Any],
+        query_results: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Calcule les insights analytiques à partir des résultats de requêtes
+
+        Args:
+            analysis_plan: Plan d'analyse
+            query_results: Résultats des requêtes
+
+        Returns:
+            Dict d'insights calculés
+        """
+        insights = {
+            "operations_performed": [],
+            "results": {}
+        }
+
+        operations = analysis_plan.get("analytics_operations", [])
+        analysis_type = analysis_plan.get("analysis_type", "")
+
+        for operation in operations:
+            try:
+                if operation == "compare_periods" and len(query_results) >= 2:
+                    # Comparaison de 2 périodes
+                    comparison = self.analytics_service.compare_periods(
+                        period1_results=query_results[0]["results"],
+                        period2_results=query_results[1]["results"],
+                        metric="total_amount"
+                    )
+                    insights["results"]["comparison"] = comparison
+                    insights["operations_performed"].append("compare_periods")
+
+                elif operation == "detect_trend" and len(query_results) >= 1:
+                    # Détection de tendance
+                    trend = self.analytics_service.detect_trend(
+                        time_series_results=query_results[0]["results"],
+                        aggregation_name="monthly_trend"
+                    )
+                    insights["results"]["trend"] = trend
+                    insights["operations_performed"].append("detect_trend")
+
+                elif operation == "forecast_next_period" and len(query_results) >= 1:
+                    # Prévision
+                    forecast = self.analytics_service.forecast_next_period(
+                        time_series_results=query_results[0]["results"],
+                        aggregation_name="monthly_trend",
+                        method="moving_average"
+                    )
+                    insights["results"]["forecast"] = forecast
+                    insights["operations_performed"].append("forecast_next_period")
+
+                elif operation == "calculate_savings_rate" and len(query_results) >= 2:
+                    # Taux d'épargne (revenus vs dépenses)
+                    savings_rate = self.analytics_service.calculate_savings_rate(
+                        income_results=query_results[0]["results"],
+                        expense_results=query_results[1]["results"]
+                    )
+                    insights["results"]["savings_rate"] = savings_rate
+                    insights["operations_performed"].append("calculate_savings_rate")
+
+                elif operation == "recommend_savings_opportunities" and len(query_results) >= 1:
+                    # Recommandations d'économies
+                    recommendations = self.analytics_service.recommend_savings_opportunities(
+                        by_category_results=query_results[0]["results"],
+                        target_reduction_pct=10.0
+                    )
+                    insights["results"]["recommendations"] = recommendations
+                    insights["operations_performed"].append("recommend_savings_opportunities")
+
+                elif operation == "classify_fixed_vs_variable" and len(query_results) >= 1:
+                    # Classification charges fixes/variables
+                    classification = self.analytics_service.classify_fixed_vs_variable(
+                        by_category_results=query_results[0]["results"]
+                    )
+                    insights["results"]["fixed_vs_variable"] = classification
+                    insights["operations_performed"].append("classify_fixed_vs_variable")
+
+                elif operation == "analyze_multi_period_budget" and len(query_results) >= 3:
+                    # Analyse budgétaire multi-périodes
+                    period_labels = [qr.get("spec", {}).get("period_label", f"Period {i+1}")
+                                    for i, qr in enumerate(query_results)]
+
+                    multi_period_analysis = self.analytics_service.analyze_multi_period_budget(
+                        period_results=query_results,
+                        period_labels=period_labels
+                    )
+                    insights["results"]["multi_period_analysis"] = multi_period_analysis
+                    insights["operations_performed"].append("analyze_multi_period_budget")
+
+                elif operation == "identify_spending_patterns" and len(query_results) >= 1:
+                    # Identification de patterns de dépenses
+                    patterns = self.analytics_service.identify_spending_patterns(
+                        by_category_results=query_results[0]["results"],
+                        time_series_results=query_results[0]["results"] if len(query_results) > 0 else None
+                    )
+                    insights["results"]["spending_patterns"] = patterns
+                    insights["operations_performed"].append("identify_spending_patterns")
+
+                elif operation == "calculate_budget_health_score" and len(query_results) >= 1:
+                    # Score de santé budgétaire
+                    # Extraire les métriques nécessaires
+                    result_obj = query_results[0]["results"]
+
+                    income = 0
+                    expenses = 0
+                    fixed_expenses = 0
+                    discretionary_expenses = 0
+
+                    if result_obj and result_obj.aggregations:
+                        aggs = result_obj.aggregations
+
+                        # Extraire income
+                        if "income" in aggs:
+                            income_agg = aggs["income"]
+                            if "total_income" in income_agg:
+                                income = income_agg["total_income"].get("value", 0) or 0
+
+                        # Extraire expenses
+                        if "expenses" in aggs:
+                            exp_agg = aggs["expenses"]
+                            if "total_expenses" in exp_agg:
+                                expenses = exp_agg["total_expenses"].get("value", 0) or 0
+
+                        # Extraire fixed/discretionary
+                        if "fixed_expenses" in aggs:
+                            fixed_agg = aggs["fixed_expenses"]
+                            if "total_fixed" in fixed_agg:
+                                fixed_expenses = fixed_agg["total_fixed"].get("value", 0) or 0
+
+                        if "variable_expenses" in aggs:
+                            var_agg = aggs["variable_expenses"]
+                            if "total_variable" in var_agg:
+                                discretionary_expenses = var_agg["total_variable"].get("value", 0) or 0
+
+                    health_score = self.analytics_service.calculate_budget_health_score(
+                        income=income,
+                        expenses=expenses,
+                        fixed_expenses=fixed_expenses,
+                        discretionary_expenses=discretionary_expenses
+                    )
+                    insights["results"]["budget_health_score"] = health_score
+                    insights["operations_performed"].append("calculate_budget_health_score")
+
+            except Exception as e:
+                logger.error(f"Error computing insight for operation {operation}: {str(e)}", exc_info=True)
+                insights["results"][operation] = {"error": str(e)}
+
+        logger.info(f"Computed {len(insights['operations_performed'])} insights")
+        return insights
+
+    async def _generate_analytical_response(
+        self,
+        user_message: str,
+        analysis_plan: Dict[str, Any],
+        insights: Dict[str, Any],
+        conversation_history: List[Dict[str, str]]
+    ) -> str:
+        """
+        Génère une réponse analytique enrichie
+
+        Args:
+            user_message: Message utilisateur
+            analysis_plan: Plan d'analyse
+            insights: Insights calculés
+            conversation_history: Historique conversation
+
+        Returns:
+            Réponse textuelle
+        """
+        try:
+            # Créer un prompt spécial pour réponses analytiques
+            analytical_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Tu es un conseiller financier expert en analyse de données.
+
+Tu dois créer une réponse analytique basée sur des INSIGHTS calculés (pas des transactions brutes).
+
+Format de réponse:
+1. 📊 Réponse directe avec chiffres clés
+2. 📈 Analyse détaillée et interprétation
+3. 💡 Insights et observations importantes
+4. ✅ Recommandations actionnables (si applicable)
+
+Sois clair, précis et actionnable."""),
+                ("user", """Question: {user_message}
+
+Type d'analyse: {analysis_type}
+
+Insights calculés:
+{insights}
+
+Historique conversation:
+{conversation_history}
+
+Génère une réponse analytique complète et actionnab le.""")
+            ])
+
+            chain = analytical_prompt | ChatOpenAI(model="gpt-4o", temperature=0.3)
+
+            # Formater historique
+            history_text = "\n".join([
+                f"{msg['role']}: {msg['content']}"
+                for msg in conversation_history[-3:]
+            ]) if conversation_history else "Aucun historique"
+
+            # Invoquer LLM
+            result = await chain.ainvoke({
+                "user_message": user_message,
+                "analysis_type": analysis_plan.get("analysis_type", ""),
+                "insights": json.dumps(insights, ensure_ascii=False, indent=2),
+                "conversation_history": history_text
+            })
+
+            return result.content
+
+        except Exception as e:
+            logger.error(f"Error generating analytical response: {str(e)}", exc_info=True)
+            return f"J'ai analysé vos données mais j'ai rencontré une difficulté pour formuler la réponse. Insights disponibles: {json.dumps(insights.get('operations_performed', []))}"
 
     def _create_error_response(self, error_message: str) -> ConversationResponse:
         """

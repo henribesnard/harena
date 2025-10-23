@@ -162,6 +162,85 @@ Réponse:
   "confidence": 0.95
 }}
 
+**NOUVEAUX EXEMPLES - QUESTIONS ANALYTIQUES:**
+
+Question: "Compare mes dépenses de janvier à celles de février"
+Réponse:
+{{
+  "intent": "compare",
+  "entities": {{"comparison_type": "period_vs_period", "period1": "janvier", "period2": "février", "transaction_type": "debit"}},
+  "filters": {{"transaction_type": "debit"}},
+  "aggregations_needed": ["total_amount", "by_category"],
+  "time_range": {{"type": "comparison", "period1": {{"start": "2025-01-01", "end": "2025-01-31"}}, "period2": {{"start": "2025-02-01", "end": "2025-02-28"}}}},
+  "confidence": 0.95
+}}
+
+Question: "Quelle est la tendance de mes revenus cette année"
+Réponse:
+{{
+  "intent": "trend_analysis",
+  "entities": {{"metric": "revenus", "transaction_type": "credit", "period": "current_year"}},
+  "filters": {{"transaction_type": "credit"}},
+  "aggregations_needed": ["monthly_trend", "total_amount"],
+  "time_range": {{"period": "current_year", "reference_date": "{current_date}"}},
+  "confidence": 0.93
+}}
+
+Question: "Prévois mon budget pour le mois prochain"
+Réponse:
+{{
+  "intent": "forecast",
+  "entities": {{"forecast_target": "next_month", "metric": "total_expenses"}},
+  "filters": {{"transaction_type": "debit"}},
+  "aggregations_needed": ["monthly_trend"],
+  "time_range": {{"period": "last_12_months", "reference_date": "{current_date}"}},
+  "confidence": 0.88
+}}
+
+Question: "Quel type de dépenses je peux réduire pour augmenter mon taux d'épargne"
+Réponse:
+{{
+  "intent": "optimization",
+  "entities": {{"goal": "increase_savings", "target_metric": "discretionary_spending"}},
+  "filters": {{"transaction_type": "debit"}},
+  "aggregations_needed": ["by_category", "savings_rate"],
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
+  "confidence": 0.90
+}}
+
+Question: "Compare mes charges fixes à mes charges variables"
+Réponse:
+{{
+  "intent": "compare",
+  "entities": {{"comparison_type": "category_classification", "type1": "fixed", "type2": "variable"}},
+  "filters": {{"transaction_type": "debit"}},
+  "aggregations_needed": ["fixed_vs_variable", "by_category"],
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
+  "confidence": 0.95
+}}
+
+Question: "Analyse mon budget des 3 derniers mois"
+Réponse:
+{{
+  "intent": "budget_analysis",
+  "entities": {{"period": "last_3_months", "analysis_type": "comprehensive"}},
+  "filters": {{}},
+  "aggregations_needed": ["monthly_trend", "by_category", "savings_rate"],
+  "time_range": {{"period": "last_3_months", "reference_date": "{current_date}"}},
+  "confidence": 0.92
+}}
+
+Question: "Quel est mon taux d'épargne ce mois"
+Réponse:
+{{
+  "intent": "savings_rate",
+  "entities": {{"metric": "savings_rate", "period": "current_month"}},
+  "filters": {{}},
+  "aggregations_needed": ["savings_rate_components"],
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
+  "confidence": 0.95
+}}
+
 IMPORTANT: Utilise TOUJOURS la date actuelle ({current_date}) comme référence pour les expressions temporelles relatives.
 
 ⚠️ RAPPEL CRITIQUE: Le terme "achats" = UNIQUEMENT [Alimentation, Restaurant, Transport, achats en ligne, Santé/pharmacie, Loisirs]

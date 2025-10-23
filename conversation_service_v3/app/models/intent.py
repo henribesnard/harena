@@ -14,6 +14,13 @@ class IntentCategory(Enum):
     FINANCIAL_ANALYSIS = "financial_analysis"
     FINANCIAL_STATS = "financial_stats"
 
+    # Intentions analytiques avancées (nécessitent recherche + calculs)
+    COMPARATIVE_ANALYSIS = "comparative_analysis"  # Comparaisons période vs période
+    TREND_ANALYSIS = "trend_analysis"  # Analyse de tendances temporelles
+    PREDICTIVE_ANALYSIS = "predictive_analysis"  # Prévisions basées sur historique
+    OPTIMIZATION_RECOMMENDATION = "optimization_recommendation"  # Recommandations d'optimisation
+    BUDGET_ANALYSIS = "budget_analysis"  # Analyse budgétaire globale multi-périodes
+
     # Intentions conversationnelles (pas de recherche)
     GREETING = "greeting"
     FAREWELL = "farewell"

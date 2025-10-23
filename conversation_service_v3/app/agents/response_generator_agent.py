@@ -516,7 +516,7 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
             formatted_lines.append(line)
 
             # Ajouter description si disponible et différente du marchand
-            if description and description.lower() != merchant.lower():
+            if description and merchant and description.lower() != merchant.lower():
                 formatted_lines.append(f"   Description: {description[:100]}")
 
         return "\n".join(formatted_lines)

@@ -498,9 +498,9 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
             # Extraire les informations clés
             date = transaction.get("date", "Date inconnue")
             amount = transaction.get("amount") or 0  # Gérer None
-            merchant = transaction.get("merchant_name", "Marchand inconnu")
-            category = transaction.get("category_name", "")
-            description = transaction.get("primary_description", "")
+            merchant = transaction.get("merchant_name") or "Marchand inconnu"
+            category = transaction.get("category_name") or ""
+            description = transaction.get("primary_description") or ""
 
             # Formater le montant (gérer None explicitement)
             amount_safe = abs(amount) if amount is not None else 0

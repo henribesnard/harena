@@ -211,6 +211,9 @@ async def analyze_conversation_stream(
             )
 
             # === ÉTAPE 0: Routage d'intention (NOUVEAU) ===
+            # 🔹 Message de progression UX
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyse de votre question...'})}\n\n"
+
             logger.info("Step 0: Intent classification (stream)")
             intent_response = await orch.intent_router.classify_intent(user_query)
 
@@ -224,6 +227,9 @@ async def analyze_conversation_stream(
             # === CAS 1: Réponse conversationnelle (pas de recherche) ===
             if not intent_classification.requires_search:
                 logger.info("Conversational intent detected (stream), responding directly")
+
+                # 🔹 Message de progression UX
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Préparation de la réponse...'})}\n\n"
 
                 # Utiliser la réponse suggérée ou générer une réponse persona
                 if intent_classification.suggested_response:
@@ -264,6 +270,9 @@ async def analyze_conversation_stream(
             # === CAS 2: Pipeline financier complet (recherche requise) ===
             logger.info("Financial intent detected (stream), proceeding with search pipeline")
 
+            # 🔹 Message de progression UX
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Recherche de vos transactions...'})}\n\n"
+
             # === ÉTAPE 1-3: Pipeline jusqu'à la récupération des résultats ===
             logger.info("Step 1: Analyzing user query")
             analysis_response = await orch.query_analyzer.analyze(user_query)
@@ -285,12 +294,21 @@ async def analyze_conversation_stream(
 
             es_query = build_response.data
 
+            # 🔹 Message de progression UX
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyse de vos données...'})}\n\n"
+
             logger.info("Step 3: Executing query on search_service")
             search_results = await orch._execute_query(es_query, user_query.user_id, jwt_token)
 
             if not search_results:
                 yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to execute query'})}\n\n"
                 return
+
+            # 🔹 Message de progression UX basé sur les résultats
+            if search_results.total > 0:
+                yield f"data: {json.dumps({'type': 'status', 'message': f'{search_results.total} transaction(s) trouvée(s), génération de la réponse...'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Préparation de la réponse...'})}\n\n"
 
             # Envoyer response_start
             yield f"data: {json.dumps({'type': 'response_start'})}\n\n"

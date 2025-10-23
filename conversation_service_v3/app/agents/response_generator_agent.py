@@ -307,12 +307,29 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
             max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(search_results.hits))
             limited_transactions = search_results.hits[:max_transactions]
 
+            # Filtrer les champs pour réduire le contexte (~50% de tokens économisés)
+            # Ne garder que les champs essentiels pour le LLM
+            essential_fields = [
+                'amount', 'currency_code', 'transaction_type', 'date',
+                'primary_description', 'merchant_name', 'category_name', 'operation_type'
+            ]
+
+            filtered_transactions = []
+            for transaction in limited_transactions:
+                filtered = {field: transaction.get(field) for field in essential_fields if field in transaction}
+                filtered_transactions.append(filtered)
+
+            limited_transactions = filtered_transactions
+
+            logger.info(f"[STREAM] Transactions: {len(search_results.hits)} → {len(limited_transactions)} (filtered to {len(essential_fields)} fields)")
+
             # Préparer les transactions pour le LLM
             transactions_text = self._format_transactions(limited_transactions)
 
             # Stream la réponse du LLM
             async for chunk in self.chain.astream({
                 "user_message": user_message,
+                "conversation_history": "",  # Pas d'historique en mode streaming (pour compatibilité prompt)
                 "aggregations": aggs_summary,
                 "total_results": search_results.total,
                 "transactions_count": len(limited_transactions),

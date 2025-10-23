@@ -91,6 +91,10 @@ resultat_ok/
 test_reports_final_responses/
 test_reports_query_extraction/
 scripts/
+Profiling_docs/
+Test_mvp/
+alembic/
+backup_terraform_old/
 
 # Fichiers Docker
 .dockerignore

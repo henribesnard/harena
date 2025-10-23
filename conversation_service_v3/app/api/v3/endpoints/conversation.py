@@ -212,7 +212,7 @@ async def analyze_conversation_stream(
 
             # === ÉTAPE 0: Routage d'intention (NOUVEAU) ===
             # 🔹 Message de progression UX
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyse de votre question...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '• Analyse de votre question...'})}\n\n"
 
             logger.info("Step 0: Intent classification (stream)")
             intent_response = await orch.intent_router.classify_intent(user_query)
@@ -229,7 +229,7 @@ async def analyze_conversation_stream(
                 logger.info("Conversational intent detected (stream), responding directly")
 
                 # 🔹 Message de progression UX
-                yield f"data: {json.dumps({'type': 'status', 'message': 'Préparation de la réponse...'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '• Préparation de la réponse...'})}\n\n"
 
                 # Utiliser la réponse suggérée ou générer une réponse persona
                 if intent_classification.suggested_response:
@@ -271,7 +271,7 @@ async def analyze_conversation_stream(
             logger.info("Financial intent detected (stream), proceeding with search pipeline")
 
             # 🔹 Message de progression UX
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Recherche de vos transactions...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '• Recherche de vos transactions...'})}\n\n"
 
             # === ÉTAPE 1-3: Pipeline jusqu'à la récupération des résultats ===
             logger.info("Step 1: Analyzing user query")
@@ -295,7 +295,7 @@ async def analyze_conversation_stream(
             es_query = build_response.data
 
             # 🔹 Message de progression UX
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyse de vos données...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '• Analyse de vos données...'})}\n\n"
 
             logger.info("Step 3: Executing query on search_service")
             search_results = await orch._execute_query(es_query, user_query.user_id, jwt_token)
@@ -306,9 +306,9 @@ async def analyze_conversation_stream(
 
             # 🔹 Message de progression UX basé sur les résultats
             if search_results.total > 0:
-                yield f"data: {json.dumps({'type': 'status', 'message': f'{search_results.total} transaction(s) trouvée(s), génération de la réponse...'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': f'• {search_results.total} transaction(s) trouvée(s), génération de la réponse...'})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'status', 'message': 'Préparation de la réponse...'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '• Préparation de la réponse...'})}\n\n"
 
             # Envoyer response_start
             yield f"data: {json.dumps({'type': 'response_start'})}\n\n"

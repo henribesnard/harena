@@ -173,10 +173,24 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
             max_transactions = min(settings.MAX_TRANSACTIONS_IN_CONTEXT, len(search_results.hits))
             limited_transactions = search_results.hits[:max_transactions]
 
+            # Step B.5: Filtrer les champs pour réduire le contexte (~50% de tokens économisés)
+            # Ne garder que les champs essentiels pour le LLM
+            essential_fields = [
+                'amount', 'currency_code', 'transaction_type', 'date',
+                'primary_description', 'merchant_name', 'category_name', 'operation_type'
+            ]
+
+            filtered_transactions = []
+            for transaction in limited_transactions:
+                filtered = {field: transaction.get(field) for field in essential_fields if field in transaction}
+                filtered_transactions.append(filtered)
+
+            limited_transactions = filtered_transactions
+
             # DEBUG: Log pour identifier le problème
             logger.info(f"Transactions received: {len(search_results.hits)}, Limited to: {len(limited_transactions)}")
             if len(limited_transactions) > 0:
-                logger.info(f"First transaction keys: {list(limited_transactions[0].keys())}")
+                logger.info(f"Filtered transaction keys: {list(limited_transactions[0].keys())} (was 16, now {len(limited_transactions[0])})")
             else:
                 logger.warning("No transactions in search_results.hits")
 

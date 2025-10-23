@@ -2,8 +2,17 @@
 Configuration settings for conversation_service_v3
 """
 import os
-from typing import Optional
+from typing import Optional, List, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+def clean_env_value(value: str) -> str:
+    """Remove quotes and whitespace from environment variables"""
+    if not value:
+        return value
+    # Remove surrounding quotes (single and double) and whitespace
+    return value.strip().strip("'").strip('"').strip()
 
 
 class Settings(BaseSettings):
@@ -19,30 +28,50 @@ class Settings(BaseSettings):
     PORT: int = 3008
 
     # External services
-    SEARCH_SERVICE_URL: str = os.getenv("SEARCH_SERVICE_URL", "http://localhost:3002")
+    SEARCH_SERVICE_URL: str = "http://localhost:3002"
 
     # LLM Configuration
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    LLM_RESPONSE_MODEL: str = os.getenv("LLM_RESPONSE_MODEL", "gpt-4o")
-    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+    OPENAI_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_RESPONSE_MODEL: str = "gpt-4o"
+    LLM_TEMPERATURE: float = 0.1
 
     # Agent configuration
-    MAX_CORRECTION_ATTEMPTS: int = int(os.getenv("MAX_CORRECTION_ATTEMPTS", "2"))
-    QUERY_TIMEOUT_SECONDS: int = int(os.getenv("QUERY_TIMEOUT_SECONDS", "30"))
+    MAX_CORRECTION_ATTEMPTS: int = 2
+    QUERY_TIMEOUT_SECONDS: int = 30
 
     # Context optimization - Limite le nombre de transactions dans le contexte LLM
-    MAX_TRANSACTIONS_IN_CONTEXT: int = int(os.getenv("MAX_TRANSACTIONS_IN_CONTEXT", "50"))
+    MAX_TRANSACTIONS_IN_CONTEXT: int = 50
 
-    # CORS
-    CORS_ORIGINS: list = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-    ]
+    # Redis Configuration - Conversation Memory Cache
+    REDIS_URL: str = "redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@63.35.52.216:6379/0"
+    REDIS_CONVERSATION_CACHE_ENABLED: bool = True
+
+    # Validators pour nettoyer les guillemets du .env
+    @field_validator('SEARCH_SERVICE_URL', 'REDIS_URL', 'OPENAI_API_KEY', 'LLM_MODEL', 'LLM_RESPONSE_MODEL', mode='before')
+    @classmethod
+    def clean_string_fields(cls, v):
+        """Remove quotes from string fields loaded from .env"""
+        if isinstance(v, str):
+            return clean_env_value(v)
+        return v
+
+    # Conversation Memory Limits
+    MAX_CONVERSATION_MESSAGES: int = int(os.getenv("MAX_CONVERSATION_MESSAGES", "10"))  # Sliding window size
+    MAX_CONVERSATION_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONVERSATION_CONTEXT_TOKENS", "4000"))  # Token limit for history
+    CONVERSATION_CACHE_TTL_SECONDS: int = int(os.getenv("CONVERSATION_CACHE_TTL_SECONDS", "86400"))  # 24 hours
+
+    # CORS - Will be parsed manually
+    CORS_ORIGINS: str = clean_env_value(os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174"))
 
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+    def get_cors_origins(self) -> List[str]:
+        """Parse CORS origins from string"""
+        if isinstance(self.CORS_ORIGINS, list):
+            return self.CORS_ORIGINS
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     class Config:
         case_sensitive = True

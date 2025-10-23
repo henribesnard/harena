@@ -20,6 +20,9 @@ from ..agents.response_generator_agent import ResponseGeneratorAgent
 from ..models.intent import IntentCategory
 from ..core.aggregation_enricher import AggregationEnricher
 from ..core.category_validator import category_validator
+from ..services.redis_conversation_cache import RedisConversationCache
+from ..utils.token_counter import TokenCounter
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,25 @@ class AgentOrchestrator:
         # HTTP client pour search_service
         # Timeout augmenté pour laisser le temps aux agrégations complexes de s'exécuter
         self.http_client = httpx.AsyncClient(timeout=60.0)
+
+        # Initialize Redis conversation cache (if enabled)
+        self.conversation_cache: Optional[RedisConversationCache] = None
+        if settings.REDIS_CONVERSATION_CACHE_ENABLED:
+            try:
+                token_counter = TokenCounter(model=llm_model)
+                self.conversation_cache = RedisConversationCache(
+                    redis_url=settings.REDIS_URL,
+                    max_messages_per_conversation=settings.MAX_CONVERSATION_MESSAGES,
+                    max_context_tokens=settings.MAX_CONVERSATION_CONTEXT_TOKENS,
+                    cache_ttl_seconds=settings.CONVERSATION_CACHE_TTL_SECONDS,
+                    token_counter=token_counter
+                )
+                logger.info("✅ Redis conversation cache enabled")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize Redis cache: {e}")
+                self.conversation_cache = None
+        else:
+            logger.info("ℹ️ Redis conversation cache disabled")
 
         # Statistiques
         self.stats = {
@@ -126,6 +148,34 @@ class AgentOrchestrator:
                 self._update_avg_time(pipeline_time_ms)
 
                 logger.info(f"Conversational response generated in {pipeline_time_ms}ms")
+
+                # === Sauvegarder dans l'historique Redis (pour conversations aussi) ===
+                if self.conversation_cache:
+                    try:
+                        conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+
+                        # Sauvegarder le message utilisateur
+                        self.conversation_cache.add_message(
+                            user_id=user_query.user_id,
+                            role="user",
+                            content=user_query.message,
+                            conversation_id=conversation_id_int
+                        )
+
+                        # Sauvegarder la réponse
+                        self.conversation_cache.add_message(
+                            user_id=user_query.user_id,
+                            role="assistant",
+                            content=response_text,
+                            conversation_id=conversation_id_int,
+                            metadata={
+                                "intent": intent_classification.category.value,
+                                "conversational": True
+                            }
+                        )
+                        logger.info("✅ Conversational exchange saved to Redis cache")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to save conversational exchange: {e}")
 
                 return ConversationResponse(
                     success=True,
@@ -292,12 +342,29 @@ class AgentOrchestrator:
 
             logger.info(f"Query executed successfully: {search_results.total} results found")
 
+            # === ÉTAPE 3.8: Charger l'historique de conversation (si Redis activé) ===
+            conversation_history = []
+            if self.conversation_cache:
+                try:
+                    # Récupérer l'historique depuis Redis
+                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+                    conversation_history = self.conversation_cache.get_conversation_history(
+                        user_id=user_query.user_id,
+                        conversation_id=conversation_id_int,
+                        include_system_message=False  # Le ResponseGenerator a déjà son system prompt
+                    )
+                    logger.info(f"📖 Loaded {len(conversation_history)} messages from conversation history")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load conversation history: {e}")
+                    conversation_history = []
+
             # === ÉTAPE 4: Génération de la réponse ===
             logger.info("Step 4: Generating response")
             response_result = await self.response_generator.generate_response(
                 user_message=user_query.message,
                 search_results=search_results,
-                original_query_analysis=query_analysis.__dict__
+                original_query_analysis=query_analysis.__dict__,
+                conversation_history=conversation_history
             )
 
             if not response_result.success:
@@ -306,6 +373,34 @@ class AgentOrchestrator:
                 )
 
             conversation_response: ConversationResponse = response_result.data
+
+            # === ÉTAPE 4.5: Sauvegarder dans l'historique Redis ===
+            if self.conversation_cache:
+                try:
+                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+
+                    # Sauvegarder le message utilisateur
+                    self.conversation_cache.add_message(
+                        user_id=user_query.user_id,
+                        role="user",
+                        content=user_query.message,
+                        conversation_id=conversation_id_int
+                    )
+
+                    # Sauvegarder la réponse de l'assistant
+                    self.conversation_cache.add_message(
+                        user_id=user_query.user_id,
+                        role="assistant",
+                        content=conversation_response.message,
+                        conversation_id=conversation_id_int,
+                        metadata={
+                            "total_results": search_results.total,
+                            "intent": intent_classification.category.value
+                        }
+                    )
+                    logger.info("✅ Conversation saved to Redis cache")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save to conversation cache: {e}")
 
             # === Mise à jour des statistiques ===
             pipeline_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)

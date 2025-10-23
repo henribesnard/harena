@@ -43,10 +43,17 @@ IMPORTANT - Utilisation des données:
 - JAMAIS dire "j'ai trouvé {transactions_count} transactions" si le total est différent
 - Les agrégations sont PRIORITAIRES sur les transactions détaillées
 
+IMPORTANT - Contexte conversationnel:
+- Tu as accès à l'historique de la conversation précédente
+- Utilise ce contexte pour des réponses cohérentes et personnalisées
+- Si l'utilisateur fait référence à une question précédente, utilise cet historique
+- Reste naturel et conversationnel en tenant compte du contexte
+
 Ton rôle est de créer une réponse claire, précise et utile basée sur:
 1. Les agrégations Elasticsearch (totaux, moyennes, statistiques) - SOURCE DE VÉRITÉ
 2. Un résumé des résultats de recherche
 3. Les premières transactions détaillées (exemples illustratifs)
+4. L'historique de conversation (si disponible)
 
 Règles de réponse:
 - Commence TOUJOURS par les chiffres des AGRÉGATIONS
@@ -55,6 +62,7 @@ Règles de réponse:
 - Inclus des exemples de transactions SI pertinent
 - Sois naturel et conversationnel
 - Si aucun résultat, explique pourquoi et propose des alternatives
+- Utilise le contexte conversationnel pour des réponses plus pertinentes
 
 Format de réponse:
 1. Réponse directe à la question avec les chiffres clés
@@ -88,7 +96,10 @@ Agrégations: by_category avec 15 catégories, totaux et comptages
 ❌ MAUVAIS: "D'après les 10 transactions que je vois..."
             (les agrégations contiennent TOUTES les catégories)
 """),
-            ("user", """Question utilisateur: {user_message}
+            ("user", """**Historique de conversation:**
+{conversation_history}
+
+**Question utilisateur actuelle:** {user_message}
 
 **Agrégations Elasticsearch:**
 {aggregations}
@@ -100,7 +111,7 @@ Agrégations: by_category avec 15 catégories, totaux et comptages
 **Transactions (premières {transactions_count}):**
 {transactions}
 
-Génère une réponse complète et utile.""")
+Génère une réponse complète et utile en tenant compte du contexte de la conversation.""")
         ])
 
         self.chain = self.prompt | self.llm
@@ -116,7 +127,8 @@ Génère une réponse complète et utile.""")
         self,
         user_message: str,
         search_results: SearchResults,
-        original_query_analysis: Optional[Dict[str, Any]] = None
+        original_query_analysis: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> AgentResponse:
         """
         Génère une réponse finale basée sur les résultats de recherche
@@ -125,11 +137,13 @@ Génère une réponse complète et utile.""")
         - Le résumé de la recherche (total, etc.)
         - Les agrégations complètes
         - Les N premières transactions (défini par MAX_TRANSACTIONS_IN_CONTEXT)
+        - L'historique de conversation récent (si disponible)
 
         Args:
             user_message: Message original de l'utilisateur
             search_results: Résultats Elasticsearch (hits + agrégations)
             original_query_analysis: Analyse originale (pour contexte)
+            conversation_history: Historique de conversation (format OpenAI chat)
 
         Returns:
             AgentResponse contenant ConversationResponse
@@ -182,6 +196,11 @@ Génère une réponse complète et utile.""")
             # S'assurer qu'aucune valeur n'est None (LangChain ne gère pas bien None)
             total_results_safe = search_results.total if search_results.total is not None else 0
 
+            # Formater l'historique de conversation
+            logger.debug("Step D1: Formatting conversation history")
+            history_text = self._format_conversation_history(conversation_history)
+            logger.debug(f"Step D1: History formatted - length: {len(history_text)}")
+
             logger.debug("Step D: Preparing chain parameters")
             logger.debug(f"Chain params: total_results={total_results_safe}, transactions_count={len(limited_transactions)}")
 
@@ -189,12 +208,13 @@ Génère une réponse complète et utile.""")
             logger.debug("Step E: Invoking LLM chain")
             chain_params = {
                 "user_message": user_message,
+                "conversation_history": history_text,
                 "aggregations": aggs_summary,
                 "total_results": total_results_safe,
                 "transactions_count": len(limited_transactions),
                 "transactions": transactions_text
             }
-            logger.debug(f"Chain params types: user_message={type(user_message)}, aggs={type(aggs_summary)}, total={type(total_results_safe)}, count={type(len(limited_transactions))}, trans={type(transactions_text)}")
+            logger.debug(f"Chain params types: user_message={type(user_message)}, history={type(history_text)}, aggs={type(aggs_summary)}, total={type(total_results_safe)}, count={type(len(limited_transactions))}, trans={type(transactions_text)}")
 
             result = await self.chain.ainvoke(chain_params)
             logger.debug("Step E: LLM chain invoked successfully")
@@ -469,6 +489,35 @@ Génère une réponse complète et utile.""")
                 formatted_lines.append(f"   Description: {description[:100]}")
 
         return "\n".join(formatted_lines)
+
+    def _format_conversation_history(
+        self,
+        conversation_history: Optional[List[Dict[str, str]]]
+    ) -> str:
+        """
+        Formate l'historique de conversation pour le LLM
+
+        Args:
+            conversation_history: Liste de messages {"role": "user/assistant", "content": "..."}
+
+        Returns:
+            String formatée de l'historique
+        """
+        if not conversation_history or len(conversation_history) == 0:
+            return "(Aucun historique de conversation - première interaction)"
+
+        formatted_lines = []
+        for idx, message in enumerate(conversation_history, 1):
+            role = message.get("role", "unknown")
+            content = message.get("content", "")
+
+            # Mapper les rôles pour plus de clarté
+            role_display = "👤 Utilisateur" if role == "user" else "🤖 Assistant"
+
+            formatted_lines.append(f"{role_display}: {content}")
+
+        history_count = len(conversation_history)
+        return f"({history_count} messages précédents)\n" + "\n".join(formatted_lines)
 
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de l'agent"""

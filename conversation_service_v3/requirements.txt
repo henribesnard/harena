@@ -22,3 +22,9 @@ psycopg2-binary==2.9.9
 # Utilities
 python-dotenv==1.0.0
 python-multipart==0.0.6
+
+# Redis for conversation memory cache
+redis==5.0.1
+
+# Token counting for LLM context management
+tiktoken==0.5.2

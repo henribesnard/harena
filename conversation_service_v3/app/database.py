@@ -16,6 +16,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
+# Clean quotes that might be included from .env file
+DATABASE_URL = DATABASE_URL.strip("'").strip('"')
+
 # Fix postgres:// to postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)

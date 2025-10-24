@@ -29,6 +29,11 @@ class Settings(BaseSettings):
 
     # External services
     SEARCH_SERVICE_URL: str = "http://localhost:3002"
+    BUDGET_SERVICE_URL: str = "http://localhost:3006"
+
+    # Budget Profile Integration
+    BUDGET_PROFILE_ENABLED: bool = True  # Feature flag
+    BUDGET_PROFILE_TIMEOUT: float = 5.0  # Timeout en secondes
 
     # LLM Configuration
     OPENAI_API_KEY: str = ""
@@ -48,7 +53,7 @@ class Settings(BaseSettings):
     REDIS_CONVERSATION_CACHE_ENABLED: bool = True
 
     # Validators pour nettoyer les guillemets du .env
-    @field_validator('SEARCH_SERVICE_URL', 'REDIS_URL', 'OPENAI_API_KEY', 'LLM_MODEL', 'LLM_RESPONSE_MODEL', mode='before')
+    @field_validator('SEARCH_SERVICE_URL', 'BUDGET_SERVICE_URL', 'REDIS_URL', 'OPENAI_API_KEY', 'LLM_MODEL', 'LLM_RESPONSE_MODEL', mode='before')
     @classmethod
     def clean_string_fields(cls, v):
         """Remove quotes from string fields loaded from .env"""

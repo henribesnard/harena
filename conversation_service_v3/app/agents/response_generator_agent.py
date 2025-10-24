@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from ..models import SearchResults, AgentResponse, AgentRole, ConversationResponse
+from ..services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,38 @@ class ResponseGeneratorAgent:
             temperature=temperature
         )
 
+        # Initialize user profile service
+        self.user_profile_service = UserProfileService()
+
         # Prompt pour la génération de réponse
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """Tu es un assistant financier personnel expert en analyse de données.
+
+🎯 **PROFIL UTILISATEUR - PERSONNALISATION OBLIGATOIRE**
+
+Tu as accès au profil budgétaire complet de l'utilisateur. C'est une information CRITIQUE
+que tu DOIS utiliser pour personnaliser TOUTES tes réponses.
+
+**Règles de personnalisation :**
+
+1. **Adapter le ton selon le segment budgétaire :**
+   - Budget serré (épargne < 10%) → Ton ENCOURAGEANT, conseils d'OPTIMISATION
+   - Équilibré (épargne 10-30%) → Ton NEUTRE, conseils de MAINTIEN
+   - Confortable (épargne > 30%) → Ton POSITIF, conseils d'INVESTISSEMENT
+
+2. **Contextualiser les montants :**
+   - Toujours comparer les dépenses au "reste à vivre"
+   - Calculer les pourcentages par rapport au budget disponible
+   - Mentionner l'impact sur le taux d'épargne actuel
+
+3. **Tenir compte du pattern comportemental :**
+   - Acheteur impulsif / erratic_spender → Suggérer planification et groupement d'achats
+   - Planificateur → Valoriser la constance, optimisations fines
+   - Dépensier haute fréquence → Adapter à ce rythme
+
+4. **Graceful degradation :**
+   - Si profil non disponible → Rester NEUTRE, ne pas faire de suppositions
+   - Mentionner que l'analyse serait plus précise avec un profil complet
 
 IMPORTANT - Utilisation des données:
 - Les AGRÉGATIONS contiennent les STATISTIQUES GLOBALES sur TOUS les résultats
@@ -96,7 +126,10 @@ Agrégations: by_category avec 15 catégories, totaux et comptages
 ❌ MAUVAIS: "D'après les 10 transactions que je vois..."
             (les agrégations contiennent TOUTES les catégories)
 """),
-            ("user", """**Historique de conversation:**
+            ("user", """**PROFIL UTILISATEUR:**
+{user_profile}
+
+**Historique de conversation:**
 {conversation_history}
 
 **Question utilisateur actuelle:** {user_message}
@@ -111,7 +144,7 @@ Agrégations: by_category avec 15 catégories, totaux et comptages
 **Transactions (premières {transactions_count}):**
 {transactions}
 
-Génère une réponse complète et utile en tenant compte du contexte de la conversation.""")
+Génère une réponse complète et utile PERSONNALISÉE basée sur le profil utilisateur ci-dessus.""")
         ])
 
         self.chain = self.prompt | self.llm
@@ -128,7 +161,8 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
         user_message: str,
         search_results: SearchResults,
         original_query_analysis: Optional[Dict[str, Any]] = None,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        user_profile: Optional[Dict[str, Any]] = None
     ) -> AgentResponse:
         """
         Génère une réponse finale basée sur les résultats de recherche
@@ -138,12 +172,14 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
         - Les agrégations complètes
         - Les N premières transactions (défini par MAX_TRANSACTIONS_IN_CONTEXT)
         - L'historique de conversation récent (si disponible)
+        - Le profil budgétaire utilisateur (si disponible)
 
         Args:
             user_message: Message original de l'utilisateur
             search_results: Résultats Elasticsearch (hits + agrégations)
             original_query_analysis: Analyse originale (pour contexte)
             conversation_history: Historique de conversation (format OpenAI chat)
+            user_profile: Profil budgétaire de l'utilisateur (optionnel)
 
         Returns:
             AgentResponse contenant ConversationResponse
@@ -215,6 +251,11 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
             history_text = self._format_conversation_history(conversation_history)
             logger.debug(f"Step D1: History formatted - length: {len(history_text)}")
 
+            # Formatter le profil utilisateur
+            logger.debug("Step D2: Formatting user profile")
+            profile_text = self.user_profile_service.format_profile_for_prompt(user_profile)
+            logger.debug(f"Step D2: Profile formatted - length: {len(profile_text)}")
+
             logger.debug("Step D: Preparing chain parameters")
             logger.debug(f"Chain params: total_results={total_results_safe}, transactions_count={len(limited_transactions)}")
 
@@ -222,6 +263,7 @@ Génère une réponse complète et utile en tenant compte du contexte de la conv
             logger.debug("Step E: Invoking LLM chain")
             chain_params = {
                 "user_message": user_message,
+                "user_profile": profile_text,
                 "conversation_history": history_text,
                 "aggregations": aggs_summary,
                 "total_results": total_results_safe,

@@ -26,6 +26,7 @@ from ..core.aggregation_enricher import AggregationEnricher
 from ..core.category_validator import category_validator
 from ..services.redis_conversation_cache import RedisConversationCache
 from ..services.analytics_service import AnalyticsService
+from ..services.user_profile_service import UserProfileService
 from ..utils.token_counter import TokenCounter
 from ..config.settings import settings
 
@@ -92,6 +93,18 @@ class AgentOrchestrator:
                 self.conversation_cache = None
         else:
             logger.info("ℹ️ Redis conversation cache disabled")
+
+        # Initialize user profile service (if enabled)
+        self.user_profile_service: Optional[UserProfileService] = None
+        if settings.BUDGET_PROFILE_ENABLED:
+            try:
+                self.user_profile_service = UserProfileService()
+                logger.info("✅ UserProfileService enabled")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize UserProfileService: {e}")
+                self.user_profile_service = None
+        else:
+            logger.info("ℹ️ UserProfileService disabled")
 
         # Statistiques
         self.stats = {
@@ -368,21 +381,65 @@ class AgentOrchestrator:
 
             logger.info(f"Query executed successfully: {search_results.total} results found")
 
-            # === ÉTAPE 3.8: Charger l'historique de conversation (si Redis activé) ===
-            conversation_history = []
-            if self.conversation_cache:
+            # === ÉTAPE 3.8: Charger le contexte utilisateur EN PARALLÈLE (profil + historique) ===
+            logger.info("Step 3.8: Loading user context (profile + conversation history)")
+            context_loading_start = datetime.now()
+
+            # Préparer les tâches parallèles
+            tasks = []
+
+            # Tâche 1 : Profil utilisateur
+            if self.user_profile_service:
+                profile_task = self.user_profile_service.get_user_profile(
+                    user_id=user_query.user_id,
+                    jwt_token=jwt_token
+                )
+                tasks.append(profile_task)
+            else:
+                tasks.append(asyncio.sleep(0))  # No-op task
+
+            # Tâche 2 : Historique de conversation
+            conversation_id_int = None
+            if user_query.conversation_id:
                 try:
-                    # Récupérer l'historique depuis Redis
-                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
-                    conversation_history = self.conversation_cache.get_conversation_history(
-                        user_id=user_query.user_id,
-                        conversation_id=conversation_id_int,
-                        include_system_message=False  # Le ResponseGenerator a déjà son system prompt
-                    )
-                    logger.info(f"📖 Loaded {len(conversation_history)} messages from conversation history")
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to load conversation history: {e}")
+                    conversation_id_int = int(user_query.conversation_id)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid conversation_id: {user_query.conversation_id}")
+
+            if self.conversation_cache and conversation_id_int:
+                history_task = self.conversation_cache.get_conversation_history(
+                    user_id=user_query.user_id,
+                    conversation_id=conversation_id_int,
+                    include_system_message=False
+                )
+                tasks.append(history_task)
+            else:
+                tasks.append(asyncio.sleep(0))  # No-op task
+
+            # Exécuter en parallèle
+            try:
+                user_profile, conversation_history = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Gérer les exceptions
+                if isinstance(user_profile, Exception):
+                    logger.warning(f"⚠️ Failed to load user profile: {user_profile}")
+                    user_profile = None
+
+                if isinstance(conversation_history, Exception):
+                    logger.warning(f"⚠️ Failed to load conversation history: {conversation_history}")
                     conversation_history = []
+
+                context_loading_ms = int((datetime.now() - context_loading_start).total_seconds() * 1000)
+                logger.info(
+                    f"✅ Context loaded in {context_loading_ms}ms: "
+                    f"profile={bool(user_profile)}, "
+                    f"history={len(conversation_history) if conversation_history else 0} messages"
+                )
+
+            except Exception as e:
+                logger.error(f"❌ Error loading user context: {e}")
+                user_profile = None
+                conversation_history = []
 
             # === ÉTAPE 4: Génération de la réponse ===
             logger.info("Step 4: Generating response")
@@ -390,7 +447,8 @@ class AgentOrchestrator:
                 user_message=user_query.message,
                 search_results=search_results,
                 original_query_analysis=query_analysis.__dict__,
-                conversation_history=conversation_history
+                conversation_history=conversation_history if conversation_history else [],
+                user_profile=user_profile
             )
 
             if not response_result.success:

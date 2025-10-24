@@ -83,20 +83,39 @@ TEMPLATES D'AGRÉGATIONS DISPONIBLES:
 RÈGLES CRITIQUES:
 1. "plus de X euros" = amount_abs: {{"gt": X}} → EXCLUT X (strictement supérieur)
 2. "au moins X euros" = amount_abs: {{"gte": X}} → INCLUT X (supérieur ou égal)
-3. "dépenses" = transaction_type: "debit"
-4. "revenus" = transaction_type: "credit"
-5. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}] (OBLIGATOIRE)
-6. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
-7. Pour merchant_name et category_name:
+3. DISTINCTION TRANSACTIONS / DÉPENSES / REVENUS:
+   - "transactions" = PAS de filtre transaction_type (inclut débits ET crédits)
+   - "dépenses" / "débits" = transaction_type: "debit"
+   - "revenus" / "crédits" = transaction_type: "credit"
+4. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}] (OBLIGATOIRE)
+5. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
+6. Pour merchant_name et category_name:
    - ⚠️ IMPORTANT: Si l'analyse fournit une LISTE de valeurs ["val1", "val2", ...], tu DOIS GARDER TOUTES les valeurs sans exception. NE PAS tronquer, NE PAS sélectionner, GARDER LA LISTE COMPLÈTE EXACTEMENT TELLE QUELLE.
    - Si c'est une VALEUR UNIQUE "val", utiliser {{"match": "val"}} pour recherche floue
-8. TOUJOURS ajouter des agrégations de base (total, count) pour donner des statistiques utiles
-9. Si l'intent indique "statistics" ou "analyze", utiliser les templates d'agrégations disponibles
-10. page_size doit être >= 1 (JAMAIS 0). Pour les queries d'agrégations, utiliser page_size: 10
+7. TOUJOURS ajouter des agrégations de base (total, count) pour donner des statistiques utiles
+8. Si l'intent indique "statistics" ou "analyze", utiliser les templates d'agrégations disponibles
+9. page_size doit être >= 1 (JAMAIS 0). Pour les queries d'agrégations, utiliser page_size: 10
 
 EXEMPLES D'UTILISATION:
 
-Exemple 1 - "Mes dépenses de plus de 100 euros":
+Exemple 1 - "Mes transactions de plus de 2500 euros":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "amount_abs": {{"gt": 2500}}
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 50,
+    "aggregations": {{
+        "transaction_count": {{"value_count": {{"field": "transaction_id"}}}},
+        "total_amount": {{"sum": {{"field": "amount_abs"}}}},
+        "debit_total": {{"sum": {{"field": "amount_abs"}}, "filter": {{"term": {{"transaction_type": "debit"}}}}}},
+        "credit_total": {{"sum": {{"field": "amount_abs"}}, "filter": {{"term": {{"transaction_type": "credit"}}}}}}
+    }}
+}}
+Note: PAS de filtre transaction_type car "transactions" inclut débits ET crédits
+
+Exemple 2 - "Mes dépenses de plus de 100 euros":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -111,7 +130,7 @@ Exemple 1 - "Mes dépenses de plus de 100 euros":
     }}
 }}
 
-Exemple 2 - "Combien j'ai dépensé en restaurants ce mois?":
+Exemple 3 - "Combien j'ai dépensé en restaurants ce mois?":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -128,7 +147,7 @@ Exemple 2 - "Combien j'ai dépensé en restaurants ce mois?":
     }}
 }}
 
-Exemple 2b - "Mes achats entre 50€ et 150€" (catégories multiples):
+Exemple 4 - "Mes achats entre 50€ et 150€" (catégories multiples):
 {{
     "user_id": {user_id},
     "filters": {{
@@ -144,7 +163,7 @@ Exemple 2b - "Mes achats entre 50€ et 150€" (catégories multiples):
     }}
 }}
 
-Exemple 3 - "Évolution mensuelle de mes dépenses sur 6 mois":
+Exemple 5 - "Évolution mensuelle de mes dépenses sur 6 mois":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -168,7 +187,7 @@ Exemple 3 - "Évolution mensuelle de mes dépenses sur 6 mois":
     }}
 }}
 
-Exemple 4 - "Répartition de mes dépenses par catégorie":
+Exemple 6 - "Répartition de mes dépenses par catégorie":
 {{
     "user_id": {user_id},
     "filters": {{

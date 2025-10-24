@@ -304,6 +304,72 @@ Question: "Mes achats chez Carrefour"
 Question: "Achats entre 50€ et 150€"
 → Filtrer: category_name IN [toutes catégories SAUF non-achats] AND transaction_type: "debit" AND amount between 50-150
 
+**RÈGLE SÉMANTIQUE CRITIQUE - DISTINCTION TRANSACTIONS / DÉPENSES / REVENUS:**
+
+⚠️ IMPORTANT: Ces trois termes ont des significations différentes et doivent générer des filtres différents:
+
+1. **"TRANSACTIONS"** = Flux financiers dans les DEUX sens (débits ET crédits)
+   → NE PAS ajouter de filtre "transaction_type"
+   → Exemples: "mes transactions", "toutes mes transactions", "transactions de plus de X€"
+
+2. **"DÉPENSES"** / **"DÉBITS"** = Flux financiers SORTANTS uniquement
+   → TOUJOURS ajouter: "transaction_type": "debit"
+   → Exemples: "mes dépenses", "combien j'ai dépensé", "mes débits"
+
+3. **"REVENUS"** / **"CRÉDITS"** / **"ENTRÉES"** = Flux financiers ENTRANTS uniquement
+   → TOUJOURS ajouter: "transaction_type": "credit"
+   → Exemples: "mes revenus", "mes crédits", "combien j'ai reçu", "mes entrées d'argent"
+
+**Exemples pour bien comprendre:**
+
+Question: "Analyse mes transactions de plus de 2500 euros"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"amount_min": 2500}},
+  "filters": {{"amount_abs": {{"gt": 2500}}}},
+  "aggregations_needed": ["statistics"],
+  "time_range": null,
+  "confidence": 0.95
+}}
+Note: PAS de filtre transaction_type car "transactions" inclut débits ET crédits
+
+Question: "Analyse mes dépenses de plus de 2500 euros"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"transaction_type": "debit", "amount_min": 2500}},
+  "filters": {{"transaction_type": "debit", "amount_abs": {{"gt": 2500}}}},
+  "aggregations_needed": ["statistics"],
+  "time_range": null,
+  "confidence": 0.95
+}}
+Note: Avec transaction_type: "debit" car "dépenses" = sorties d'argent uniquement
+
+Question: "Analyse mes revenus de plus de 2500 euros"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"transaction_type": "credit", "amount_min": 2500}},
+  "filters": {{"transaction_type": "credit", "amount_abs": {{"gt": 2500}}}},
+  "aggregations_needed": ["statistics"],
+  "time_range": null,
+  "confidence": 0.95
+}}
+Note: Avec transaction_type: "credit" car "revenus" = entrées d'argent uniquement
+
+Question: "Montre-moi toutes mes transactions ce mois"
+Réponse:
+{{
+  "intent": "search",
+  "entities": {{"period": "current_month"}},
+  "filters": {{}},
+  "aggregations_needed": ["statistics"],
+  "time_range": {{"period": "current_month", "reference_date": "{current_date}"}},
+  "confidence": 0.95
+}}
+Note: PAS de filtre transaction_type car on veut TOUT voir (débits + crédits)
+
 Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
             ("user", "Question utilisateur: {user_message}\n\nContexte conversation (optionnel): {context}")
         ])

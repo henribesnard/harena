@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/v1/budget", tags=["Budget Profiling"])
 
 class ProfileResponse(BaseModel):
     """Réponse avec le profil budgétaire"""
+    # Métriques de base
     user_segment: str
     behavioral_pattern: str
     avg_monthly_income: float
@@ -33,6 +34,23 @@ class ProfileResponse(BaseModel):
     remaining_to_live: float
     profile_completeness: float
     last_analyzed_at: str
+
+    # Nouvelles métriques avancées
+    financial_health_score: Optional[float] = None
+    debt_to_income_ratio: Optional[float] = None
+    expense_volatility: Optional[float] = None
+    spending_trend: Optional[str] = None
+    spending_trend_pct: Optional[float] = None
+    prev_period_income: Optional[float] = None
+    prev_period_expenses: Optional[float] = None
+    income_change_pct: Optional[float] = None
+    expense_change_pct: Optional[float] = None
+    risk_level: Optional[str] = None
+    active_alerts: Optional[List[Dict[str, Any]]] = None
+    projected_annual_savings: Optional[float] = None
+    months_of_expenses_saved: Optional[float] = None
+    segment_details: Optional[Dict[str, Any]] = None
+    behavioral_patterns: Optional[Dict[str, Any]] = None
 
 
 class FixedChargeResponse(BaseModel):
@@ -107,6 +125,7 @@ def get_budget_profile(
             )
 
         return ProfileResponse(
+            # Métriques de base
             user_segment=profile.user_segment or "indéterminé",
             behavioral_pattern=profile.behavioral_pattern or "indéterminé",
             avg_monthly_income=float(profile.avg_monthly_income or 0),
@@ -118,7 +137,23 @@ def get_budget_profile(
             variable_charges_total=float(profile.variable_charges_total or 0),
             remaining_to_live=float(profile.remaining_to_live or 0),
             profile_completeness=float(profile.profile_completeness or 0),
-            last_analyzed_at=profile.last_analyzed_at.isoformat() if profile.last_analyzed_at else ""
+            last_analyzed_at=profile.last_analyzed_at.isoformat() if profile.last_analyzed_at else "",
+            # Nouvelles métriques avancées
+            financial_health_score=float(profile.financial_health_score) if profile.financial_health_score else None,
+            debt_to_income_ratio=float(profile.debt_to_income_ratio) if profile.debt_to_income_ratio else None,
+            expense_volatility=float(profile.expense_volatility) if profile.expense_volatility else None,
+            spending_trend=profile.spending_trend,
+            spending_trend_pct=float(profile.spending_trend_pct) if profile.spending_trend_pct else None,
+            prev_period_income=float(profile.prev_period_income) if profile.prev_period_income else None,
+            prev_period_expenses=float(profile.prev_period_expenses) if profile.prev_period_expenses else None,
+            income_change_pct=float(profile.income_change_pct) if profile.income_change_pct else None,
+            expense_change_pct=float(profile.expense_change_pct) if profile.expense_change_pct else None,
+            risk_level=profile.risk_level,
+            active_alerts=profile.active_alerts,
+            projected_annual_savings=float(profile.projected_annual_savings) if profile.projected_annual_savings else None,
+            months_of_expenses_saved=float(profile.months_of_expenses_saved) if profile.months_of_expenses_saved else None,
+            segment_details=profile.segment_details,
+            behavioral_patterns=profile.behavioral_patterns
         )
 
     except HTTPException:
@@ -174,6 +209,7 @@ def analyze_budget_profile(
             )
 
         return ProfileResponse(
+            # Métriques de base
             user_segment=profile.user_segment or "indéterminé",
             behavioral_pattern=profile.behavioral_pattern or "indéterminé",
             avg_monthly_income=float(profile.avg_monthly_income or 0),
@@ -185,7 +221,23 @@ def analyze_budget_profile(
             variable_charges_total=float(profile.variable_charges_total or 0),
             remaining_to_live=float(profile.remaining_to_live or 0),
             profile_completeness=float(profile.profile_completeness or 0),
-            last_analyzed_at=profile.last_analyzed_at.isoformat() if profile.last_analyzed_at else ""
+            last_analyzed_at=profile.last_analyzed_at.isoformat() if profile.last_analyzed_at else "",
+            # Nouvelles métriques avancées
+            financial_health_score=float(profile.financial_health_score) if profile.financial_health_score else None,
+            debt_to_income_ratio=float(profile.debt_to_income_ratio) if profile.debt_to_income_ratio else None,
+            expense_volatility=float(profile.expense_volatility) if profile.expense_volatility else None,
+            spending_trend=profile.spending_trend,
+            spending_trend_pct=float(profile.spending_trend_pct) if profile.spending_trend_pct else None,
+            prev_period_income=float(profile.prev_period_income) if profile.prev_period_income else None,
+            prev_period_expenses=float(profile.prev_period_expenses) if profile.prev_period_expenses else None,
+            income_change_pct=float(profile.income_change_pct) if profile.income_change_pct else None,
+            expense_change_pct=float(profile.expense_change_pct) if profile.expense_change_pct else None,
+            risk_level=profile.risk_level,
+            active_alerts=profile.active_alerts,
+            projected_annual_savings=float(profile.projected_annual_savings) if profile.projected_annual_savings else None,
+            months_of_expenses_saved=float(profile.months_of_expenses_saved) if profile.months_of_expenses_saved else None,
+            segment_details=profile.segment_details,
+            behavioral_patterns=profile.behavioral_patterns
         )
 
     except HTTPException:

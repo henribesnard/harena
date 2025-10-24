@@ -1,7 +1,7 @@
 """
 Service de calcul du profil budgétaire utilisateur
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -11,6 +11,7 @@ import logging
 from db_service.models.budget_profiling import UserBudgetProfile
 from budget_profiling_service.services.transaction_service import TransactionService
 from budget_profiling_service.services.fixed_charge_detector import FixedChargeDetector
+from budget_profiling_service.services.advanced_analytics import AdvancedBudgetAnalytics
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +84,18 @@ class BudgetProfiler:
             # 7. Reste à vivre
             remaining_to_live = avg_income - total_fixed_charges
 
-            # 8. Déterminer segment utilisateur
-            user_segment = self._determine_segment(avg_income, avg_expenses)
+            # 8. Déterminer segment utilisateur (version améliorée)
+            segment_result = self._determine_segment_v2(
+                avg_income=avg_income,
+                avg_expenses=avg_expenses,
+                remaining_to_live=remaining_to_live,
+                fixed_charges_total=total_fixed_charges
+            )
+            user_segment = segment_result['segment']
 
-            # 9. Déterminer pattern comportemental
-            behavioral_pattern = self._determine_behavioral_pattern(user_id)
+            # 9. Déterminer pattern comportemental (version améliorée)
+            patterns_result = self._determine_behavioral_patterns_v2(user_id)
+            behavioral_pattern = patterns_result.get('primary_pattern', 'indéterminé')
 
             # 10. Calculer complétude profil
             profile_completeness = self._calculate_completeness(
@@ -95,6 +103,46 @@ class BudgetProfiler:
                 fixed_charges,
                 months_analysis
             )
+
+            # 11. Calculer tendances et volatilité
+            trend_result = self._analyze_spending_trend(monthly_aggregates)
+            volatility = self._calculate_expense_volatility(monthly_aggregates)
+
+            # 12. Calculer ratio d'endettement
+            debt_to_income_ratio = self._calculate_debt_to_income_ratio(
+                total_fixed_charges,
+                avg_income
+            )
+
+            # 13. Calculer score de santé financière
+            health_score_data = {
+                'savings_rate': savings_rate,
+                'avg_monthly_income': avg_income,
+                'fixed_charges_total': total_fixed_charges,
+                'remaining_to_live': remaining_to_live,
+                'expense_volatility': volatility,
+                'spending_trend': trend_result['trend'],
+                'spending_trend_pct': trend_result['change_pct']
+            }
+            financial_health_score = self._calculate_financial_health_score(health_score_data)
+
+            # 14. Générer alertes
+            profile_for_alerts = {
+                **health_score_data,
+                'avg_monthly_expenses': avg_expenses,
+                'avg_monthly_savings': avg_savings,
+                'variable_charges_total': variable_total
+            }
+            alerts = self._generate_alerts(profile_for_alerts, user_id)
+
+            # 15. Calculer projections
+            projected_annual_savings = avg_savings * 12
+            months_of_expenses_saved = 0.0
+            if avg_expenses > 0:
+                # Calculer combien de mois l'utilisateur peut tenir avec ses économies actuelles
+                # Note: On assume qu'on pourrait tracker l'épargne totale dans le futur
+                # Pour l'instant, on calcule basé sur le taux d'épargne mensuel
+                months_of_expenses_saved = (avg_savings / avg_expenses) if avg_expenses > 0 else 0
 
             profile = {
                 'user_id': user_id,
@@ -109,10 +157,34 @@ class BudgetProfiler:
                 'variable_charges_total': round(variable_total, 2),
                 'remaining_to_live': round(remaining_to_live, 2),
                 'profile_completeness': round(profile_completeness, 2),
+
+                # === NOUVELLES MÉTRIQUES ===
+                'financial_health_score': round(financial_health_score, 2),
+                'debt_to_income_ratio': round(debt_to_income_ratio, 2),
+                'expense_volatility': round(volatility, 2),
+                'spending_trend': trend_result['trend'],
+                'spending_trend_pct': round(trend_result['change_pct'], 2),
+                'prev_period_income': round(trend_result.get('prev_income', 0), 2),
+                'prev_period_expenses': round(trend_result.get('prev_expenses', 0), 2),
+                'income_change_pct': round(trend_result.get('income_change_pct', 0), 2),
+                'expense_change_pct': round(trend_result.get('expense_change_pct', 0), 2),
+                'risk_level': segment_result.get('risk_level', 'unknown'),
+                'active_alerts': alerts,
+                'projected_annual_savings': round(projected_annual_savings, 2),
+                'months_of_expenses_saved': round(months_of_expenses_saved, 2),
+                'segment_details': segment_result,
+                'behavioral_patterns': patterns_result,
+
                 'last_analyzed_at': datetime.now(timezone.utc)
             }
 
-            logger.info(f"Profil calculé: segment={user_segment}, savings_rate={savings_rate:.1f}%")
+            logger.info(
+                f"Profil calculé: segment={user_segment}, "
+                f"savings_rate={savings_rate:.1f}%, "
+                f"health_score={financial_health_score:.1f}, "
+                f"risk={segment_result.get('risk_level')}, "
+                f"alerts={len(alerts)}"
+            )
             return profile
 
         except Exception as e:
@@ -340,6 +412,46 @@ class BudgetProfiler:
             'profile_completeness': 0.0,
             'last_analyzed_at': datetime.now(timezone.utc)
         }
+
+    # === MÉTHODES ANALYTIQUES AVANCÉES ===
+
+    def _determine_segment_v2(
+        self,
+        avg_income: float,
+        avg_expenses: float,
+        remaining_to_live: float,
+        fixed_charges_total: float
+    ) -> Dict[str, Any]:
+        """Wrapper pour la segmentation multi-critères"""
+        return AdvancedBudgetAnalytics.determine_segment_v2(
+            avg_income, avg_expenses, remaining_to_live, fixed_charges_total
+        )
+
+    def _determine_behavioral_patterns_v2(self, user_id: int) -> Dict[str, Any]:
+        """Wrapper pour la détection multi-patterns"""
+        return AdvancedBudgetAnalytics.determine_behavioral_patterns_v2(
+            self.transaction_service, user_id
+        )
+
+    def _calculate_expense_volatility(self, monthly_aggregates: List[Dict[str, Any]]) -> float:
+        """Wrapper pour le calcul de volatilité"""
+        return AdvancedBudgetAnalytics.calculate_expense_volatility(monthly_aggregates)
+
+    def _analyze_spending_trend(self, monthly_aggregates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Wrapper pour l'analyse de tendance"""
+        return AdvancedBudgetAnalytics.analyze_spending_trend(monthly_aggregates)
+
+    def _calculate_debt_to_income_ratio(self, fixed_charges_total: float, avg_income: float) -> float:
+        """Wrapper pour le calcul du ratio d'endettement"""
+        return AdvancedBudgetAnalytics.calculate_debt_to_income_ratio(fixed_charges_total, avg_income)
+
+    def _calculate_financial_health_score(self, profile_data: Dict[str, Any]) -> float:
+        """Wrapper pour le calcul du score de santé financière"""
+        return AdvancedBudgetAnalytics.calculate_financial_health_score(profile_data)
+
+    def _generate_alerts(self, profile_data: Dict[str, Any], user_id: int) -> List[Dict[str, Any]]:
+        """Wrapper pour la génération d'alertes"""
+        return AdvancedBudgetAnalytics.generate_alerts(profile_data, user_id)
 
     def save_profile(
         self,

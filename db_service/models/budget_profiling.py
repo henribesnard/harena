@@ -36,6 +36,41 @@ class UserBudgetProfile(Base, TimestampMixin):
     # Reste à vivre après charges fixes
     remaining_to_live = Column(Numeric(10, 2))
 
+    # === NOUVELLES MÉTRIQUES AVANCÉES ===
+
+    # Score de santé financière global (0-100)
+    financial_health_score = Column(Numeric(5, 2))
+
+    # Ratio d'endettement (charges fixes / revenus)
+    debt_to_income_ratio = Column(Numeric(5, 2))
+
+    # Volatilité des dépenses (coefficient de variation)
+    expense_volatility = Column(Numeric(5, 2))
+
+    # Tendance (en hausse/baisse/stable)
+    spending_trend = Column(String(20))  # 'increasing', 'decreasing', 'stable'
+    spending_trend_pct = Column(Numeric(5, 2))  # Pourcentage de variation mensuelle
+
+    # Comparaison avec période précédente
+    prev_period_income = Column(Numeric(10, 2))
+    prev_period_expenses = Column(Numeric(10, 2))
+    income_change_pct = Column(Numeric(5, 2))
+    expense_change_pct = Column(Numeric(5, 2))
+
+    # Alertes et risques
+    risk_level = Column(String(20))  # 'low', 'medium', 'high', 'critical'
+    active_alerts = Column(JSON)  # Liste des alertes actives
+
+    # Capacité d'épargne projetée
+    projected_annual_savings = Column(Numeric(10, 2))
+    months_of_expenses_saved = Column(Numeric(5, 2))  # Combien de mois l'utilisateur peut tenir
+
+    # Segmentation enrichie (JSON avec détails du scoring)
+    segment_details = Column(JSON)  # {'score': 75.5, 'factors': {...}, 'recommendations': [...]}
+
+    # Patterns comportementaux enrichis (JSON avec tous les patterns détectés)
+    behavioral_patterns = Column(JSON)  # {'primary': '...', 'all_patterns': [...], 'insights': {...}}
+
     # Métadonnées
     profile_completeness = Column(Numeric(3, 2))  # 0.0 - 1.0
     last_analyzed_at = Column(DateTime(timezone=True))

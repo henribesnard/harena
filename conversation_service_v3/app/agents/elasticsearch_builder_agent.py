@@ -289,11 +289,29 @@ Corrige cette query pour qu'elle fonctionne.""")
             if "user_id" not in result:
                 result["user_id"] = user_id
 
+            # ⚠️ RÈGLE D'EXCLUSION MUTUELLE: marchand vs catégories
+            # Priorité: marchand > catégories
+            # Si un marchand est spécifié, on ne filtre PAS sur les catégories
+            # Cela évite des résultats vides quand marchand + catégories sont combinés
+            if "filters" in result and isinstance(result["filters"], dict):
+                has_merchant = "merchant_name" in result["filters"] and result["filters"]["merchant_name"]
+                has_category = "category_name" in result["filters"] and result["filters"]["category_name"]
+
+                if has_merchant and has_category:
+                    logger.info(
+                        f"🔧 Mutual exclusion: merchant_name present, removing category_name filter. "
+                        f"Merchant: {result['filters']['merchant_name']}"
+                    )
+                    del result["filters"]["category_name"]
+
             # CORRECTIF: Préserver les listes de catégories/marchands depuis l'analyse originale
             # Le LLM a tendance à tronquer les longues listes, donc on force la liste originale
             if "filters" in result and isinstance(result["filters"], dict):
-                # Préserver category_name si c'était une liste
-                if "category_name" in query_analysis.filters and isinstance(query_analysis.filters["category_name"], list):
+                # Préserver category_name si c'était une liste ET si aucun marchand n'est présent
+                # ⚠️ EXCLUSION MUTUELLE: Ne pas réintroduire category_name si merchant_name existe
+                if ("category_name" in query_analysis.filters
+                    and isinstance(query_analysis.filters["category_name"], list)
+                    and "merchant_name" not in result["filters"]):
                     original_categories = query_analysis.filters["category_name"]
 
                     # FILTRE RESTRICTIF: Ne garder que les VRAIES catégories d'achats

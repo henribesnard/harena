@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # External services
     SEARCH_SERVICE_URL: str = "http://localhost:3002"
-    BUDGET_SERVICE_URL: str = "http://localhost:3006"
+    BUDGET_SERVICE_URL: str = "http://harena_budget_profiling_service:3006"
 
     # Budget Profile Integration
     BUDGET_PROFILE_ENABLED: bool = True  # Feature flag

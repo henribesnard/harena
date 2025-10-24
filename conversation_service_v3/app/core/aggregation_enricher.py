@@ -31,7 +31,7 @@ class AggregationEnricher:
         - monthly_trend: Évolution mensuelle
         - weekly_trend: Évolution hebdomadaire
         - by_weekday: Pattern par jour de la semaine
-        - spending_statistics: Statistiques globales complètes
+        - transaction_statistics: Statistiques globales complètes (débits et crédits)
     """
 
     # Templates pour agrégations simples (métriques racine)
@@ -150,7 +150,7 @@ class AggregationEnricher:
 
     # Templates composites (plusieurs agrégations)
     COMPOSITE_TEMPLATES = {
-        "spending_statistics": {
+        "transaction_statistics": {
             "global_stats": {
                 "stats": {"field": "amount_abs"}
             },
@@ -278,8 +278,8 @@ class AggregationEnricher:
         "monthly_trend": ["monthly_trend"],
         "weekly_trend": ["weekly_trend"],
         "by_weekday": ["by_weekday"],
-        "spending_statistics": ["spending_statistics"],
-        "overview": ["spending_statistics", "by_category"],
+        "transaction_statistics": ["transaction_statistics"],
+        "overview": ["transaction_statistics", "by_category"],
 
         # Nouveaux templates analytiques
         "savings_rate": ["savings_rate_components"],
@@ -290,7 +290,7 @@ class AggregationEnricher:
 
         # Alias courants (pour compatibilité avec QueryAnalyzer)
         "by_date": ["monthly_trend"],  # QueryAnalyzer retourne souvent "by_date"
-        "statistics": ["spending_statistics"],  # Alias pour statistiques globales
+        "statistics": ["transaction_statistics"],  # Alias pour statistiques globales
         "by_time": ["monthly_trend"],  # Autre alias temporel
         "temporal": ["monthly_trend"],  # Autre alias temporel
     }
@@ -321,7 +321,7 @@ class AggregationEnricher:
             "lundi", "mardi", "mercredi", "jeudi", "vendredi",
             "samedi", "dimanche", "jour par jour"
         ],
-        "spending_statistics": [
+        "transaction_statistics": [
             "résumé", "statistiques", "vue d'ensemble",
             "bilan", "overview", "global", "aperçu",
             "résumé financier", "état financier"
@@ -562,7 +562,7 @@ class AggregationEnricher:
             "monthly_trend": "Évolution mensuelle des dépenses",
             "weekly_trend": "Évolution hebdomadaire des dépenses",
             "by_weekday": "Pattern de dépenses par jour de la semaine",
-            "spending_statistics": "Statistiques globales complètes (débit, crédit, stats)"
+            "transaction_statistics": "Statistiques globales complètes (débits, crédits, stats)"
         }
 
         info["description"] = descriptions.get(template_name, "No description available")

@@ -223,17 +223,8 @@ Génère une réponse complète et utile PERSONNALISÉE basée sur le profil uti
 
             limited_transactions = filtered_transactions
 
-            # DEBUG: Log pour identifier le problème
-            logger.info(f"Transactions received: {len(search_results.hits)}, Limited to: {len(limited_transactions)}")
-            if len(limited_transactions) > 0:
-                logger.info(f"Filtered transaction keys: {list(limited_transactions[0].keys())} (was 16, now {len(limited_transactions[0])})")
-            else:
-                logger.warning("No transactions in search_results.hits")
-
-            if len(search_results.hits) > max_transactions:
-                logger.debug(
-                    f"Context limitation: {len(search_results.hits)} → {max_transactions} transactions"
-                )
+            # Log explicit du filtrage (comme dans la version stream)
+            logger.info(f"Transactions: {len(search_results.hits)} → {len(limited_transactions)} (filtered to {len(essential_fields)} fields)")
 
             # Préparer les transactions pour le LLM (limitées)
             logger.debug("Step C: Formatting transactions")
@@ -324,7 +315,9 @@ Génère une réponse complète et utile PERSONNALISÉE basée sur le profil uti
         self,
         user_message: str,
         search_results: SearchResults,
-        original_query_analysis: Optional[Dict[str, Any]] = None
+        original_query_analysis: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        user_profile: Optional[Dict[str, Any]] = None
     ):
         """
         Génère une réponse en mode streaming (yield chunks)
@@ -333,6 +326,8 @@ Génère une réponse complète et utile PERSONNALISÉE basée sur le profil uti
             user_message: Message original de l'utilisateur
             search_results: Résultats Elasticsearch (hits + agrégations)
             original_query_analysis: Analyse originale (pour contexte)
+            conversation_history: Historique de conversation (format OpenAI chat)
+            user_profile: Profil budgétaire de l'utilisateur (optionnel)
 
         Yields:
             Chunks de texte au fur et à mesure de la génération
@@ -368,10 +363,17 @@ Génère une réponse complète et utile PERSONNALISÉE basée sur le profil uti
             # Préparer les transactions pour le LLM
             transactions_text = self._format_transactions(limited_transactions)
 
+            # Formatter l'historique de conversation
+            history_text = self._format_conversation_history(conversation_history)
+
+            # Formatter le profil utilisateur
+            profile_text = self.user_profile_service.format_profile_for_prompt(user_profile)
+
             # Stream la réponse du LLM
             async for chunk in self.chain.astream({
                 "user_message": user_message,
-                "conversation_history": "",  # Pas d'historique en mode streaming (pour compatibilité prompt)
+                "conversation_history": history_text,
+                "user_profile": profile_text,
                 "aggregations": aggs_summary,
                 "total_results": search_results.total,
                 "transactions_count": len(limited_transactions),

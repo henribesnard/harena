@@ -293,12 +293,13 @@ AGGREGATION_TEMPLATES = {
         }
     },
 
-    "spending_statistics": {
-        "description": "Statistiques globales (total, moyenne, min, max)",
+    "transaction_statistics": {
+        "description": "Statistiques globales des transactions (débits et crédits, total, moyenne, min, max)",
         "use_cases": [
-            "Résumé des dépenses",
+            "Résumé des transactions",
             "Statistiques globales",
-            "Vue d'ensemble"
+            "Vue d'ensemble",
+            "Analyse des revenus et dépenses"
         ],
         "template": {
             "global_stats": {

@@ -197,9 +197,14 @@ async def analyze_conversation_stream(
     import json
 
     async def generate_stream():
+        """
+        Générateur simplifié qui utilise l'orchestrateur centralisé
+        Cette fonction ne fait que formatter les événements en SSE et gérer la persistence
+        """
         start_time = time.time()
         saved_conversation_id = None
         accumulated_response = ""
+        response_data = None
 
         try:
             # Créer la requête utilisateur
@@ -210,147 +215,61 @@ async def analyze_conversation_stream(
                 context=[]
             )
 
-            # === ÉTAPE 0: Routage d'intention (NOUVEAU) ===
-            # 🔹 Message de progression UX
-            yield f"data: {json.dumps({'type': 'status', 'message': '• Analyse de votre question...'})}\n\n"
-
-            logger.info("Step 0: Intent classification (stream)")
-            intent_response = await orch.intent_router.classify_intent(user_query)
-
-            if not intent_response.success:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to classify intent'})}\n\n"
-                return
-
-            intent_classification = intent_response.data
-            logger.info(f"Intent classified (stream): {intent_classification.category.value}, requires_search={intent_classification.requires_search}")
-
-            # === CAS 1: Réponse conversationnelle (pas de recherche) ===
-            if not intent_classification.requires_search:
-                logger.info("Conversational intent detected (stream), responding directly")
-
-                # 🔹 Message de progression UX
-                yield f"data: {json.dumps({'type': 'status', 'message': '• Préparation de la réponse...'})}\n\n"
-
-                # Utiliser la réponse suggérée ou générer une réponse persona
-                if intent_classification.suggested_response:
-                    response_text = intent_classification.suggested_response
-                else:
-                    response_text = orch.intent_router.get_persona_response(
-                        intent_classification.category
-                    )
-
-                # Envoyer response_start
-                yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
-
-                # Streamer la réponse mot par mot pour simuler le streaming
-                words = response_text.split(' ')
-                for i, word in enumerate(words):
-                    chunk = word + (' ' if i < len(words) - 1 else '')
-                    accumulated_response += chunk
-                    chunk_data = {'type': 'response_chunk', 'content': chunk}
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
-                    await asyncio.sleep(0.05)  # Petit délai pour effet de streaming
-
-                processing_time_ms = int((time.time() - start_time) * 1000)
-
-                # Envoyer response_end
-                end_metadata = {
-                    'type': 'response_end',
-                    'metadata': {
-                        'total_results': 0,
-                        'response_length': len(accumulated_response),
-                        'processing_time_ms': processing_time_ms,
-                        'intent': intent_classification.category.value,
-                        'requires_search': False
-                    }
-                }
-                yield f"data: {json.dumps(end_metadata)}\n\n"
-                return
-
-            # === CAS 2: Pipeline financier complet (recherche requise) ===
-            logger.info("Financial intent detected (stream), proceeding with search pipeline")
-
-            # 🔹 Message de progression UX
-            yield f"data: {json.dumps({'type': 'status', 'message': '• Recherche de vos transactions...'})}\n\n"
-
-            # === ÉTAPE 1-3: Pipeline jusqu'à la récupération des résultats ===
-            logger.info("Step 1: Analyzing user query")
-            analysis_response = await orch.query_analyzer.analyze(user_query)
-
-            if not analysis_response.success:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to analyze query'})}\n\n"
-                return
-
-            query_analysis = analysis_response.data
-
-            logger.info("Step 2: Building Elasticsearch query")
-            build_response = await orch.query_builder.build_query(
-                query_analysis, user_query
-            )
-
-            if not build_response.success:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to build query'})}\n\n"
-                return
-
-            es_query = build_response.data
-
-            # 🔹 Message de progression UX
-            yield f"data: {json.dumps({'type': 'status', 'message': '• Analyse de vos données...'})}\n\n"
-
-            logger.info("Step 3: Executing query on search_service")
-            search_results = await orch._execute_query(es_query, user_query.user_id, jwt_token)
-
-            if not search_results:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to execute query'})}\n\n"
-                return
-
-            # 🔹 Message de progression UX basé sur les résultats
-            if search_results.total > 0:
-                yield f"data: {json.dumps({'type': 'status', 'message': f'• {search_results.total} transaction(s) trouvée(s), génération de la réponse...'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'status', 'message': '• Préparation de la réponse...'})}\n\n"
-
-            # Envoyer response_start
-            yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
-
-            # === PERSISTENCE PRÉCOCE: Créer ou récupérer la conversation ===
+            # === Créer ou récupérer la conversation (early persistence) ===
             try:
                 conversation = persistence.get_or_create_conversation(
                     user_id=user_id,
                     conversation_id=request.conversation_id
                 )
                 saved_conversation_id = conversation.id
-
-                # Envoyer l'ID de conversation immédiatement
-                conv_id_data = {'type': 'conversation_id', 'conversation_id': saved_conversation_id}
-                yield f"data: {json.dumps(conv_id_data)}\n\n"
             except Exception as persist_error:
                 logger.error(f"❌ Failed to create conversation: {persist_error}", exc_info=True)
 
-            # === ÉTAPE 4: Stream de la réponse ===
-            async for chunk in orch.response_generator.generate_response_stream(
-                user_message=user_query.message,
-                search_results=search_results,
-                original_query_analysis=query_analysis.__dict__ if hasattr(query_analysis, '__dict__') else None
-            ):
-                accumulated_response += chunk
-                chunk_data = {'type': 'response_chunk', 'content': chunk}
-                yield f"data: {json.dumps(chunk_data)}\n\n"
+            # === Utiliser l'orchestrateur centralisé ===
+            async for event in orch.process_query_stream(user_query, jwt_token):
+                event_type = event.get('type')
 
-            # Calculer le temps de traitement
-            processing_time_ms = int((time.time() - start_time) * 1000)
+                if event_type == 'status':
+                    # Message de statut
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                elif event_type == 'response_chunk':
+                    # Chunk de réponse - envoyer response_start avant le premier chunk
+                    if not accumulated_response:
+                        yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+
+                        # Envoyer l'ID de conversation
+                        if saved_conversation_id:
+                            yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': saved_conversation_id})}\n\n"
+
+                    accumulated_response += event['content']
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                elif event_type == 'response_data':
+                    # Données finales
+                    response_data = event['data']
+
+                elif event_type == 'error':
+                    # Erreur
+                    yield f"data: {json.dumps(event)}\n\n"
+                    return
 
             # === PERSISTENCE FINALE: Sauvegarder le tour complet ===
-            if saved_conversation_id and accumulated_response:
+            if saved_conversation_id and accumulated_response and response_data:
                 try:
+                    query_analysis = response_data.get('query_analysis')
+                    es_query = response_data.get('es_query')
+                    search_results = response_data.get('search_results')
+                    processing_time_ms = int((time.time() - start_time) * 1000)
+
                     turn_metadata = create_turn_metadata_v3(
                         user_query=request.message,
                         query_analysis=query_analysis.__dict__ if hasattr(query_analysis, '__dict__') else None,
-                        elasticsearch_query=es_query.__dict__ if hasattr(es_query, '__dict__') else None,
+                        elasticsearch_query=es_query.query if es_query else None,
                         search_results_summary={
-                            "total": search_results.total,
-                            "aggregations_summary": orch.response_generator._format_aggregations(search_results.aggregations) if search_results.aggregations else None
-                        },
+                            "total": search_results.total if search_results else 0,
+                            "aggregations_summary": orch.response_generator._format_aggregations(search_results.aggregations) if search_results and search_results.aggregations else None
+                        } if search_results else None,
                         processing_time_ms=processing_time_ms,
                         corrections_applied=0
                     )
@@ -366,11 +285,12 @@ async def analyze_conversation_stream(
                 except Exception as persist_error:
                     logger.error(f"❌ Failed to save turn: {persist_error}", exc_info=True)
 
-            # Envoyer response_end avec metadata
+            # === Envoyer response_end avec metadata ===
+            processing_time_ms = int((time.time() - start_time) * 1000)
             end_data = {
                 'type': 'response_end',
                 'metadata': {
-                    'total_results': search_results.total,
+                    'total_results': response_data['metadata'].get('total_results', 0) if response_data else 0,
                     'response_length': len(accumulated_response),
                     'processing_time_ms': processing_time_ms
                 }

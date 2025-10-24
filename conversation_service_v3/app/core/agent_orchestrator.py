@@ -6,6 +6,7 @@ import logging
 import asyncio
 import httpx
 import json
+import dataclasses
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -344,8 +345,10 @@ class AgentOrchestrator:
                     logger.info(f"Fallback: searching text for '{search_text}'")
 
                     # Créer une nouvelle analyse sans filtre catégorie
-                    fallback_analysis = query_analysis.model_copy(deep=True)
-                    fallback_analysis.filters.pop('category_name', None)
+                    # Note: QueryAnalysis est un dataclass, utiliser dataclasses.replace()
+                    fallback_filters = query_analysis.filters.copy()
+                    fallback_filters.pop('category_name', None)
+                    fallback_analysis = dataclasses.replace(query_analysis, filters=fallback_filters)
 
                     # Construire une nouvelle query avec recherche textuelle
                     fallback_build = await self.query_builder.build_query(
@@ -381,24 +384,24 @@ class AgentOrchestrator:
 
             logger.info(f"Query executed successfully: {search_results.total} results found")
 
-            # === ÉTAPE 3.8: Charger le contexte utilisateur EN PARALLÈLE (profil + historique) ===
+            # === ÉTAPE 3.8: Charger le contexte utilisateur (profil async + historique sync) ===
             logger.info("Step 3.8: Loading user context (profile + conversation history)")
             context_loading_start = datetime.now()
 
-            # Préparer les tâches parallèles
-            tasks = []
-
-            # Tâche 1 : Profil utilisateur
+            # Charger le profil utilisateur (async)
+            user_profile = None
             if self.user_profile_service:
-                profile_task = self.user_profile_service.get_user_profile(
-                    user_id=user_query.user_id,
-                    jwt_token=jwt_token
-                )
-                tasks.append(profile_task)
-            else:
-                tasks.append(asyncio.sleep(0))  # No-op task
+                try:
+                    user_profile = await self.user_profile_service.get_user_profile(
+                        user_id=user_query.user_id,
+                        jwt_token=jwt_token
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load user profile: {e}")
+                    user_profile = None
 
-            # Tâche 2 : Historique de conversation
+            # Charger l'historique de conversation (sync)
+            conversation_history = []
             conversation_id_int = None
             if user_query.conversation_id:
                 try:
@@ -407,39 +410,22 @@ class AgentOrchestrator:
                     logger.warning(f"Invalid conversation_id: {user_query.conversation_id}")
 
             if self.conversation_cache and conversation_id_int:
-                history_task = self.conversation_cache.get_conversation_history(
-                    user_id=user_query.user_id,
-                    conversation_id=conversation_id_int,
-                    include_system_message=False
-                )
-                tasks.append(history_task)
-            else:
-                tasks.append(asyncio.sleep(0))  # No-op task
-
-            # Exécuter en parallèle
-            try:
-                user_profile, conversation_history = await asyncio.gather(*tasks, return_exceptions=True)
-
-                # Gérer les exceptions
-                if isinstance(user_profile, Exception):
-                    logger.warning(f"⚠️ Failed to load user profile: {user_profile}")
-                    user_profile = None
-
-                if isinstance(conversation_history, Exception):
-                    logger.warning(f"⚠️ Failed to load conversation history: {conversation_history}")
+                try:
+                    conversation_history = self.conversation_cache.get_conversation_history(
+                        user_id=user_query.user_id,
+                        conversation_id=conversation_id_int,
+                        include_system_message=False
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load conversation history: {e}")
                     conversation_history = []
 
-                context_loading_ms = int((datetime.now() - context_loading_start).total_seconds() * 1000)
-                logger.info(
-                    f"✅ Context loaded in {context_loading_ms}ms: "
-                    f"profile={bool(user_profile)}, "
-                    f"history={len(conversation_history) if conversation_history else 0} messages"
-                )
-
-            except Exception as e:
-                logger.error(f"❌ Error loading user context: {e}")
-                user_profile = None
-                conversation_history = []
+            context_loading_ms = int((datetime.now() - context_loading_start).total_seconds() * 1000)
+            logger.info(
+                f"✅ Context loaded in {context_loading_ms}ms: "
+                f"profile={bool(user_profile)}, "
+                f"history={len(conversation_history) if conversation_history else 0} messages"
+            )
 
             # === ÉTAPE 4: Génération de la réponse ===
             logger.info("Step 4: Generating response")
@@ -1294,6 +1280,235 @@ Génère une réponse analytique complète et actionnab le.""")
                 "status": "unhealthy",
                 "error": str(e)
             }
+
+    async def process_query_stream(
+        self,
+        user_query: UserQuery,
+        jwt_token: Optional[str] = None
+    ):
+        """
+        Version streaming de process_query - Yield des événements de progression et chunks de réponse
+
+        Cette méthode centralise TOUTE la logique du pipeline pour éviter la duplication
+        entre l'endpoint stream et non-stream.
+
+        Args:
+            user_query: Requête utilisateur
+            jwt_token: Token JWT pour l'authentification
+
+        Yields:
+            Dict avec type: 'status' | 'response_chunk' | 'response_data' | 'error'
+        """
+        start_time = datetime.now()
+        self.stats["total_queries"] += 1
+
+        try:
+            logger.info(f"Processing STREAM query for user {user_query.user_id}: {user_query.message[:100]}")
+
+            # === ÉTAPE 0: Routage d'intention ===
+            yield {'type': 'status', 'message': '• Analyse de votre question...'}
+
+            logger.info("Step 0: Intent classification")
+            intent_response = await self.intent_router.classify_intent(user_query)
+
+            if not intent_response.success:
+                yield {'type': 'error', 'error': f"Failed to classify intent: {intent_response.error}"}
+                return
+
+            intent_classification = intent_response.data
+            logger.info(f"Intent classified: {intent_classification.category.value}, requires_search={intent_classification.requires_search}")
+
+            current_date = datetime.now().strftime("%Y-%m-%d")
+
+            # === CAS 1: Réponse conversationnelle (pas de recherche) ===
+            if not intent_classification.requires_search:
+                self.stats["conversational_responses"] += 1
+                self.stats["searches_avoided"] += 1
+                self.stats["successful_queries"] += 1
+
+                yield {'type': 'status', 'message': '• Préparation de la réponse...'}
+
+                if intent_classification.suggested_response:
+                    response_text = intent_classification.suggested_response
+                else:
+                    response_text = self.intent_router.get_persona_response(
+                        intent_classification.category
+                    )
+
+                # Stream la réponse mot par mot
+                words = response_text.split(' ')
+                for i, word in enumerate(words):
+                    chunk = word + (' ' if i < len(words) - 1 else '')
+                    yield {'type': 'response_chunk', 'content': chunk}
+                    await asyncio.sleep(0.05)
+
+                pipeline_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                self._update_avg_time(pipeline_time_ms)
+
+                yield {
+                    'type': 'response_data',
+                    'data': {
+                        'success': True,
+                        'message': response_text,
+                        'search_results': None,
+                        'metadata': {
+                            'pipeline_time_ms': pipeline_time_ms,
+                            'intent': intent_classification.category.value,
+                            'requires_search': False
+                        }
+                    }
+                }
+                return
+
+            # === CAS 2: Pipeline financier standard ===
+            yield {'type': 'status', 'message': '• Recherche de vos transactions...'}
+
+            logger.info("Step 1: Analyzing user query")
+            analysis_response = await self.query_analyzer.analyze(
+                user_query=user_query,
+                current_date=current_date
+            )
+
+            if not analysis_response.success:
+                yield {'type': 'error', 'error': f"Failed to analyze query: {analysis_response.error}"}
+                return
+
+            query_analysis: QueryAnalysis = analysis_response.data
+
+            logger.info("Step 2: Building Elasticsearch query")
+            build_response = await self.query_builder.build_query(
+                query_analysis=query_analysis,
+                user_id=user_query.user_id,
+                current_date=current_date
+            )
+
+            if not build_response.success:
+                yield {'type': 'error', 'error': f"Failed to build query: {build_response.error}"}
+                return
+
+            es_query: ElasticsearchQuery = build_response.data
+
+            # Validation et correction des filtres
+            if 'filters' in es_query.query:
+                corrected_filters = category_validator.validate_and_correct_filters(
+                    es_query.query['filters'],
+                    user_message=user_query.message
+                )
+                if corrected_filters != es_query.query['filters']:
+                    es_query.query['filters'] = corrected_filters
+                    query_analysis.filters = corrected_filters
+
+            # Enrichissement des agrégations
+            if query_analysis.aggregations_needed:
+                es_query.query = self.aggregation_enricher.enrich(
+                    query=es_query.query,
+                    aggregations_requested=query_analysis.aggregations_needed
+                )
+
+            yield {'type': 'status', 'message': '• Analyse de vos données...'}
+
+            logger.info("Step 3: Executing query")
+            search_results = await self._execute_with_correction(
+                es_query=es_query,
+                query_analysis=query_analysis,
+                user_id=user_query.user_id,
+                jwt_token=jwt_token
+            )
+
+            if not search_results:
+                yield {'type': 'error', 'error': 'Failed to execute query after corrections'}
+                return
+
+            # Message de progression basé sur les résultats
+            if search_results.total > 0:
+                yield {'type': 'status', 'message': f'• {search_results.total} transaction(s) trouvée(s), génération de la réponse...'}
+            else:
+                yield {'type': 'status', 'message': '• Préparation de la réponse...'}
+
+            logger.info(f"Query executed: {search_results.total} results")
+
+            # === ÉTAPE 3.8: Charger le contexte utilisateur ===
+            logger.info("Step 3.8: Loading user context")
+            context_loading_start = datetime.now()
+
+            user_profile = None
+            if self.user_profile_service:
+                try:
+                    user_profile = await self.user_profile_service.get_user_profile(
+                        user_id=user_query.user_id,
+                        jwt_token=jwt_token
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load user profile: {e}")
+
+            conversation_history = []
+            conversation_id_int = None
+            if user_query.conversation_id:
+                try:
+                    conversation_id_int = int(user_query.conversation_id)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid conversation_id: {user_query.conversation_id}")
+
+            if self.conversation_cache and conversation_id_int:
+                try:
+                    conversation_history = self.conversation_cache.get_conversation_history(
+                        user_id=user_query.user_id,
+                        conversation_id=conversation_id_int,
+                        include_system_message=False
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load conversation history: {e}")
+
+            context_loading_ms = int((datetime.now() - context_loading_start).total_seconds() * 1000)
+            logger.info(
+                f"✅ Context loaded in {context_loading_ms}ms: "
+                f"profile={bool(user_profile)}, "
+                f"history={len(conversation_history)} messages"
+            )
+
+            # === ÉTAPE 4: Stream de la réponse ===
+            logger.info("Step 4: Streaming response generation")
+            accumulated_response = ""
+
+            async for chunk in self.response_generator.generate_response_stream(
+                user_message=user_query.message,
+                search_results=search_results,
+                original_query_analysis=query_analysis.__dict__,
+                conversation_history=conversation_history,
+                user_profile=user_profile
+            ):
+                accumulated_response += chunk
+                yield {'type': 'response_chunk', 'content': chunk}
+
+            # === Finalisation ===
+            pipeline_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            self.stats["successful_queries"] += 1
+            self._update_avg_time(pipeline_time_ms)
+
+            logger.info(f"Stream query processed successfully in {pipeline_time_ms}ms")
+
+            # Retourner les données finales
+            yield {
+                'type': 'response_data',
+                'data': {
+                    'success': True,
+                    'message': accumulated_response,
+                    'search_results': search_results,
+                    'query_analysis': query_analysis,
+                    'es_query': es_query,
+                    'metadata': {
+                        'pipeline_time_ms': pipeline_time_ms,
+                        'intent': intent_classification.category.value,
+                        'requires_search': True,
+                        'total_results': search_results.total
+                    }
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Unexpected error in stream pipeline: {str(e)}", exc_info=True)
+            self.stats["failed_queries"] += 1
+            yield {'type': 'error', 'error': str(e)}
 
     async def close(self):
         """Ferme proprement les connexions"""

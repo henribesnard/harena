@@ -289,8 +289,9 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
 
-      # Security
+      # Security (JWT Authentication)
       - SECRET_KEY=${SECRET_KEY}
+      - JWT_ALGORITHM=HS256
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 
       # External Services

@@ -24,6 +24,9 @@ python-dotenv==1.0.0
 python-multipart==0.0.6
 python-dateutil==2.8.2
 
+# JWT Authentication
+python-jose[cryptography]==3.3.0
+
 # Redis for conversation memory cache
 redis==5.0.1
 

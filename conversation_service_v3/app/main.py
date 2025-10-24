@@ -15,6 +15,7 @@ load_dotenv()
 
 from .config.settings import settings
 from .api.v3.endpoints import conversation
+from .api.middleware.auth_middleware import JWTAuthMiddleware
 
 # Configuration du logging
 logging.basicConfig(
@@ -78,7 +79,11 @@ app = FastAPI(
 #     allow_headers=["*"],
 # )
 
-# Inclure les routes - Le router a déjà le prefix /api/v1/conversation
+# IMPORTANT: JWT Middleware AVANT les routes
+app.add_middleware(JWTAuthMiddleware)
+logger.info("JWT middleware configured - user_service compatible")
+
+# Inclure les routes - Le router a déjà le prefix /api/v3/conversation
 app.include_router(conversation.router)
 
 

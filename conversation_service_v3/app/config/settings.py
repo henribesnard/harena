@@ -72,6 +72,20 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # JWT Configuration (compatible user_service)
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+
+    @field_validator('SECRET_KEY', mode='before')
+    @classmethod
+    def validate_secret_key(cls, v):
+        """Validate and clean SECRET_KEY"""
+        if isinstance(v, str):
+            v = clean_env_value(v)
+        if not v or len(v) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long")
+        return v
+
     def get_cors_origins(self) -> List[str]:
         """Parse CORS origins from string"""
         if isinstance(self.CORS_ORIGINS, list):

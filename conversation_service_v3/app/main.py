@@ -69,14 +69,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuration CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configuration CORS - Désactivée car gérée par Nginx
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=settings.get_cors_origins(),
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # Inclure les routes - Le router a déjà le prefix /api/v1/conversation
 app.include_router(conversation.router)

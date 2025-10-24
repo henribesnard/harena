@@ -147,31 +147,31 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuration CORS
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
-logger.info(f"🌍 Environment: {ENVIRONMENT}")
-
-if ENVIRONMENT in ['dev', 'development', 'testing']:
-    # Mode développement: autoriser toutes les origines
-    logger.info("🔓 CORS: Mode développement - Autorisation de toutes les origines")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    # Mode production: origines restreintes
-    allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
-    logger.info(f"🔒 CORS: Mode production - Origines autorisées: {allowed_origins}")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        allow_headers=["*"],
-    )
+# Configuration CORS - Désactivée car gérée par Nginx
+# ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+# logger.info(f"🌍 Environment: {ENVIRONMENT}")
+#
+# if ENVIRONMENT in ['dev', 'development', 'testing']:
+#     # Mode développement: autoriser toutes les origines
+#     logger.info("🔓 CORS: Mode développement - Autorisation de toutes les origines")
+#     app.add_middleware(
+#         CORSMiddleware,
+#         allow_origins=["*"],
+#         allow_credentials=True,
+#         allow_methods=["*"],
+#         allow_headers=["*"],
+#     )
+# else:
+#     # Mode production: origines restreintes
+#     allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+#     logger.info(f"🔒 CORS: Mode production - Origines autorisées: {allowed_origins}")
+#     app.add_middleware(
+#         CORSMiddleware,
+#         allow_origins=allowed_origins,
+#         allow_credentials=True,
+#         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+#         allow_headers=["*"],
+#     )
 
 
 @app.get("/health")

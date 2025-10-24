@@ -109,14 +109,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
-    # Middleware CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # À configurer selon vos besoins
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Middleware CORS - Désactivée car gérée par Nginx
+    # app.add_middleware(
+    #     CORSMiddleware,
+    #     allow_origins=["*"],  # À configurer selon vos besoins
+    #     allow_credentials=True,
+    #     allow_methods=["*"],
+    #     allow_headers=["*"],
+    # )
     
     # Routes principales avec préfixe API v1
     app.include_router(router, prefix="/api/v1/search")

@@ -41,14 +41,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS - Désactivée car gérée par Nginx
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # Routes - 5 Métriques Essentielles (Specs conformes)
 app.include_router(expenses.router, prefix="/api/v1/metrics/expenses", tags=["Métriques Dépenses"])

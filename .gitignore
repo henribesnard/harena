@@ -73,6 +73,7 @@ config.json
 !DEPLOYMENT.md
 !QUICK_START.md
 !AWS_SETUP_SUMMARY.md
+!AWS_INFRASTRUCTURE.md
 !README.md
 !budget_profiling_service/PROFILING_CALCULATION_GUIDE.md
 

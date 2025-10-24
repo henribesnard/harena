@@ -1,0 +1,24 @@
+meta {
+  name: Ask Question
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/v3/conversation/{{user_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "message": "Analyse mes revenus de plus de 2500 euros",
+    "message_type": "text",
+    "priority": "normal",
+    "conversation_id": null
+  }
+}

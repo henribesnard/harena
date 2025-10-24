@@ -25,7 +25,7 @@ services:
       dockerfile: user_service/Dockerfile
     container_name: harena_user_service_prod
     ports:
-      - "127.0.0.1:3000:3000"  # Bind localhost uniquement (Nginx reverse proxy)
+      - "0.0.0.0:3000:3000"  # Accessible publiquement
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -63,7 +63,7 @@ services:
       dockerfile: search_service/Dockerfile
     container_name: harena_search_service_prod
     ports:
-      - "127.0.0.1:3001:3001"
+      - "0.0.0.0:3001:3001"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
@@ -98,7 +98,7 @@ services:
       dockerfile: metric_service/Dockerfile
     container_name: harena_metric_service_prod
     ports:
-      - "127.0.0.1:3002:3002"
+      - "0.0.0.0:3002:3002"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - API_V1_STR=${API_V1_STR}
@@ -131,7 +131,7 @@ services:
       dockerfile: budget_profiling_service/Dockerfile
     container_name: harena_budget_profiling_prod
     ports:
-      - "127.0.0.1:3006:3006"
+      - "0.0.0.0:3006:3006"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
@@ -168,7 +168,7 @@ services:
       dockerfile: conversation_service_v3/Dockerfile
     container_name: harena_conversation_v3_prod
     ports:
-      - "127.0.0.1:3008:3008"
+      - "0.0.0.0:3008:3008"
     environment:
       # Service Configuration
       - SERVICE_NAME=conversation_service_v3

@@ -78,6 +78,8 @@ config.json
 !STABILITY_GUIDE.md
 !README.md
 !budget_profiling_service/PROFILING_CALCULATION_GUIDE.md
+!BUDGET_PROFILING_IMPROVEMENTS.md
+!Profiling_docs/*.md
 
 
 # Dossiers de données locales ou volumineuses
@@ -94,10 +96,10 @@ resultat_ok/
 test_reports_final_responses/
 test_reports_query_extraction/
 scripts/
-Profiling_docs/
 Test_mvp/
 alembic/
 backup_terraform_old/
+# Profiling_docs/ - Now tracked to share budget profiling improvements
 
 # Fichiers Docker
 .dockerignore

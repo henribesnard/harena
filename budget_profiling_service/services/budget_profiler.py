@@ -12,6 +12,7 @@ from db_service.models.budget_profiling import UserBudgetProfile
 from budget_profiling_service.services.transaction_service import TransactionService
 from budget_profiling_service.services.fixed_charge_detector import FixedChargeDetector
 from budget_profiling_service.services.advanced_analytics import AdvancedBudgetAnalytics
+from budget_profiling_service.services.outlier_detector import OutlierDetector
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +30,14 @@ class BudgetProfiler:
     def calculate_user_profile(
         self,
         user_id: int,
-        months_analysis: int = 3
+        months_analysis: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Calcule le profil budgétaire complet d'un utilisateur
 
         Args:
             user_id: ID utilisateur
-            months_analysis: Nombre de mois à analyser (défaut 3)
+            months_analysis: Nombre de mois à analyser (None = toutes les transactions)
 
         Returns:
             Profil budgétaire complet
@@ -54,10 +55,16 @@ class BudgetProfiler:
                 logger.warning(f"Pas de données pour user {user_id}")
                 return self._empty_profile()
 
-            # 2. Calculer moyennes
+            # 2. Calculer moyennes (avec toutes les données)
             avg_income = sum(m['total_income'] for m in monthly_aggregates) / len(monthly_aggregates)
             avg_expenses = sum(m['total_expenses'] for m in monthly_aggregates) / len(monthly_aggregates)
             avg_savings = avg_income - avg_expenses
+
+            # 2b. Détecter outliers et calculer baseline (profil sans anomalies)
+            clean_aggregates, spending_outliers = OutlierDetector.detect_spending_outliers(
+                monthly_aggregates
+            )
+            baseline_metrics = OutlierDetector.calculate_baseline_metrics(monthly_aggregates)
 
             # 3. Taux d'épargne (avec gestion robuste)
             savings_rate = self._calculate_savings_rate(avg_savings, avg_income)
@@ -97,8 +104,9 @@ class BudgetProfiler:
             patterns_result = self._determine_behavioral_patterns_v2(user_id)
             behavioral_pattern = patterns_result.get('primary_pattern', 'indéterminé')
 
-            # 10. Calculer complétude profil
+            # 10. Calculer complétude profil (avec qualité catégorisation)
             profile_completeness = self._calculate_completeness(
+                user_id,
                 monthly_aggregates,
                 fixed_charges,
                 months_analysis
@@ -174,6 +182,11 @@ class BudgetProfiler:
                 'months_of_expenses_saved': round(months_of_expenses_saved, 2),
                 'segment_details': segment_result,
                 'behavioral_patterns': patterns_result,
+
+                # === DÉTECTION ANOMALIES ===
+                'baseline_profile': baseline_metrics,  # Profil sans outliers
+                'spending_outliers': spending_outliers,  # Mois avec dépenses exceptionnelles
+                'outlier_count': len(spending_outliers),
 
                 'last_analyzed_at': datetime.now(timezone.utc)
             }
@@ -367,31 +380,60 @@ class BudgetProfiler:
 
     def _calculate_completeness(
         self,
+        user_id: int,
         monthly_aggregates: list,
         fixed_charges: list,
         months_required: Optional[int]
     ) -> float:
         """
         Calcule le score de complétude du profil (0.0 - 1.0)
+
+        Facteurs:
+        - 30%: Nombre de mois de données
+        - 25%: Charges fixes détectées
+        - 25%: Présence revenus
+        - 20%: Qualité de catégorisation
         """
         score = 0.0
 
-        # Facteur 1: Nombre de mois de données (max 0.4)
+        # Facteur 1: Nombre de mois de données (max 0.3, réduit de 0.4)
         if months_required is None:
             # Toutes les transactions: Score basé sur nombre absolu de mois
             # 12+ mois = score complet, progressif avant
-            months_score = min(len(monthly_aggregates) / 12.0, 1.0) * 0.4
+            months_score = min(len(monthly_aggregates) / 12.0, 1.0) * 0.3
         else:
-            months_score = min(len(monthly_aggregates) / months_required, 1.0) * 0.4
+            months_score = min(len(monthly_aggregates) / months_required, 1.0) * 0.3
 
-        # Facteur 2: Présence de charges fixes détectées (max 0.3)
-        fixed_charges_score = min(len(fixed_charges) / 5.0, 1.0) * 0.3
+        # Facteur 2: Présence de charges fixes détectées (max 0.25, réduit de 0.3)
+        fixed_charges_score = min(len(fixed_charges) / 5.0, 1.0) * 0.25
 
-        # Facteur 3: Présence de revenus (max 0.3)
+        # Facteur 3: Présence de revenus (max 0.25, réduit de 0.3)
         has_income = any(m['total_income'] > 0 for m in monthly_aggregates)
-        income_score = 0.3 if has_income else 0.0
+        income_score = 0.25 if has_income else 0.0
 
-        score = months_score + fixed_charges_score + income_score
+        # Facteur 4: Qualité de catégorisation (max 0.2)
+        try:
+            # Récupérer toutes les transactions de l'utilisateur
+            transactions = self.transaction_service.get_user_transactions(
+                user_id,
+                months_back=None  # Toutes les transactions
+            )
+
+            if transactions:
+                # Compter les transactions catégorisées
+                categorized_count = sum(
+                    1 for tx in transactions
+                    if tx.get('category') and tx['category'] != 'uncategorized'
+                )
+                categorization_ratio = categorized_count / len(transactions)
+                category_score = categorization_ratio * 0.2
+            else:
+                category_score = 0.0
+        except Exception as e:
+            logger.error(f"Erreur calcul qualité catégorisation: {e}")
+            category_score = 0.0
+
+        score = months_score + fixed_charges_score + income_score + category_score
         return min(max(score, 0.0), 1.0)
 
     def _empty_profile(self) -> Dict[str, Any]:

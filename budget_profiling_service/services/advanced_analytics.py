@@ -5,6 +5,7 @@ Segmentation multi-critères, détection de patterns, calcul de health score, al
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from budget_profiling_service.services import alert_thresholds
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class AdvancedBudgetAnalytics:
     @staticmethod
     def analyze_spending_trend(monthly_aggregates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyse la tendance des dépenses (en hausse, baisse, stable)
+        Analyse la tendance des dépenses avec moyenne mobile 3 mois (plus robuste)
 
         Returns:
             {
@@ -185,24 +186,52 @@ class AdvancedBudgetAnalytics:
         # Trier par date (du plus récent au plus ancien)
         sorted_months = sorted(monthly_aggregates, key=lambda x: x.get('month', ''), reverse=True)
 
-        # Prendre les 2 mois les plus récents pour comparaison
-        current_month = sorted_months[0]
-        prev_month = sorted_months[1]
+        # Si moins de 6 mois, fallback sur comparaison simple 2 mois
+        if len(sorted_months) < 6:
+            current_month = sorted_months[0]
+            prev_month = sorted_months[1] if len(sorted_months) > 1 else sorted_months[0]
 
-        current_expenses = current_month['total_expenses']
-        prev_expenses = prev_month['total_expenses']
+            current_expenses = current_month['total_expenses']
+            prev_expenses = prev_month['total_expenses']
+            current_income = current_month['total_income']
+            prev_income = prev_month['total_income']
 
-        current_income = current_month['total_income']
-        prev_income = prev_month['total_income']
+            expense_change_pct = ((current_expenses - prev_expenses) / prev_expenses * 100) if prev_expenses > 0 else 0
+            income_change_pct = ((current_income - prev_income) / prev_income * 100) if prev_income > 0 else 0
 
-        # Calculer variations
-        expense_change_pct = ((current_expenses - prev_expenses) / prev_expenses * 100) if prev_expenses > 0 else 0
-        income_change_pct = ((current_income - prev_income) / prev_income * 100) if prev_income > 0 else 0
+            # Seuil plus élevé pour éviter faux signaux
+            if abs(expense_change_pct) < 10:
+                trend = 'stable'
+            elif expense_change_pct > 10:
+                trend = 'increasing'
+            else:
+                trend = 'decreasing'
 
-        # Déterminer tendance
-        if abs(expense_change_pct) < 5:  # Moins de 5% de variation = stable
+            return {
+                'trend': trend,
+                'change_pct': round(expense_change_pct, 2),
+                'prev_income': round(prev_income, 2),
+                'prev_expenses': round(prev_expenses, 2),
+                'income_change_pct': round(income_change_pct, 2),
+                'expense_change_pct': round(expense_change_pct, 2)
+            }
+
+        # Moyenne mobile actuelle (3 derniers mois)
+        current_avg_expenses = sum(m['total_expenses'] for m in sorted_months[0:3]) / 3
+        current_avg_income = sum(m['total_income'] for m in sorted_months[0:3]) / 3
+
+        # Moyenne mobile précédente (mois 3 à 6)
+        prev_avg_expenses = sum(m['total_expenses'] for m in sorted_months[3:6]) / 3
+        prev_avg_income = sum(m['total_income'] for m in sorted_months[3:6]) / 3
+
+        # Calculer variation
+        expense_change_pct = ((current_avg_expenses - prev_avg_expenses) / prev_avg_expenses * 100) if prev_avg_expenses > 0 else 0
+        income_change_pct = ((current_avg_income - prev_avg_income) / prev_avg_income * 100) if prev_avg_income > 0 else 0
+
+        # Déterminer tendance avec seuil plus élevé (moins de faux signaux)
+        if abs(expense_change_pct) < 10:  # Moins de 10% = stable
             trend = 'stable'
-        elif expense_change_pct > 5:
+        elif expense_change_pct > 10:
             trend = 'increasing'
         else:
             trend = 'decreasing'
@@ -210,10 +239,12 @@ class AdvancedBudgetAnalytics:
         return {
             'trend': trend,
             'change_pct': round(expense_change_pct, 2),
-            'prev_income': round(prev_income, 2),
-            'prev_expenses': round(prev_expenses, 2),
+            'prev_income': round(prev_avg_income, 2),
+            'prev_expenses': round(prev_avg_expenses, 2),
             'income_change_pct': round(income_change_pct, 2),
-            'expense_change_pct': round(expense_change_pct, 2)
+            'expense_change_pct': round(expense_change_pct, 2),
+            'current_avg_expenses': round(current_avg_expenses, 2),
+            'current_avg_income': round(current_avg_income, 2)
         }
 
     @staticmethod
@@ -306,7 +337,7 @@ class AdvancedBudgetAnalytics:
     @staticmethod
     def generate_alerts(profile_data: Dict[str, Any], user_id: int) -> List[Dict[str, Any]]:
         """
-        Génère des alertes selon le profil
+        Génère des alertes selon le profil avec seuils personnalisés
 
         Types d'alertes:
         - CRITICAL: Situation financière précaire
@@ -314,6 +345,10 @@ class AdvancedBudgetAnalytics:
         - INFO: Opportunité d'optimisation
         """
         alerts = []
+
+        # Récupérer seuils personnalisés selon le profil utilisateur
+        thresholds = alert_thresholds.get_thresholds_for_user(profile_data)
+        profile_type = thresholds.get('profile_type', 'default')
 
         # Alerte 1: Taux d'épargne négatif
         if profile_data.get('savings_rate', 0) < 0:
@@ -331,13 +366,20 @@ class AdvancedBudgetAnalytics:
                 ]
             })
 
-        # Alerte 2: Taux d'épargne faible
-        elif profile_data.get('savings_rate', 0) < 5:
+        # Alerte 2: Taux d'épargne faible (seuil personnalisé)
+        elif profile_data.get('savings_rate', 0) < thresholds['min_savings_rate']:
+            min_savings = thresholds['min_savings_rate']
+            message = alert_thresholds.get_contextual_alert_message(
+                'savings',
+                profile_type,
+                profile_data['savings_rate'],
+                min_savings
+            )
             alerts.append({
                 'level': 'WARNING',
                 'type': 'low_savings',
                 'title': 'Épargne insuffisante',
-                'message': f"Votre taux d'épargne ({profile_data['savings_rate']:.1f}%) est faible. Visez au moins 10%.",
+                'message': message,
                 'priority': 2,
                 'actionable': True,
                 'suggested_actions': [
@@ -346,16 +388,24 @@ class AdvancedBudgetAnalytics:
                 ]
             })
 
-        # Alerte 3: Charges fixes élevées
+        # Alerte 3: Charges fixes élevées (seuil personnalisé)
         income = profile_data.get('avg_monthly_income', 1)
         fixed_charges = profile_data.get('fixed_charges_total', 0)
         fixed_ratio = fixed_charges / income if income > 0 else 0
-        if fixed_ratio > 0.7:
+        max_fixed_ratio = thresholds['max_fixed_ratio']
+
+        if fixed_ratio > max_fixed_ratio:
+            message = alert_thresholds.get_contextual_alert_message(
+                'fixed_charges',
+                profile_type,
+                fixed_ratio * 100,
+                max_fixed_ratio
+            )
             alerts.append({
                 'level': 'CRITICAL',
                 'type': 'high_fixed_charges',
                 'title': 'Charges fixes trop élevées',
-                'message': f"Vos charges fixes représentent {fixed_ratio*100:.0f}% de vos revenus (max recommandé: 50%)",
+                'message': message,
                 'priority': 1,
                 'actionable': True,
                 'suggested_actions': [
@@ -365,15 +415,23 @@ class AdvancedBudgetAnalytics:
                 ]
             })
 
-        # Alerte 4: Tendance négative
+        # Alerte 4: Tendance négative (seuil personnalisé)
         if profile_data.get('spending_trend') == 'increasing':
             trend_pct = profile_data.get('spending_trend_pct', 0)
-            if trend_pct > 15:
+            max_increase = thresholds['max_spending_increase']
+
+            if trend_pct > max_increase:
+                message = alert_thresholds.get_contextual_alert_message(
+                    'spending_increase',
+                    profile_type,
+                    trend_pct,
+                    max_increase
+                )
                 alerts.append({
                     'level': 'WARNING',
                     'type': 'increasing_expenses',
                     'title': 'Dépenses en forte hausse',
-                    'message': f"Vos dépenses augmentent de {trend_pct:.1f}%/mois. Tendance à surveiller.",
+                    'message': message,
                     'priority': 2,
                     'actionable': True,
                     'suggested_actions': [
@@ -383,26 +441,28 @@ class AdvancedBudgetAnalytics:
                     ]
                 })
 
-        # Alerte 5: Pas de fonds d'urgence
+        # Alerte 5: Pas de fonds d'urgence (seuil personnalisé)
         months_saved = profile_data.get('months_of_expenses_saved', 0)
-        if months_saved < 3:
+        emergency_months = thresholds['emergency_fund_months']
+
+        if months_saved < emergency_months:
             avg_expenses = profile_data.get('avg_monthly_expenses', 0)
             avg_savings = profile_data.get('avg_monthly_savings', 0)
             savings_rate = profile_data.get('savings_rate', 1)
 
             months_to_goal = 0
             if avg_savings > 0:
-                months_to_goal = (3 - months_saved) / (savings_rate / 100) if savings_rate > 0 else 99
+                months_to_goal = (emergency_months - months_saved) / (savings_rate / 100) if savings_rate > 0 else 99
 
             alerts.append({
                 'level': 'INFO',
                 'type': 'emergency_fund',
                 'title': 'Fonds d\'urgence insuffisant',
-                'message': f"Vous pouvez tenir {months_saved:.1f} mois. Recommandé: 3-6 mois.",
+                'message': f"Vous pouvez tenir {months_saved:.1f} mois. Recommandé pour votre profil: {emergency_months} mois.",
                 'priority': 3,
                 'actionable': True,
                 'suggested_actions': [
-                    f"Objectif: épargner {avg_expenses * 3:.0f}€",
+                    f"Objectif: épargner {avg_expenses * emergency_months:.0f}€",
                     f"Avec {avg_savings:.0f}€/mois, objectif atteint en {months_to_goal:.0f} mois"
                 ]
             })
@@ -430,10 +490,10 @@ class AdvancedBudgetAnalytics:
             }
         """
         try:
-            # Récupérer 3 mois de transactions pour meilleure analyse
+            # Récupérer 6 mois de transactions pour meilleure analyse et patterns saisonniers
             transactions = transaction_service.get_user_transactions(
                 user_id,
-                months_back=3
+                months_back=6
             )
 
             if not transactions:
@@ -460,7 +520,7 @@ class AdvancedBudgetAnalytics:
             patterns = []
 
             # Pattern 1: Fréquence d'achat
-            tx_per_week = len(debits) / 12.0  # Sur 3 mois = 12 semaines
+            tx_per_week = len(debits) / 24.0  # Sur 6 mois = 24 semaines
             if tx_per_week > 15:
                 patterns.append({
                     'type': 'high_frequency_spender',

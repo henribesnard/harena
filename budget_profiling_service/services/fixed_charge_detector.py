@@ -20,7 +20,7 @@ class FixedChargeDetector:
     Détecte automatiquement les charges fixes récurrentes
 
     Critères de détection:
-    - Récurrence mensuelle stable (±5 jours autour de la même date)
+    - Récurrence mensuelle (±7 jours autour de la même date) ou bi-mensuelle (tous les 15 jours)
     - Montant identique ou avec faible variance (±15%)
     - Minimum 3 occurrences pour confirmer
     - Filtrage des marchands variables connus
@@ -80,8 +80,8 @@ class FixedChargeDetector:
         user_id: int,
         months_back: Optional[int] = None,
         min_occurrences: int = 3,
-        max_amount_variance_pct: float = 10.0,
-        max_day_variance: int = 5
+        max_amount_variance_pct: float = 15.0,
+        max_day_variance: int = 7
     ) -> List[Dict[str, Any]]:
         """
         Détecte les charges fixes pour un utilisateur
@@ -200,8 +200,12 @@ class FixedChargeDetector:
 
             if intervals:
                 avg_interval = statistics.mean(intervals)
-                # Devrait être proche de 30 jours (±10 jours)
-                if not (20 <= avg_interval <= 40):
+                # Vérifier si mensuel (±10 jours autour de 30 jours)
+                is_monthly = (20 <= avg_interval <= 40)
+                # Vérifier si bi-mensuel (tous les 15 jours, ±4 jours)
+                is_biweekly = (13 <= avg_interval <= 17)
+
+                if not (is_monthly or is_biweekly):
                     return None
             else:
                 avg_interval = 30
@@ -249,14 +253,18 @@ class FixedChargeDetector:
         # Facteur occurrences (max 0.4)
         occurrence_score = min(occurrence_count / 6.0, 1.0) * 0.4
 
-        # Facteur variance montant (max 0.3)
-        amount_score = max(0, 1.0 - (amount_variance / 10.0)) * 0.3
+        # Facteur variance montant (max 0.3) - ajusté pour variance max 15%
+        amount_score = max(0, 1.0 - (amount_variance / 15.0)) * 0.3
 
-        # Facteur variance jour (max 0.2)
-        day_score = max(0, 1.0 - (day_variance / 5.0)) * 0.2
+        # Facteur variance jour (max 0.2) - ajusté pour variance max 7 jours
+        day_score = max(0, 1.0 - (day_variance / 7.0)) * 0.2
 
         # Facteur régularité intervalle (max 0.1)
-        interval_score = max(0, 1.0 - abs(avg_interval - 30) / 10.0) * 0.1
+        # Accepter mensuel (~30j) ou bi-mensuel (~15j)
+        deviation_monthly = abs(avg_interval - 30)
+        deviation_biweekly = abs(avg_interval - 15)
+        min_deviation = min(deviation_monthly, deviation_biweekly)
+        interval_score = max(0, 1.0 - (min_deviation / 10.0)) * 0.1
 
         total_score = occurrence_score + amount_score + day_score + interval_score
         return min(max(total_score, 0.0), 1.0)

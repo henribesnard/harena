@@ -71,6 +71,10 @@ class UserBudgetProfile(Base, TimestampMixin):
     # Patterns comportementaux enrichis (JSON avec tous les patterns détectés)
     behavioral_patterns = Column(JSON)  # {'primary': '...', 'all_patterns': [...], 'insights': {...}}
 
+    # Détection anomalies et profil de base
+    baseline_profile = Column(JSON)  # Profil sans outliers (métriques plus représentatives)
+    spending_outliers = Column(JSON)  # Liste des mois avec dépenses exceptionnelles
+
     # Métadonnées
     profile_completeness = Column(Numeric(3, 2))  # 0.0 - 1.0
     last_analyzed_at = Column(DateTime(timezone=True))

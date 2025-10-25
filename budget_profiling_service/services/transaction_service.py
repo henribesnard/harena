@@ -11,6 +11,11 @@ from db_service.models.sync import RawTransaction, Category
 
 logger = logging.getLogger(__name__)
 
+# Cache partagé au niveau du module pour les catégories
+_CATEGORY_CACHE: Dict[int, str] = {}
+_CATEGORY_CACHE_TIMESTAMP: Optional[datetime] = None
+_CACHE_TTL = timedelta(hours=1)
+
 
 class TransactionService:
     """
@@ -19,7 +24,7 @@ class TransactionService:
 
     def __init__(self, db_session: Session):
         self.db = db_session
-        self._category_cache = {}
+        self._preload_categories()
 
     def get_user_transactions(
         self,
@@ -88,18 +93,51 @@ class TransactionService:
             logger.error(f"Erreur récupération transactions: {e}", exc_info=True)
             return []
 
+    def _preload_categories(self):
+        """
+        Précharge toutes les catégories au démarrage (cache partagé)
+        """
+        global _CATEGORY_CACHE, _CATEGORY_CACHE_TIMESTAMP
+
+        # Vérifier si le cache est déjà chargé et valide
+        if _CATEGORY_CACHE and _CATEGORY_CACHE_TIMESTAMP:
+            if datetime.now() - _CATEGORY_CACHE_TIMESTAMP < _CACHE_TTL:
+                return  # Cache valide, pas besoin de recharger
+
+        try:
+            result = self.db.execute(select(Category))
+            categories = result.scalars().all()
+
+            # Vider et recharger le cache
+            _CATEGORY_CACHE.clear()
+            for cat in categories:
+                _CATEGORY_CACHE[cat.category_id] = cat.category_name
+
+            _CATEGORY_CACHE_TIMESTAMP = datetime.now()
+            logger.info(f"Préchargé {len(_CATEGORY_CACHE)} catégories dans le cache partagé")
+
+        except Exception as e:
+            logger.error(f"Erreur préchargement catégories: {e}")
+
     def _get_category_name(self, category_id: Optional[int]) -> str:
         """
-        Récupère nom catégorie depuis category_id avec cache
+        Récupère nom catégorie depuis category_id avec cache partagé et TTL
         """
+        global _CATEGORY_CACHE, _CATEGORY_CACHE_TIMESTAMP
+
         if not category_id:
             return 'uncategorized'
 
-        # Vérifier cache
-        if category_id in self._category_cache:
-            return self._category_cache[category_id]
+        # Invalider cache si trop ancien
+        if _CATEGORY_CACHE_TIMESTAMP and datetime.now() - _CATEGORY_CACHE_TIMESTAMP > _CACHE_TTL:
+            logger.info("Cache catégories expiré, rechargement...")
+            self._preload_categories()
 
-        # Récupérer depuis DB
+        # Vérifier cache partagé
+        if category_id in _CATEGORY_CACHE:
+            return _CATEGORY_CACHE[category_id]
+
+        # Si pas dans cache, récupérer depuis DB et ajouter au cache
         try:
             result = self.db.execute(
                 select(Category).where(Category.category_id == category_id)
@@ -107,7 +145,7 @@ class TransactionService:
             category = result.scalar_one_or_none()
 
             if category:
-                self._category_cache[category_id] = category.category_name
+                _CATEGORY_CACHE[category_id] = category.category_name
                 return category.category_name
             else:
                 return 'uncategorized'

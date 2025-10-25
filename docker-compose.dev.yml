@@ -1,0 +1,232 @@
+version: '3.8'
+
+# ============================================
+# DOCKER COMPOSE DEV - ENVIRONNEMENT LOCAL
+# ============================================
+# PostgreSQL et Redis LOCAUX pour isolation totale
+# Hot reload activé sur tous les services
+# ============================================
+
+services:
+  # ============================================
+  # INFRASTRUCTURE DEV
+  # ============================================
+
+  postgres-dev:
+    image: postgres:16-alpine
+    container_name: postgres-dev
+    ports:
+      - "5433:5432"  # Port externe différent pour éviter conflit
+    environment:
+      POSTGRES_DB: harena_dev
+      POSTGRES_USER: harena_dev
+      POSTGRES_PASSWORD: dev_password_123
+    volumes:
+      - ./data/postgres-dev:/var/lib/postgresql/data
+    networks:
+      - harena-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harena_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-dev:
+    image: redis:7-alpine
+    container_name: redis-dev
+    ports:
+      - "6380:6379"  # Port externe différent
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/redis-dev:/data
+    networks:
+      - harena-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ============================================
+  # BACKEND SERVICES
+  # ============================================
+
+  user_service:
+    build:
+      context: .
+      dockerfile: user_service/Dockerfile
+    container_name: harena_user_service_dev
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - REDIS_URL=redis://redis-dev:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
+      - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=development
+    volumes:
+      - ./user_service:/app/user_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env.dev:/app/.env
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+  search_service:
+    build:
+      context: .
+      dockerfile: search_service/Dockerfile
+    container_name: harena_search_service_dev
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - REDIS_URL=redis://redis-dev:6379/0
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=development
+    volumes:
+      - ./search_service:/app/search_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env.dev:/app/.env
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+  metric_service:
+    build:
+      context: .
+      dockerfile: metric_service/Dockerfile
+    container_name: harena_metric_service_dev
+    ports:
+      - "3002:3002"
+    environment:
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=development
+    volumes:
+      - ./metric_service:/app/metric_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env.dev:/app/.env
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+  conversation_service_v3:
+    build:
+      context: .
+      dockerfile: conversation_service_v3/Dockerfile
+    container_name: harena_conversation_v3_dev
+    ports:
+      - "3008:3008"
+    environment:
+      - SERVICE_NAME=conversation_service_v3
+      - SERVICE_VERSION=3.1.0
+      - HOST=0.0.0.0
+      - PORT=3008
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - REDIS_URL=redis://redis-dev:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - SEARCH_SERVICE_URL=http://harena_search_service_dev:3001
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=gpt-4o-mini
+      - LLM_RESPONSE_MODEL=gpt-4o
+      - LLM_TEMPERATURE=0.1
+      - MAX_CORRECTION_ATTEMPTS=2
+      - QUERY_TIMEOUT_SECONDS=30
+      - LOG_LEVEL=DEBUG
+      - API_V3_PREFIX=/api/v3
+      - ENVIRONMENT=development
+    volumes:
+      - ./conversation_service_v3:/app/conversation_service_v3
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env.dev:/app/.env
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+      search_service:
+        condition: service_started
+    restart: unless-stopped
+
+  budget_profiling_service:
+    build:
+      context: .
+      dockerfile: budget_profiling_service/Dockerfile
+    container_name: harena_budget_profiling_dev
+    ports:
+      - "3006:3006"
+    environment:
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - SECRET_KEY=${SECRET_KEY}
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=development
+      - BUDGET_PROFILING_ENABLED=true
+      - BUDGET_PROFILING_LOG_LEVEL=DEBUG
+      - BUDGET_PROFILING_PORT=3006
+    volumes:
+      - ./budget_profiling_service:/app/budget_profiling_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./.env.dev:/app/.env
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ============================================
+  # FRONTEND DEV
+  # ============================================
+
+  frontend-dev:
+    build:
+      context: ./harena_front
+      dockerfile: Dockerfile
+      target: development
+    container_name: harena_frontend_dev
+    ports:
+      - "5174:5173"
+    environment:
+      - VITE_USER_SERVICE_URL=http://localhost:3000
+      - VITE_SEARCH_SERVICE_URL=http://localhost:3001
+      - VITE_METRIC_SERVICE_URL=http://localhost:3002
+      - VITE_CONVERSATION_SERVICE_URL=http://localhost:3008
+      - VITE_BUDGET_PROFILING_SERVICE_URL=http://localhost:3006
+    volumes:
+      - ./harena_front:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - harena-dev
+    restart: unless-stopped
+
+networks:
+  harena-dev:
+    name: harena-dev
+    driver: bridge

@@ -93,6 +93,24 @@ class AggregationEnricher:
             }
         },
 
+        "by_transaction_type": {
+            "terms": {
+                "field": "transaction_type",
+                "size": 10
+            },
+            "aggs": {
+                "total_amount": {
+                    "sum": {"field": "amount_abs"}
+                },
+                "transaction_count": {
+                    "value_count": {"field": "transaction_id"}
+                },
+                "avg_transaction": {
+                    "avg": {"field": "amount_abs"}
+                }
+            }
+        },
+
         "monthly_trend": {
             "date_histogram": {
                 "field": "date",
@@ -275,6 +293,7 @@ class AggregationEnricher:
         "by_category": ["by_category"],
         "by_merchant": ["by_merchant"],
         "by_category_and_merchant": ["by_category", "by_merchant"],
+        "by_transaction_type": ["by_transaction_type"],
         "monthly_trend": ["monthly_trend"],
         "weekly_trend": ["weekly_trend"],
         "by_weekday": ["by_weekday"],

@@ -256,7 +256,8 @@ class AgentOrchestrator:
             build_response = await self.query_builder.build_query(
                 query_analysis=query_analysis,
                 user_id=user_query.user_id,
-                current_date=current_date
+                current_date=current_date,
+                user_query=user_query.message  # Passer la question originale
             )
 
             if not build_response.success:
@@ -354,7 +355,8 @@ class AgentOrchestrator:
                     fallback_build = await self.query_builder.build_query(
                         query_analysis=fallback_analysis,
                         user_id=user_query.user_id,
-                        current_date=current_date
+                        current_date=current_date,
+                        user_query=user_query.message
                     )
 
                     if fallback_build.success:
@@ -745,7 +747,23 @@ class AgentOrchestrator:
                 query_results=all_results
             )
 
-            # Étape 4: Charger historique conversation
+            # Étape 4: Charger contexte utilisateur (profil + historique)
+            logger.info("Step 3.5: Loading user context")
+            context_loading_start = datetime.now()
+
+            # Charger le profil utilisateur
+            user_profile = None
+            if self.user_profile_service:
+                try:
+                    user_profile = await self.user_profile_service.get_user_profile(
+                        user_id=user_query.user_id,
+                        jwt_token=jwt_token
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load user profile: {e}")
+                    user_profile = None
+
+            # Charger historique conversation
             conversation_history = []
             if self.conversation_cache:
                 try:
@@ -755,9 +773,15 @@ class AgentOrchestrator:
                         conversation_id=conversation_id_int,
                         include_system_message=False
                     )
-                    logger.info(f"Loaded {len(conversation_history)} messages from history")
                 except Exception as e:
-                    logger.warning(f"Failed to load conversation history: {e}")
+                    logger.warning(f"⚠️ Failed to load conversation history: {e}")
+
+            context_loading_ms = int((datetime.now() - context_loading_start).total_seconds() * 1000)
+            logger.info(
+                f"✅ Context loaded in {context_loading_ms}ms: "
+                f"profile={bool(user_profile)}, "
+                f"history={len(conversation_history)} messages"
+            )
 
             # Étape 5: Générer réponse analytique
             logger.info("Step 4: Generating analytical response")
@@ -765,7 +789,8 @@ class AgentOrchestrator:
                 user_message=user_query.message,
                 analysis_plan=analysis_plan,
                 insights=insights,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                user_profile=user_profile
             )
 
             # Calculer temps pipeline
@@ -908,6 +933,8 @@ class AgentOrchestrator:
         operations = analysis_plan.get("analytics_operations", [])
         analysis_type = analysis_plan.get("analysis_type", "")
 
+        logger.info(f"Processing {len(operations)} operations: {operations}, query_results count: {len(query_results)}")
+
         for operation in operations:
             try:
                 if operation == "compare_periods" and len(query_results) >= 2:
@@ -967,6 +994,24 @@ class AgentOrchestrator:
 
                 elif operation == "analyze_multi_period_budget" and len(query_results) >= 3:
                     # Analyse budgétaire multi-périodes
+                    period_labels = [qr.get("spec", {}).get("period_label", f"Period {i+1}")
+                                    for i, qr in enumerate(query_results)]
+
+                    multi_period_analysis = self.analytics_service.analyze_multi_period_budget(
+                        period_results=query_results,
+                        period_labels=period_labels
+                    )
+                    insights["results"]["multi_period_analysis"] = multi_period_analysis
+                    insights["operations_performed"].append("analyze_multi_period_budget")
+
+                elif operation == "overview_multi_period":
+                    # Fallback: overview_multi_period est mappé vers analyze_multi_period_budget
+                    # Car le LLM génère parfois cette opération qui n'existe pas dans le code
+                    logger.info(f"🔄 Mapping 'overview_multi_period' to 'analyze_multi_period_budget' (query_results: {len(query_results)})")
+
+                    if len(query_results) < 2:
+                        logger.warning(f"Not enough query results for multi-period analysis: {len(query_results)} < 2")
+                        continue
                     period_labels = [qr.get("spec", {}).get("period_label", f"Period {i+1}")
                                     for i, qr in enumerate(query_results)]
 
@@ -1043,45 +1088,87 @@ class AgentOrchestrator:
         user_message: str,
         analysis_plan: Dict[str, Any],
         insights: Dict[str, Any],
-        conversation_history: List[Dict[str, str]]
+        conversation_history: List[Dict[str, str]],
+        user_profile: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Génère une réponse analytique enrichie
+        Génère une réponse analytique enrichie et personnalisée
 
         Args:
             user_message: Message utilisateur
             analysis_plan: Plan d'analyse
             insights: Insights calculés
             conversation_history: Historique conversation
+            user_profile: Profil budgétaire de l'utilisateur (optionnel)
 
         Returns:
-            Réponse textuelle
+            Réponse textuelle personnalisée
         """
         try:
-            # Créer un prompt spécial pour réponses analytiques
+            # Créer un prompt spécial pour réponses analytiques avec personnalisation
             analytical_prompt = ChatPromptTemplate.from_messages([
                 ("system", """Tu es un conseiller financier expert en analyse de données.
 
 Tu dois créer une réponse analytique basée sur des INSIGHTS calculés (pas des transactions brutes).
 
+🎯 **PERSONNALISATION SELON LE PROFIL UTILISATEUR**
+
+Tu as accès au profil budgétaire de l'utilisateur. Utilise-le pour PERSONNALISER ta réponse :
+
+1. **Adapter le ton selon le segment budgétaire :**
+   - Budget serré (épargne < 10%) → Ton ENCOURAGEANT, conseils d'OPTIMISATION
+   - Équilibré (épargne 10-30%) → Ton NEUTRE, conseils de MAINTIEN
+   - Confortable (épargne > 30%) → Ton POSITIF, conseils d'INVESTISSEMENT
+
+2. **Contextualiser les montants :**
+   - Comparer les dépenses au "reste à vivre" de l'utilisateur
+   - Calculer les pourcentages par rapport au budget disponible
+   - Mentionner l'impact sur le taux d'épargne actuel
+
+3. **Tenir compte du pattern comportemental :**
+   - Acheteur impulsif / erratic_spender → Suggérer planification et groupement d'achats
+   - Planificateur → Valoriser la constance, optimisations fines
+   - Dépensier haute fréquence → Adapter à ce rythme
+
+4. **Graceful degradation :**
+   - Si profil non disponible → Rester NEUTRE, ne pas faire de suppositions
+   - Mentionner que l'analyse serait plus précise avec un profil complet
+
 Format de réponse:
-1. 📊 Réponse directe avec chiffres clés
-2. 📈 Analyse détaillée et interprétation
-3. 💡 Insights et observations importantes
-4. ✅ Recommandations actionnables (si applicable)
+1. 📊 **Réponse directe avec chiffres clés**
+   - Montants principaux (dépenses, revenus, épargne)
+   - Taux d'épargne, tendances
 
-Sois clair, précis et actionnable."""),
-                ("user", """Question: {user_message}
+2. 📈 **Analyse détaillée et interprétation**
+   - Contextualiser selon le profil utilisateur
+   - Expliquer les tendances et variations
+   - Comparer aux périodes précédentes
 
-Type d'analyse: {analysis_type}
+3. 💡 **Insights et observations importantes**
+   - Points d'attention spécifiques au profil
+   - Meilleurs/pires périodes
+   - Opportunités d'optimisation
 
-Insights calculés:
+4. ✅ **Recommandations actionnables**
+   - Conseils adaptés au segment budgétaire
+   - Actions concrètes et personnalisées
+   - Objectifs réalistes selon le profil
+
+Sois clair, précis, actionnable et TOUJOURS personnalisé selon le profil."""),
+                ("user", """**PROFIL UTILISATEUR:**
+{user_profile}
+
+**Question:** {user_message}
+
+**Type d'analyse:** {analysis_type}
+
+**Insights calculés:**
 {insights}
 
-Historique conversation:
+**Historique conversation:**
 {conversation_history}
 
-Génère une réponse analytique complète et actionnab le.""")
+Génère une réponse analytique complète, personnalisée selon le profil utilisateur.""")
             ])
 
             chain = analytical_prompt | ChatOpenAI(model="gpt-4o", temperature=0.3)
@@ -1092,12 +1179,18 @@ Génère une réponse analytique complète et actionnab le.""")
                 for msg in conversation_history[-3:]
             ]) if conversation_history else "Aucun historique"
 
+            # Formater profil utilisateur
+            from ..services.user_profile_service import UserProfileService
+            profile_service = UserProfileService()
+            profile_text = profile_service.format_profile_for_prompt(user_profile)
+
             # Invoquer LLM
             result = await chain.ainvoke({
                 "user_message": user_message,
                 "analysis_type": analysis_plan.get("analysis_type", ""),
                 "insights": json.dumps(insights, ensure_ascii=False, indent=2),
-                "conversation_history": history_text
+                "conversation_history": history_text,
+                "user_profile": profile_text
             })
 
             return result.content
@@ -1379,7 +1472,8 @@ Génère une réponse analytique complète et actionnab le.""")
             build_response = await self.query_builder.build_query(
                 query_analysis=query_analysis,
                 user_id=user_query.user_id,
-                current_date=current_date
+                current_date=current_date,
+                user_query=user_query.message
             )
 
             if not build_response.success:

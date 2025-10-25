@@ -70,18 +70,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuration CORS - Désactivée car gérée par Nginx
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=settings.get_cors_origins(),
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# IMPORTANT: JWT Middleware AVANT les routes
+# IMPORTANT: JWT Middleware ajouté EN PREMIER (s'exécute en dernier)
 app.add_middleware(JWTAuthMiddleware)
 logger.info("JWT middleware configured - user_service compatible")
+
+# Configuration CORS - Activée en dev, ajoutée EN DERNIER (s'exécute en premier)
+# Les middlewares FastAPI sont exécutés dans l'ordre INVERSE de leur ajout
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+if ENVIRONMENT == "dev":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5174",  # Frontend Docker
+            "http://localhost:5173",  # Frontend Vite direct
+            "http://localhost:3000",  # Autre port dev
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Inclure les routes - Le router a déjà le prefix /api/v3/conversation
 app.include_router(conversation.router)

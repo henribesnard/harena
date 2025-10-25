@@ -536,7 +536,7 @@ class AnalyticsService:
 
         aggs = search_results.aggregations
 
-        # Chercher la métrique dans les agrégations
+        # Chercher la métrique dans les agrégations au niveau racine
         if metric in aggs:
             value = aggs[metric]
             if isinstance(value, dict) and "value" in value:
@@ -550,6 +550,16 @@ class AnalyticsService:
                     value = agg_data[metric]
                     if isinstance(value, dict) and "value" in value:
                         return float(value["value"] or 0)
+
+        # Fallback spécial pour by_category: sommer les total_amount de tous les buckets
+        if metric == "total_amount" and "by_category" in aggs:
+            buckets = aggs["by_category"].get("buckets", [])
+            total = 0.0
+            for bucket in buckets:
+                if "total_amount" in bucket and isinstance(bucket["total_amount"], dict):
+                    total += float(bucket["total_amount"].get("value", 0) or 0)
+            logger.info(f"Summed total_amount from {len(buckets)} buckets: {total}")
+            return total
 
         return 0.0
 
@@ -688,29 +698,49 @@ class AnalyticsService:
                 result_obj = period_result.get("results")
                 label = period_labels[idx] if idx < len(period_labels) else f"Period {idx+1}"
 
+                logger.info(f"Processing period {idx}: {label}")
+                logger.info(f"result_obj type: {type(result_obj)}, has_aggregations: {bool(result_obj and result_obj.aggregations)}")
+
                 # Extraire dépenses et revenus
                 expenses = 0
                 income = 0
 
                 if result_obj and result_obj.aggregations:
-                    # Chercher dans les agrégations
+                    logger.info(f"Aggregations keys: {list(result_obj.aggregations.keys())}")
                     aggs = result_obj.aggregations
 
-                    # Essayer d'extraire expenses
-                    if "expenses" in aggs:
+                    # Cas 1: Agrégation by_transaction_type (pour analyses budget complètes)
+                    if "by_transaction_type" in aggs:
+                        logger.info("Using by_transaction_type aggregation for budget analysis")
+                        buckets = aggs["by_transaction_type"].get("buckets", [])
+                        for bucket in buckets:
+                            tx_type = bucket.get("key")
+                            amount = bucket.get("total_amount", {}).get("value", 0) or 0
+                            if tx_type == "debit":
+                                expenses = amount
+                            elif tx_type == "credit":
+                                income = amount
+                        logger.info(f"Extracted from by_transaction_type: expenses={expenses}, income={income}")
+
+                    # Cas 2: Agrégations expenses/income séparées
+                    elif "expenses" in aggs:
                         exp_data = aggs["expenses"]
                         if "total_expenses" in exp_data:
                             expenses = exp_data["total_expenses"].get("value", 0) or 0
 
-                    # Essayer d'extraire income
-                    if "income" in aggs:
-                        inc_data = aggs["income"]
-                        if "total_income" in inc_data:
-                            income = inc_data["total_income"].get("value", 0) or 0
+                        if "income" in aggs:
+                            inc_data = aggs["income"]
+                            if "total_income" in inc_data:
+                                income = inc_data["total_income"].get("value", 0) or 0
 
-                    # Fallback: chercher directement
-                    if expenses == 0:
+                    # Cas 3: Fallback - chercher directement (dépenses uniquement)
+                    else:
                         expenses = self._extract_metric(result_obj, "total_amount")
+                        logger.info(f"Extracted from total_amount: {expenses}")
+                else:
+                    logger.info(f"No aggregations found, checking hits. Total hits: {result_obj.total if result_obj else 0}")
+
+                logger.info(f"Period {label}: expenses={expenses}, income={income}")
 
                 savings = income - expenses if income > 0 else 0
                 savings_rate = (savings / income * 100) if income > 0 else 0

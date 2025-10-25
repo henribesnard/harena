@@ -65,7 +65,9 @@ class ElasticsearchBuilderAgent:
 
         # Prompt enrichi pour function calling avec templates et exemples
         # Injecter les métadonnées dynamiques avant les règles critiques
-        self.build_prompt_text = """Génère une requête de recherche pour: {intent}
+        self.build_prompt_text = """Question utilisateur: "{user_query}"
+
+Génère une requête de recherche pour: {intent}
 
 Contexte:
 - User ID: {user_id}
@@ -81,24 +83,81 @@ TEMPLATES D'AGRÉGATIONS DISPONIBLES:
 {metadata}
 
 RÈGLES CRITIQUES:
-1. "plus de X euros" = amount_abs: {{"gt": X}} → EXCLUT X (strictement supérieur)
-2. "au moins X euros" = amount_abs: {{"gte": X}} → INCLUT X (supérieur ou égal)
-3. DISTINCTION TRANSACTIONS / DÉPENSES / REVENUS:
+1. **QUESTIONS DE SOLDE / COMPTES** → Utiliser l'index ACCOUNTS:
+   - Mots-clés: "solde", "compte", "balance", "combien j'ai sur mon compte"
+   - Utiliser les champs: account_balance, account_name, account_type, account_currency, is_active
+   - Inclure "source": ["account_id", "account_name", "account_balance", "account_currency"]
+   - Sort par account_balance (pas par date)
+   - Le search_service détectera automatiquement l'index accounts
+
+2. **PÉRIODES TEMPORELLES** - Filtres de date:
+   - "cette année" = {{"gte": "AAAA-01-01T00:00:00Z", "lte": "AAAA-12-31T23:59:59Z"}} (utiliser l'année de {current_date})
+   - "ce mois" = 01 au dernier jour du mois actuel
+   - "cette semaine" = lundi au dimanche de la semaine actuelle
+   - Mois spécifique: "juin 2025" = {{"gte": "2025-06-01T00:00:00Z", "lte": "2025-06-30T23:59:59Z"}}
+
+3. "plus de X euros" = amount_abs: {{"gt": X}} → EXCLUT X (strictement supérieur)
+4. "au moins X euros" = amount_abs: {{"gte": X}} → INCLUT X (supérieur ou égal)
+5. DISTINCTION TRANSACTIONS / DÉPENSES / REVENUS:
    - "transactions" = PAS de filtre transaction_type (inclut débits ET crédits)
    - "dépenses" / "débits" = transaction_type: "debit"
    - "revenus" / "crédits" = transaction_type: "credit"
-4. TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}] (OBLIGATOIRE)
-5. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
-6. Pour merchant_name et category_name:
+6. Pour les TRANSACTIONS, TOUJOURS inclure sort: [{{"date": {{"order": "desc"}}}}] (OBLIGATOIRE)
+7. Agrégations sur montants: utiliser "amount_abs", JAMAIS "amount"
+8. Pour merchant_name et category_name:
    - ⚠️ IMPORTANT: Si l'analyse fournit une LISTE de valeurs ["val1", "val2", ...], tu DOIS GARDER TOUTES les valeurs sans exception. NE PAS tronquer, NE PAS sélectionner, GARDER LA LISTE COMPLÈTE EXACTEMENT TELLE QUELLE.
    - Si c'est une VALEUR UNIQUE "val", utiliser {{"match": "val"}} pour recherche floue
-7. TOUJOURS ajouter des agrégations de base (total, count) pour donner des statistiques utiles
-8. Si l'intent indique "statistics" ou "analyze", utiliser les templates d'agrégations disponibles
-9. page_size doit être >= 1 (JAMAIS 0). Pour les queries d'agrégations, utiliser page_size: 10
+9. TOUJOURS ajouter des agrégations de base (total, count) pour donner des statistiques utiles
+10. Si l'intent indique "statistics" ou "analyze", utiliser les templates d'agrégations disponibles
+11. page_size doit être >= 1 (JAMAIS 0). Pour les queries d'agrégations, utiliser page_size: 10
 
 EXEMPLES D'UTILISATION:
 
-Exemple 1 - "Mes transactions de plus de 2500 euros":
+⚠️ IMPORTANT: Pour les questions de SOLDE / COMPTES, consulter PRIORITAIREMENT les Exemples 1 et 2 ci-dessous!
+
+--- QUERIES SUR L'INDEX ACCOUNTS (Soldes et comptes) - PRIORITÉ #1 ---
+
+Exemple 1 - "Quel est mon solde actuel ?" ou "Montre-moi mes comptes":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "is_active": true
+    }},
+    "source": ["account_id", "account_name", "account_type", "account_balance", "account_currency"],
+    "sort": [{{"account_balance": {{"order": "desc"}}}}],
+    "page_size": 20,
+    "aggregations": {{
+        "total_balance": {{"sum": {{"field": "account_balance"}}}},
+        "account_count": {{"value_count": {{"field": "account_id"}}}},
+        "by_account_type": {{
+            "terms": {{"field": "account_type.keyword", "size": 10}},
+            "aggs": {{
+                "total_balance": {{"sum": {{"field": "account_balance"}}}}
+            }}
+        }}
+    }}
+}}
+Note: Pour les questions de SOLDE, utiliser les champs account_* (account_balance, account_name, account_type, etc.).
+Le search_service détecte automatiquement qu'il doit chercher dans l'index accounts (harena_accounts).
+
+Exemple 2 - "Quel est le solde de mon compte courant ?":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "account_type": "checking",
+        "is_active": true
+    }},
+    "source": ["account_id", "account_name", "account_balance", "account_currency"],
+    "sort": [{{"account_balance": {{"order": "desc"}}}}],
+    "page_size": 10,
+    "aggregations": {{
+        "total_balance": {{"sum": {{"field": "account_balance"}}}}
+    }}
+}}
+
+--- QUERIES SUR L'INDEX TRANSACTIONS ---
+
+Exemple 3 - "Mes transactions de plus de 2500 euros":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -115,7 +174,7 @@ Exemple 1 - "Mes transactions de plus de 2500 euros":
 }}
 Note: PAS de filtre transaction_type car "transactions" inclut débits ET crédits
 
-Exemple 2 - "Mes dépenses de plus de 100 euros":
+Exemple 4 - "Mes dépenses de plus de 100 euros":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -130,7 +189,7 @@ Exemple 2 - "Mes dépenses de plus de 100 euros":
     }}
 }}
 
-Exemple 3 - "Combien j'ai dépensé en restaurants ce mois?":
+Exemple 5 - "Combien j'ai dépensé en restaurants ce mois?":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -147,7 +206,7 @@ Exemple 3 - "Combien j'ai dépensé en restaurants ce mois?":
     }}
 }}
 
-Exemple 4 - "Mes achats entre 50€ et 150€" (catégories multiples):
+Exemple 6 - "Mes achats entre 50€ et 150€" (catégories multiples):
 {{
     "user_id": {user_id},
     "filters": {{
@@ -163,7 +222,7 @@ Exemple 4 - "Mes achats entre 50€ et 150€" (catégories multiples):
     }}
 }}
 
-Exemple 5 - "Évolution mensuelle de mes dépenses sur 6 mois":
+Exemple 7 - "Évolution mensuelle de mes dépenses sur 6 mois":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -187,7 +246,7 @@ Exemple 5 - "Évolution mensuelle de mes dépenses sur 6 mois":
     }}
 }}
 
-Exemple 6 - "Répartition de mes dépenses par catégorie":
+Exemple 8 - "Répartition de mes dépenses par catégorie":
 {{
     "user_id": {user_id},
     "filters": {{
@@ -209,7 +268,24 @@ Exemple 6 - "Répartition de mes dépenses par catégorie":
             }}
         }}
     }}
-}}"""
+}}
+
+Exemple 9 - "Mon taux d'épargne cette année" ou "Mes dépenses cette année":
+{{
+    "user_id": {user_id},
+    "filters": {{
+        "transaction_type": "debit",
+        "date": {{"gte": "2025-01-01T00:00:00Z", "lte": "2025-12-31T23:59:59Z"}}
+    }},
+    "sort": [{{"date": {{"order": "desc"}}}}],
+    "page_size": 10,
+    "aggregations": {{
+        "total_spent": {{"sum": {{"field": "amount_abs"}}}},
+        "transaction_count": {{"value_count": {{"field": "transaction_id"}}}}
+    }}
+}}
+Note: "cette année" doit filtrer sur l'année en cours (date actuelle: {current_date}).
+Extraire l'année de {current_date} et filtrer de 01-01 à 31-12 de cette année."""
 
         # Prompt pour l'auto-correction
         self.correction_prompt = ChatPromptTemplate.from_messages([
@@ -256,7 +332,8 @@ Corrige cette query pour qu'elle fonctionne.""")
         self,
         query_analysis: QueryAnalysis,
         user_id: int,
-        current_date: str = None
+        current_date: str = None,
+        user_query: str = None
     ) -> AgentResponse:
         """
         Construit une query Elasticsearch à partir de l'analyse
@@ -266,6 +343,7 @@ Corrige cette query pour qu'elle fonctionne.""")
             query_analysis: Analyse de la requête utilisateur
             user_id: ID de l'utilisateur
             current_date: Date actuelle pour les calculs de période (défaut: aujourd'hui)
+            user_query: Question originale de l'utilisateur (optionnel mais recommandé)
 
         Returns:
             AgentResponse contenant ElasticsearchQuery
@@ -279,6 +357,7 @@ Corrige cette query pour qu'elle fonctionne.""")
 
             # Préparer le message pour function calling
             prompt_message = self.build_prompt_text.format(
+                user_query=user_query if user_query else "Non spécifiée",
                 intent=query_analysis.intent,
                 filters=json.dumps(query_analysis.filters, ensure_ascii=False),
                 aggregations=json.dumps(query_analysis.aggregations_needed, ensure_ascii=False),

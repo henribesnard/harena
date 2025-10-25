@@ -41,14 +41,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - Désactivée car gérée par Nginx
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+# CORS - Activée en développement local, désactivée en prod (gérée par Nginx)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+if ENVIRONMENT == "dev":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5174",  # Frontend Docker
+            "http://localhost:5173",  # Frontend Vite direct
+            "http://localhost:3000",  # Autre port dev
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Routes - 5 Métriques Essentielles (Specs conformes)
 app.include_router(expenses.router, prefix="/api/v1/metrics/expenses", tags=["Métriques Dépenses"])

@@ -74,6 +74,18 @@ Types d'analyses supportées:
    - Vue d'ensemble multi-périodes
    - Analyse globale revenus/dépenses
 
+**IMPORTANT - Distinction transaction_type:**
+
+1. **"Analyse mes DÉPENSES"** → filters: {{"transaction_type": "debit"}}
+   - Exemples: "analyse mes dépenses", "combien j'ai dépensé"
+
+2. **"Analyse mes REVENUS"** → filters: {{"transaction_type": "credit"}}
+   - Exemples: "analyse mes revenus", "mes entrées d'argent"
+
+3. **"Analyse mon BUDGET" ou "mes TRANSACTIONS"** → SANS filtre transaction_type
+   - Ajouter aggregation: "by_transaction_type" pour distinguer crédit/débit
+   - Exemples: "analyse mon budget", "vue d'ensemble", "toutes mes transactions"
+
 Pour chaque demande, tu dois retourner un plan d'exécution JSON:
 
 {{
@@ -196,6 +208,80 @@ Question: "quel type de dépenses je peux réduire pour augmenter mon taux d'ép
   "analytics_operations": ["recommend_savings_opportunities", "calculate_savings_rate"],
   "target_improvement": 10
 }}
+
+Question: "analyse mes dépenses des 3 derniers mois"
+{{
+  "analysis_type": "BUDGET_ANALYSIS",
+  "queries": [
+    {{
+      "time_range": {{"start": "2025-07-01", "end": "2025-07-31"}},
+      "filters": {{"transaction_type": "debit"}},
+      "aggregations": ["by_category", "total_amount"],
+      "period_label": "2025-07"
+    }},
+    {{
+      "time_range": {{"start": "2025-08-01", "end": "2025-08-31"}},
+      "filters": {{"transaction_type": "debit"}},
+      "aggregations": ["by_category", "total_amount"],
+      "period_label": "2025-08"
+    }},
+    {{
+      "time_range": {{"start": "2025-09-01", "end": "2025-09-30"}},
+      "filters": {{"transaction_type": "debit"}},
+      "aggregations": ["by_category", "total_amount"],
+      "period_label": "2025-09"
+    }}
+  ],
+  "analytics_operations": ["analyze_multi_period_budget"],
+  "metrics": ["total_amount", "by_category"]
+}}
+
+Question: "analyse mon budget des 3 derniers mois"
+{{
+  "analysis_type": "BUDGET_ANALYSIS",
+  "queries": [
+    {{
+      "time_range": {{"start": "2025-07-01", "end": "2025-07-31"}},
+      "filters": {{}},
+      "aggregations": ["by_category", "by_transaction_type", "total_amount"],
+      "period_label": "2025-07"
+    }},
+    {{
+      "time_range": {{"start": "2025-08-01", "end": "2025-08-31"}},
+      "filters": {{}},
+      "aggregations": ["by_category", "by_transaction_type", "total_amount"],
+      "period_label": "2025-08"
+    }},
+    {{
+      "time_range": {{"start": "2025-09-01", "end": "2025-09-30"}},
+      "filters": {{}},
+      "aggregations": ["by_category", "by_transaction_type", "total_amount"],
+      "period_label": "2025-09"
+    }}
+  ],
+  "analytics_operations": ["analyze_multi_period_budget"],
+  "metrics": ["total_amount", "by_category", "by_transaction_type"]
+}}
+
+Question: "mon taux d'épargne cette année" ou "quel est mon taux d'épargne cette année"
+{{
+  "analysis_type": "BUDGET_ANALYSIS",
+  "queries": [
+    {{
+      "time_range": {{"start": "2025-01-01", "end": "2025-12-31"}},
+      "filters": {{"transaction_type": "credit"}},
+      "aggregations": ["total_amount"]
+    }},
+    {{
+      "time_range": {{"start": "2025-01-01", "end": "2025-12-31"}},
+      "filters": {{"transaction_type": "debit"}},
+      "aggregations": ["total_amount"]
+    }}
+  ],
+  "analytics_operations": ["calculate_savings_rate"],
+  "metrics": ["total_amount"]
+}}
+Note: Pour "cette année", extraire l'année actuelle de {current_date} et filtrer du 01-01 au 31-12.
 
 Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
             ("user", "Question: {user_message}\nDate actuelle: {current_date}")
@@ -325,7 +411,7 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
             IntentCategory.TREND_ANALYSIS: ["detect_trend"],
             IntentCategory.PREDICTIVE_ANALYSIS: ["forecast_next_period"],
             IntentCategory.OPTIMIZATION_RECOMMENDATION: ["recommend_savings_opportunities"],
-            IntentCategory.BUDGET_ANALYSIS: ["calculate_savings_rate", "classify_fixed_vs_variable"]
+            IntentCategory.BUDGET_ANALYSIS: ["analyze_multi_period_budget"]
         }
         return mapping.get(intent, [])
 

@@ -25,6 +25,7 @@ from ..agents.analytics_agent import AnalyticsAgent
 from ..models.intent import IntentCategory
 from ..core.aggregation_enricher import AggregationEnricher
 from ..core.category_validator import category_validator
+from ..core.query_validator import query_validator
 from ..services.redis_conversation_cache import RedisConversationCache
 from ..services.analytics_service import AnalyticsService
 from ..services.user_profile_service import UserProfileService
@@ -120,6 +121,32 @@ class AgentOrchestrator:
 
         logger.info(f"AgentOrchestrator initialized with search_service: {search_service_url}")
 
+    @staticmethod
+    def _safe_int_conversion(value: Optional[str], field_name: str = "value") -> Optional[int]:
+        """
+        Convertit de manière sécurisée une chaîne en entier
+
+        Args:
+            value: Valeur à convertir
+            field_name: Nom du champ (pour logging)
+
+        Returns:
+            Entier converti ou None si la conversion échoue
+        """
+        if value is None:
+            return None
+
+        try:
+            converted = int(value)
+            # Validation de range pour éviter les overflows
+            if converted < 0 or converted > 2**31 - 1:
+                logger.warning(f"Invalid {field_name} out of range: {converted}, using None")
+                return None
+            return converted
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid {field_name}: {value}, using None - Error: {e}")
+            return None
+
     async def process_query(
         self,
         user_query: UserQuery,
@@ -179,7 +206,9 @@ class AgentOrchestrator:
                 # === Sauvegarder dans l'historique Redis (pour conversations aussi) ===
                 if self.conversation_cache:
                     try:
-                        conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+                        conversation_id_int = self._safe_int_conversion(
+                            user_query.conversation_id, "conversation_id"
+                        )
 
                         # Sauvegarder le message utilisateur
                         self.conversation_cache.add_message(
@@ -404,12 +433,9 @@ class AgentOrchestrator:
 
             # Charger l'historique de conversation (sync)
             conversation_history = []
-            conversation_id_int = None
-            if user_query.conversation_id:
-                try:
-                    conversation_id_int = int(user_query.conversation_id)
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid conversation_id: {user_query.conversation_id}")
+            conversation_id_int = self._safe_int_conversion(
+                user_query.conversation_id, "conversation_id"
+            )
 
             if self.conversation_cache and conversation_id_int:
                 try:
@@ -449,7 +475,9 @@ class AgentOrchestrator:
             # === ÉTAPE 4.5: Sauvegarder dans l'historique Redis ===
             if self.conversation_cache:
                 try:
-                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+                    conversation_id_int = self._safe_int_conversion(
+                        user_query.conversation_id, "conversation_id"
+                    )
 
                     # Sauvegarder le message utilisateur
                     self.conversation_cache.add_message(
@@ -589,6 +617,19 @@ class AgentOrchestrator:
             # On l'envoie DIRECTEMENT à search_service sans transformation!
 
             search_payload = es_query.query  # Le format search_service complet généré par l'agent
+
+            # === SECURITY: Validate query to prevent injection attacks ===
+            try:
+                is_valid, validation_errors = query_validator.validate_query(
+                    search_payload, raise_on_error=False
+                )
+                if not is_valid:
+                    logger.warning(f"Query validation warnings: {validation_errors}")
+                    # Continue execution but log the warnings
+            except Exception as validation_error:
+                logger.error(f"Query validation error: {validation_error}")
+                # Continue execution - validation is a safety net, not a blocker
+                # In production, you might want to raise here depending on security requirements
 
             # S'assurer que user_id est présent (au cas où)
             if "user_id" not in search_payload:
@@ -767,7 +808,9 @@ class AgentOrchestrator:
             conversation_history = []
             if self.conversation_cache:
                 try:
-                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+                    conversation_id_int = self._safe_int_conversion(
+                        user_query.conversation_id, "conversation_id"
+                    )
                     conversation_history = self.conversation_cache.get_conversation_history(
                         user_id=user_query.user_id,
                         conversation_id=conversation_id_int,
@@ -803,7 +846,9 @@ class AgentOrchestrator:
             # Sauvegarder dans Redis
             if self.conversation_cache:
                 try:
-                    conversation_id_int = int(user_query.conversation_id) if user_query.conversation_id else None
+                    conversation_id_int = self._safe_int_conversion(
+                        user_query.conversation_id, "conversation_id"
+                    )
 
                     self.conversation_cache.add_message(
                         user_id=user_query.user_id,
@@ -1536,12 +1581,9 @@ Génère une réponse analytique complète, personnalisée selon le profil utili
                     logger.warning(f"⚠️ Failed to load user profile: {e}")
 
             conversation_history = []
-            conversation_id_int = None
-            if user_query.conversation_id:
-                try:
-                    conversation_id_int = int(user_query.conversation_id)
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid conversation_id: {user_query.conversation_id}")
+            conversation_id_int = self._safe_int_conversion(
+                user_query.conversation_id, "conversation_id"
+            )
 
             if self.conversation_cache and conversation_id_int:
                 try:

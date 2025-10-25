@@ -39,8 +39,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Shutting down {settings.SERVICE_NAME}")
 
     # Fermer l'orchestrateur si initialisé
-    if conversation.orchestrator:
-        await conversation.orchestrator.close()
+    if conversation._orchestrator:
+        await conversation._orchestrator.close()
+        logger.info("HTTP client and resources properly closed")
 
 
 # Créer l'application FastAPI

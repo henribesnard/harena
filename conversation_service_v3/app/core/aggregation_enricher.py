@@ -11,6 +11,7 @@ Date: 2025-10-21
 
 from typing import Dict, Any, List
 import logging
+import copy
 
 logger = logging.getLogger(__name__)
 
@@ -412,11 +413,13 @@ class AggregationEnricher:
             if "aggregations" not in query:
                 query["aggregations"] = {}
 
-            # Appliquer les templates simples
+            # Appliquer les templates simples (avec deep copy pour éviter mutations)
             templates_applied = []
             for agg_requested in simple_aggs_requested:
                 if agg_requested in self.SIMPLE_METRIC_TEMPLATES:
-                    query["aggregations"][agg_requested] = self.SIMPLE_METRIC_TEMPLATES[agg_requested]
+                    query["aggregations"][agg_requested] = copy.deepcopy(
+                        self.SIMPLE_METRIC_TEMPLATES[agg_requested]
+                    )
                     templates_applied.append(agg_requested)
                     logger.info(f"✅ Applied simple template: {agg_requested}")
                 else:
@@ -452,14 +455,15 @@ class AggregationEnricher:
             for template_name in template_names:
                 # Vérifier si c'est un template simple ou composite
                 if template_name in self.TEMPLATES:
-                    template = self.TEMPLATES[template_name]
+                    # Deep copy pour éviter les mutations du template original
+                    template = copy.deepcopy(self.TEMPLATES[template_name])
                     query["aggregations"][template_name] = template
                     templates_applied.append(template_name)
                     logger.info(f"✅ Applied aggregation template: {template_name}")
 
                 elif template_name in self.COMPOSITE_TEMPLATES:
-                    # Template composite: merger toutes les aggs
-                    composite = self.COMPOSITE_TEMPLATES[template_name]
+                    # Template composite: merger toutes les aggs (avec deep copy)
+                    composite = copy.deepcopy(self.COMPOSITE_TEMPLATES[template_name])
                     query["aggregations"].update(composite)
                     templates_applied.append(template_name)
                     logger.info(f"✅ Applied composite template: {template_name}")
@@ -569,10 +573,12 @@ class AggregationEnricher:
 
         if template_name in self.TEMPLATES:
             info["type"] = "simple"
-            info["template"] = self.TEMPLATES[template_name]
+            # Deep copy pour éviter les mutations du template original
+            info["template"] = copy.deepcopy(self.TEMPLATES[template_name])
         elif template_name in self.COMPOSITE_TEMPLATES:
             info["type"] = "composite"
-            info["template"] = self.COMPOSITE_TEMPLATES[template_name]
+            # Deep copy pour éviter les mutations du template original
+            info["template"] = copy.deepcopy(self.COMPOSITE_TEMPLATES[template_name])
 
         # Ajouter descriptions
         descriptions = {

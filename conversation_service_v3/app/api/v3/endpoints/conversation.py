@@ -5,6 +5,7 @@ WITH PERSISTENCE - Saves conversations to PostgreSQL
 import logging
 import time
 import asyncio
+import threading
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
@@ -23,8 +24,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v3/conversation", tags=["conversation"])
 
-# Instance globale de l'orchestrateur
-orchestrator: Optional[AgentOrchestrator] = None
+# Instance globale de l'orchestrateur avec protection thread-safe
+_orchestrator: Optional[AgentOrchestrator] = None
+_orchestrator_lock = threading.Lock()
 
 
 class ClientInfo(BaseModel):
@@ -52,15 +54,25 @@ class ConversationResponseModel(BaseModel):
 
 
 def get_orchestrator() -> AgentOrchestrator:
-    """Dépendance pour obtenir l'orchestrateur"""
-    global orchestrator
-    if orchestrator is None:
-        orchestrator = AgentOrchestrator(
-            search_service_url=settings.SEARCH_SERVICE_URL,
-            max_correction_attempts=settings.MAX_CORRECTION_ATTEMPTS,
-            llm_model=settings.LLM_MODEL
-        )
-    return orchestrator
+    """
+    Dépendance pour obtenir l'orchestrateur avec initialisation thread-safe
+    Utilise le double-checked locking pattern pour éviter les race conditions
+    """
+    global _orchestrator
+
+    # Premier check sans lock (optimisation performance)
+    if _orchestrator is None:
+        # Lock pour l'initialisation
+        with _orchestrator_lock:
+            # Second check avec lock (évite race condition)
+            if _orchestrator is None:
+                logger.info("Initializing AgentOrchestrator (thread-safe)")
+                _orchestrator = AgentOrchestrator(
+                    search_service_url=settings.SEARCH_SERVICE_URL,
+                    max_correction_attempts=settings.MAX_CORRECTION_ATTEMPTS,
+                    llm_model=settings.LLM_MODEL
+                )
+    return _orchestrator
 
 
 @router.post("/{user_id}", response_model=Dict[str, Any])
@@ -319,8 +331,8 @@ async def conversation_health():
     from datetime import datetime, timezone
 
     try:
-        if orchestrator:
-            health = await orchestrator.health_check()
+        if _orchestrator:
+            health = await _orchestrator.health_check()
             return {
                 "service": "conversation_service_v3",
                 "version": "3.0.0",
@@ -355,8 +367,8 @@ async def conversation_status():
     from datetime import datetime, timezone
 
     try:
-        if orchestrator:
-            stats = orchestrator.get_stats()
+        if _orchestrator:
+            stats = _orchestrator.get_stats()
             return {
                 "status": "healthy",
                 "version": "3.0.0",
@@ -389,8 +401,8 @@ async def conversation_metrics():
     from datetime import datetime, timezone
 
     try:
-        if orchestrator:
-            stats = orchestrator.get_stats()
+        if _orchestrator:
+            stats = _orchestrator.get_stats()
             return {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "architecture": "v3_langchain_agents",

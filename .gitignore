@@ -138,3 +138,12 @@ yarn-error.log*
 *.gz
 nul
 .env.production
+# Test files
+q*.json
+result_*.json
+test_output.txt
+test_report*.md
+logs_test.txt
+*.pyc
+__pycache__/
+.pytest_cache/

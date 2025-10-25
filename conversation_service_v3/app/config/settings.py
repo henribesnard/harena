@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     MAX_TRANSACTIONS_IN_CONTEXT: int = 50
 
     # Redis Configuration - Conversation Memory Cache
-    REDIS_URL: str = "redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@63.35.52.216:6379/0"
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     REDIS_CONVERSATION_CACHE_ENABLED: bool = True
 
     # Validators pour nettoyer les guillemets du .env

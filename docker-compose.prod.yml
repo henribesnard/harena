@@ -1,76 +1,45 @@
 version: '3.8'
 
 # ============================================
-# DOCKER COMPOSE PRODUCTION
+# DOCKER COMPOSE PROD - AWS EC2
 # ============================================
-# Ce fichier déploie UNIQUEMENT les 5 services backend.
-# PostgreSQL et Redis sont DÉJÀ en production sur l'EC2.
-# Elasticsearch est sur Heroku Bonsai.
-#
-# Services à déployer :
-# 1. user_service (port 3000)
-# 2. metric_service (port 3002)
-# 3. budget_profiling_service (port 3006)
-# 4. search_service (port 3001)
-# 5. conversation_service_v3 (port 3008)
+# Un seul réseau: harena-prod
+# PostgreSQL et Redis utilisent les conteneurs existants
+# Tous les services connectés au même réseau
 # ============================================
 
 services:
   # ============================================
-  # User Service - Gestion utilisateurs et auth
+  # BACKEND SERVICES
   # ============================================
+
   user_service:
     build:
       context: .
       dockerfile: user_service/Dockerfile
-    container_name: harena_user_service_prod
+    container_name: harena_user_service
     ports:
-      - "0.0.0.0:3000:3000"  # Accessible publiquement
+      - "0.0.0.0:3000:3000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
       - SECRET_KEY=${SECRET_KEY}
       - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
       - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
-      - API_V1_STR=${API_V1_STR}
+      - API_V1_STR=/api/v1
       - ENVIRONMENT=production
+    networks:
+      - harena-prod
+    depends_on:
+      - postgres
+      - redis
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:3000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-
-  # ============================================
-  # Search Service - Recherche et indexation
-  # ============================================
-  search_service:
-    build:
-      context: .
-      dockerfile: search_service/Dockerfile
-    container_name: harena_search_service_prod
-    ports:
-      - "0.0.0.0:3001:3001"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - REDIS_URL=${REDIS_URL}
-      - API_V1_STR=${API_V1_STR}
-      - ENVIRONMENT=production
-    restart: unless-stopped
     logging:
       driver: "json-file"
       options:
@@ -82,28 +51,66 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+
+  search_service:
+    build:
+      context: .
+      dockerfile: search_service/Dockerfile
+    container_name: harena_search_service
+    ports:
+      - "0.0.0.0:3001:3001"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=production
+    networks:
+      - harena-prod
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/search/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
-  # ============================================
-  # Metric Service - Métriques et analytics
-  # ============================================
   metric_service:
     build:
       context: .
       dockerfile: metric_service/Dockerfile
-    container_name: harena_metric_service_prod
+    container_name: harena_metric_service
     ports:
       - "0.0.0.0:3002:3002"
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - API_V1_STR=${API_V1_STR}
+      - API_V1_STR=/api/v1
       - ENVIRONMENT=production
+    networks:
+      - harena-prod
+    depends_on:
+      - postgres
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -115,96 +122,45 @@ services:
           memory: 200M
         reservations:
           memory: 100M
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
-  # ============================================
-  # Budget Profiling Service - Profilage budgétaire
-  # ============================================
-  budget_profiling_service:
-    build:
-      context: .
-      dockerfile: budget_profiling_service/Dockerfile
-    container_name: harena_budget_profiling_prod
-    ports:
-      - "0.0.0.0:3006:3006"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SECRET_KEY=${SECRET_KEY}
-      - API_V1_STR=${API_V1_STR}
-      - ENVIRONMENT=production
-      - BUDGET_PROFILING_ENABLED=true
-      - BUDGET_PROFILING_LOG_LEVEL=INFO
-      - BUDGET_PROFILING_PORT=3006
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  # ============================================
-  # Conversation Service V3 - LangChain Agents
-  # ============================================
   conversation_service_v3:
     build:
       context: .
       dockerfile: conversation_service_v3/Dockerfile
-    container_name: harena_conversation_v3_prod
+    container_name: harena_conversation_v3
     ports:
       - "0.0.0.0:3008:3008"
     environment:
-      # Service Configuration
       - SERVICE_NAME=conversation_service_v3
       - SERVICE_VERSION=3.1.0
       - HOST=0.0.0.0
       - PORT=3008
-
-      # Database
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-
-      # Security
       - SECRET_KEY=${SECRET_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-
-      # External Services
-      - SEARCH_SERVICE_URL=http://harena_search_service_prod:3001
-
-      # OpenAI API
+      - SEARCH_SERVICE_URL=http://harena_search_service:3001
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LLM_MODEL=gpt-4o-mini
       - LLM_RESPONSE_MODEL=gpt-4o
       - LLM_TEMPERATURE=0.1
-
-      # Agent Configuration
       - MAX_CORRECTION_ATTEMPTS=2
       - QUERY_TIMEOUT_SECONDS=30
-
-      # Logging
       - LOG_LEVEL=INFO
-
-      # API Prefix
       - API_V3_PREFIX=/api/v3
-
       - ENVIRONMENT=production
+    networks:
+      - harena-prod
+    depends_on:
+      - postgres
+      - redis
+      - search_service
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:3008/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
@@ -216,17 +172,106 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+
+  budget_profiling_service:
+    build:
+      context: .
+      dockerfile: budget_profiling_service/Dockerfile
+    container_name: harena_budget_profiling
+    ports:
+      - "0.0.0.0:3006:3006"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=production
+      - BUDGET_PROFILING_ENABLED=true
+      - BUDGET_PROFILING_LOG_LEVEL=INFO
+      - BUDGET_PROFILING_PORT=3006
+    networks:
+      - harena-prod
+    depends_on:
+      - postgres
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:3008/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
-    depends_on:
-      - metric_service
-      - search_service
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # ============================================
+  # MONITORING
+  # ============================================
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: harena_uptime_kuma
+    ports:
+      - "0.0.0.0:3100:3001"
+    volumes:
+      - uptime-kuma-data:/app/data
+    networks:
+      - harena-prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+  # NOTE: Ces services EXISTENT DÉJÀ sur AWS
+  # Cette configuration les connecte simplement au réseau harena-prod
+  # ============================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: harena-postgres
+    external_links:
+      - harena-postgres
+    networks:
+      - harena-prod
+
+  redis:
+    image: redis:7-alpine
+    container_name: harena-redis
+    external_links:
+      - harena-redis
+    networks:
+      - harena-prod
 
 networks:
-  default:
-    name: harena-network-prod
+  harena-prod:
+    name: harena-prod
     driver: bridge
+    external: false
+
+volumes:
+  uptime-kuma-data:
+    driver: local

@@ -33,6 +33,15 @@ resource "aws_security_group" "allinone" {
     cidr_blocks = [var.allowed_ip]
   }
 
+  # Uptime Kuma - accessible from your IP only
+  ingress {
+    description = "Uptime Kuma Monitoring from allowed IP"
+    from_port   = 3100
+    to_port     = 3100
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ip]
+  }
+
   # Backend API - public access
   ingress {
     description = "Backend API"

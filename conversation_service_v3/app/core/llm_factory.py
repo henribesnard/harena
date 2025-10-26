@@ -12,9 +12,12 @@ Updated: 2025-10-26 (added fallback support)
 """
 
 import logging
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, Any, Iterator, AsyncIterator
 from langchain_openai import ChatOpenAI
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatResult, ChatGeneration
+from langchain_core.callbacks import CallbackManagerForLLMRun, AsyncCallbackManagerForLLMRun
 
 logger = logging.getLogger(__name__)
 
@@ -152,19 +155,26 @@ class LLMFactory:
             )
 
 
-class LLMWithFallback:
+class LLMWithFallback(BaseChatModel):
     """
     Wrapper LLM avec fallback automatique
 
     Si le LLM primaire échoue, bascule automatiquement sur le fallback.
     """
 
+    primary_llm: ChatOpenAI
+    fallback_llm: Optional[ChatOpenAI] = None
+    primary_provider: str = "unknown"
+    fallback_provider: str = "unknown"
+    fallback_used: bool = False
+
     def __init__(
         self,
         primary_llm: ChatOpenAI,
         fallback_llm: Optional[ChatOpenAI] = None,
         primary_provider: str = "unknown",
-        fallback_provider: str = "unknown"
+        fallback_provider: str = "unknown",
+        **kwargs
     ):
         """
         Initialise le LLM avec fallback
@@ -175,6 +185,7 @@ class LLMWithFallback:
             primary_provider: Nom du provider principal
             fallback_provider: Nom du provider de fallback
         """
+        super().__init__(**kwargs)
         self.primary_llm = primary_llm
         self.fallback_llm = fallback_llm
         self.primary_provider = primary_provider
@@ -182,6 +193,79 @@ class LLMWithFallback:
         self.fallback_used = False
 
         logger.info(f"LLMWithFallback initialized: primary={primary_provider}, fallback={fallback_provider or 'none'}")
+
+    @property
+    def _llm_type(self) -> str:
+        """Return type of LLM."""
+        return "llm_with_fallback"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Override base implementation to use invoke."""
+        try:
+            logger.debug(f"Attempting _generate with primary LLM ({self.primary_provider})")
+            result = self.primary_llm._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            self.fallback_used = False
+            return result
+        except Exception as e:
+            if self.fallback_llm:
+                logger.warning(
+                    f"Primary LLM ({self.primary_provider}) failed: {str(e)}. "
+                    f"Falling back to {self.fallback_provider}"
+                )
+                try:
+                    result = self.fallback_llm._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+                    self.fallback_used = True
+                    logger.info(f"Fallback LLM ({self.fallback_provider}) succeeded")
+                    return result
+                except Exception as fallback_error:
+                    logger.error(f"Fallback LLM ({self.fallback_provider}) also failed: {str(fallback_error)}")
+                    raise Exception(
+                        f"Both primary ({self.primary_provider}) and fallback ({self.fallback_provider}) failed. "
+                        f"Primary error: {str(e)}, Fallback error: {str(fallback_error)}"
+                    )
+            else:
+                logger.error(f"Primary LLM ({self.primary_provider}) failed and no fallback configured: {str(e)}")
+                raise
+
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Override base async implementation."""
+        try:
+            logger.debug(f"Attempting _agenerate with primary LLM ({self.primary_provider})")
+            result = await self.primary_llm._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            self.fallback_used = False
+            return result
+        except Exception as e:
+            if self.fallback_llm:
+                logger.warning(
+                    f"Primary LLM ({self.primary_provider}) failed: {str(e)}. "
+                    f"Falling back to {self.fallback_provider}"
+                )
+                try:
+                    result = await self.fallback_llm._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+                    self.fallback_used = True
+                    logger.info(f"Fallback LLM ({self.fallback_provider}) succeeded")
+                    return result
+                except Exception as fallback_error:
+                    logger.error(f"Fallback LLM ({self.fallback_provider}) also failed: {str(fallback_error)}")
+                    raise Exception(
+                        f"Both primary ({self.primary_provider}) and fallback ({self.fallback_provider}) failed. "
+                        f"Primary error: {str(e)}, Fallback error: {str(fallback_error)}"
+                    )
+            else:
+                logger.error(f"Primary LLM ({self.primary_provider}) failed and no fallback configured: {str(e)}")
+                raise
 
     def invoke(self, *args, **kwargs):
         """Invoke synchrone avec fallback"""

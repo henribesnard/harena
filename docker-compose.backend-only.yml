@@ -144,11 +144,30 @@ services:
     ports:
       - "3008:3008"
     environment:
+      - SERVICE_NAME=conversation_service_v3
+      - SERVICE_VERSION=3.1.0
+      - HOST=0.0.0.0
+      - PORT=3008
       - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@postgres:5432/harena
       - REDIS_URL=redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@redis:6379/0
       - SECRET_KEY=Harena2032Harena2032Harena2032Harena2032Harena2032
+      - SEARCH_SERVICE_URL=http://search_service:3001
+      - LLM_PRIMARY_PROVIDER=deepseek
+      - LLM_FALLBACK_PROVIDER=openai
+      - LLM_FALLBACK_ENABLED=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DEEPSEEK_API_KEY=sk-c9b0b2b0cabb4c2f9cd9ce43a7bbdc27
-      - PORT=3008
+      - DEEPSEEK_BASE_URL=https://api.deepseek.com
+      - LLM_MODEL=deepseek-chat
+      - LLM_RESPONSE_MODEL=deepseek-chat
+      - LLM_FALLBACK_MODEL=gpt-4o-mini
+      - LLM_FALLBACK_RESPONSE_MODEL=gpt-4o
+      - LLM_TEMPERATURE=0.1
+      - LLM_TIMEOUT=60
+      - MAX_CORRECTION_ATTEMPTS=2
+      - QUERY_TIMEOUT_SECONDS=30
+      - LOG_LEVEL=INFO
+      - API_V3_PREFIX=/api/v3
       - ENVIRONMENT=production
     networks:
       - harena-network
@@ -156,6 +175,7 @@ services:
       - postgres
       - redis
       - search_service
+      - metric_service
     deploy:
       resources:
         limits:

@@ -1,0 +1,184 @@
+version: '3.8'
+
+networks:
+  harena-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  uptime_kuma_data:
+
+services:
+  # PostgreSQL (DOIT être créé car n'existe pas)
+  postgres:
+    image: postgres:16-alpine
+    container_name: harena_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"  # Exposé pour accès externe
+    environment:
+      POSTGRES_DB: harena
+      POSTGRES_USER: harena_admin
+      POSTGRES_PASSWORD: HaReNa2024SecureDbPassword123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - harena-network
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harena_admin"]
+      interval: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis (DOIT être créé car n'existe pas)  
+  redis:
+    image: redis:7-alpine
+    container_name: harena_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"  # Exposé pour accès externe
+    command: redis-server --requirepass HaReNa2024-Redis-Auth-Token-Secure-Key-123456
+    volumes:
+      - redis_data:/data
+    networks:
+      - harena-network
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "HaReNa2024-Redis-Auth-Token-Secure-Key-123456", "ping"]
+      interval: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backend Services (pointent vers postgres et redis containers)
+  user_service:
+    build:
+      context: .
+      dockerfile: user_service/Dockerfile
+    container_name: harena_user_service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@postgres:5432/harena
+      - REDIS_URL=redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@redis:6379/0
+      - SECRET_KEY=Harena2032Harena2032Harena2032Harena2032Harena2032
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=production
+    networks:
+      - harena-network
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 250M
+
+  search_service:
+    build:
+      context: .
+      dockerfile: search_service/Dockerfile
+    container_name: harena_search_service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@postgres:5432/harena
+      - REDIS_URL=redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@redis:6379/0
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=production
+    networks:
+      - harena-network
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 250M
+
+  metric_service:
+    build:
+      context: .
+      dockerfile: metric_service/Dockerfile
+    container_name: harena_metric_service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@postgres:5432/harena
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=production
+    networks:
+      - harena-network
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+
+  conversation_service_v3:
+    build:
+      context: .
+      dockerfile: conversation_service_v3/Dockerfile
+    container_name: harena_conversation_v3
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    environment:
+      - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@postgres:5432/harena
+      - REDIS_URL=redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@redis:6379/0
+      - SECRET_KEY=Harena2032Harena2032Harena2032Harena2032Harena2032
+      - DEEPSEEK_API_KEY=sk-c9b0b2b0cabb4c2f9cd9ce43a7bbdc27
+      - PORT=3008
+      - ENVIRONMENT=production
+    networks:
+      - harena-network
+    depends_on:
+      - postgres
+      - redis
+      - search_service
+    deploy:
+      resources:
+        limits:
+          memory: 350M
+
+  budget_profiling_service:
+    build:
+      context: .
+      dockerfile: budget_profiling_service/Dockerfile
+    container_name: harena_budget_profiling
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@postgres:5432/harena
+      - SECRET_KEY=Harena2032Harena2032Harena2032Harena2032Harena2032
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=production
+    networks:
+      - harena-network
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 200M

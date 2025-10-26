@@ -156,7 +156,7 @@ services:
       - LLM_FALLBACK_PROVIDER=openai
       - LLM_FALLBACK_ENABLED=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DEEPSEEK_API_KEY=sk-c9b0b2b0cabb4c2f9cd9ce43a7bbdc27
+      - DEEPSEEK_API_KEY=sk-6923dd2c9f674a10b78665f3e01f9193
       - DEEPSEEK_BASE_URL=https://api.deepseek.com
       - LLM_MODEL=deepseek-chat
       - LLM_RESPONSE_MODEL=deepseek-chat

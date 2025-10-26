@@ -323,6 +323,45 @@ class LLMWithFallback(BaseChatModel):
                 logger.error(f"Primary LLM ({self.primary_provider}) failed and no fallback configured: {str(e)}")
                 raise
 
+    async def apredict_messages(self, *args, **kwargs):
+        """apredict_messages avec fallback (utilisé pour function calling)"""
+        try:
+            logger.info(f"🔵 [LLM] Attempting apredict_messages with PRIMARY LLM: {self.primary_provider} (model: {self.primary_llm.model_name})")
+            result = await self.primary_llm.apredict_messages(*args, **kwargs)
+
+            # Vérifier si le function call est présent (si demandé)
+            if kwargs.get("function_call") or kwargs.get("functions"):
+                function_call = result.additional_kwargs.get("function_call")
+                if not function_call:
+                    # DeepSeek n'a pas retourné de function call, tenter le fallback
+                    logger.warning(f"⚠️  [LLM] Primary LLM ({self.primary_provider}) returned no function_call - trying fallback")
+                    raise ValueError("No function call in LLM response - trying fallback")
+
+            self.fallback_used = False
+            logger.info(f"✅ [LLM] SUCCESS with PRIMARY LLM: {self.primary_provider}")
+            return result
+        except Exception as e:
+            if self.fallback_llm:
+                logger.warning(
+                    f"❌ [LLM] Primary LLM ({self.primary_provider}) failed: {str(e)}. "
+                    f"🔄 FALLING BACK to {self.fallback_provider}"
+                )
+                try:
+                    logger.info(f"🟠 [LLM] Attempting apredict_messages with FALLBACK LLM: {self.fallback_provider} (model: {self.fallback_llm.model_name})")
+                    result = await self.fallback_llm.apredict_messages(*args, **kwargs)
+                    self.fallback_used = True
+                    logger.info(f"✅ [LLM] SUCCESS with FALLBACK LLM: {self.fallback_provider}")
+                    return result
+                except Exception as fallback_error:
+                    logger.error(f"❌ [LLM] Fallback LLM ({self.fallback_provider}) also failed: {str(fallback_error)}")
+                    raise Exception(
+                        f"Both primary ({self.primary_provider}) and fallback ({self.fallback_provider}) failed. "
+                        f"Primary error: {str(e)}, Fallback error: {str(fallback_error)}"
+                    )
+            else:
+                logger.error(f"❌ [LLM] Primary LLM ({self.primary_provider}) failed and no fallback configured: {str(e)}")
+                raise
+
     async def astream(self, *args, **kwargs):
         """Stream asynchrone avec fallback"""
         try:
@@ -396,9 +435,15 @@ def create_llm_from_settings(
     primary_factory = LLMFactory.from_settings(settings, provider=primary_provider)
     primary_llm = primary_factory.create_llm(model=model, temperature=temperature, **kwargs)
 
+    logger.info(f"🏗️  [LLM FACTORY] Creating LLM with:")
+    logger.info(f"   - Primary Provider: {primary_provider}")
+    logger.info(f"   - Primary Model: {primary_llm.model_name}")
+    logger.info(f"   - Fallback Enabled: {fallback_enabled}")
+    logger.info(f"   - Fallback Provider: {settings.LLM_FALLBACK_PROVIDER if fallback_enabled else 'None'}")
+
     # Si fallback désactivé, retourner le LLM primaire directement
     if not fallback_enabled:
-        logger.info(f"LLM created without fallback: {primary_provider}")
+        logger.info(f"✅ [LLM FACTORY] LLM created without fallback: {primary_provider}")
         return primary_llm
 
     # Créer le LLM de fallback
@@ -417,7 +462,8 @@ def create_llm_from_settings(
             fallback_factory = LLMFactory.from_settings(settings, provider=fallback_provider)
             fallback_llm = fallback_factory.create_llm(model=fallback_model, temperature=temperature, **kwargs)
 
-            logger.info(f"LLM created with fallback: {primary_provider} → {fallback_provider}")
+            logger.info(f"   - Fallback Model: {fallback_llm.model_name}")
+            logger.info(f"✅ [LLM FACTORY] LLM created with fallback: {primary_provider} → {fallback_provider}")
             return LLMWithFallback(
                 primary_llm=primary_llm,
                 fallback_llm=fallback_llm,

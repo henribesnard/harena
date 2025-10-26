@@ -1,0 +1,19 @@
+# ============================================
+# GRAFANA DASHBOARDS CONFIGURATION
+# ============================================
+# Auto-provisioning des dashboards
+# ============================================
+
+apiVersion: 1
+
+providers:
+  - name: 'Harena Dashboards'
+    orgId: 1
+    folder: 'Harena'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

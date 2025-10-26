@@ -1,0 +1,148 @@
+# ============================================
+# PROMETHEUS CONFIGURATION
+# ============================================
+# Collecte des métriques pour tous les services Harena
+# Rétention: 7 jours
+# ============================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+  external_labels:
+    cluster: 'harena-production'
+    environment: 'aws-ec2'
+
+# Alerting configuration (optionnel - pour plus tard)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files for alerting
+rule_files:
+  # - "alerts/*.yml"
+
+scrape_configs:
+  # ============================================
+  # PROMETHEUS SELF-MONITORING
+  # ============================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          type: 'monitoring'
+
+  # ============================================
+  # SYSTEM METRICS - NODE EXPORTER
+  # ============================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node_exporter:9100']
+        labels:
+          service: 'node-exporter'
+          type: 'system'
+          instance: 'ec2-harena'
+
+  # ============================================
+  # DOCKER METRICS - CADVISOR
+  # ============================================
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+          type: 'containers'
+          instance: 'ec2-harena'
+
+  # ============================================
+  # APPLICATION SERVICES
+  # ============================================
+
+  # User Service
+  - job_name: 'user_service'
+    static_configs:
+      - targets: ['user_service:3000']
+        labels:
+          service: 'user_service'
+          type: 'backend'
+          api_version: 'v1'
+    metrics_path: '/metrics'  # Si vous avez exposé des métriques Prometheus
+    scrape_interval: 30s
+
+  # Search Service
+  - job_name: 'search_service'
+    static_configs:
+      - targets: ['search_service:3001']
+        labels:
+          service: 'search_service'
+          type: 'backend'
+          api_version: 'v1'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Metric Service
+  - job_name: 'metric_service'
+    static_configs:
+      - targets: ['metric_service:3002']
+        labels:
+          service: 'metric_service'
+          type: 'backend'
+          api_version: 'v1'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Conversation Service V3
+  - job_name: 'conversation_v3'
+    static_configs:
+      - targets: ['conversation_service_v3:3008']
+        labels:
+          service: 'conversation_v3'
+          type: 'backend'
+          api_version: 'v3'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Budget Profiling Service
+  - job_name: 'budget_profiling'
+    static_configs:
+      - targets: ['budget_profiling_service:3006']
+        labels:
+          service: 'budget_profiling'
+          type: 'backend'
+          api_version: 'v1'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+
+  # PostgreSQL (si postgres_exporter est installé)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres_exporter:9187']
+  #       labels:
+  #         service: 'postgresql'
+  #         type: 'database'
+
+  # Redis (si redis_exporter est installé)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis_exporter:9121']
+  #       labels:
+  #         service: 'redis'
+  #         type: 'cache'
+
+  # ============================================
+  # NGINX
+  # ============================================
+  # - job_name: 'nginx'
+  #   static_configs:
+  #     - targets: ['nginx:9113']  # nginx-prometheus-exporter
+  #       labels:
+  #         service: 'nginx'
+  #         type: 'proxy'

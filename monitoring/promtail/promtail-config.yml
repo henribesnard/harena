@@ -1,0 +1,72 @@
+# ============================================
+# PROMTAIL CONFIGURATION
+# ============================================
+# Collecte des logs Docker et envoi vers Loki
+# ============================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ============================================
+  # DOCKER CONTAINER LOGS
+  # ============================================
+  - job_name: docker
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*-json.log
+
+    pipeline_stages:
+      # Parse JSON logs from Docker
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            attrs: attrs
+            tag: attrs.tag
+
+      # Extract container name from tag
+      - labels:
+          tag:
+          stream:
+
+      # Timestamp parsing
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+
+      # Add service-specific labels
+      - match:
+          selector: '{tag=~".+"}'
+          stages:
+            - regex:
+                expression: '^(?P<container_name>.+)$'
+                source: tag
+            - labels:
+                container_name:
+
+      # Output formatting
+      - output:
+          source: output
+
+  # ============================================
+  # SYSTEM LOGS (optionnel)
+  # ============================================
+  # - job_name: system
+  #   static_configs:
+  #     - targets:
+  #         - localhost
+  #       labels:
+  #         job: varlogs
+  #         __path__: /var/log/*.log

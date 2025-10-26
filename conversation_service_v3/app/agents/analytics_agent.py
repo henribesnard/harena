@@ -19,10 +19,11 @@ from dateutil.relativedelta import relativedelta
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import ChatOpenAI
 
 from ..models import AgentResponse, AgentRole
 from ..models.intent import IntentCategory
+from ..core.llm_factory import create_llm_from_settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,13 @@ class AnalyticsAgent:
     - Recommandations
     """
 
-    def __init__(self, llm_model: str = "gpt-4o-mini", temperature: float = 0.1):
-        self.llm = ChatOpenAI(model=llm_model, temperature=temperature)
+    def __init__(self, llm_model: str = None, temperature: float = 0.1):
+        # Use factory to create LLM (supports both OpenAI and DeepSeek)
+        self.llm = create_llm_from_settings(
+            settings,
+            model=llm_model,  # If None, uses settings.LLM_MODEL
+            temperature=temperature
+        )
         self.parser = JsonOutputParser()
 
         # Prompt pour analyser les demandes analytiques

@@ -292,16 +292,28 @@ services:
       # Security (JWT Authentication)
       - SECRET_KEY=${SECRET_KEY}
       - JWT_ALGORITHM=HS256
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 
       # External Services
       - SEARCH_SERVICE_URL=http://harena_search_service:3001
 
-      # OpenAI API
+      # LLM Provider Configuration with Fallback Support
+      - LLM_PRIMARY_PROVIDER=${LLM_PRIMARY_PROVIDER:-deepseek}
+      - LLM_FALLBACK_PROVIDER=${LLM_FALLBACK_PROVIDER:-openai}
+      - LLM_FALLBACK_ENABLED=${LLM_FALLBACK_ENABLED:-true}
+      - LLM_PROVIDER=${LLM_PROVIDER:-deepseek}  # Legacy support
+
+      # API Keys
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LLM_MODEL=gpt-4o-mini
-      - LLM_RESPONSE_MODEL=gpt-4o
-      - LLM_TEMPERATURE=0.1
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+
+      # Models Configuration
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - LLM_RESPONSE_MODEL=${LLM_RESPONSE_MODEL:-deepseek-chat}
+      - LLM_FALLBACK_MODEL=${LLM_FALLBACK_MODEL:-gpt-4o-mini}
+      - LLM_FALLBACK_RESPONSE_MODEL=${LLM_FALLBACK_RESPONSE_MODEL:-gpt-4o}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
 
       # Agent Configuration
       - MAX_CORRECTION_ATTEMPTS=2

@@ -8,7 +8,6 @@ import os
 from typing import Dict, Any, Optional, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import ChatOpenAI
 
 from ..models import (
     QueryAnalysis, ElasticsearchQuery, QueryValidationResult,
@@ -23,6 +22,8 @@ from .function_definitions import (
     get_all_templates_description
 )
 from ..services.metadata_service import metadata_service
+from ..core.llm_factory import create_llm_from_settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +39,12 @@ class ElasticsearchBuilderAgent:
     - Se corriger automatiquement si la query échoue
     """
 
-    def __init__(self, llm_model: str = "gpt-4o-mini", temperature: float = 0.0):
-        # ChatOpenAI charge automatiquement OPENAI_API_KEY depuis l'environnement
-        self.llm = ChatOpenAI(
-            model=llm_model,
-            temperature=temperature  # Température basse pour plus de cohérence
+    def __init__(self, llm_model: str = None, temperature: float = 0.0):
+        # Use factory to create LLM (supports both OpenAI and DeepSeek)
+        self.llm = create_llm_from_settings(
+            settings,
+            model=llm_model,  # If None, uses settings.LLM_MODEL
+            temperature=temperature  # Low temperature for consistency
         )
 
         self.schema_description = get_schema_description()

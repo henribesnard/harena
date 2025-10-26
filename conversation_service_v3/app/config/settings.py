@@ -35,11 +35,33 @@ class Settings(BaseSettings):
     BUDGET_PROFILE_ENABLED: bool = True  # Feature flag
     BUDGET_PROFILE_TIMEOUT: float = 5.0  # Timeout en secondes
 
-    # LLM Configuration
+    # LLM Configuration with Fallback Support
+    LLM_PRIMARY_PROVIDER: str = "deepseek"  # Primary LLM provider
+    LLM_FALLBACK_PROVIDER: str = "openai"   # Fallback if primary fails
+    LLM_FALLBACK_ENABLED: bool = True       # Enable automatic fallback
+
+    # Legacy support (deprecated, use PRIMARY/FALLBACK instead)
+    LLM_PROVIDER: str = "deepseek"  # "openai" or "deepseek"
+
+    # OpenAI Configuration
     OPENAI_API_KEY: str = ""
-    LLM_MODEL: str = "gpt-4o-mini"
-    LLM_RESPONSE_MODEL: str = "gpt-4o"
+
+    # DeepSeek Configuration
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+
+    # Model Configuration
+    # Primary models (for DeepSeek by default)
+    LLM_MODEL: str = "deepseek-chat"
+    LLM_RESPONSE_MODEL: str = "deepseek-chat"
+
+    # Fallback models (for OpenAI by default)
+    LLM_FALLBACK_MODEL: str = "gpt-4o-mini"
+    LLM_FALLBACK_RESPONSE_MODEL: str = "gpt-4o"
+
+    # Common settings
     LLM_TEMPERATURE: float = 0.1
+    LLM_TIMEOUT: int = 60  # Timeout in seconds before fallback
 
     # Agent configuration
     MAX_CORRECTION_ATTEMPTS: int = 2
@@ -53,7 +75,13 @@ class Settings(BaseSettings):
     REDIS_CONVERSATION_CACHE_ENABLED: bool = True
 
     # Validators pour nettoyer les guillemets du .env
-    @field_validator('SEARCH_SERVICE_URL', 'BUDGET_SERVICE_URL', 'REDIS_URL', 'OPENAI_API_KEY', 'LLM_MODEL', 'LLM_RESPONSE_MODEL', mode='before')
+    @field_validator(
+        'SEARCH_SERVICE_URL', 'BUDGET_SERVICE_URL', 'REDIS_URL',
+        'OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL',
+        'LLM_PROVIDER', 'LLM_PRIMARY_PROVIDER', 'LLM_FALLBACK_PROVIDER',
+        'LLM_MODEL', 'LLM_RESPONSE_MODEL', 'LLM_FALLBACK_MODEL', 'LLM_FALLBACK_RESPONSE_MODEL',
+        mode='before'
+    )
     @classmethod
     def clean_string_fields(cls, v):
         """Remove quotes from string fields loaded from .env"""

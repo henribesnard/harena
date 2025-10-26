@@ -8,11 +8,12 @@ import os
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import ChatOpenAI
 
 from ..models import UserQuery, QueryAnalysis, AgentResponse, AgentRole
 from ..schemas.elasticsearch_schema import get_schema_description
 from ..services.metadata_service import metadata_service
+from ..core.llm_factory import create_llm_from_settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +29,11 @@ class QueryAnalyzerAgent:
     - Détecter les plages temporelles
     """
 
-    def __init__(self, llm_model: str = "gpt-4o-mini", temperature: float = 0.1):
-        # ChatOpenAI charge automatiquement OPENAI_API_KEY depuis l'environnement
-        self.llm = ChatOpenAI(
-            model=llm_model,
+    def __init__(self, llm_model: str = None, temperature: float = 0.1):
+        # Use factory to create LLM (supports both OpenAI and DeepSeek)
+        self.llm = create_llm_from_settings(
+            settings,
+            model=llm_model,  # If None, uses settings.LLM_MODEL
             temperature=temperature
         )
 

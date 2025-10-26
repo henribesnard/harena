@@ -110,7 +110,9 @@ test_output/
 test_enrichissement.py
 test_reports_query_extraction/
 
-# Conversation Service v4 (experimental - not tracked)
+# Legacy conversation services (only v3 is used in production)
+conversation_service/
+conversation_service_v2/
 conversation_service_v4/
 
 # Fichiers de test temporaires

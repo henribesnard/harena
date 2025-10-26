@@ -7,10 +7,11 @@ import json
 import os
 from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
 from ..models import SearchResults, AgentResponse, AgentRole, ConversationResponse
 from ..services.user_profile_service import UserProfileService
+from ..core.llm_factory import create_llm_from_settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,13 @@ class ResponseGeneratorAgent:
     - Inclure les détails des premières transactions si pertinent
     """
 
-    def __init__(self, llm_model: str = "gpt-4o", temperature: float = 0.3):
-        # ChatOpenAI charge automatiquement OPENAI_API_KEY depuis l'environnement
-        self.llm = ChatOpenAI(
-            model=llm_model,
+    def __init__(self, llm_model: str = None, temperature: float = 0.3):
+        # Use factory to create LLM (supports both OpenAI and DeepSeek)
+        # Default to LLM_RESPONSE_MODEL for better quality responses
+        default_model = llm_model or settings.LLM_RESPONSE_MODEL
+        self.llm = create_llm_from_settings(
+            settings,
+            model=default_model,
             temperature=temperature
         )
 

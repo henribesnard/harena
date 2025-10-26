@@ -308,12 +308,12 @@ services:
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
 
       # Models Configuration
-      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
-      - LLM_RESPONSE_MODEL=${LLM_RESPONSE_MODEL:-deepseek-chat}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_RESPONSE_MODEL=${LLM_RESPONSE_MODEL:-gpt-4o}
       - LLM_FALLBACK_MODEL=${LLM_FALLBACK_MODEL:-gpt-4o-mini}
-      - LLM_FALLBACK_RESPONSE_MODEL=${LLM_FALLBACK_RESPONSE_MODEL:-gpt-4o}
+      - LLM_FALLBACK_RESPONSE_MODEL=gpt-4o
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
-      - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
 
       # Agent Configuration
       - MAX_CORRECTION_ATTEMPTS=2

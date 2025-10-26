@@ -185,12 +185,15 @@ class LLMWithFallback(BaseChatModel):
             primary_provider: Nom du provider principal
             fallback_provider: Nom du provider de fallback
         """
-        super().__init__(**kwargs)
-        self.primary_llm = primary_llm
-        self.fallback_llm = fallback_llm
-        self.primary_provider = primary_provider
-        self.fallback_provider = fallback_provider
-        self.fallback_used = False
+        # IMPORTANT: Passer les valeurs à super().__init__() pour Pydantic v2
+        super().__init__(
+            primary_llm=primary_llm,
+            fallback_llm=fallback_llm,
+            primary_provider=primary_provider,
+            fallback_provider=fallback_provider,
+            fallback_used=False,
+            **kwargs
+        )
 
         logger.info(f"LLMWithFallback initialized: primary={primary_provider}, fallback={fallback_provider or 'none'}")
 
@@ -401,6 +404,8 @@ def create_llm_from_settings(
     model: Optional[str] = None,
     temperature: float = 0.1,
     use_fallback: Optional[bool] = None,
+    provider: Optional[str] = None,  # Override provider (for fallback creation)
+    _is_creating_fallback: bool = False,  # Internal flag to prevent recursion
     **kwargs
 ):
     """
@@ -412,6 +417,7 @@ def create_llm_from_settings(
         model: Nom du modèle (optionnel, utilise settings.LLM_MODEL par défaut)
         temperature: Température
         use_fallback: Active le fallback (par défaut settings.LLM_FALLBACK_ENABLED)
+        _is_creating_fallback: INTERNAL - indique qu'on crée un fallback LLM (évite récursion)
         **kwargs: Paramètres additionnels
 
     Returns:
@@ -427,11 +433,16 @@ def create_llm_from_settings(
         # Sans fallback
         llm = create_llm_from_settings(settings, use_fallback=False)
     """
-    # Déterminer si on active le fallback
-    fallback_enabled = use_fallback if use_fallback is not None else settings.LLM_FALLBACK_ENABLED
+    # Si on crée déjà un fallback LLM, ne PAS créer de fallback récursif
+    if _is_creating_fallback:
+        fallback_enabled = False
+        logger.debug("Creating fallback LLM - disabling recursive fallback")
+    else:
+        # Déterminer si on active le fallback
+        fallback_enabled = use_fallback if use_fallback is not None else settings.LLM_FALLBACK_ENABLED
 
-    # Créer le LLM primaire
-    primary_provider = settings.LLM_PRIMARY_PROVIDER
+    # Créer le LLM primaire (utiliser provider override si fourni, sinon LLM_PRIMARY_PROVIDER)
+    primary_provider = provider if provider else settings.LLM_PRIMARY_PROVIDER
     primary_factory = LLMFactory.from_settings(settings, provider=primary_provider)
     primary_llm = primary_factory.create_llm(model=model, temperature=temperature, **kwargs)
 
@@ -459,8 +470,16 @@ def create_llm_from_settings(
                 elif fallback_provider == "deepseek":
                     fallback_model = "deepseek-chat"
 
-            fallback_factory = LLMFactory.from_settings(settings, provider=fallback_provider)
-            fallback_llm = fallback_factory.create_llm(model=fallback_model, temperature=temperature, **kwargs)
+            # IMPORTANT: Créer le fallback LLM SANS fallback récursif
+            # On passe _is_creating_fallback=True et provider=fallback_provider
+            fallback_llm = create_llm_from_settings(
+                settings,
+                model=fallback_model,
+                temperature=temperature,
+                provider=fallback_provider,  # Use fallback provider
+                _is_creating_fallback=True,  # Prevent recursive fallback
+                **kwargs
+            )
 
             logger.info(f"   - Fallback Model: {fallback_llm.model_name}")
             logger.info(f"✅ [LLM FACTORY] LLM created with fallback: {primary_provider} → {fallback_provider}")

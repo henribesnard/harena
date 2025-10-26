@@ -399,6 +399,10 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
 
             logger.info(f"Analyzing query: {user_query.message[:100]} (current_date={current_date})")
 
+            # Log du provider LLM utilisé
+            provider_info = f"{getattr(self.llm, 'primary_provider', 'unknown')} (fallback: {getattr(self.llm, 'fallback_provider', 'none')})"
+            logger.info(f"🤖 [QUERY_ANALYZER] Using LLM: {provider_info}")
+
             # Préparer le contexte
             context_str = ""
             if user_query.context:
@@ -415,6 +419,14 @@ Retourne UNIQUEMENT le JSON, sans texte additionnel."""),
                 "context": context_str or "Aucun contexte",
                 "current_date": current_date
             })
+
+            # Log si fallback a été utilisé
+            fallback_used = getattr(self.llm, 'fallback_used', False)
+            if fallback_used:
+                actual_provider = getattr(self.llm, 'fallback_provider', 'unknown')
+                logger.warning(f"⚠️ [QUERY_ANALYZER] Fallback used: {actual_provider}")
+            else:
+                logger.debug(f"✅ [QUERY_ANALYZER] Primary LLM succeeded")
 
             # Parser le résultat
             analysis = QueryAnalysis(

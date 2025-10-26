@@ -149,6 +149,10 @@ class IntentRouterAgent:
         try:
             logger.info(f"Classifying: {user_query.message[:100]}")
 
+            # Log du provider LLM utilisé
+            provider_info = f"{getattr(self.llm, 'primary_provider', 'unknown')} (fallback: {getattr(self.llm, 'fallback_provider', 'none')})"
+            logger.info(f"🤖 [INTENT_ROUTER] Using LLM: {provider_info}")
+
             context_str = ""
             if user_query.context:
                 context_str = "\n".join([
@@ -160,6 +164,14 @@ class IntentRouterAgent:
                 "user_message": user_query.message,
                 "context": context_str or "Aucun"
             })
+
+            # Log si fallback a été utilisé
+            fallback_used = getattr(self.llm, 'fallback_used', False)
+            if fallback_used:
+                actual_provider = getattr(self.llm, 'fallback_provider', 'unknown')
+                logger.warning(f"⚠️ [INTENT_ROUTER] Fallback used: {actual_provider}")
+            else:
+                logger.debug(f"✅ [INTENT_ROUTER] Primary LLM succeeded")
 
             category_str = result.get("category", "UNCLEAR")
             try:

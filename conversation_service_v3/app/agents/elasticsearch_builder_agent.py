@@ -371,17 +371,38 @@ Corrige cette query pour qu'elle fonctionne.""")
 
             # Appeler le LLM avec function calling (utiliser predict_messages pour function calling)
             from langchain.schema import HumanMessage
+
+            # Log avant l'appel LLM
+            provider_info = f"{getattr(self.llm, 'primary_provider', 'unknown')} → {getattr(self.llm, 'fallback_provider', 'none')}"
+            logger.info(f"🔵 [FUNCTION CALL] Calling LLM with function calling: {provider_info}")
+            logger.debug(f"Function name: {self.search_query_function['name']}")
+
             response = await self.llm.apredict_messages(
                 [HumanMessage(content=prompt_message)],
                 functions=[self.search_query_function],
                 function_call={"name": "generate_search_query"}
             )
 
+            # Log après l'appel LLM - détailler quel provider a répondu
+            fallback_used = getattr(self.llm, 'fallback_used', False)
+            actual_provider = getattr(self.llm, 'fallback_provider', 'unknown') if fallback_used else getattr(self.llm, 'primary_provider', 'unknown')
+
+            if fallback_used:
+                logger.warning(f"⚠️ [FUNCTION CALL] FALLBACK WAS USED! Response from: {actual_provider}")
+            else:
+                logger.info(f"✅ [FUNCTION CALL] Response from PRIMARY: {actual_provider}")
+
             # Extraire le résultat de la function call
             # apredict_messages retourne un AIMessage directement
             function_call = response.additional_kwargs.get("function_call")
             if not function_call:
-                raise ValueError("No function call in LLM response")
+                logger.error(f"❌ [FUNCTION CALL] No function_call in response! Provider: {actual_provider}")
+                logger.error(f"Response content: {response.content[:500] if response.content else 'Empty'}")
+                logger.error(f"Response additional_kwargs keys: {list(response.additional_kwargs.keys())}")
+                raise ValueError(f"No function call in LLM response from {actual_provider}")
+
+            logger.info(f"✅ [FUNCTION CALL] Function call received: {function_call.get('name', 'unknown')}")
+            logger.debug(f"Arguments length: {len(function_call.get('arguments', ''))} chars")
 
             result = json.loads(function_call["arguments"])
 

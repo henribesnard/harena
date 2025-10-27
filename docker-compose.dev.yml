@@ -207,8 +207,7 @@ services:
   frontend-dev:
     build:
       context: ./harena_front
-      dockerfile: Dockerfile
-      target: development
+      dockerfile: Dockerfile.dev
     container_name: harena_frontend_dev
     ports:
       - "5174:5173"
@@ -217,7 +216,7 @@ services:
       - VITE_SEARCH_SERVICE_URL=http://localhost:3001
       - VITE_METRIC_SERVICE_URL=http://localhost:3002
       - VITE_CONVERSATION_SERVICE_URL=http://localhost:3008
-      - VITE_BUDGET_PROFILING_SERVICE_URL=http://localhost:3006
+      - VITE_BUDGET_PROFILING_API_URL=http://localhost:3006/api/v1/budget
     volumes:
       - ./harena_front:/app
       - /app/node_modules

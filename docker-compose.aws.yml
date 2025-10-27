@@ -89,7 +89,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://harena_admin:HaReNa2024SecureDbPassword123@host.docker.internal:5432/harena
       - REDIS_URL=redis://:HaReNa2024-Redis-Auth-Token-Secure-Key-123456@host.docker.internal:6379/0
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-}
+      - ELASTICSEARCH_URL=https://37r8v9zfzn:4o7ydjkcc8@fir-178893546.eu-west-1.bonsaisearch.net:443
       - API_V1_STR=/api/v1
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
@@ -173,7 +173,7 @@ services:
       - LLM_FALLBACK_PROVIDER=deepseek
       - LLM_FALLBACK_ENABLED=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DEEPSEEK_API_KEY=sk-6923dd2c9f674a10b78665f3e01f9193
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_BASE_URL=https://api.deepseek.com
       - LLM_MODEL=gpt-4o-mini
       - LLM_RESPONSE_MODEL=gpt-4o
@@ -266,11 +266,11 @@ services:
         VITE_SEARCH_SERVICE_URL: /api/v1
         VITE_METRIC_SERVICE_URL: /api/v1
         VITE_CONVERSATION_SERVICE_URL: /api/v3
-        VITE_BUDGET_PROFILING_API_URL: /api/v1
+        VITE_BUDGET_PROFILING_API_URL: /api/v1/budget
     container_name: harena_frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"  # Exposé pour accès direct si besoin
+      - "8080:80"  # Nginx production port
     networks:
       - harena-network
     deploy:
@@ -280,7 +280,7 @@ services:
         reservations:
           memory: 64M
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -523,7 +523,7 @@ services:
     container_name: harena_uptime_kuma
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3010:3001"
     volumes:
       - uptime_kuma_data:/app/data
     networks:

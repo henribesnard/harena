@@ -5,6 +5,7 @@ from typing import Optional, List
 from db_service.models.user import User, UserPreference
 from user_service.schemas.user import UserCreate, UserUpdate
 from user_service.core.security import get_password_hash, verify_password
+from db_service.config.default_preferences import get_default_budget_settings
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
@@ -41,8 +42,13 @@ def create_user(db: Session, user_in: UserCreate) -> User:
     db.commit()
     db.refresh(db_user)
     
-    # Créer les préférences utilisateur par défaut
-    db_pref = UserPreference(user_id=db_user.id)
+    # Créer les préférences utilisateur par défaut avec budget_settings
+    db_pref = UserPreference(
+        user_id=db_user.id,
+        notification_settings={},
+        display_preferences={},
+        budget_settings=get_default_budget_settings()
+    )
     db.add(db_pref)
     db.commit()
     

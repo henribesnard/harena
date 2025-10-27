@@ -11,6 +11,7 @@ import statistics
 
 from db_service.models.budget_profiling import FixedCharge
 from budget_profiling_service.services.transaction_service import TransactionService
+from budget_profiling_service.services.user_preferences_service import UserPreferencesService
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,9 @@ class FixedChargeDetector:
 
     Critères de détection:
     - Récurrence mensuelle (±7 jours autour de la même date) ou bi-mensuelle (tous les 15 jours)
-    - Montant identique ou avec faible variance (±15%)
-    - Minimum 3 occurrences pour confirmer
+    - Montant identique ou avec faible variance (±20%)
+    - Minimum 5 occurrences pour confirmer (prend en compte paiements en 4x)
+    - Montant minimum 10€
     - Filtrage des marchands variables connus
     """
 
@@ -52,11 +54,12 @@ class FixedChargeDetector:
     ]
 
     # Montant minimum pour considérer comme charge fixe (évite petits achats récurrents)
-    MIN_AMOUNT_THRESHOLD = 5.0
+    MIN_AMOUNT_THRESHOLD = 10.0
 
     def __init__(self, db_session: Session):
         self.db = db_session
         self.transaction_service = TransactionService(db_session)
+        self.preferences_service = UserPreferencesService(db_session)
 
     def _is_known_variable_merchant(self, merchant_name: str) -> bool:
         """
@@ -78,26 +81,35 @@ class FixedChargeDetector:
     def detect_fixed_charges(
         self,
         user_id: int,
-        months_back: Optional[int] = None,
-        min_occurrences: int = 3,
-        max_amount_variance_pct: float = 15.0,
-        max_day_variance: int = 7
+        months_back: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Détecte les charges fixes pour un utilisateur
 
+        Les paramètres de détection sont automatiquement récupérés depuis les préférences utilisateur.
+
         Args:
             user_id: ID utilisateur
             months_back: Nombre de mois à analyser (None = toutes les transactions)
-            min_occurrences: Nombre minimum d'occurrences pour confirmer
-            max_amount_variance_pct: Variance max du montant (%)
-            max_day_variance: Variance max du jour du mois
 
         Returns:
             Liste de charges fixes détectées
         """
         try:
-            logger.info(f"Détection charges fixes pour user {user_id}")
+            # Récupérer les paramètres utilisateur depuis la DB
+            user_settings = self.preferences_service.get_budget_settings(user_id)
+            fcd_settings = user_settings.get("fixed_charge_detection", {})
+
+            min_occurrences = fcd_settings.get("min_occurrences", 5)
+            max_amount_variance_pct = fcd_settings.get("max_amount_variance_pct", 20.0)
+            max_day_variance = fcd_settings.get("max_day_variance", 7)
+            min_amount_threshold = fcd_settings.get("min_amount_threshold", 10.0)
+
+            logger.info(
+                f"Détection charges fixes pour user {user_id} - "
+                f"min_occ={min_occurrences}, max_var={max_amount_variance_pct}%, "
+                f"max_day_var={max_day_variance}, min_amount={min_amount_threshold}€"
+            )
 
             # Récupérer transactions
             transactions = self.transaction_service.get_user_transactions(
@@ -137,10 +149,10 @@ class FixedChargeDetector:
 
                 if charge_info and charge_info['recurrence_confidence'] >= 0.7:
                     # Vérifier montant minimum (évite petits achats récurrents)
-                    if charge_info['avg_amount'] < self.MIN_AMOUNT_THRESHOLD:
+                    if charge_info['avg_amount'] < min_amount_threshold:
                         logger.debug(
                             f"Montant trop faible pour {merchant}: "
-                            f"{charge_info['avg_amount']:.2f}€"
+                            f"{charge_info['avg_amount']:.2f}€ (min: {min_amount_threshold}€)"
                         )
                         continue
 
@@ -253,8 +265,8 @@ class FixedChargeDetector:
         # Facteur occurrences (max 0.4)
         occurrence_score = min(occurrence_count / 6.0, 1.0) * 0.4
 
-        # Facteur variance montant (max 0.3) - ajusté pour variance max 15%
-        amount_score = max(0, 1.0 - (amount_variance / 15.0)) * 0.3
+        # Facteur variance montant (max 0.3) - ajusté pour variance max 20%
+        amount_score = max(0, 1.0 - (amount_variance / 20.0)) * 0.3
 
         # Facteur variance jour (max 0.2) - ajusté pour variance max 7 jours
         day_score = max(0, 1.0 - (day_variance / 7.0)) * 0.2

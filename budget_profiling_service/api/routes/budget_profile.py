@@ -11,6 +11,7 @@ from budget_profiling_service.api.dependencies import get_db, get_current_user_i
 from budget_profiling_service.services.transaction_service import TransactionService
 from budget_profiling_service.services.fixed_charge_detector import FixedChargeDetector
 from budget_profiling_service.services.budget_profiler import BudgetProfiler
+from budget_profiling_service.services.user_preferences_service import UserPreferencesService
 
 logger = logging.getLogger(__name__)
 
@@ -168,36 +169,28 @@ def get_budget_profile(
 
 @router.post("/profile/analyze", response_model=ProfileResponse)
 def analyze_budget_profile(
-    request: AnalyzeProfileRequest,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
     Analyse et calcule le profil budgétaire de l'utilisateur
+
+    Les paramètres d'analyse sont automatiquement récupérés depuis les préférences utilisateur.
+    Pour modifier les paramètres, utilisez l'endpoint PUT /api/v1/budget/settings
     """
     try:
-        months = request.months_analysis
-        log_msg = f"TOUTES les transactions" if months is None else f"{months} mois"
-        logger.info(f"Analyse profil pour user {user_id} sur {log_msg}")
+        logger.info(f"Analyse profil pour user {user_id}")
 
         # 1. Détecter les charges fixes
         detector = FixedChargeDetector(db)
-        # Pour la détection, doubler la période si spécifiée, sinon None (tout)
-        detection_months = (months * 2) if months is not None else None
-        detected_charges = detector.detect_fixed_charges(
-            user_id,
-            months_back=detection_months
-        )
+        detected_charges = detector.detect_fixed_charges(user_id)
 
         # Sauvegarder les charges détectées
         detector.save_detected_charges(user_id, detected_charges)
 
         # 2. Calculer le profil budgétaire
         profiler = BudgetProfiler(db)
-        profile_data = profiler.calculate_user_profile(
-            user_id,
-            months_analysis=months
-        )
+        profile_data = profiler.calculate_user_profile(user_id)
 
         # 3. Sauvegarder le profil
         profile = profiler.save_profile(user_id, profile_data)
@@ -330,4 +323,123 @@ def get_category_breakdown(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erreur lors de la récupération du breakdown"
+        )
+
+
+# ===== ENDPOINTS GESTION DES PARAMÈTRES =====
+
+@router.get("/settings")
+def get_budget_settings(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Récupère les paramètres budgétaires de l'utilisateur
+
+    Retourne tous les paramètres de profiling avec les valeurs par défaut si non personnalisés.
+    """
+    try:
+        preferences_service = UserPreferencesService(db)
+        settings = preferences_service.get_budget_settings(user_id)
+
+        return {
+            "settings": settings,
+            "message": "Paramètres récupérés avec succès"
+        }
+
+    except Exception as e:
+        logger.error(f"Erreur récupération paramètres: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur lors de la récupération des paramètres"
+        )
+
+
+@router.put("/settings")
+def update_budget_settings(
+    new_settings: Dict[str, Any],
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Met à jour les paramètres budgétaires de l'utilisateur
+
+    La mise à jour est partielle : seuls les paramètres fournis sont modifiés,
+    les autres conservent leur valeur actuelle.
+
+    Body exemple:
+    ```json
+    {
+        "months_analysis": 18,
+        "fixed_charge_detection": {
+            "min_occurrences": 6,
+            "max_amount_variance_pct": 25.0
+        }
+    }
+    ```
+    """
+    try:
+        preferences_service = UserPreferencesService(db)
+        success, updated_settings, errors = preferences_service.update_budget_settings(
+            user_id,
+            new_settings,
+            partial=True
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"message": "Validation des paramètres échouée", "errors": errors}
+            )
+
+        return {
+            "settings": updated_settings,
+            "message": "Paramètres mis à jour avec succès"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur mise à jour paramètres: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur lors de la mise à jour des paramètres"
+        )
+
+
+@router.post("/settings/reset")
+def reset_budget_settings(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Réinitialise les paramètres budgétaires aux valeurs par défaut
+
+    Cette action est irréversible.
+    """
+    try:
+        preferences_service = UserPreferencesService(db)
+        success = preferences_service.reset_to_defaults(user_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Erreur lors de la réinitialisation des paramètres"
+            )
+
+        # Récupérer les paramètres réinitialisés
+        settings = preferences_service.get_budget_settings(user_id)
+
+        return {
+            "settings": settings,
+            "message": "Paramètres réinitialisés aux valeurs par défaut"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur réinitialisation paramètres: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur lors de la réinitialisation des paramètres"
         )

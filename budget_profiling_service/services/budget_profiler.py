@@ -13,6 +13,7 @@ from budget_profiling_service.services.transaction_service import TransactionSer
 from budget_profiling_service.services.fixed_charge_detector import FixedChargeDetector
 from budget_profiling_service.services.advanced_analytics import AdvancedBudgetAnalytics
 from budget_profiling_service.services.outlier_detector import OutlierDetector
+from budget_profiling_service.services.user_preferences_service import UserPreferencesService
 
 logger = logging.getLogger(__name__)
 
@@ -26,24 +27,29 @@ class BudgetProfiler:
         self.db = db_session
         self.transaction_service = TransactionService(db_session)
         self.fixed_charge_detector = FixedChargeDetector(db_session)
+        self.preferences_service = UserPreferencesService(db_session)
 
     def calculate_user_profile(
         self,
-        user_id: int,
-        months_analysis: Optional[int] = None
+        user_id: int
     ) -> Dict[str, Any]:
         """
         Calcule le profil budgétaire complet d'un utilisateur
 
+        Les paramètres d'analyse sont automatiquement récupérés depuis les préférences utilisateur.
+
         Args:
             user_id: ID utilisateur
-            months_analysis: Nombre de mois à analyser (None = toutes les transactions)
 
         Returns:
             Profil budgétaire complet
         """
         try:
-            logger.info(f"Calcul profil budgétaire pour user {user_id}")
+            # Récupérer les paramètres utilisateur depuis la DB
+            user_settings = self.preferences_service.get_budget_settings(user_id)
+            months_analysis = user_settings.get("months_analysis", 12)
+
+            logger.info(f"Calcul profil budgétaire pour user {user_id} sur {months_analysis} mois")
 
             # 1. Récupérer agrégats mensuels
             monthly_aggregates = self.transaction_service.get_monthly_aggregates(
@@ -58,7 +64,8 @@ class BudgetProfiler:
             # 2. Calculer moyennes (avec toutes les données)
             avg_income = sum(m['total_income'] for m in monthly_aggregates) / len(monthly_aggregates)
             avg_expenses = sum(m['total_expenses'] for m in monthly_aggregates) / len(monthly_aggregates)
-            avg_savings = avg_income - avg_expenses
+            # Épargne moyenne = moyenne des net_cashflow (et non revenus moy - dépenses moy)
+            avg_savings = sum(m['net_cashflow'] for m in monthly_aggregates) / len(monthly_aggregates)
 
             # 2b. Détecter outliers et calculer baseline (profil sans anomalies)
             clean_aggregates, spending_outliers = OutlierDetector.detect_spending_outliers(

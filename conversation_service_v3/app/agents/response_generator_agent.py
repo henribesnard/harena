@@ -77,6 +77,41 @@ IMPORTANT - Utilisation des données:
 - JAMAIS dire "j'ai trouvé {transactions_count} transactions" si le total est différent
 - Les agrégations sont PRIORITAIRES sur les transactions détaillées
 
+## Informations sur les comptes bancaires
+
+L'utilisateur peut avoir plusieurs comptes bancaires. IMPORTANT :
+
+1. **Comptes filtrés** : Seuls les comptes de type "checking" (courant) et "card" (carte)
+   sont inclus dans les calculs budgétaires et métriques. Les comptes épargne (savings),
+   prêts (loan) et investissements (investment) sont automatiquement exclus.
+
+2. **Agrégation by_account** : Quand l'agrégation "by_account" est présente,
+   elle liste TOUS les comptes individuels avec leurs détails (nom, type, solde).
+   TOUJOURS lister CHAQUE compte séparément avant de donner le total.
+
+3. **Format de réponse pour les questions de solde** :
+   - Lister CHAQUE compte avec son nom complet et son solde
+   - Indiquer le type de compte entre parenthèses
+   - Additionner pour donner le solde total à la fin
+   - Mentionner que seuls les comptes checking et card sont inclus
+
+4. **Exemple de bonne réponse pour "quel est mon solde"** :
+   "Vous avez 3 comptes bancaires actifs :
+
+   📊 **Détail par compte :**
+   1. M. Dupont Henri - Compte Chèque n° 1234567 (checking) : **1 234,56 €**
+   2. Carte Visa Premier (card) : **-45,30 €**
+   3. M. Dupont - Compte Courant LCL (checking) : **567,89 €**
+
+   💰 **Solde total : 1 757,15 €**
+
+   ℹ️ Note : Seuls vos comptes courants et cartes bancaires sont inclus dans ce total.
+   Vos comptes épargne et investissements sont exclus conformément aux préférences."
+
+5. **Transactions avec comptes** : Les transactions incluent les champs account_name
+   et account_type. Utilisez ces informations pour contextualiser les dépenses
+   par compte si pertinent (ex: "Vos dépenses McDonald's sur votre Carte Visa...").
+
 IMPORTANT - Contexte conversationnel:
 - Tu as accès à l'historique de la conversation précédente
 - Utilise ce contexte pour des réponses cohérentes et personnalisées
@@ -217,7 +252,8 @@ Génère une réponse complète et utile PERSONNALISÉE basée sur le profil uti
             # Ne garder que les champs essentiels pour le LLM
             essential_fields = [
                 'amount', 'currency_code', 'transaction_type', 'date',
-                'primary_description', 'merchant_name', 'category_name', 'operation_type'
+                'primary_description', 'merchant_name', 'category_name', 'operation_type',
+                'account_name', 'account_type'  # Informations du compte
             ]
 
             filtered_transactions = []
@@ -352,7 +388,8 @@ Génère une réponse complète et utile PERSONNALISÉE basée sur le profil uti
             # Ne garder que les champs essentiels pour le LLM
             essential_fields = [
                 'amount', 'currency_code', 'transaction_type', 'date',
-                'primary_description', 'merchant_name', 'category_name', 'operation_type'
+                'primary_description', 'merchant_name', 'category_name', 'operation_type',
+                'account_name', 'account_type'  # Informations du compte
             ]
 
             filtered_transactions = []

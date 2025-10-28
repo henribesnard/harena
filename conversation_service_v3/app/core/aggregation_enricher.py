@@ -285,6 +285,42 @@ class AggregationEnricher:
                     }
                 }
             }
+        },
+
+        "account_balance_breakdown": {
+            "total_balance": {
+                "sum": {"field": "account_balance"}
+            },
+            "by_account": {
+                "terms": {
+                    "field": "account_name.keyword",
+                    "size": 50,
+                    "order": {"total_balance": "desc"}
+                },
+                "aggs": {
+                    "total_balance": {
+                        "sum": {"field": "account_balance"}
+                    },
+                    "account_type": {
+                        "terms": {
+                            "field": "account_type.keyword",
+                            "size": 1
+                        }
+                    },
+                    "account_id": {
+                        "terms": {
+                            "field": "account_id",
+                            "size": 1
+                        }
+                    },
+                    "currency": {
+                        "terms": {
+                            "field": "account_currency.keyword",
+                            "size": 1
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -307,6 +343,12 @@ class AggregationEnricher:
         "fixed_vs_variable": ["fixed_vs_variable"],
         "fixed_variable": ["fixed_vs_variable"],
         "charges_fixes": ["fixed_vs_variable"],
+
+        # Templates pour comptes et soldes
+        "account_balance": ["account_balance_breakdown"],
+        "account_balance_breakdown": ["account_balance_breakdown"],
+        "solde": ["account_balance_breakdown"],
+        "balance": ["account_balance_breakdown"],
 
         # Alias courants (pour compatibilité avec QueryAnalyzer)
         "by_date": ["monthly_trend"],  # QueryAnalyzer retourne souvent "by_date"
@@ -349,12 +391,18 @@ class AggregationEnricher:
         "savings_rate_components": [
             "taux d'épargne", "taux épargne", "épargne",
             "combien j'épargne", "revenus vs dépenses",
-            "revenus dépenses", "balance", "solde"
+            "revenus dépenses"
         ],
         "fixed_vs_variable": [
             "charges fixes", "charges variables", "fixes vs variables",
             "dépenses fixes", "dépenses variables", "récurrent",
             "ponctuel", "fixe variable"
+        ],
+        "account_balance_breakdown": [
+            "quel est mon solde", "solde", "balance", "combien sur mon compte",
+            "solde de mes comptes", "mes soldes", "compte bancaire",
+            "combien j'ai", "argent disponible", "sur mon compte",
+            "solde total", "mes comptes", "balance des comptes"
         ]
     }
 

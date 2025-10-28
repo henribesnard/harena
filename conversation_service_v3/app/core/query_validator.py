@@ -59,7 +59,8 @@ class ElasticsearchQueryValidator:
         "date_histogram",
         "histogram",
         "stats",
-        "extended_stats"
+        "extended_stats",
+        "filter"  # Required for conditional aggregations (e.g., transaction_statistics)
     }
 
     # Allowed query types (for filters)

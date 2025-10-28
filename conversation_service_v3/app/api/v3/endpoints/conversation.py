@@ -18,7 +18,7 @@ from ....services.conversation_persistence import (
     ConversationPersistenceService,
     create_turn_metadata_v3
 )
-from ....api.dependencies import get_persistence_service, extract_jwt_token
+from ....api.dependencies import get_persistence_service, extract_jwt_token, get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -81,18 +81,20 @@ async def analyze_conversation(
     request: ConversationRequest,
     orch: AgentOrchestrator = Depends(get_orchestrator),
     persistence: ConversationPersistenceService = Depends(get_persistence_service),
-    jwt_token: Optional[str] = Depends(extract_jwt_token)
+    jwt_token: Optional[str] = Depends(extract_jwt_token),
+    token_user_id: Optional[int] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
     Endpoint principal compatible v1 avec PERSISTENCE - POST /api/v3/conversation/{user_id}
 
     Le pipeline complet avec agents autonomes:
-    1. Analyse la question (QueryAnalyzerAgent)
-    2. Construit la query Elasticsearch (ElasticsearchBuilderAgent)
-    3. Exécute la query sur search_service
-    4. Auto-correction si échec
-    5. Génère la réponse (ResponseGeneratorAgent)
-    6. Sauvegarde la conversation en base de données ✨ NEW
+    1. Validation de l'autorisation (JWT user_id vs path user_id) 🔒 NEW
+    2. Analyse la question (QueryAnalyzerAgent)
+    3. Construit la query Elasticsearch (ElasticsearchBuilderAgent)
+    4. Exécute la query sur search_service
+    5. Auto-correction si échec
+    6. Génère la réponse (ResponseGeneratorAgent)
+    7. Sauvegarde la conversation en base de données ✨
 
     Args:
         user_id: ID de l'utilisateur (path parameter)
@@ -100,11 +102,29 @@ async def analyze_conversation(
         orch: Orchestrateur d'agents (injecté)
         persistence: Service de persistence (injecté)
         jwt_token: Token JWT extrait de l'en-tête Authorization
+        token_user_id: User ID extrait du JWT token
 
     Returns:
         Réponse conversationnelle avec résultats et insights
+
+    Raises:
+        HTTPException 403: Si le user_id du token ne correspond pas au user_id du path
     """
     start_time = time.time()
+
+    # 🔒 SECURITY: Validate that JWT token user_id matches path user_id (before try block)
+    if token_user_id is not None and token_user_id != user_id:
+        error_msg = f"Authorization mismatch: JWT token is for user {token_user_id} but endpoint is for user {user_id}"
+        logger.warning(f"⚠️ SECURITY: {error_msg}")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "authorization_mismatch",
+                "message": f"Access denied: JWT token does not match requested user",
+                "token_user_id": token_user_id,
+                "requested_user_id": user_id
+            }
+        )
 
     try:
         logger.info(f"Received conversation request from user {user_id}")
@@ -198,7 +218,8 @@ async def analyze_conversation_stream(
     request: ConversationRequest,
     orch: AgentOrchestrator = Depends(get_orchestrator),
     persistence: ConversationPersistenceService = Depends(get_persistence_service),
-    jwt_token: Optional[str] = Depends(extract_jwt_token)
+    jwt_token: Optional[str] = Depends(extract_jwt_token),
+    token_user_id: Optional[int] = Depends(get_current_user_id)
 ):
     """
     Endpoint streaming RÉEL avec PERSISTENCE - POST /api/v3/conversation/{user_id}/stream
@@ -207,6 +228,20 @@ async def analyze_conversation_stream(
     """
     from fastapi.responses import StreamingResponse
     import json
+
+    # 🔒 SECURITY: Validate that JWT token user_id matches path user_id (before defining stream)
+    if token_user_id is not None and token_user_id != user_id:
+        error_msg = f"Authorization mismatch: JWT token is for user {token_user_id} but endpoint is for user {user_id}"
+        logger.warning(f"⚠️ SECURITY: {error_msg}")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "authorization_mismatch",
+                "message": f"Access denied: JWT token does not match requested user",
+                "token_user_id": token_user_id,
+                "requested_user_id": user_id
+            }
+        )
 
     async def generate_stream():
         """
@@ -437,6 +472,7 @@ async def get_user_conversations(
     user_id: int,
     persistence: ConversationPersistenceService = Depends(get_persistence_service),
     jwt_token: Optional[str] = Depends(extract_jwt_token),
+    token_user_id: Optional[int] = Depends(get_current_user_id),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0)
 ) -> Dict[str, Any]:
@@ -448,13 +484,31 @@ async def get_user_conversations(
         user_id: ID de l'utilisateur
         persistence: Service de persistence (injecté)
         jwt_token: Token JWT (pour authentification future)
+        token_user_id: User ID extrait du JWT token
         limit: Nombre maximum de conversations à récupérer
         offset: Décalage pour la pagination
 
     Returns:
         Liste des conversations avec métadonnées
+
+    Raises:
+        HTTPException 403: Si le user_id du token ne correspond pas au user_id du path
     """
     try:
+        # 🔒 SECURITY: Validate that JWT token user_id matches path user_id
+        if token_user_id is not None and token_user_id != user_id:
+            error_msg = f"Authorization mismatch: JWT token is for user {token_user_id} but endpoint is for user {user_id}"
+            logger.warning(f"⚠️ SECURITY: {error_msg}")
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "authorization_mismatch",
+                    "message": f"Access denied: JWT token does not match requested user",
+                    "token_user_id": token_user_id,
+                    "requested_user_id": user_id
+                }
+            )
+
         logger.info(f"Fetching conversations for user {user_id} (limit: {limit}, offset: {offset})")
 
         # Récupérer les conversations

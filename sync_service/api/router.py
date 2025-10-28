@@ -206,7 +206,7 @@ def register_routers(app: FastAPI) -> None:
         # Enregistrement directement sur l'app (sans préfixe API)
         app.include_router(
             webhooks_router,
-            #prefix="/webhooks",
+            prefix="/webhooks",
             tags=["webhooks"]
         )
         # Log détaillé des routes de webhook pour le débogage

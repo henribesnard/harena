@@ -17,6 +17,7 @@ NC='\033[0m' # No Color
 INSTANCE_ID="i-0011b978b7cea66dc"
 FRONTEND_TAG="v4.0.1"
 HARENA_DIR="/home/ec2-user/harena"
+FRONTEND_DIR="${HARENA_DIR}/harena_front"
 
 echo -e "${GREEN}============================================${NC}"
 echo -e "${GREEN}HARENA - MISE À JOUR FRONTEND (${FRONTEND_TAG})${NC}"
@@ -43,8 +44,8 @@ ssm_exec() {
 # ============================================
 echo -e "${YELLOW}[1/7] Vérification de l'état actuel du frontend...${NC}"
 
-COMMAND_1=$(cat <<'EOF'
-cd ~/harena && \
+COMMAND_1=$(cat <<EOF
+cd ${HARENA_DIR} && \
 docker-compose -f docker-compose.aws.yml ps frontend
 EOF
 )
@@ -61,10 +62,9 @@ sleep 5
 echo -e "${YELLOW}[2/7] Pull du code frontend depuis Git (tag ${FRONTEND_TAG})...${NC}"
 
 COMMAND_2=$(cat <<EOF
-cd ~/harena/harena_front && \
-git fetch --tags && \
-git checkout ${FRONTEND_TAG} && \
-git pull origin main
+cd ${FRONTEND_DIR} && \
+git fetch --tags --force && \
+git checkout -f ${FRONTEND_TAG}
 EOF
 )
 
@@ -79,10 +79,8 @@ sleep 10
 # ============================================
 echo -e "${YELLOW}[3/7] Vérification de la configuration Docker Compose...${NC}"
 
-COMMAND_3=$(cat <<'EOF'
-cd ~/harena && \
-git pull origin main && \
-echo "Configuration Docker Compose mise à jour"
+COMMAND_3=$(cat <<EOF
+cd ${HARENA_DIR} && git pull origin main
 EOF
 )
 
@@ -98,10 +96,8 @@ sleep 10
 echo -e "${YELLOW}[4/7] Rebuild du frontend...${NC}"
 echo "Cela peut prendre 3-5 minutes..."
 
-COMMAND_4=$(cat <<'EOF'
-cd ~/harena && \
-docker-compose -f docker-compose.aws.yml build --no-cache frontend && \
-echo "Frontend build completed"
+COMMAND_4=$(cat <<EOF
+cd ${HARENA_DIR} && docker-compose -f docker-compose.aws.yml build --no-cache frontend
 EOF
 )
 
@@ -116,8 +112,8 @@ sleep 240
 # ============================================
 echo -e "${YELLOW}[5/7] Arrêt de l'ancien frontend...${NC}"
 
-COMMAND_5=$(cat <<'EOF'
-cd ~/harena && \
+COMMAND_5=$(cat <<EOF
+cd ${HARENA_DIR} && \
 docker-compose -f docker-compose.aws.yml stop frontend && \
 docker-compose -f docker-compose.aws.yml rm -f frontend
 EOF
@@ -134,8 +130,8 @@ sleep 10
 # ============================================
 echo -e "${YELLOW}[6/7] Démarrage du nouveau frontend...${NC}"
 
-COMMAND_6=$(cat <<'EOF'
-cd ~/harena && \
+COMMAND_6=$(cat <<EOF
+cd ${HARENA_DIR} && \
 docker-compose -f docker-compose.aws.yml up -d frontend && \
 sleep 15 && \
 docker-compose -f docker-compose.aws.yml ps frontend && \
@@ -154,16 +150,8 @@ sleep 20
 # ============================================
 echo -e "${YELLOW}[7/7] Vérification finale et test du frontend...${NC}"
 
-COMMAND_7=$(cat <<'EOF'
-cd ~/harena && \
-echo "=== État du frontend ===" && \
-docker-compose -f docker-compose.aws.yml ps frontend && \
-echo "" && \
-echo "=== Health check Nginx ===" && \
-curl -s http://localhost/health || echo "Health endpoint OK" && \
-echo "" && \
-echo "=== Test page d'accueil ===" && \
-curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/
+COMMAND_7=$(cat <<EOF
+cd ${HARENA_DIR} && docker-compose -f docker-compose.aws.yml ps frontend && curl -s http://localhost/health && curl -I http://localhost:8080/
 EOF
 )
 

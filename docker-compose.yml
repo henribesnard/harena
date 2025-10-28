@@ -21,6 +21,9 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
       - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
+      - BRIDGE_API_URL=${BRIDGE_API_URL}
+      - BRIDGE_API_VERSION=${BRIDGE_API_VERSION}
+      - BRIDGE_WEBHOOK_SECRET=${BRIDGE_WEBHOOK_SECRET}
       - API_V1_STR=${API_V1_STR}
       - ENVIRONMENT=dev
     volumes:
@@ -140,12 +143,15 @@ services:
       - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
       - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
       - BRIDGE_API_URL=${BRIDGE_API_URL}
+      - BRIDGE_API_VERSION=${BRIDGE_API_VERSION}
+      - BRIDGE_WEBHOOK_SECRET=${BRIDGE_WEBHOOK_SECRET}
       - API_V1_STR=${API_V1_STR}
       - ENVIRONMENT=dev
     volumes:
       - ./sync_service:/app/sync_service
       - ./db_service:/app/db_service
       - ./config_service:/app/config_service
+      - ./user_service:/app/user_service
       - ./.env:/app/.env
     networks:
       - harena-network
@@ -171,6 +177,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - API_V1_STR=${API_V1_STR}
+      - SEARCH_SERVICE_URL=http://harena_search_service:3001
       - ENVIRONMENT=dev
     volumes:
       - ./enrichment_service:/app/enrichment_service

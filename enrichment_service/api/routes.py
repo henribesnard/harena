@@ -14,8 +14,9 @@ SUPPRIMÉ: Endpoints de recherche (déplacés vers search_service)
 SUPPRIMÉ: Endpoints Qdrant et dual storage
 """
 import logging
+import aiohttp
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -33,6 +34,7 @@ from enrichment_service.models import (
 from enrichment_service.core.processor import ElasticsearchTransactionProcessor
 from enrichment_service.core.account_enrichment_service import AccountEnrichmentService
 from enrichment_service.core.merchant_batch_enrichment import MerchantBatchEnrichmentService
+from config_service.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,6 +44,40 @@ elasticsearch_client = None
 elasticsearch_processor = None
 account_enrichment_service = None
 merchant_batch_service = None
+
+
+async def invalidate_search_cache(user_id: int, token: str) -> bool:
+    """
+    Invalide le cache du service de recherche pour un utilisateur après synchronisation.
+
+    Args:
+        user_id: ID de l'utilisateur
+        token: Token JWT pour authentifier la requête
+
+    Returns:
+        bool: True si l'invalidation a réussi, False sinon
+    """
+    try:
+        search_url = f"{settings.SEARCH_SERVICE_URL}/api/v1/search/cache/user/{user_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.delete(search_url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"✅ Cache invalidé pour user {user_id}: {data.get('entries_deleted', 0)} entrées supprimées")
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.warning(f"⚠️ Échec invalidation cache user {user_id}: {response.status} - {error_text}")
+                    return False
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de l'invalidation du cache pour user {user_id}: {e}")
+        return False
 
 
 def get_account_enrichment_service(
@@ -99,6 +135,7 @@ async def sync_user_transactions(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
     processor: ElasticsearchTransactionProcessor = Depends(get_elasticsearch_processor),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Synchronise toutes les transactions d'un utilisateur depuis PostgreSQL vers Elasticsearch.
@@ -202,6 +239,14 @@ async def sync_user_transactions(
         logger.info(
             f"📈 Sync user {user_id} completed: {result.accounts_indexed} accounts, {result.transactions_indexed} transactions indexed in {result.processing_time:.3f}s"
         )
+
+        # 🔄 Invalider le cache de recherche si la sync a réussi
+        if result.status in ["success", "partial_success"] and result.transactions_indexed > 0:
+            if authorization and authorization.startswith("Bearer "):
+                token = authorization.replace("Bearer ", "")
+                await invalidate_search_cache(user_id, token)
+            else:
+                logger.warning(f"⚠️ Impossible d'invalider le cache: token d'autorisation manquant")
 
         return result
         

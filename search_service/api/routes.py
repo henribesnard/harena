@@ -192,6 +192,42 @@ async def metrics() -> Dict[str, Any]:
     """Expose cache and rate limiting metrics."""
     return search_engine.get_stats()
 
+@router.delete("/cache/user/{user_id}")
+async def clear_user_cache(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    engine: SearchEngine = Depends(get_search_engine)
+) -> Dict[str, Any]:
+    """
+    Invalide le cache de recherche pour un utilisateur spécifique.
+
+    Utilisé après la synchronisation des données pour s'assurer que
+    les recherches ultérieures reflètent les nouvelles données indexées.
+
+    Args:
+        user_id: ID de l'utilisateur dont le cache doit être invalidé
+
+    Returns:
+        Dict avec le nombre d'entrées supprimées
+
+    Raises:
+        HTTPException 403: Si l'utilisateur n'a pas les droits d'accès
+    """
+    # Contrôle d'accès : seul un admin ou l'utilisateur lui-même peut invalider son cache
+    validate_user_access(current_user, user_id)
+
+    # Invalider le cache
+    entries_deleted = await engine.cache.clear_user(user_id)
+
+    logger.info(f"Cache cleared for user {user_id}: {entries_deleted} entries removed by user {current_user.id}")
+
+    return {
+        "success": True,
+        "user_id": user_id,
+        "entries_deleted": entries_deleted,
+        "message": f"Cache invalidé pour l'utilisateur {user_id}"
+    }
+
 @router.get("/debug/config")
 async def debug_config() -> Dict[str, Any]:
     """

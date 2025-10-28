@@ -46,6 +46,21 @@ class MultiLevelCache:
         """Supprime toutes les entrées du cache."""
         self._store.clear()
 
+    async def clear_user(self, user_id: int) -> int:
+        """Supprime toutes les entrées du cache pour un utilisateur spécifique.
+
+        Args:
+            user_id: ID de l'utilisateur dont le cache doit être invalidé
+
+        Returns:
+            int: Nombre d'entrées supprimées
+        """
+        prefix = f"{user_id}:"
+        keys_to_delete = [key for key in self._store.keys() if key.startswith(prefix)]
+        for key in keys_to_delete:
+            self._store.pop(key, None)
+        return len(keys_to_delete)
+
 
 def generate_cache_key(prefix: str, **parts: Any) -> str:
     """Génère une clé de cache déterministe à partir des éléments fournis.

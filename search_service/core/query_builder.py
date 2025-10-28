@@ -51,7 +51,7 @@ class QueryBuilder:
         }
         
         # Configuration des index
-        self.transactions_index = "harena_transactions"
+        self.transactions_index = "harena_transactions_v2"  # V2 avec account fields
         self.accounts_index = "harena_accounts"
         
         # Champs autorisés pour les agrégations TRANSACTIONS
@@ -526,6 +526,7 @@ class QueryBuilder:
             # Champs pour l'index transactions (nettoyé)
             return [
                 "transaction_id", "user_id", "account_id",  # account_id comme lien
+                "account_name", "account_type",  # ✅ Informations du compte dénormalisées
                 "amount", "amount_abs", "currency_code", "transaction_type",
                 "date", "month_year", "weekday",
                 "primary_description", "merchant_name", "category_name", "operation_type"

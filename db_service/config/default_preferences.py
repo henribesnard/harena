@@ -7,6 +7,15 @@ DEFAULT_BUDGET_SETTINGS = {
     # === Profondeur d'analyse ===
     "months_analysis": 12,  # Nombre de mois à analyser par défaut
 
+    # === Sélection des comptes ===
+    # NOTE: Seuls les comptes "checking" et "card" sont éligibles (WHITELIST)
+    # Les autres types (savings, loan, investment, other) sont automatiquement exclus
+    "account_selection": {
+        "mode": "all",                     # Mode de sélection: "all", "exclude_types", "include_specific"
+        "excluded_types": [],              # Types additionnels à exclure parmi les éligibles (ex: ["card"] pour ne garder que checking)
+        "included_accounts": []            # Liste d'IDs de comptes spécifiquement inclus (si mode="include_specific", parmi checking/card uniquement)
+    },
+
     # === Détection des charges fixes ===
     "fixed_charge_detection": {
         "min_occurrences": 5,              # Nombre minimum de transactions récurrentes (prend en compte paiements en 4x)
@@ -140,5 +149,35 @@ def validate_budget_settings(settings: dict) -> tuple[bool, list[str]]:
         if "outlier_detection_method" in ap:
             if ap["outlier_detection_method"] not in ["iqr", "zscore"]:
                 errors.append("analysis_preferences.outlier_detection_method doit être 'iqr' ou 'zscore'")
+
+    # Validation account_selection
+    if "account_selection" in settings:
+        ac = settings["account_selection"]
+
+        if "mode" in ac:
+            if ac["mode"] not in ["all", "exclude_types", "include_specific"]:
+                errors.append("account_selection.mode doit être 'all', 'exclude_types' ou 'include_specific'")
+
+        if "excluded_types" in ac:
+            if not isinstance(ac["excluded_types"], list):
+                errors.append("account_selection.excluded_types doit être une liste")
+            else:
+                # Note: Seuls checking et card sont éligibles, donc excluded_types ne peut contenir que ceux-ci
+                eligible_types = ["checking", "card"]
+                for account_type in ac["excluded_types"]:
+                    if account_type not in eligible_types:
+                        errors.append(
+                            f"account_selection.excluded_types contient un type invalide: {account_type}. "
+                            f"Seuls 'checking' et 'card' sont valides (les autres types sont déjà exclus)"
+                        )
+
+        if "included_accounts" in ac:
+            if not isinstance(ac["included_accounts"], list):
+                errors.append("account_selection.included_accounts doit être une liste")
+            else:
+                for account_id in ac["included_accounts"]:
+                    if not isinstance(account_id, int):
+                        errors.append(f"account_selection.included_accounts doit contenir uniquement des IDs entiers")
+                        break
 
     return len(errors) == 0, errors

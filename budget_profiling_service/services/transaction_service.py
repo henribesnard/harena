@@ -31,7 +31,8 @@ class TransactionService:
         user_id: int,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        months_back: Optional[int] = None
+        months_back: Optional[int] = None,
+        account_ids: Optional[List[int]] = None
     ) -> List[Dict[str, Any]]:
         """
         Récupère les transactions d'un utilisateur sur une période
@@ -41,6 +42,7 @@ class TransactionService:
             start_date: Date début (optionnel)
             end_date: Date fin (optionnel)
             months_back: Nombre de mois en arrière (None = toutes les transactions)
+            account_ids: Liste de bridge_account_ids à filtrer (optionnel)
 
         Returns:
             Liste de transactions formatées pour analyse
@@ -58,13 +60,35 @@ class TransactionService:
 
             logger.info(f"Récupération transactions user {user_id} de {start_date} à {end_date}")
 
-            query = select(RawTransaction).where(
-                and_(
-                    RawTransaction.user_id == user_id,
-                    RawTransaction.date >= start_date,
-                    RawTransaction.date <= end_date,
-                    RawTransaction.deleted == False
+            # Construire les conditions WHERE
+            where_conditions = [
+                RawTransaction.user_id == user_id,
+                RawTransaction.date >= start_date,
+                RawTransaction.date <= end_date,
+                RawTransaction.deleted == False
+            ]
+
+            # Ajouter filtre par comptes si spécifié
+            if account_ids:
+                # Récupérer les IDs internes depuis les bridge_account_ids
+                from db_service.models.sync import SyncAccount, SyncItem
+                stmt_accounts = (
+                    select(SyncAccount.id)
+                    .join(SyncItem)
+                    .where(SyncItem.user_id == user_id)
+                    .where(SyncAccount.bridge_account_id.in_(account_ids))
                 )
+                internal_ids_result = self.db.execute(stmt_accounts)
+                internal_ids = [row[0] for row in internal_ids_result]
+
+                if internal_ids:
+                    where_conditions.append(RawTransaction.account_id.in_(internal_ids))
+                    logger.info(f"Filtrage sur {len(internal_ids)} comptes (bridge_ids: {account_ids})")
+                else:
+                    logger.warning(f"Aucun compte trouvé pour bridge_account_ids: {account_ids}")
+
+            query = select(RawTransaction).where(
+                and_(*where_conditions)
             ).order_by(RawTransaction.date.desc())
 
             result = self.db.execute(query)
@@ -157,7 +181,8 @@ class TransactionService:
     def get_monthly_aggregates(
         self,
         user_id: int,
-        months: Optional[int] = None
+        months: Optional[int] = None,
+        account_ids: Optional[List[int]] = None
     ) -> List[Dict[str, Any]]:
         """
         Agrégations mensuelles (revenus, dépenses) - OPTIMISÉ DB-SIDE
@@ -165,6 +190,7 @@ class TransactionService:
         Args:
             user_id: ID utilisateur
             months: Nombre de mois (None = toutes les transactions)
+            account_ids: Liste d'IDs de comptes à inclure (None = tous les comptes)
 
         Returns:
             [
@@ -187,7 +213,36 @@ class TransactionService:
 
             end_date = datetime.now()
 
-            logger.info(f"Agrégats mensuels user {user_id} (DB-side) de {start_date} à {end_date}")
+            accounts_log = f" sur {len(account_ids)} comptes" if account_ids else ""
+            logger.info(f"Agrégats mensuels user {user_id}{accounts_log} (DB-side) de {start_date} à {end_date}")
+
+            # Construire conditions WHERE
+            where_conditions = [
+                RawTransaction.user_id == user_id,
+                RawTransaction.date >= start_date,
+                RawTransaction.date <= end_date,
+                RawTransaction.deleted == False
+            ]
+
+            # Ajouter filtre par comptes si spécifié
+            if account_ids:
+                # Récupérer les IDs internes depuis les bridge_account_ids
+                from db_service.models.sync import SyncAccount, SyncItem
+                stmt_accounts = (
+                    select(SyncAccount.id)
+                    .join(SyncItem)
+                    .where(SyncItem.user_id == user_id)
+                    .where(SyncAccount.bridge_account_id.in_(account_ids))
+                )
+                internal_ids_result = self.db.execute(stmt_accounts)
+                internal_ids = [row[0] for row in internal_ids_result]
+
+                if internal_ids:
+                    where_conditions.append(RawTransaction.account_id.in_(internal_ids))
+                    logger.debug(f"Filtrage sur {len(internal_ids)} comptes internes (depuis {len(account_ids)} bridge IDs)")
+                else:
+                    logger.warning(f"Aucun compte trouvé pour les bridge_account_ids fournis")
+                    return []  # Aucune transaction si aucun compte trouvé
 
             # Agrégation DB-side avec GROUP BY sur année/mois
             query = (
@@ -210,14 +265,7 @@ class TransactionService:
                     ).label('total_expenses'),
                     func.count(RawTransaction.id).label('transaction_count')
                 )
-                .where(
-                    and_(
-                        RawTransaction.user_id == user_id,
-                        RawTransaction.date >= start_date,
-                        RawTransaction.date <= end_date,
-                        RawTransaction.deleted == False
-                    )
-                )
+                .where(and_(*where_conditions))
                 .group_by(
                     extract('year', RawTransaction.date),
                     extract('month', RawTransaction.date)
@@ -252,10 +300,16 @@ class TransactionService:
     def get_category_breakdown(
         self,
         user_id: int,
-        months: Optional[int] = None
+        months: Optional[int] = None,
+        account_ids: Optional[List[int]] = None
     ) -> Dict[str, float]:
         """
         Répartition des dépenses par catégorie (MOYENNES MENSUELLES) - OPTIMISÉ DB-SIDE
+
+        Args:
+            user_id: ID utilisateur
+            months: Nombre de mois (None = toutes les transactions)
+            account_ids: Liste d'IDs de comptes à inclure (None = tous les comptes)
 
         Returns:
             {
@@ -274,7 +328,34 @@ class TransactionService:
 
             end_date = datetime.now()
 
-            logger.info(f"Breakdown catégories user {user_id} (DB-side) de {start_date} à {end_date}")
+            accounts_log = f" sur {len(account_ids)} comptes" if account_ids else ""
+            logger.info(f"Breakdown catégories user {user_id}{accounts_log} (DB-side) de {start_date} à {end_date}")
+
+            # Construire conditions WHERE communes
+            where_conditions = [
+                RawTransaction.user_id == user_id,
+                RawTransaction.date >= start_date,
+                RawTransaction.date <= end_date,
+                RawTransaction.deleted == False
+            ]
+
+            # Ajouter filtre par comptes si spécifié
+            if account_ids:
+                from db_service.models.sync import SyncAccount, SyncItem
+                stmt_accounts = (
+                    select(SyncAccount.id)
+                    .join(SyncItem)
+                    .where(SyncItem.user_id == user_id)
+                    .where(SyncAccount.bridge_account_id.in_(account_ids))
+                )
+                internal_ids_result = self.db.execute(stmt_accounts)
+                internal_ids = [row[0] for row in internal_ids_result]
+
+                if internal_ids:
+                    where_conditions.append(RawTransaction.account_id.in_(internal_ids))
+                else:
+                    logger.warning(f"Aucun compte trouvé pour les bridge_account_ids fournis")
+                    return {}
 
             # 1. Compter le nombre de mois distincts (pour calculer moyennes)
             months_query = (
@@ -289,14 +370,7 @@ class TransactionService:
                         )
                     ).label('nb_months')
                 )
-                .where(
-                    and_(
-                        RawTransaction.user_id == user_id,
-                        RawTransaction.date >= start_date,
-                        RawTransaction.date <= end_date,
-                        RawTransaction.deleted == False
-                    )
-                )
+                .where(and_(*where_conditions))
             )
 
             nb_months_result = self.db.execute(months_query)
@@ -307,21 +381,14 @@ class TransactionService:
                 return {}
 
             # 2. Agrégation par catégorie (seulement débits)
+            category_where = where_conditions + [RawTransaction.amount < 0]  # Seulement débits
             category_query = (
                 select(
                     Category.category_name,
                     func.sum(func.abs(RawTransaction.amount)).label('total_amount')
                 )
                 .join(Category, RawTransaction.category_id == Category.category_id, isouter=True)
-                .where(
-                    and_(
-                        RawTransaction.user_id == user_id,
-                        RawTransaction.date >= start_date,
-                        RawTransaction.date <= end_date,
-                        RawTransaction.deleted == False,
-                        RawTransaction.amount < 0  # Seulement débits
-                    )
-                )
+                .where(and_(*category_where))
                 .group_by(Category.category_name)
             )
 

@@ -188,6 +188,11 @@ async def sync_user_transactions(
         account_ids = {tx.account_id for tx in raw_transactions}
         accounts = db.query(SyncAccount).filter(SyncAccount.id.in_(account_ids)).all()
 
+        # DEBUG: Logger les comptes récupérés
+        logger.info(f"📊 {len(accounts)} comptes récupérés pour user {user_id}")
+        for acc in accounts[:3]:  # Logger les 3 premiers
+            logger.info(f"   Compte {acc.id}: name='{acc.account_name}', type='{acc.account_type}', bridge_id={acc.bridge_account_id}")
+
         # Map interne pour retrouver rapidement le compte à partir de l'ID interne
         accounts_by_internal_id = {acc.id: acc for acc in accounts}
 
@@ -199,6 +204,13 @@ async def sync_user_transactions(
         for raw_tx in raw_transactions:
             # Récupération via l'ID interne
             account = accounts_by_internal_id.get(raw_tx.account_id)
+
+            # DEBUG: Logger quelques transactions pour vérifier
+            if len(transaction_inputs) < 2:
+                logger.info(f"   TX {raw_tx.bridge_transaction_id}: account_id={raw_tx.account_id}, found_account={account is not None}")
+                if account:
+                    logger.info(f"      -> account_name='{account.account_name}', account_type='{account.account_type}'")
+
             tx_input = TransactionInput(
                 bridge_transaction_id=raw_tx.bridge_transaction_id,
                 user_id=raw_tx.user_id,

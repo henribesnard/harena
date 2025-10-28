@@ -22,6 +22,178 @@ class MetricCalculator:
     def __init__(self):
         pass
 
+    async def _get_filtered_account_ids(self, user_id: int, db) -> List[int]:
+        """
+        Récupère les IDs des comptes à inclure selon les préférences utilisateur
+
+        Applique la whitelist : seuls les comptes checking et card sont éligibles.
+        Les préférences utilisateur sont ensuite appliquées sur ces comptes éligibles.
+
+        Returns:
+            Liste des bridge_account_ids filtrés (checking + card uniquement)
+        """
+        try:
+            from sqlalchemy import select
+            from db_service.models.user import UserPreference
+            from db_service.models.sync import SyncAccount, SyncItem
+            from db_service.config.default_preferences import merge_with_defaults
+
+            # Récupérer les préférences utilisateur
+            stmt = select(UserPreference).where(UserPreference.user_id == user_id)
+            result = db.execute(stmt)
+            preferences = result.scalar_one_or_none()
+
+            # Récupérer settings ou utiliser défauts
+            if preferences and preferences.budget_settings:
+                settings = merge_with_defaults(preferences.budget_settings)
+            else:
+                from db_service.config.default_preferences import get_default_budget_settings
+                settings = get_default_budget_settings()
+
+            account_selection = settings.get("account_selection", {})
+            mode = account_selection.get("mode", "all")
+            additional_excluded_types = account_selection.get("excluded_types", [])
+            included_accounts = account_selection.get("included_accounts", [])
+
+            # Récupérer tous les comptes de l'utilisateur
+            stmt = (
+                select(SyncAccount)
+                .join(SyncItem)
+                .where(SyncItem.user_id == user_id)
+            )
+            result = db.execute(stmt)
+            all_accounts = result.scalars().all()
+
+            # ÉTAPE 1: Filtrer sur types éligibles (WHITELIST)
+            ELIGIBLE_TYPES = ["checking", "card"]
+            eligible_accounts = [
+                acc for acc in all_accounts
+                if acc.account_type in ELIGIBLE_TYPES
+            ]
+
+            # ÉTAPE 2: Appliquer les préférences utilisateur
+            if mode == "all":
+                filtered = eligible_accounts
+            elif mode == "exclude_types":
+                filtered = [
+                    acc for acc in eligible_accounts
+                    if acc.account_type not in additional_excluded_types
+                ]
+            elif mode == "include_specific":
+                filtered = [
+                    acc for acc in eligible_accounts
+                    if acc.bridge_account_id in included_accounts
+                ]
+            else:
+                filtered = eligible_accounts
+
+            # Retourner les bridge_account_ids
+            account_ids = [acc.bridge_account_id for acc in filtered if acc.bridge_account_id]
+            logger.info(f"User {user_id}: {len(account_ids)} comptes filtrés pour métriques (mode={mode})")
+            return account_ids
+
+        except Exception as e:
+            logger.error(f"Erreur récupération comptes filtrés pour user {user_id}: {e}", exc_info=True)
+            return []
+
+    async def get_accounts_used(self, user_id: int) -> Dict[str, Any]:
+        """
+        Récupère les détails des comptes utilisés dans les calculs de métriques
+
+        Returns:
+            Dict avec informations complètes sur les comptes utilisés
+        """
+        try:
+            from db_service.session import get_db
+            from sqlalchemy import select
+            from db_service.models.user import UserPreference
+            from db_service.models.sync import SyncAccount, SyncItem
+            from db_service.config.default_preferences import merge_with_defaults, get_default_budget_settings
+
+            db = next(get_db())
+            try:
+                # Récupérer les préférences utilisateur
+                stmt = select(UserPreference).where(UserPreference.user_id == user_id)
+                result = db.execute(stmt)
+                preferences = result.scalar_one_or_none()
+
+                # Récupérer settings ou utiliser défauts
+                if preferences and preferences.budget_settings:
+                    settings = merge_with_defaults(preferences.budget_settings)
+                else:
+                    settings = get_default_budget_settings()
+
+                account_selection = settings.get("account_selection", {})
+                mode = account_selection.get("mode", "all")
+                additional_excluded_types = account_selection.get("excluded_types", [])
+                included_accounts = account_selection.get("included_accounts", [])
+
+                # Récupérer tous les comptes de l'utilisateur
+                stmt = (
+                    select(SyncAccount)
+                    .join(SyncItem)
+                    .where(SyncItem.user_id == user_id)
+                )
+                result = db.execute(stmt)
+                all_accounts = result.scalars().all()
+
+                # ÉTAPE 1: Filtrer sur types éligibles (WHITELIST)
+                ELIGIBLE_TYPES = ["checking", "card"]
+                eligible_accounts = [
+                    acc for acc in all_accounts
+                    if acc.account_type in ELIGIBLE_TYPES
+                ]
+
+                # ÉTAPE 2: Appliquer les préférences utilisateur
+                if mode == "all":
+                    filtered = eligible_accounts
+                elif mode == "exclude_types":
+                    filtered = [
+                        acc for acc in eligible_accounts
+                        if acc.account_type not in additional_excluded_types
+                    ]
+                elif mode == "include_specific":
+                    filtered = [
+                        acc for acc in eligible_accounts
+                        if acc.bridge_account_id in included_accounts
+                    ]
+                else:
+                    filtered = eligible_accounts
+
+                # Formater les détails des comptes utilisés
+                accounts_details = [
+                    {
+                        'bridge_account_id': acc.bridge_account_id,
+                        'account_name': acc.account_name or f"Compte {acc.bridge_account_id}",
+                        'account_type': acc.account_type,
+                        'balance': float(acc.balance) if acc.balance is not None else None,
+                        'currency': acc.currency_code
+                    }
+                    for acc in filtered
+                    if acc.bridge_account_id
+                ]
+
+                return {
+                    'total_accounts': len(all_accounts),
+                    'eligible_accounts': len(eligible_accounts),
+                    'used_accounts': len(accounts_details),
+                    'selection_mode': mode,
+                    'accounts': accounts_details
+                }
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"Erreur récupération détails comptes pour user {user_id}: {e}", exc_info=True)
+            return {
+                'total_accounts': 0,
+                'eligible_accounts': 0,
+                'used_accounts': 0,
+                'selection_mode': 'all',
+                'accounts': []
+            }
+
     async def _fetch_transactions(
         self,
         user_id: int,
@@ -30,9 +202,9 @@ class MetricCalculator:
         category: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Récupère les transactions depuis la DB
+        Récupère les transactions depuis la DB (avec filtrage des comptes selon préférences)
 
-        TODO: Remplacer par vraie requête SQL
+        Seuls les comptes checking et card sont inclus selon les préférences utilisateur.
         """
         # Import conditionnel pour éviter dépendances circulaires
         try:
@@ -41,6 +213,9 @@ class MetricCalculator:
 
             db = next(get_db())
             try:
+                # Récupérer les comptes filtrés
+                filtered_account_ids = await self._get_filtered_account_ids(user_id, db)
+
                 query = """
                     SELECT
                         rt.id,
@@ -55,6 +230,28 @@ class MetricCalculator:
                 """
 
                 params = {"user_id": user_id}
+
+                # Ajouter filtre par comptes si disponible
+                if filtered_account_ids:
+                    # Convertir bridge_account_ids en IDs internes
+                    account_query = """
+                        SELECT sa.id FROM sync_accounts sa
+                        JOIN sync_items si ON sa.item_id = si.id
+                        WHERE si.user_id = :user_id
+                        AND sa.bridge_account_id IN :account_ids
+                    """
+                    account_result = db.execute(
+                        text(account_query),
+                        {"user_id": user_id, "account_ids": tuple(filtered_account_ids)}
+                    )
+                    internal_ids = [row.id for row in account_result]
+
+                    if internal_ids:
+                        query += " AND rt.account_id IN :internal_account_ids"
+                        params["internal_account_ids"] = tuple(internal_ids)
+                        logger.info(f"Filtrage métriques sur {len(internal_ids)} comptes pour user {user_id}")
+                    else:
+                        logger.warning(f"Aucun compte interne trouvé pour bridge_ids: {filtered_account_ids}")
 
                 if start_date:
                     query += " AND rt.transaction_date >= :start_date"
@@ -92,24 +289,35 @@ class MetricCalculator:
             return []
 
     async def _fetch_account_balance(self, user_id: int) -> float:
-        """Récupère le solde actuel du compte"""
+        """
+        Récupère le solde total des comptes filtrés (checking + card uniquement)
+        """
         try:
             from sqlalchemy import text
             from db_service.session import get_db
 
             db = next(get_db())
             try:
+                # Récupérer les comptes filtrés
+                filtered_account_ids = await self._get_filtered_account_ids(user_id, db)
+
+                if not filtered_account_ids:
+                    logger.warning(f"Aucun compte filtré pour user {user_id}")
+                    return 0.0
+
+                # Sommer les soldes de tous les comptes filtrés
                 result = db.execute(text("""
-                    SELECT sa.balance
+                    SELECT COALESCE(SUM(sa.balance), 0) as total_balance
                     FROM sync_accounts sa
                     JOIN sync_items si ON sa.item_id = si.id
                     WHERE si.user_id = :user_id
-                    ORDER BY sa.balance DESC
-                    LIMIT 1
-                """), {"user_id": user_id})
+                    AND sa.bridge_account_id IN :account_ids
+                """), {"user_id": user_id, "account_ids": tuple(filtered_account_ids)})
 
                 row = result.fetchone()
-                return float(row.balance) if row else 0.0
+                total = float(row.total_balance) if row and row.total_balance else 0.0
+                logger.debug(f"Solde total des comptes filtrés pour user {user_id}: {total}€")
+                return total
 
             finally:
                 db.close()

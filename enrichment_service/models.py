@@ -111,24 +111,24 @@ class StructuredTransaction:
     month_year: str
     weekday: str
 
-    # Catégorisation
-    category_id: Optional[int]
-    operation_type: Optional[str]
-
     # Flags
     is_future: bool
     is_deleted: bool
 
+    # Champs optionnels (avec valeurs par défaut, doivent être à la fin)
+    # Informations du compte (dénormalisées pour performance)
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+
+    # Catégorisation
+    category_id: Optional[int] = None
+    operation_type: Optional[str] = None
+    category_name: Optional[str] = None
+    merchant_name: Optional[str] = None
+
     # Résultats qualité et métadonnées
     balance_check_passed: Optional[bool] = None
     quality_score: Optional[float] = None
-
-    # SUPPRIMÉ : Informations de compte (maintenant dans index accounts séparé)
-    # Seul account_id reste pour le lien
-
-    # Information sur la catégorie
-    category_name: Optional[str] = None
-    merchant_name: Optional[str] = None
 
     @classmethod
     def from_transaction_input(cls, tx: TransactionInput) -> "StructuredTransaction":
@@ -179,6 +179,7 @@ class StructuredTransaction:
             quality_score = result.get("quality_score")
 
         return cls(
+            # Champs obligatoires (dans l'ordre de la dataclass)
             transaction_id=tx.bridge_transaction_id,
             user_id=tx.user_id,
             account_id=tx.account_id,
@@ -192,24 +193,35 @@ class StructuredTransaction:
             date_str=date_str,
             month_year=month_year,
             weekday=weekday,
-            category_id=tx.category_id,
-            operation_type=tx.operation_type,
             is_future=tx.future,
             is_deleted=tx.deleted,
+            # Champs optionnels (à la fin, dans l'ordre de la dataclass)
+            account_name=tx.account_name,  # ✅ Nom du compte
+            account_type=tx.account_type,  # ✅ Type du compte
+            category_id=tx.category_id,
+            operation_type=tx.operation_type,
             category_name=category_name,  # ✅ Nom récupéré automatiquement
             merchant_name=tx.merchant_name,  # ✅ Marchand récupéré depuis PostgreSQL
             balance_check_passed=balance_check_passed,
             quality_score=quality_score,
-
         )
 
     def to_elasticsearch_document(self) -> Dict[str, Any]:
         """Convertit en document Elasticsearch."""
+        # DEBUG: Logger les premières transactions
+        import logging
+        logger = logging.getLogger(__name__)
+        if hasattr(self, '_debug_logged') is False:
+            logger.info(f"DEBUG to_elasticsearch_document: tx={self.transaction_id}, account_name='{self.account_name}', account_type='{self.account_type}'")
+            self._debug_logged = True
+
         doc = {
             "document_type": "transaction",  # 🔧 Type de document pour différenciation
             "transaction_id": self.transaction_id,
             "user_id": self.user_id,
             "account_id": self.account_id,  # 🔗 Lien vers index accounts
+            "account_name": self.account_name,  # ✅ Nom du compte
+            "account_type": self.account_type,  # ✅ Type du compte
             "searchable_text": self.searchable_text,
             "primary_description": self.primary_description,
             "amount": self.amount,

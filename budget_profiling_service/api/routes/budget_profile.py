@@ -53,6 +53,9 @@ class ProfileResponse(BaseModel):
     segment_details: Optional[Dict[str, Any]] = None
     behavioral_patterns: Optional[Dict[str, Any]] = None
 
+    # Comptes utilisés dans les calculs
+    accounts_used: Optional[Dict[str, Any]] = None
+
 
 class FixedChargeResponse(BaseModel):
     """Réponse avec une charge fixe"""
@@ -125,6 +128,11 @@ def get_budget_profile(
                 detail="Profil budgétaire non trouvé. Lancez une analyse d'abord."
             )
 
+        # Récupérer les détails des comptes utilisés
+        from budget_profiling_service.services.user_preferences_service import UserPreferencesService
+        preferences_service = UserPreferencesService(db)
+        accounts_details = preferences_service.get_filtered_accounts_details(user_id)
+
         return ProfileResponse(
             # Métriques de base
             user_segment=profile.user_segment or "indéterminé",
@@ -154,7 +162,8 @@ def get_budget_profile(
             projected_annual_savings=float(profile.projected_annual_savings) if profile.projected_annual_savings else None,
             months_of_expenses_saved=float(profile.months_of_expenses_saved) if profile.months_of_expenses_saved else None,
             segment_details=profile.segment_details,
-            behavioral_patterns=profile.behavioral_patterns
+            behavioral_patterns=profile.behavioral_patterns,
+            accounts_used=accounts_details
         )
 
     except HTTPException:
@@ -230,7 +239,8 @@ def analyze_budget_profile(
             projected_annual_savings=float(profile.projected_annual_savings) if profile.projected_annual_savings else None,
             months_of_expenses_saved=float(profile.months_of_expenses_saved) if profile.months_of_expenses_saved else None,
             segment_details=profile.segment_details,
-            behavioral_patterns=profile.behavioral_patterns
+            behavioral_patterns=profile.behavioral_patterns,
+            accounts_used=profile_data.get('accounts_used')
         )
 
     except HTTPException:
@@ -442,4 +452,60 @@ def reset_budget_settings(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erreur lors de la réinitialisation des paramètres"
+        )
+
+
+@router.post("/settings/init-all-users")
+def initialize_all_users_preferences(
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Initialise les préférences budgétaires pour tous les utilisateurs existants
+    qui n'en ont pas encore.
+
+    Endpoint d'administration pour migration des utilisateurs existants.
+    """
+    try:
+        from db_service.models.user import User
+        preferences_service = UserPreferencesService(db)
+
+        # Récupérer tous les utilisateurs
+        stmt = select(User)
+        result = db.execute(stmt)
+        all_users = result.scalars().all()
+
+        initialized_count = 0
+        skipped_count = 0
+        errors = []
+
+        for user in all_users:
+            try:
+                # get_or_create_preferences crée automatiquement si n'existe pas
+                preferences = preferences_service.get_or_create_preferences(user.id)
+
+                # Vérifier si budget_settings existe déjà
+                if preferences.budget_settings:
+                    skipped_count += 1
+                    logger.debug(f"User {user.id}: préférences déjà existantes, ignoré")
+                else:
+                    initialized_count += 1
+                    logger.info(f"User {user.id}: préférences initialisées")
+
+            except Exception as e:
+                errors.append(f"User {user.id}: {str(e)}")
+                logger.error(f"Erreur initialisation user {user.id}: {e}")
+
+        return {
+            "total_users": len(all_users),
+            "initialized": initialized_count,
+            "skipped": skipped_count,
+            "errors": errors,
+            "message": f"{initialized_count} utilisateurs initialisés, {skipped_count} déjà configurés"
+        }
+
+    except Exception as e:
+        logger.error(f"Erreur initialisation globale: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur lors de l'initialisation des préférences"
         )

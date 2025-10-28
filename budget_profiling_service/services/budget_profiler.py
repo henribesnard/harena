@@ -49,12 +49,18 @@ class BudgetProfiler:
             user_settings = self.preferences_service.get_budget_settings(user_id)
             months_analysis = user_settings.get("months_analysis", 12)
 
-            logger.info(f"Calcul profil budgétaire pour user {user_id} sur {months_analysis} mois")
+            # Récupérer les comptes filtrés selon les préférences
+            filtered_account_ids = self.preferences_service.get_filtered_account_ids(user_id)
+            accounts_details = self.preferences_service.get_filtered_accounts_details(user_id)
+            accounts_log = f" sur {len(filtered_account_ids)} comptes" if filtered_account_ids else ""
 
-            # 1. Récupérer agrégats mensuels
+            logger.info(f"Calcul profil budgétaire pour user {user_id} sur {months_analysis} mois{accounts_log}")
+
+            # 1. Récupérer agrégats mensuels (avec filtrage des comptes)
             monthly_aggregates = self.transaction_service.get_monthly_aggregates(
                 user_id,
-                months=months_analysis
+                months=months_analysis,
+                account_ids=filtered_account_ids if filtered_account_ids else None
             )
 
             if not monthly_aggregates:
@@ -80,10 +86,11 @@ class BudgetProfiler:
             fixed_charges = self.fixed_charge_detector.get_user_fixed_charges(user_id)
             fixed_charges_total = sum(float(charge.avg_amount) for charge in fixed_charges)
 
-            # 5. Récupérer breakdown par catégorie
+            # 5. Récupérer breakdown par catégorie (avec filtrage des comptes)
             category_breakdown = self.transaction_service.get_category_breakdown(
                 user_id,
-                months=months_analysis
+                months=months_analysis,
+                account_ids=filtered_account_ids if filtered_account_ids else None
             )
 
             # 6. Calculer charges variables et semi-fixes
@@ -108,7 +115,10 @@ class BudgetProfiler:
             user_segment = segment_result['segment']
 
             # 9. Déterminer pattern comportemental (version améliorée)
-            patterns_result = self._determine_behavioral_patterns_v2(user_id)
+            patterns_result = self._determine_behavioral_patterns_v2(
+                user_id,
+                account_ids=filtered_account_ids if filtered_account_ids else None
+            )
             behavioral_pattern = patterns_result.get('primary_pattern', 'indéterminé')
 
             # 10. Calculer complétude profil (avec qualité catégorisation)
@@ -116,7 +126,8 @@ class BudgetProfiler:
                 user_id,
                 monthly_aggregates,
                 fixed_charges,
-                months_analysis
+                months_analysis,
+                account_ids=filtered_account_ids if filtered_account_ids else None
             )
 
             # 11. Calculer tendances et volatilité
@@ -194,6 +205,9 @@ class BudgetProfiler:
                 'baseline_profile': baseline_metrics,  # Profil sans outliers
                 'spending_outliers': spending_outliers,  # Mois avec dépenses exceptionnelles
                 'outlier_count': len(spending_outliers),
+
+                # === COMPTES UTILISÉS ===
+                'accounts_used': accounts_details,  # Détails des comptes inclus dans les calculs
 
                 'last_analyzed_at': datetime.now(timezone.utc)
             }
@@ -390,7 +404,8 @@ class BudgetProfiler:
         user_id: int,
         monthly_aggregates: list,
         fixed_charges: list,
-        months_required: Optional[int]
+        months_required: Optional[int],
+        account_ids: Optional[List[int]] = None
     ) -> float:
         """
         Calcule le score de complétude du profil (0.0 - 1.0)
@@ -400,6 +415,9 @@ class BudgetProfiler:
         - 25%: Charges fixes détectées
         - 25%: Présence revenus
         - 20%: Qualité de catégorisation
+
+        Args:
+            account_ids: Liste de bridge_account_ids à filtrer (optionnel)
         """
         score = 0.0
 
@@ -420,10 +438,11 @@ class BudgetProfiler:
 
         # Facteur 4: Qualité de catégorisation (max 0.2)
         try:
-            # Récupérer toutes les transactions de l'utilisateur
+            # Récupérer toutes les transactions de l'utilisateur (avec filtrage des comptes)
             transactions = self.transaction_service.get_user_transactions(
                 user_id,
-                months_back=None  # Toutes les transactions
+                months_back=None,  # Toutes les transactions
+                account_ids=account_ids
             )
 
             if transactions:
@@ -476,10 +495,14 @@ class BudgetProfiler:
             avg_income, avg_expenses, remaining_to_live, fixed_charges_total
         )
 
-    def _determine_behavioral_patterns_v2(self, user_id: int) -> Dict[str, Any]:
+    def _determine_behavioral_patterns_v2(
+        self,
+        user_id: int,
+        account_ids: Optional[List[int]] = None
+    ) -> Dict[str, Any]:
         """Wrapper pour la détection multi-patterns"""
         return AdvancedBudgetAnalytics.determine_behavioral_patterns_v2(
-            self.transaction_service, user_id
+            self.transaction_service, user_id, account_ids=account_ids
         )
 
     def _calculate_expense_volatility(self, monthly_aggregates: List[Dict[str, Any]]) -> float:
@@ -521,15 +544,19 @@ class BudgetProfiler:
             existing_profile = result.scalar_one_or_none()
 
             if existing_profile:
-                # Mettre à jour
+                # Mettre à jour - exclure champs non-DB
+                excluded_fields = ('user_id', 'outlier_count', 'last_analyzed_at', 'accounts_used')
                 for key, value in profile_data.items():
-                    if key != 'user_id' and hasattr(existing_profile, key):
+                    if key not in excluded_fields and hasattr(existing_profile, key):
                         setattr(existing_profile, key, value)
 
                 profile = existing_profile
             else:
-                # Créer nouveau profil - filtrer user_id de profile_data
-                filtered_data = {k: v for k, v in profile_data.items() if k != 'user_id'}
+                # Créer nouveau profil - filtrer user_id et champs non-DB de profile_data
+                filtered_data = {
+                    k: v for k, v in profile_data.items()
+                    if k not in ('user_id', 'outlier_count', 'last_analyzed_at', 'accounts_used')
+                }
                 profile = UserBudgetProfile(
                     user_id=user_id,
                     **filtered_data

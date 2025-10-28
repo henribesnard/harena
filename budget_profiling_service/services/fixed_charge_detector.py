@@ -105,16 +105,21 @@ class FixedChargeDetector:
             max_day_variance = fcd_settings.get("max_day_variance", 7)
             min_amount_threshold = fcd_settings.get("min_amount_threshold", 10.0)
 
+            # Récupérer les comptes filtrés selon les préférences (checking + card uniquement)
+            filtered_account_ids = self.preferences_service.get_filtered_account_ids(user_id)
+            accounts_log = f" sur {len(filtered_account_ids)} comptes" if filtered_account_ids else ""
+
             logger.info(
-                f"Détection charges fixes pour user {user_id} - "
+                f"Détection charges fixes pour user {user_id}{accounts_log} - "
                 f"min_occ={min_occurrences}, max_var={max_amount_variance_pct}%, "
                 f"max_day_var={max_day_variance}, min_amount={min_amount_threshold}€"
             )
 
-            # Récupérer transactions
+            # Récupérer transactions (avec filtrage des comptes)
             transactions = self.transaction_service.get_user_transactions(
                 user_id,
-                months_back=months_back
+                months_back=months_back,
+                account_ids=filtered_account_ids if filtered_account_ids else None
             )
 
             # Filtrer uniquement les débits

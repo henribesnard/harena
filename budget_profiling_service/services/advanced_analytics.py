@@ -475,10 +475,14 @@ class AdvancedBudgetAnalytics:
     @staticmethod
     def determine_behavioral_patterns_v2(
         transaction_service,
-        user_id: int
+        user_id: int,
+        account_ids: Optional[List[int]] = None
     ) -> Dict[str, Any]:
         """
         Détection multi-patterns avec scoring avancé
+
+        Args:
+            account_ids: Liste de bridge_account_ids à filtrer (optionnel)
 
         Returns:
             {
@@ -493,7 +497,8 @@ class AdvancedBudgetAnalytics:
             # Récupérer 6 mois de transactions pour meilleure analyse et patterns saisonniers
             transactions = transaction_service.get_user_transactions(
                 user_id,
-                months_back=6
+                months_back=6,
+                account_ids=account_ids
             )
 
             if not transactions:

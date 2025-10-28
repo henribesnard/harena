@@ -38,6 +38,9 @@ async def get_yoy_income(
             transaction_type="income"
         )
 
+        # Récupérer les comptes utilisés
+        accounts_used = await metric_calculator.get_accounts_used(user_id)
+
         # Reformater selon les specs
         response = {
             "success": True,
@@ -60,7 +63,8 @@ async def get_yoy_income(
                     "couleur": "green" if result.get("change_percent", 0) > 0 else "red" if result.get("change_percent", 0) < 0 else "gray",
                     "icone": "arrow-up" if result.get("change_percent", 0) > 0 else "arrow-down" if result.get("change_percent", 0) < 0 else "minus",
                     "message": _get_income_message(result.get("change_amount", 0), result.get("change_percent", 0))
-                }
+                },
+                "accounts_used": accounts_used
             },
             "timestamp": datetime.now().isoformat() + "Z"
         }
@@ -103,6 +107,9 @@ async def get_mom_income(
             transaction_type="income"
         )
 
+        # Récupérer les comptes utilisés
+        accounts_used = await metric_calculator.get_accounts_used(user_id)
+
         # Reformater selon les specs
         mois_names = [
             "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -139,7 +146,8 @@ async def get_mom_income(
                     "couleur": "green" if result.get("change_percent", 0) > 0 else "red" if result.get("change_percent", 0) < 0 else "gray",
                     "icone": "arrow-up" if result.get("change_percent", 0) > 0 else "arrow-down" if result.get("change_percent", 0) < 0 else "minus",
                     "message": _get_income_message(result.get("change_amount", 0), result.get("change_percent", 0))
-                }
+                },
+                "accounts_used": accounts_used
             },
             "timestamp": datetime.now().isoformat() + "Z"
         }

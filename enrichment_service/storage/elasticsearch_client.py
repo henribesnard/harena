@@ -22,7 +22,7 @@ class ElasticsearchClient:
 
     def __init__(self):
         self.base_url = settings.ELASTICSEARCH_URL
-        self.transactions_index = "harena_transactions"  # Index des transactions (nettoyé)
+        self.transactions_index = "harena_transactions_v2"  # Index des transactions (nettoyé) - V2 avec account fields
         self.accounts_index = "harena_accounts"         # Nouvel index des comptes
         self.index_name = self.transactions_index  # Rétrocompatibilité
         self.session = None
@@ -103,6 +103,10 @@ class ElasticsearchClient:
                     "user_id": {"type": "integer"},
                     "transaction_id": {"type": "keyword"},
                     "account_id": {"type": "integer"},  # 🔗 LIEN vers index accounts
+
+                    # Informations du compte (dénormalisées pour performance)
+                    "account_name": {"type": "keyword"},  # Nom du compte pour agrégations
+                    "account_type": {"type": "keyword"},  # checking, savings, loan, card, etc.
 
                     # Contenu recherchable
                     "searchable_text": {

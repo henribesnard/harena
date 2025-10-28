@@ -262,10 +262,11 @@ services:
       args:
         # Variables d'environnement pour le build Vite
         # Le frontend appelle l'API via Nginx (même origine = pas de CORS)
-        VITE_USER_SERVICE_URL: /api/v1
-        VITE_SEARCH_SERVICE_URL: /api/v1
-        VITE_METRIC_SERVICE_URL: /api/v1
-        VITE_CONVERSATION_SERVICE_URL: /api/v3
+        # NOTE: Les URLs sont vides car services.ts ajoute déjà les préfixes /api/v1 ou /api/v3
+        VITE_USER_SERVICE_URL: ""
+        VITE_SEARCH_SERVICE_URL: ""
+        VITE_METRIC_SERVICE_URL: ""
+        VITE_CONVERSATION_SERVICE_URL: ""
         VITE_BUDGET_PROFILING_API_URL: /api/v1/budget
     container_name: harena_frontend
     restart: unless-stopped

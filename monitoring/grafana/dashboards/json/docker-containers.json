@@ -307,6 +307,16 @@
           "expr": "count(container_memory_usage_bytes{name=\"harena_budget_profiling_service\"}) > 0 or vector(0)",
           "legendFormat": "Budget Profiling",
           "refId": "E"
+        },
+        {
+          "expr": "count(container_memory_usage_bytes{name=\"harena_sync_service\"}) > 0 or vector(0)",
+          "legendFormat": "Sync Service",
+          "refId": "F"
+        },
+        {
+          "expr": "count(container_memory_usage_bytes{name=\"harena_enrichment_service\"}) > 0 or vector(0)",
+          "legendFormat": "Enrichment Service",
+          "refId": "G"
         }
       ],
       "title": "Container Health Status",

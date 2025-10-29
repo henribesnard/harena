@@ -70,7 +70,7 @@ scrape_configs:
           service: 'user_service'
           type: 'backend'
           api_version: 'v1'
-    metrics_path: '/metrics'  # Si vous avez exposé des métriques Prometheus
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # Search Service
@@ -81,7 +81,7 @@ scrape_configs:
           service: 'search_service'
           type: 'backend'
           api_version: 'v1'
-    metrics_path: '/metrics'
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # Metric Service
@@ -92,7 +92,7 @@ scrape_configs:
           service: 'metric_service'
           type: 'backend'
           api_version: 'v1'
-    metrics_path: '/metrics'
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # Conversation Service V3
@@ -103,7 +103,7 @@ scrape_configs:
           service: 'conversation_v3'
           type: 'backend'
           api_version: 'v3'
-    metrics_path: '/metrics'
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # Budget Profiling Service
@@ -114,7 +114,7 @@ scrape_configs:
           service: 'budget_profiling'
           type: 'backend'
           api_version: 'v1'
-    metrics_path: '/metrics'
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # Sync Service
@@ -125,7 +125,7 @@ scrape_configs:
           service: 'sync_service'
           type: 'backend'
           api_version: 'v1'
-    metrics_path: '/metrics'
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # Enrichment Service
@@ -136,7 +136,7 @@ scrape_configs:
           service: 'enrichment_service'
           type: 'backend'
           api_version: 'v1'
-    metrics_path: '/metrics'
+    metrics_path: '/health'
     scrape_interval: 30s
 
   # ============================================

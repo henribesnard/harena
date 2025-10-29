@@ -117,6 +117,28 @@ scrape_configs:
     metrics_path: '/metrics'
     scrape_interval: 30s
 
+  # Sync Service
+  - job_name: 'sync_service'
+    static_configs:
+      - targets: ['sync_service:3004']
+        labels:
+          service: 'sync_service'
+          type: 'backend'
+          api_version: 'v1'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Enrichment Service
+  - job_name: 'enrichment_service'
+    static_configs:
+      - targets: ['enrichment_service:3005']
+        labels:
+          service: 'enrichment_service'
+          type: 'backend'
+          api_version: 'v1'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
   # ============================================
   # INFRASTRUCTURE
   # ============================================

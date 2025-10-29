@@ -396,6 +396,30 @@ services:
         max-file: "2"
         tag: "node_exporter"
 
+  # Blackbox Exporter - Health Checks HTTP
+  blackbox_exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: harena_blackbox_exporter
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/blackbox:/etc/blackbox_exporter
+    command:
+      - '--config.file=/etc/blackbox_exporter/blackbox.yml'
+    networks:
+      - harena-network
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+        reservations:
+          memory: 16M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+        tag: "blackbox_exporter"
+
   # cAdvisor - Métriques Docker
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest

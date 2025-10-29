@@ -59,84 +59,168 @@ scrape_configs:
           instance: 'ec2-harena'
 
   # ============================================
-  # APPLICATION SERVICES
+  # APPLICATION SERVICES (via Blackbox Exporter)
   # ============================================
 
   # User Service
   - job_name: 'user_service'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['user_service:3000']
-        labels:
-          service: 'user_service'
-          type: 'backend'
-          api_version: 'v1'
-    metrics_path: '/health'
+      - targets:
+        - http://user_service:3000/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'user_service'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v1'
     scrape_interval: 30s
 
   # Search Service
   - job_name: 'search_service'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['search_service:3001']
-        labels:
-          service: 'search_service'
-          type: 'backend'
-          api_version: 'v1'
-    metrics_path: '/health'
+      - targets:
+        - http://search_service:3001/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'search_service'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v1'
     scrape_interval: 30s
 
   # Metric Service
   - job_name: 'metric_service'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['metric_service:3002']
-        labels:
-          service: 'metric_service'
-          type: 'backend'
-          api_version: 'v1'
-    metrics_path: '/health'
+      - targets:
+        - http://metric_service:3002/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'metric_service'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v1'
     scrape_interval: 30s
 
   # Conversation Service V3
   - job_name: 'conversation_v3'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['conversation_service_v3:3008']
-        labels:
-          service: 'conversation_v3'
-          type: 'backend'
-          api_version: 'v3'
-    metrics_path: '/health'
+      - targets:
+        - http://conversation_service_v3:3008/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'conversation_v3'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v3'
     scrape_interval: 30s
 
   # Budget Profiling Service
   - job_name: 'budget_profiling'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['budget_profiling_service:3006']
-        labels:
-          service: 'budget_profiling'
-          type: 'backend'
-          api_version: 'v1'
-    metrics_path: '/health'
+      - targets:
+        - http://budget_profiling_service:3006/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'budget_profiling'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v1'
     scrape_interval: 30s
 
   # Sync Service
   - job_name: 'sync_service'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['sync_service:3004']
-        labels:
-          service: 'sync_service'
-          type: 'backend'
-          api_version: 'v1'
-    metrics_path: '/health'
+      - targets:
+        - http://sync_service:3004/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'sync_service'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v1'
     scrape_interval: 30s
 
   # Enrichment Service
   - job_name: 'enrichment_service'
+    metrics_path: /probe
+    params:
+      module: [http_health_check]
     static_configs:
-      - targets: ['enrichment_service:3005']
-        labels:
-          service: 'enrichment_service'
-          type: 'backend'
-          api_version: 'v1'
-    metrics_path: '/health'
+      - targets:
+        - http://enrichment_service:3005/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+      - target_label: service
+        replacement: 'enrichment_service'
+      - target_label: type
+        replacement: 'backend'
+      - target_label: api_version
+        replacement: 'v1'
     scrape_interval: 30s
 
   # ============================================

@@ -131,7 +131,12 @@ def create_app() -> FastAPI:
             "initialized": _service_initialized,
             "error": _initialization_error
         }
-    
+
+    # Health check endpoint for Docker
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
     return app
 
 # Instance de l'application

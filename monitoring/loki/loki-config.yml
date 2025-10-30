@@ -3,6 +3,7 @@
 # ============================================
 # Agrégation des logs de tous les containers Docker
 # Rétention: 7 jours
+# Compatible avec Loki 2.9+
 # ============================================
 
 auth_enabled: false
@@ -24,25 +25,27 @@ common:
     kvstore:
       store: inmemory
 
+# Schema configuration - Using TSDB for better performance
 schema_config:
   configs:
     - from: 2023-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
+# Storage configuration
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-shipper-active
+    cache_location: /loki/tsdb-shipper-cache
     cache_ttl: 24h
-    shared_store: filesystem
   filesystem:
     directory: /loki/chunks
 
+# Limits configuration
 limits_config:
   # Limites de rétention
   retention_period: 168h  # 7 jours
@@ -63,17 +66,11 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
-chunk_store_config:
-  max_look_back_period: 168h  # 7 jours
-
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 168h  # 7 jours
-
+# Compactor configuration (for retention and cleanup)
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_request_store: filesystem

@@ -135,7 +135,43 @@ def create_app() -> FastAPI:
     # Health check endpoint for Docker
     @app.get("/health")
     async def health():
-        return {"status": "ok"}
+        """Vérification de l'état de santé du search service avec check DB."""
+        from db_service.health import check_database_health
+        from fastapi import status
+        from fastapi.responses import JSONResponse
+
+        # Vérifier la connexion à la base de données
+        db_healthy, db_message = check_database_health()
+
+        # Vérifier si le service Elasticsearch est initialisé
+        es_healthy = _service_initialized and _elasticsearch_client is not None
+
+        # Le service est healthy si DB ET Elasticsearch sont OK
+        overall_healthy = db_healthy and es_healthy
+
+        # Préparer la réponse
+        health_status = {
+            "status": "healthy" if overall_healthy else "unhealthy",
+            "service": "search_service",
+            "version": "1.0.0",
+            "database": {
+                "healthy": db_healthy,
+                "message": db_message
+            },
+            "elasticsearch": {
+                "initialized": es_healthy,
+                "error": _initialization_error
+            }
+        }
+
+        # Retourner 503 si un composant n'est pas accessible
+        if not overall_healthy:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=health_status
+            )
+
+        return health_status
 
     return app
 

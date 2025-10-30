@@ -77,15 +77,42 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check détaillé"""
+    """Health check détaillé avec vérification DB et cache"""
+    from db_service.health import check_database_health
+    from fastapi import status
+    from fastapi.responses import JSONResponse
+
+    # Vérifier la base de données
+    db_healthy, db_message = check_database_health()
+
+    # Vérifier le cache
     cache_status = await cache_manager.ping()
 
-    return {
+    # Le service est healthy si DB ET cache sont OK
+    overall_healthy = db_healthy and cache_status
+
+    # Préparer la réponse
+    health_status = {
         "service": "metric_service",
-        "status": "healthy" if cache_status else "degraded",
-        "cache": "connected" if cache_status else "disconnected",
-        "version": "1.0.0"
+        "status": "healthy" if overall_healthy else "unhealthy",
+        "version": "1.0.0",
+        "database": {
+            "healthy": db_healthy,
+            "message": db_message
+        },
+        "cache": {
+            "connected": cache_status
+        }
     }
+
+    # Retourner 503 si un composant n'est pas accessible
+    if not overall_healthy:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=health_status
+        )
+
+    return health_status
 
 if __name__ == "__main__":
     import uvicorn

@@ -77,14 +77,35 @@ def create_app() -> FastAPI:
     # Ajout de l'endpoint de santé
     @app.get("/health")
     def health_check():
-        """Vérification de l'état de santé du service utilisateur."""
-        return {
-            "status": "ok",
+        """Vérification de l'état de santé du service utilisateur avec check DB."""
+        from db_service.health import check_database_health
+        from fastapi import status
+        from fastapi.responses import JSONResponse
+
+        # Vérifier la connexion à la base de données
+        db_healthy, db_message = check_database_health()
+
+        # Préparer la réponse
+        health_status = {
+            "status": "healthy" if db_healthy else "unhealthy",
             "service": settings.PROJECT_NAME,
             "version": "1.0.0",
             "api_prefix": settings.API_V1_STR,
-            "bridge_api_configured": bool(settings.BRIDGE_CLIENT_ID and settings.BRIDGE_CLIENT_SECRET)
+            "bridge_api_configured": bool(settings.BRIDGE_CLIENT_ID and settings.BRIDGE_CLIENT_SECRET),
+            "database": {
+                "healthy": db_healthy,
+                "message": db_message
+            }
         }
+
+        # Retourner 503 si la DB n'est pas accessible
+        if not db_healthy:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=health_status
+            )
+
+        return health_status
     
     # Réglage du niveau de log pour les modules tiers trop verbeux
     logging.getLogger("httpx").setLevel(logging.WARNING)

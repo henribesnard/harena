@@ -80,6 +80,7 @@ services:
       - "3002:3002"
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
       - API_V1_STR=${API_V1_STR}
       - ENVIRONMENT=dev
     volumes:

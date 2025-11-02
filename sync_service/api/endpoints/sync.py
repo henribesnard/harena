@@ -227,7 +227,7 @@ async def process_sync_background(user_id: int, item_ids: List[int]):
     """
     Fonction exécutée en arrière-plan pour traiter la synchronisation complète
     sans bloquer la réponse HTTP.
-    
+
     Args:
         user_id: ID de l'utilisateur
         item_ids: Liste des IDs d'items à synchroniser
@@ -235,32 +235,81 @@ async def process_sync_background(user_id: int, item_ids: List[int]):
     # Créer une nouvelle session car nous sommes dans un thread/coroutine distinct
     from user_service.db.session import SessionLocal
     db = SessionLocal()
-    
+
     try:
         logger.info(f"Starting background sync for user {user_id} with {len(item_ids)} items")
-        
+
         for item_id in item_ids:
             try:
                 item = db.query(SyncItem).filter(SyncItem.id == item_id).first()
                 if not item:
                     logger.warning(f"Item with ID {item_id} not found during background sync")
                     continue
-                
+
                 logger.info(f"Background sync: processing item {item.bridge_item_id} for user {user_id}")
-                
+
                 # Exécuter la synchronisation complète
                 sync_result = await trigger_full_sync_for_item(db, item)
-                
+
                 logger.info(f"Background sync completed for item {item.bridge_item_id}: status={sync_result.get('status')}")
-                
+
                 # Log détaillé des différentes étapes de la synchronisation
                 for step_name, step_result in sync_result.get("steps", {}).items():
                     logger.info(f"Step {step_name}: {step_result.get('status', 'unknown')}")
-                
+
             except Exception as e:
                 logger.error(f"Error during background sync for item {item_id}: {str(e)}", exc_info=True)
-        
+
         logger.info(f"All background syncs completed for user {user_id}")
+
+        # Après avoir synchronisé tous les items, déclencher l'enrichissement et le profil budgétaire
+        try:
+            import aiohttp
+            from user_service.core.security import create_access_token
+            from datetime import timedelta
+
+            # Générer un JWT utilisateur Harena pour l'authentification
+            user_jwt = create_access_token(
+                subject=user_id,
+                permissions=["chat:write"],
+                expires_delta=timedelta(minutes=30)
+            )
+            headers = {
+                "Authorization": f"Bearer {user_jwt}",
+                "Content-Type": "application/json"
+            }
+
+            # 1. Synchroniser les transactions dans Elasticsearch via enrichment_service
+            logger.info(f"Post-sync: Synchronisation Elasticsearch pour user {user_id}")
+            try:
+                enrichment_url = f"http://harena_enrichment_service:3005/api/v1/enrichment/elasticsearch/sync-user/{user_id}"
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(enrichment_url, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                        if response.status == 200:
+                            enrichment_result = await response.json()
+                            logger.info(f"✅ Elasticsearch sync completed: {enrichment_result.get('transactions_indexed', 0)} transactions indexed")
+                        else:
+                            logger.warning(f"⚠️ Elasticsearch sync failed with status {response.status}")
+            except Exception as e:
+                logger.error(f"❌ Error during Elasticsearch sync: {str(e)}")
+
+            # 2. Calculer le profil budgétaire via budget_profiling_service
+            logger.info(f"Post-sync: Calcul du profil budgétaire pour user {user_id}")
+            try:
+                budget_url = "http://harena_budget_profiling_service:3006/api/v1/budget/profile/analyze"
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(budget_url, headers=headers, timeout=aiohttp.ClientTimeout(total=180)) as response:
+                        if response.status == 200:
+                            budget_result = await response.json()
+                            logger.info(f"✅ Budget profile created: segment={budget_result.get('user_segment')}, savings_rate={budget_result.get('savings_rate')}%")
+                        else:
+                            logger.warning(f"⚠️ Budget profile calculation failed with status {response.status}")
+            except Exception as e:
+                logger.error(f"❌ Error during budget profile calculation: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"❌ Error during post-sync processing: {str(e)}", exc_info=True)
+
     except Exception as e:
         logger.error(f"Unexpected error in background sync for user {user_id}: {str(e)}", exc_info=True)
     finally:

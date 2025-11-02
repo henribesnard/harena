@@ -116,17 +116,31 @@ def get_budget_profile(
     db: Session = Depends(get_db)
 ):
     """
-    Récupère le profil budgétaire de l'utilisateur connecté
+    Récupère le profil budgétaire de l'utilisateur connecté.
+    Le profil est toujours recalculé à la volée pour garantir des données à jour.
     """
     try:
+        logger.info(f"Calcul du profil budgétaire pour user {user_id}...")
+
+        # 1. Détecter les charges fixes
+        detector = FixedChargeDetector(db)
+        detected_charges = detector.detect_fixed_charges(user_id)
+        detector.save_detected_charges(user_id, detected_charges)
+
+        # 2. Calculer le profil budgétaire
         profiler = BudgetProfiler(db)
-        profile = profiler.get_user_profile(user_id)
+        profile_data = profiler.calculate_user_profile(user_id)
+
+        # 3. Sauvegarder le profil
+        profile = profiler.save_profile(user_id, profile_data)
 
         if not profile:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Profil budgétaire non trouvé. Lancez une analyse d'abord."
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Erreur lors du calcul du profil"
             )
+
+        logger.info(f"✅ Profil budgétaire calculé pour user {user_id}: segment={profile.user_segment}")
 
         # Récupérer les détails des comptes utilisés
         from budget_profiling_service.services.user_preferences_service import UserPreferencesService

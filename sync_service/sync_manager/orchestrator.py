@@ -261,7 +261,7 @@ async def trigger_full_sync_for_item(db: Session, sync_item: SyncItem) -> Dict[s
         try:
             from user_service.services.bridge import get_bridge_insights
             from sync_service.sync_manager.insight_handler import store_bridge_insights
-            
+
             insights = await get_bridge_insights(db, user_id)
             if insights:
                 insights_result = await store_bridge_insights(db, user_id, insights)
@@ -271,6 +271,92 @@ async def trigger_full_sync_for_item(db: Session, sync_item: SyncItem) -> Dict[s
         except Exception as insights_error:
             ctx_logger.error(f"Erreur lors de la récupération des insights: {insights_error}", exc_info=True)
             sync_report["steps"]["sync_insights"] = {"status": "error", "message": str(insights_error)}
+            # Ne pas changer le statut global car c'est une fonctionnalité optionnelle
+
+        # 10. Synchroniser les transactions dans Elasticsearch via enrichment_service
+        ctx_logger.info("Étape 10: Synchronisation Elasticsearch via enrichment_service")
+        try:
+            import aiohttp
+            from user_service.core.security import create_access_token
+            from datetime import timedelta
+
+            enrichment_url = f"http://harena_enrichment_service:3005/api/v1/enrichment/elasticsearch/sync-user/{user_id}"
+
+            # Générer un JWT utilisateur Harena pour l'authentification
+            user_jwt = create_access_token(
+                subject=user_id,
+                permissions=["chat:write"],
+                expires_delta=timedelta(minutes=30)
+            )
+            headers = {
+                "Authorization": f"Bearer {user_jwt}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(enrichment_url, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    if response.status == 200:
+                        enrichment_result = await response.json()
+                        sync_report["steps"]["sync_elasticsearch"] = {
+                            "status": "success",
+                            "transactions_indexed": enrichment_result.get("transactions_indexed", 0),
+                            "accounts_indexed": enrichment_result.get("accounts_indexed", 0)
+                        }
+                        ctx_logger.info(f"✅ Elasticsearch sync réussi: {enrichment_result.get('transactions_indexed', 0)} transactions indexées")
+                    else:
+                        error_text = await response.text()
+                        ctx_logger.warning(f"⚠️ Échec sync Elasticsearch: {response.status} - {error_text}")
+                        sync_report["steps"]["sync_elasticsearch"] = {
+                            "status": "warning",
+                            "message": f"HTTP {response.status}: {error_text}"
+                        }
+        except Exception as es_error:
+            ctx_logger.error(f"Erreur lors de la synchronisation Elasticsearch: {es_error}", exc_info=True)
+            sync_report["steps"]["sync_elasticsearch"] = {"status": "error", "message": str(es_error)}
+            # Ne pas changer le statut global car la sync PostgreSQL a réussi
+
+        # 11. Calculer le profil budgétaire via budget_profiling_service
+        ctx_logger.info("Étape 11: Calcul du profil budgétaire via budget_profiling_service")
+        try:
+            import aiohttp
+            from user_service.core.security import create_access_token
+            from datetime import timedelta
+
+            budget_url = f"http://harena_budget_profiling_service:3006/api/v1/budget/profile/analyze"
+
+            # Générer un JWT utilisateur Harena pour l'authentification
+            user_jwt = create_access_token(
+                subject=user_id,
+                permissions=["chat:write"],
+                expires_delta=timedelta(minutes=30)
+            )
+            headers = {
+                "Authorization": f"Bearer {user_jwt}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(budget_url, headers=headers, timeout=aiohttp.ClientTimeout(total=180)) as response:
+                    if response.status == 200:
+                        budget_result = await response.json()
+                        sync_report["steps"]["calculate_budget_profile"] = {
+                            "status": "success",
+                            "user_segment": budget_result.get("user_segment"),
+                            "avg_monthly_income": budget_result.get("avg_monthly_income"),
+                            "avg_monthly_expenses": budget_result.get("avg_monthly_expenses"),
+                            "savings_rate": budget_result.get("savings_rate")
+                        }
+                        ctx_logger.info(f"✅ Profil budgétaire calculé: segment={budget_result.get('user_segment')}, taux d'épargne={budget_result.get('savings_rate', 0):.1f}%")
+                    else:
+                        error_text = await response.text()
+                        ctx_logger.warning(f"⚠️ Échec calcul profil budgétaire: {response.status} - {error_text}")
+                        sync_report["steps"]["calculate_budget_profile"] = {
+                            "status": "warning",
+                            "message": f"HTTP {response.status}: {error_text}"
+                        }
+        except Exception as budget_error:
+            ctx_logger.error(f"Erreur lors du calcul du profil budgétaire: {budget_error}", exc_info=True)
+            sync_report["steps"]["calculate_budget_profile"] = {"status": "error", "message": str(budget_error)}
             # Ne pas changer le statut global car c'est une fonctionnalité optionnelle
 
         # Finaliser le rapport

@@ -5,6 +5,7 @@ Architecture basée sur agents LangChain autonomes avec auto-correction
 import os
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -29,19 +30,49 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestion du cycle de vie de l'application"""
-    logger.info(f"Starting {settings.SERVICE_NAME} v{settings.SERVICE_VERSION}")
-    logger.info(f"Search service URL: {settings.SEARCH_SERVICE_URL}")
-    logger.info(f"LLM model: {settings.LLM_MODEL}")
-    logger.info(f"Max correction attempts: {settings.MAX_CORRECTION_ATTEMPTS}")
+    logger.info(f"🚀 Starting {settings.SERVICE_NAME} v{settings.SERVICE_VERSION}")
+
+    # Mode strict pour validation de configuration (défaut: False)
+    STRICT_CONFIG_CHECK = os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true"
+
+    # Vérification des configurations critiques
+    config_issues = []
+
+    if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
+        config_issues.append("SECRET_KEY non définie ou trop courte (min 32 caractères)")
+
+    if not settings.SEARCH_SERVICE_URL:
+        config_issues.append("SEARCH_SERVICE_URL non définie")
+
+    # Vérifier les clés API LLM
+    if settings.LLM_PRIMARY_PROVIDER == "openai" and not settings.OPENAI_API_KEY:
+        config_issues.append("OPENAI_API_KEY manquante pour provider OpenAI")
+    elif settings.LLM_PRIMARY_PROVIDER == "deepseek" and not settings.DEEPSEEK_API_KEY:
+        config_issues.append("DEEPSEEK_API_KEY manquante pour provider DeepSeek")
+
+    if config_issues:
+        for issue in config_issues:
+            logger.warning(f"⚠️ {issue}")
+
+        if STRICT_CONFIG_CHECK:
+            error_msg = f"Configuration critique manquante: {', '.join(config_issues)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+    logger.info(f"✅ Configuration validée avec succès")
+    logger.info(f"🔍 Search service URL: {settings.SEARCH_SERVICE_URL}")
+    logger.info(f"🤖 LLM primary: {settings.LLM_PRIMARY_PROVIDER} / {settings.LLM_MODEL}")
+    logger.info(f"🔄 Fallback: {settings.LLM_FALLBACK_PROVIDER if settings.LLM_FALLBACK_ENABLED else 'disabled'}")
+    logger.info(f"🔧 Max correction attempts: {settings.MAX_CORRECTION_ATTEMPTS}")
 
     yield
 
-    logger.info(f"Shutting down {settings.SERVICE_NAME}")
+    logger.info(f"🛑 Shutting down {settings.SERVICE_NAME}")
 
     # Fermer l'orchestrateur si initialisé
     if conversation._orchestrator:
         await conversation._orchestrator.close()
-        logger.info("HTTP client and resources properly closed")
+        logger.info("✅ HTTP client and resources properly closed")
 
 
 # Créer l'application FastAPI

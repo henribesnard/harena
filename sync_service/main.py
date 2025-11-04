@@ -29,16 +29,31 @@ async def lifespan(app: FastAPI):
     """Gestionnaire du cycle de vie du service de synchronisation."""
     # Initialisation
     logger.info("Démarrage du service de synchronisation")
-    
+
+    # Mode strict pour validation de configuration (défaut: False)
+    STRICT_CONFIG_CHECK = os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true"
+
     # Vérification des configurations critiques
     if not settings.BRIDGE_CLIENT_ID or not settings.BRIDGE_CLIENT_SECRET:
-        logger.warning("Identifiants Bridge API manquants. Les fonctionnalités de synchronisation ne fonctionneront pas.")
-    
+        error_msg = "Identifiants Bridge API manquants (BRIDGE_CLIENT_ID et BRIDGE_CLIENT_SECRET)"
+        if STRICT_CONFIG_CHECK:
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning(f"{error_msg}. Les fonctionnalités de synchronisation ne fonctionneront pas.")
+
     if not settings.BRIDGE_WEBHOOK_SECRET:
-        logger.warning("Secret webhook Bridge non défini. La validation des webhooks sera désactivée.")
-    
+        error_msg = "Secret webhook Bridge non défini (BRIDGE_WEBHOOK_SECRET)"
+        if STRICT_CONFIG_CHECK:
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning(f"{error_msg}. La validation des webhooks sera désactivée.")
+
+    logger.info("Configuration validée avec succès")
+
     yield  # L'application s'exécute ici
-    
+
     # Nettoyage
     logger.info("Arrêt du service de synchronisation")
 

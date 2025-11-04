@@ -20,6 +20,7 @@ python-dotenv==1.0.0
 
 # Utilities
 python-dateutil==2.9.0.post0
+tenacity==8.5.0
 
 # Auth dependencies (required by user_service imports)
 python-jose==3.5.0

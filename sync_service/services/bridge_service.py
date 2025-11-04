@@ -4,8 +4,26 @@ import json
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlencode
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log
+)
 
 from config_service.config import settings
+from sync_service.constants import (
+    BRIDGE_MAX_PAGES,
+    BRIDGE_TIMEOUT,
+    BRIDGE_LONG_TIMEOUT,
+    DEFAULT_PAGE_LIMIT,
+    MAX_TRANSACTION_LIMIT,
+    MAX_STOCK_LIMIT,
+    RETRY_MAX_ATTEMPTS,
+    RETRY_MIN_WAIT_SECONDS,
+    RETRY_MAX_WAIT_SECONDS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +53,26 @@ class BridgeService:
             
         return headers
     
+    @retry(
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT_SECONDS, max=RETRY_MAX_WAIT_SECONDS),
+        before_sleep=before_sleep_log(logger, logging.WARNING)
+    )
+    async def _make_request(self, client: httpx.AsyncClient, url: str, headers: Dict[str, str]) -> httpx.Response:
+        """Effectue une requête HTTP avec retry automatique."""
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        return response
+
     async def fetch_paginated_resources(self, url: str, headers: Dict[str, str], limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Récupère toutes les ressources d'un endpoint paginé de Bridge."""
         all_resources = []
         next_uri = url
         page_count = 0
-        max_pages = 50  # Limiter pour éviter les boucles infinies
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        max_pages = BRIDGE_MAX_PAGES
+
+        async with httpx.AsyncClient(timeout=BRIDGE_LONG_TIMEOUT) as client:
             while next_uri and page_count < max_pages:
                 page_count += 1
                 logger.debug(f"Récupération de la page {page_count} depuis: {next_uri}")

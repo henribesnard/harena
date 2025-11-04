@@ -6,6 +6,7 @@ responsable de la structuration et de l'indexation des données financières
 dans Elasticsearch.
 """
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +40,10 @@ async def lifespan(app: FastAPI):
     
     # Initialisation
     logger.info("🚀 Démarrage du service d'enrichissement Elasticsearch")
-    
+
+    # Mode strict pour validation de configuration (défaut: False)
+    STRICT_CONFIG_CHECK = os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true"
+
     # Vérification des configurations critiques
     config_issues = []
 
@@ -49,10 +53,13 @@ async def lifespan(app: FastAPI):
 
     if config_issues:
         logger.error(f"❌ Problèmes de configuration détectés: {', '.join(config_issues)}")
-        logger.error("💡 Service désactivé car Elasticsearch non configuré")
-        # Ne pas raise l'erreur, juste logger et continuer sans Elasticsearch
-        elasticsearch_client = None
-        elasticsearch_processor = None
+        if STRICT_CONFIG_CHECK:
+            raise RuntimeError(f"Configuration critique manquante: {', '.join(config_issues)}")
+        else:
+            logger.error("💡 Service désactivé car Elasticsearch non configuré")
+            # Ne pas raise l'erreur, juste logger et continuer sans Elasticsearch
+            elasticsearch_client = None
+            elasticsearch_processor = None
 
     # 1. Initialisation du client Elasticsearch (si configuré)
     elasticsearch_success = False

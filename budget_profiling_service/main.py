@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 # Charger le fichier .env au démarrage
@@ -95,18 +95,28 @@ class BudgetProfilingServiceLoader:
         Valide la configuration de la base de données
         """
         try:
+            # Mode strict pour validation de configuration
+            strict_mode = os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true"
+
             required_vars = ['DATABASE_URL']
             missing_vars = [var for var in required_vars if not getattr(settings, var, None)]
 
             if missing_vars:
-                logger.error(f"❌ Variables manquantes: {missing_vars}")
+                error_msg = f"Variables manquantes: {missing_vars}"
+                logger.error(f"❌ {error_msg}")
+                if strict_mode:
+                    raise RuntimeError(error_msg)
                 return False
 
             logger.info("✅ Configuration base de données validée")
             return True
 
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error(f"❌ Erreur validation DB: {e}")
+            if os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true":
+                raise
             return False
 
 

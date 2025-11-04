@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import logging
 from typing import Optional
 import os
+from datetime import datetime, timezone
 
 from metric_service.api.routes import trends, health, patterns, expenses, income, coverage
 from metric_service.core.cache import cache_manager
@@ -24,8 +25,33 @@ async def lifespan(app: FastAPI):
     """Initialisation et nettoyage de l'application"""
     logger.info("🚀 Démarrage du Metric Service")
 
+    # Mode strict pour validation de configuration (défaut: False)
+    STRICT_CONFIG_CHECK = os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true"
+
+    # Vérification des configurations critiques
+    config_issues = []
+
+    # Vérifier Redis (optionnel mais recommandé)
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url:
+        config_issues.append("REDIS_URL non définie - cache désactivé")
+        logger.warning("⚠️ REDIS_URL non définie - le service fonctionnera sans cache")
+
+    if config_issues and STRICT_CONFIG_CHECK:
+        error_msg = f"Configuration critique manquante: {', '.join(config_issues)}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
     # Initialiser Redis
-    await cache_manager.connect()
+    try:
+        await cache_manager.connect()
+        logger.info("✅ Cache Redis connecté")
+    except Exception as e:
+        logger.warning(f"⚠️ Échec connexion Redis: {e}")
+        if STRICT_CONFIG_CHECK:
+            raise
+
+    logger.info("✅ Configuration validée avec succès")
 
     yield
 

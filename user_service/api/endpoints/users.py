@@ -28,6 +28,17 @@ async def register_user(
 
     La connexion à Bridge API est désormais optionnelle et peut être effectuée
     ultérieurement via l'endpoint /bridge/connect.
+
+    Args:
+        user_in: Données d'inscription (email, password, confirm_password, nom/prénom)
+        db: Session de base de données (injecté automatiquement)
+
+    Returns:
+        User: Utilisateur créé avec ses préférences par défaut
+
+    Raises:
+        HTTPException 400: Email déjà enregistré
+        HTTPException 422: Validation échouée (mots de passe ne correspondent pas, etc.)
     """
     # Créer l'utilisateur en base
     db_user = users.create_user(db, user_in)
@@ -46,6 +57,17 @@ async def login_access_token(
 ) -> Any:
     """
     OAuth2 compatible token login, get an access token for future requests.
+
+    Args:
+        form_data: Formulaire OAuth2 (username=email, password)
+        db: Session de base de données (injecté automatiquement)
+
+    Returns:
+        Token: Access token JWT et type (bearer)
+
+    Raises:
+        HTTPException 401: Email ou mot de passe incorrect
+        HTTPException 400: Utilisateur inactif
     """
     user = users.authenticate_user(db, email=form_data.username, password=form_data.password)
     if not user:
@@ -78,6 +100,15 @@ async def read_users_me(
 ) -> Any:
     """
     Get current user information.
+
+    Args:
+        current_user: Utilisateur authentifié (injecté depuis JWT)
+
+    Returns:
+        User: Informations complètes de l'utilisateur avec préférences et connexions Bridge
+
+    Raises:
+        HTTPException 401: Token invalide ou expiré
     """
     # Ensure permissions field is always present in response
     current_user.permissions = getattr(current_user, "permissions", [])
@@ -92,6 +123,18 @@ async def update_user_me(
 ) -> Any:
     """
     Update current user information.
+
+    Args:
+        user_in: Données à mettre à jour (email, nom/prénom, password, preferences)
+        db: Session de base de données (injecté automatiquement)
+        current_user: Utilisateur authentifié (injecté depuis JWT)
+
+    Returns:
+        User: Utilisateur mis à jour
+
+    Raises:
+        HTTPException 401: Token invalide ou expiré
+        HTTPException 404: Utilisateur non trouvé
     """
     updated_user = users.update_user(db, current_user.id, user_in)
     return updated_user
@@ -107,11 +150,14 @@ async def connect_bridge_account(
 
     Cette étape est optionnelle et peut être effectuée après l'inscription.
     Elle permet à l'utilisateur de synchroniser ses comptes bancaires.
+
+    Raises:
+        HTTPException 409: Bridge connection already exists
+        HTTPException 500: Failed to connect to Bridge API
+        HTTPException 503: Bridge API unavailable
     """
     # Vérifier si une connexion existe déjà
-    existing_connection = db.query(bridge.BridgeConnection).filter(
-        bridge.BridgeConnection.user_id == current_user.id
-    ).first()
+    existing_connection = bridge.get_bridge_connection_by_user(db, current_user.id)
 
     if existing_connection:
         logger.info(f"Bridge connection already exists for user {current_user.id}")
@@ -121,9 +167,11 @@ async def connect_bridge_account(
         bridge_connection = await bridge.create_bridge_user(db, current_user)
         logger.info(f"Bridge connection created successfully for user {current_user.id}")
         return bridge_connection
+    except HTTPException:
+        # Renvoyer les exceptions HTTP déjà formatées
+        raise
     except Exception as e:
-        # Cette fois, on ne supprime PAS l'utilisateur
-        # On retourne juste une erreur
+        # Erreurs inattendues
         logger.error(f"Failed to connect Bridge for user {current_user.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -141,11 +189,12 @@ async def get_bridge_connection(
 
     Retourne une erreur 404 si aucune connexion n'existe.
     Utilisez /bridge/connect pour créer une connexion.
+
+    Raises:
+        HTTPException 404: No Bridge connection found
     """
     # Vérifier si une connexion existe
-    bridge_connection = db.query(bridge.BridgeConnection).filter(
-        bridge.BridgeConnection.user_id == current_user.id
-    ).first()
+    bridge_connection = bridge.get_bridge_connection_by_user(db, current_user.id)
 
     if not bridge_connection:
         # NE PAS créer automatiquement
@@ -165,6 +214,21 @@ async def get_bridge_access_token(
 ) -> Any:
     """
     Get Bridge API access token.
+
+    Récupère ou génère un token d'accès Bridge API pour l'utilisateur.
+    Les tokens sont mis en cache et réutilisés s'ils sont encore valides.
+
+    Args:
+        db: Session de base de données (injecté automatiquement)
+        current_user: Utilisateur authentifié (injecté depuis JWT)
+
+    Returns:
+        dict: Token Bridge avec access_token et expires_at
+
+    Raises:
+        HTTPException 401: Token JWT invalide ou expiré
+        HTTPException 404: Aucune connexion Bridge trouvée
+        HTTPException 503: Bridge API indisponible
     """
     token_data = await bridge.get_bridge_token(db, current_user.id)
     return token_data

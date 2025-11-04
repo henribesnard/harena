@@ -7,7 +7,7 @@ de l'utilisateur : soldes par compte et évolutions mensuelles.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, case, and_
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -66,45 +66,53 @@ async def get_dashboard_metrics(
         previous_month_start = datetime(now.year, now.month - 1, 1)
         previous_month_end = current_month_start - timedelta(days=1)
 
-    # Dépenses du mois en cours (montants négatifs)
-    current_expenses = db.query(
-        func.sum(RawTransaction.amount)
+    # Optimisation: Une seule requête SQL pour toutes les métriques
+    result = db.query(
+        # Dépenses du mois en cours (montants négatifs)
+        func.sum(case(
+            (and_(
+                RawTransaction.amount < 0,
+                RawTransaction.transaction_date >= current_month_start,
+                RawTransaction.transaction_date < now
+            ), RawTransaction.amount),
+            else_=0
+        )).label('current_expenses'),
+        # Dépenses du mois précédent
+        func.sum(case(
+            (and_(
+                RawTransaction.amount < 0,
+                RawTransaction.transaction_date >= previous_month_start,
+                RawTransaction.transaction_date <= previous_month_end
+            ), RawTransaction.amount),
+            else_=0
+        )).label('previous_expenses'),
+        # Revenus du mois en cours (montants positifs)
+        func.sum(case(
+            (and_(
+                RawTransaction.amount > 0,
+                RawTransaction.transaction_date >= current_month_start,
+                RawTransaction.transaction_date < now
+            ), RawTransaction.amount),
+            else_=0
+        )).label('current_income'),
+        # Revenus du mois précédent
+        func.sum(case(
+            (and_(
+                RawTransaction.amount > 0,
+                RawTransaction.transaction_date >= previous_month_start,
+                RawTransaction.transaction_date <= previous_month_end
+            ), RawTransaction.amount),
+            else_=0
+        )).label('previous_income')
     ).filter(
-        RawTransaction.user_id == current_user.id,
-        RawTransaction.amount < 0,
-        RawTransaction.transaction_date >= current_month_start,
-        RawTransaction.transaction_date < now
-    ).scalar() or 0
+        RawTransaction.user_id == current_user.id
+    ).first()
 
-    # Dépenses du mois précédent
-    previous_expenses = db.query(
-        func.sum(RawTransaction.amount)
-    ).filter(
-        RawTransaction.user_id == current_user.id,
-        RawTransaction.amount < 0,
-        RawTransaction.transaction_date >= previous_month_start,
-        RawTransaction.transaction_date <= previous_month_end
-    ).scalar() or 0
-
-    # Revenus du mois en cours (montants positifs)
-    current_income = db.query(
-        func.sum(RawTransaction.amount)
-    ).filter(
-        RawTransaction.user_id == current_user.id,
-        RawTransaction.amount > 0,
-        RawTransaction.transaction_date >= current_month_start,
-        RawTransaction.transaction_date < now
-    ).scalar() or 0
-
-    # Revenus du mois précédent
-    previous_income = db.query(
-        func.sum(RawTransaction.amount)
-    ).filter(
-        RawTransaction.user_id == current_user.id,
-        RawTransaction.amount > 0,
-        RawTransaction.transaction_date >= previous_month_start,
-        RawTransaction.transaction_date <= previous_month_end
-    ).scalar() or 0
+    # Extraire les résultats avec gestion des None
+    current_expenses = result.current_expenses or 0
+    previous_expenses = result.previous_expenses or 0
+    current_income = result.current_income or 0
+    previous_income = result.previous_income or 0
 
     # Calculer les évolutions en pourcentage
     expenses_evolution = calculate_evolution(

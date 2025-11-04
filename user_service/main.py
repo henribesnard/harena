@@ -29,16 +29,31 @@ async def lifespan(app: FastAPI):
     """Gestionnaire du cycle de vie du service utilisateur."""
     # Initialisation
     logger.info("Démarrage du service utilisateur")
-    
+
+    # Mode strict pour validation de configuration (défaut: False)
+    STRICT_CONFIG_CHECK = os.getenv("STRICT_CONFIG_CHECK", "false").lower() == "true"
+
     # Vérification des configurations critiques
     if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
-        logger.warning("SECRET_KEY non définie ou trop courte. La sécurité des tokens JWT peut être compromise.")
-    
+        error_msg = "SECRET_KEY non définie ou trop courte (minimum 32 caractères requis)"
+        if STRICT_CONFIG_CHECK:
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning(f"{error_msg}. La sécurité des tokens JWT peut être compromise.")
+
     if not settings.BRIDGE_CLIENT_ID or not settings.BRIDGE_CLIENT_SECRET:
-        logger.warning("Identifiants Bridge API manquants. Les fonctionnalités de connexion bancaire ne fonctionneront pas.")
-    
+        error_msg = "Identifiants Bridge API manquants (BRIDGE_CLIENT_ID et BRIDGE_CLIENT_SECRET)"
+        if STRICT_CONFIG_CHECK:
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning(f"{error_msg}. Les fonctionnalités de connexion bancaire ne fonctionneront pas.")
+
+    logger.info("Configuration validée avec succès")
+
     yield  # L'application s'exécute ici
-    
+
     # Nettoyage
     logger.info("Arrêt du service utilisateur")
 

@@ -10,15 +10,107 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Union
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log
+)
 
 from db_service.models.user import User, BridgeConnection
 from config_service.config import settings
+from user_service.constants import (
+    BRIDGE_MAX_PAGES,
+    BRIDGE_TIMEOUT,
+    BRIDGE_LONG_TIMEOUT,
+    CATEGORIES_CACHE_TTL_HOURS,
+    DEFAULT_PAGE_LIMIT,
+    MAX_TRANSACTION_LIMIT,
+    RETRY_MAX_ATTEMPTS,
+    RETRY_MIN_WAIT_SECONDS,
+    RETRY_MAX_WAIT_SECONDS
+)
 
 
 # Configuration des logs
 logger = logging.getLogger(__name__)
 
+# Cache pour les catégories Bridge (TTL de 24h)
+_categories_cache: Dict[str, Any] = {
+    "data": None,
+    "expires_at": None,
+    "language": None
+}
+
 # --- Fonctions d'aide internes ---
+
+@retry(
+    retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT_SECONDS, max=RETRY_MAX_WAIT_SECONDS),
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
+async def _make_bridge_request(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Effectue une requête HTTP vers Bridge API avec retry automatique.
+
+    Args:
+        client: Client HTTP asynchrone
+        method: Méthode HTTP (GET, POST, etc.)
+        url: URL complète de la requête
+        **kwargs: Arguments supplémentaires pour la requête (headers, json, params, etc.)
+
+    Returns:
+        Dict: Réponse JSON de l'API
+
+    Raises:
+        HTTPException: En cas d'erreur HTTP
+        httpx.RequestError: En cas d'erreur réseau (après 3 tentatives)
+    """
+    response = await client.request(method, url, **kwargs)
+    response.raise_for_status()
+    return response.json()
+
+def _build_bridge_headers(
+    access_token: Optional[str] = None,
+    language: Optional[str] = None,
+    include_content_type: bool = False
+) -> Dict[str, str]:
+    """
+    Construit les en-têtes standards pour les appels API Bridge.
+
+    Args:
+        access_token: Token d'accès Bridge (optionnel)
+        language: Code langue pour Accept-Language (optionnel)
+        include_content_type: Ajouter Content-Type application/json
+
+    Returns:
+        Dict: Headers standards pour Bridge API
+    """
+    headers = {
+        "accept": "application/json",
+        "Bridge-Version": settings.BRIDGE_API_VERSION,
+        "Client-Id": settings.BRIDGE_CLIENT_ID,
+        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
+    }
+
+    if access_token:
+        headers["authorization"] = f"Bearer {access_token}"
+
+    if language:
+        headers["Accept-Language"] = language
+
+    if include_content_type:
+        headers["content-type"] = "application/json"
+
+    return headers
+
 
 async def _get_bridge_headers(
     db: Optional[Session] = None,
@@ -26,31 +118,39 @@ async def _get_bridge_headers(
     include_auth: bool = True,
     language: Optional[str] = None
 ) -> Dict[str, str]:
-    """Prépare les en-têtes standards pour les appels API Bridge."""
-    headers = {
-        "accept": "application/json",
-        "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "Client-Id": settings.BRIDGE_CLIENT_ID,
-        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-    }
-    
+    """
+    Prépare les en-têtes standards pour les appels API Bridge avec authentification.
+
+    Args:
+        db: Session de base de données
+        user_id: ID de l'utilisateur
+        include_auth: Inclure l'authentification Bearer
+        language: Code langue pour Accept-Language
+
+    Returns:
+        Dict: Headers pour Bridge API
+
+    Raises:
+        ValueError: Si db ou user_id manquant avec include_auth=True
+        HTTPException: En cas d'erreur d'authentification
+    """
     if include_auth:
         if db is None or user_id is None:
             raise ValueError("Database session and user_id are required for authenticated headers.")
         try:
             token_data = await get_bridge_token(db, user_id)
-            headers["authorization"] = f"Bearer {token_data['access_token']}"
+            return _build_bridge_headers(
+                access_token=token_data['access_token'],
+                language=language
+            )
         except HTTPException as e:
-            logger.error(f"Erreur lors de la récupération du token pour user {user_id} dans _get_bridge_headers: {e.detail}")
+            logger.error(f"Erreur lors de la récupération du token pour user {user_id}: {e.detail}")
             raise e
         except Exception as e:
-            logger.error(f"Erreur inattendue lors de la récupération du token pour user {user_id} dans _get_bridge_headers: {e}", exc_info=True)
+            logger.error(f"Erreur inattendue lors de la récupération du token pour user {user_id}: {e}", exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve authentication token")
-
-    if language:
-        headers["Accept-Language"] = language
-
-    return headers
+    else:
+        return _build_bridge_headers(language=language)
 
 
 async def _fetch_paginated_resources(
@@ -62,9 +162,9 @@ async def _fetch_paginated_resources(
     all_resources = []
     next_uri = initial_url
     page_count = 0
-    max_pages = 50
+    max_pages = BRIDGE_MAX_PAGES
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=BRIDGE_LONG_TIMEOUT) as client:
         while next_uri and page_count < max_pages:
             page_count += 1
             logger.debug(f"Fetching page {page_count} from: {next_uri}")
@@ -75,7 +175,7 @@ async def _fetch_paginated_resources(
                 data = response.json()
                 resources = data.get("resources", [])
                 all_resources.extend(resources)
-                logger.debug(f"Fetched {len(resources)} resources from page {page_count}.")
+                logger.debug(f"Page {page_count}: fetched {len(resources)} resources")
 
                 pagination = data.get("pagination", {})
                 next_uri = pagination.get("next_uri")
@@ -106,10 +206,17 @@ async def _fetch_paginated_resources(
 
 # --- Fonctions principales pour Bridge API ---
 
+def get_bridge_connection_by_user(db: Session, user_id: int) -> Optional[BridgeConnection]:
+    """Récupère la connexion Bridge d'un utilisateur."""
+    return db.query(BridgeConnection).filter(
+        BridgeConnection.user_id == user_id
+    ).first()
+
+
 async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
     """Crée un utilisateur dans Bridge API et enregistre sa connexion"""
     external_user_id = f"harena-user-{user.id}"
-    logger.info(f"Attempting to create/retrieve Bridge user with external_user_id: {external_user_id}")
+    logger.debug(f"Creating/retrieving Bridge user with external_user_id: {external_user_id}")
 
     # Vérifier si une connexion existe déjà
     existing_connection = db.query(BridgeConnection).filter(
@@ -117,7 +224,7 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
     ).first()
 
     if existing_connection:
-        logger.info(f"Found existing Bridge connection for user {user.id}")
+        logger.debug(f"Found existing Bridge connection for user {user.id}")
         return existing_connection
 
     # Utilisation de _get_bridge_headers sans authentification
@@ -130,7 +237,7 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
     logger.debug(f"Calling Bridge API: POST {url}")
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT) as client:
             response = await client.post(url, json=payload, headers=headers)
 
             logger.info(f"Bridge API user creation response status: {response.status_code}")
@@ -166,8 +273,8 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
                 db.refresh(bridge_connection)
                 logger.info(f"Bridge connection saved successfully for user {user.id}, connection ID: {bridge_connection.id}")
                 return bridge_connection
-            except Exception as db_error:
-                logger.error(f"Database error saving Bridge connection for user {user.id}: {db_error}", exc_info=True)
+            except (ValueError, TypeError, KeyError) as db_error:
+                logger.error(f"Data validation error saving Bridge connection for user {user.id}: {db_error}", exc_info=True)
                 db.rollback()
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error: {db_error}")
 
@@ -177,9 +284,9 @@ async def create_bridge_user(db: Session, user: User) -> BridgeConnection:
     except HTTPException as http_exc:
         # Renvoyer les exceptions HTTP déjà formatées
         raise http_exc
-    except Exception as e:
-        logger.error(f"Unexpected error creating Bridge user for user {user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error creating Bridge user: {e}")
+    except (ValueError, TypeError, KeyError) as e:
+        logger.error(f"Data validation error creating Bridge user for user {user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Invalid data format: {e}")
 
 
 async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
@@ -193,13 +300,13 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
     # Vérifier l'expiration avec une marge de sécurité (60 secondes)
     if bridge_connection.token_expires_at and bridge_connection.token_expires_at > (now + timedelta(seconds=60)) and bridge_connection.last_token:
-        logger.debug(f"Using existing valid token for user {user_id}, expires at {bridge_connection.token_expires_at}")
+        logger.debug(f"Using cached token for user {user_id} (expires: {bridge_connection.token_expires_at})")
         return {
             "access_token": bridge_connection.last_token,
             "expires_at": bridge_connection.token_expires_at
         }
 
-    logger.info(f"Requesting new Bridge token for user {user_id}")
+    logger.debug(f"Requesting new Bridge token for user {user_id}")
     # Utilisation de _get_bridge_headers sans authentification user token
     headers = await _get_bridge_headers(include_auth=False)
     headers["content-type"] = "application/json"
@@ -210,7 +317,7 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
     url = f"{settings.BRIDGE_API_URL}/aggregation/authorization/token"
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT) as client:
             response = await client.post(url, json=payload, headers=headers)
 
             logger.info(f"Bridge token API response status: {response.status_code}")
@@ -241,8 +348,8 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
                     "access_token": bridge_connection.last_token,
                     "expires_at": expires_at_dt
                 }
-            except Exception as db_error:
-                logger.error(f"Database error saving new token for user {user_id}: {db_error}", exc_info=True)
+            except (ValueError, TypeError, KeyError) as db_error:
+                logger.error(f"Data validation error saving new token for user {user_id}: {db_error}", exc_info=True)
                 db.rollback()
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error saving token: {db_error}")
 
@@ -251,9 +358,9 @@ async def get_bridge_token(db: Session, user_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Failed to connect to Bridge API for token: {req_error}")
     except HTTPException as http_exc:
         raise http_exc
-    except Exception as e:
-        logger.error(f"Unexpected error getting Bridge token for user {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error getting Bridge token: {e}")
+    except (ValueError, TypeError, KeyError) as e:
+        logger.error(f"Data validation error getting Bridge token for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Invalid token data format: {e}")
 
 
 async def create_connect_session(
@@ -331,15 +438,9 @@ async def create_connect_session(
 async def get_bridge_item(db: Session, user_id: int, access_token: str, bridge_item_id: int) -> Optional[Dict[str, Any]]:
     """Récupère les détails d'un item Bridge depuis l'API."""
     logger.info(f"Getting Bridge item {bridge_item_id} for user {user_id}")
-    
-    # Les en-têtes sont construits avec le token fourni
-    headers = {
-        "accept": "application/json",
-        "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "Client-Id": settings.BRIDGE_CLIENT_ID,
-        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-        "authorization": f"Bearer {access_token}"
-    }
+
+    # Utiliser la fonction standard pour construire les headers
+    headers = _build_bridge_headers(access_token=access_token)
     
     url = f"{settings.BRIDGE_API_URL}/aggregation/items/{bridge_item_id}"
     
@@ -364,16 +465,9 @@ async def get_bridge_item(db: Session, user_id: int, access_token: str, bridge_i
 async def refresh_bridge_item(db: Session, user_id: int, access_token: str, bridge_item_id: int) -> Optional[Dict[str, Any]]:
     """Rafraîchit un item Bridge pour récupérer ses dernières données."""
     logger.info(f"Refreshing Bridge item {bridge_item_id} for user {user_id}")
-    
-    # Les en-têtes sont construits avec le token fourni
-    headers = {
-        "accept": "application/json",
-        "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "Client-Id": settings.BRIDGE_CLIENT_ID,
-        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-        "authorization": f"Bearer {access_token}",
-        "content-type": "application/json"
-    }
+
+    # Utiliser la fonction standard pour construire les headers
+    headers = _build_bridge_headers(access_token=access_token, include_content_type=True)
     
     url = f"{settings.BRIDGE_API_URL}/aggregation/items/{bridge_item_id}/refresh"
     
@@ -448,16 +542,10 @@ async def get_bridge_accounts(
     Récupère les comptes bancaires d'un utilisateur depuis Bridge API via /accounts.
     """
     logger.info(f"Getting Bridge accounts for user {user_id}, item_id={item_id}")
-    
+
     # Utiliser le token fourni ou récupérer un nouveau
     if access_token:
-        headers = {
-            "accept": "application/json",
-            "Bridge-Version": settings.BRIDGE_API_VERSION,
-            "Client-Id": settings.BRIDGE_CLIENT_ID,
-            "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-            "authorization": f"Bearer {access_token}"
-        }
+        headers = _build_bridge_headers(access_token=access_token)
     else:
         headers = await _get_bridge_headers(db=db, user_id=user_id)
 
@@ -466,7 +554,7 @@ async def get_bridge_accounts(
     params = {}
     if item_id:
         params["item_id"] = str(item_id)
-    params["limit"] = "200"  # Demander 200 par page pour optimiser
+    params["limit"] = str(DEFAULT_PAGE_LIMIT)
 
     # Construction sécurisée de l'URL
     request_url = httpx.URL(url, params=params)
@@ -492,15 +580,9 @@ async def get_bridge_transaction(
 ) -> Optional[Dict[str, Any]]:
     """Récupère les détails d'une transaction spécifique."""
     logger.info(f"Getting Bridge transaction {transaction_id} for user {user_id}")
-    
-    # Les en-têtes sont construits avec le token fourni
-    headers = {
-        "accept": "application/json",
-        "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "Client-Id": settings.BRIDGE_CLIENT_ID,
-        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-        "authorization": f"Bearer {access_token}"
-    }
+
+    # Utiliser la fonction standard pour construire les headers
+    headers = _build_bridge_headers(access_token=access_token)
     
     url = f"{settings.BRIDGE_API_URL}/aggregation/transactions/{transaction_id}"
     
@@ -528,19 +610,13 @@ async def get_bridge_transactions(
     access_token: str,
     account_id: Optional[int] = None,
     since: Optional[Union[datetime, str]] = None,
-    limit: int = 500  # Limite raisonnable
+    limit: int = MAX_TRANSACTION_LIMIT
 ) -> List[Dict[str, Any]]:
     """Récupère les transactions d'un compte bancaire depuis Bridge API."""
     logger.info(f"Getting Bridge transactions for user {user_id}, account_id={account_id}, since={since}")
-    
-    # Les en-têtes sont construits avec le token fourni
-    headers = {
-        "accept": "application/json",
-        "Bridge-Version": settings.BRIDGE_API_VERSION,
-        "Client-Id": settings.BRIDGE_CLIENT_ID,
-        "Client-Secret": settings.BRIDGE_CLIENT_SECRET,
-        "authorization": f"Bearer {access_token}"
-    }
+
+    # Utiliser la fonction standard pour construire les headers
+    headers = _build_bridge_headers(access_token=access_token)
 
     url = f"{settings.BRIDGE_API_URL}/aggregation/transactions"
     params: Dict[str, Union[str, int]] = {"limit": limit}
@@ -575,18 +651,33 @@ async def get_bridge_categories(
     user_id: int,
     language: str = "fr"
 ) -> List[Dict[str, Any]]:
-    """Récupère la liste des catégories depuis Bridge API."""
-    logger.info(f"Getting Bridge categories (language: {language}) using token for user {user_id}")
+    """
+    Récupère la liste des catégories depuis Bridge API avec cache de 24h.
+
+    Les catégories changent rarement, donc elles sont mises en cache pour
+    améliorer les performances et réduire les appels API.
+    """
+    # Vérifier le cache
+    now = datetime.now(timezone.utc)
+    if (_categories_cache["data"] is not None and
+        _categories_cache["expires_at"] and
+        _categories_cache["expires_at"] > now and
+        _categories_cache["language"] == language):
+        logger.debug(f"Returning cached categories for language {language}")
+        return _categories_cache["data"]
+
+    # Cache expiré ou manquant, récupérer depuis l'API
+    logger.info(f"Fetching Bridge categories from API (language: {language}) for user {user_id}")
     headers = await _get_bridge_headers(db=db, user_id=user_id, language=language)
 
     url = f"{settings.BRIDGE_API_URL}/aggregation/categories"
-    params = {"limit": "200"}
+    params = {"limit": str(DEFAULT_PAGE_LIMIT)}
     request_url = httpx.URL(url, params=params)
 
     try:
         all_categories = await _fetch_paginated_resources(str(request_url), headers)
-        logger.info(f"Successfully retrieved {len(all_categories)} categories.")
-        
+        logger.info(f"Successfully retrieved {len(all_categories)} categories from API.")
+
         # Transformer la structure (aplatir les sous-catégories)
         flat_categories = []
         for parent_cat in all_categories:
@@ -610,6 +701,13 @@ async def get_bridge_categories(
                 })
 
         logger.info(f"Transformed into {len(flat_categories)} flat categories.")
+
+        # Mettre en cache selon TTL configuré
+        _categories_cache["data"] = flat_categories
+        _categories_cache["expires_at"] = now + timedelta(hours=CATEGORIES_CACHE_TTL_HOURS)
+        _categories_cache["language"] = language
+        logger.debug(f"Categories cached until {_categories_cache['expires_at']}")
+
         return flat_categories
     except HTTPException as http_exc:
         raise http_exc

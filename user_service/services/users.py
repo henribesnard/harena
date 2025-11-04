@@ -1,41 +1,25 @@
+from __future__ import annotations
+
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from typing import Optional, List, Dict, Any
-from copy import deepcopy
+from typing import Optional, Dict, Any
 
 from db_service.models.user import User, UserPreference
 from user_service.schemas.user import UserCreate, UserUpdate
 from user_service.core.security import get_password_hash, verify_password
 from db_service.config.default_preferences import get_default_budget_settings
+from user_service.utils import deep_merge
 
 
-def deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Effectue un merge profond de deux dictionnaires.
-    Les valeurs de 'updates' prennent la priorité sur celles de 'base'.
-    """
-    result = deepcopy(base)
-
-    for key, value in updates.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            # Merge récursif pour les dictionnaires imbriqués
-            result[key] = deep_merge(result[key], value)
-        else:
-            # Remplacement direct pour les autres types
-            result[key] = deepcopy(value)
-
-    return result
-
-
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
+def get_user_by_email(db: Session, email: str) -> User | None:
     return db.query(User).filter(User.email == email).first()
 
 
-def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+def get_user_by_id(db: Session, user_id: int) -> User | None:
     return db.query(User).filter(User.id == user_id).first()
 
 
-def get_users(db: Session, skip: int = 0, limit: int = 100) -> List[User]:
+def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
     return db.query(User).offset(skip).limit(limit).all()
 
 
@@ -137,7 +121,7 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User:
     return db_user
 
 
-def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
+def authenticate_user(db: Session, email: str, password: str) -> User | None:
     user = get_user_by_email(db, email=email)
     if not user:
         return None

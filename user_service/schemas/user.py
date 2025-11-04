@@ -19,7 +19,7 @@ class UserBase(BaseModel):
 
 # Création d'utilisateur
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=12, description="Minimum 12 characters (OWASP recommendation)")
     confirm_password: str
     is_superuser: Optional[bool] = False  # Champ optionnel pour créer des admins
 

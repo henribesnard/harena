@@ -1,0 +1,15 @@
+{
+    "CommandId": "6a5280ec-8d6e-46bd-bdae-aea468f8c6a2",
+    "InstanceId": "i-0011b978b7cea66dc",
+    "Comment": "",
+    "DocumentName": "AWS-RunShellScript",
+    "DocumentVersion": "$DEFAULT",
+    "PluginName": "aws:runShellScript",
+    "ResponseCode": 0,
+    "ExecutionStartDateTime": "2025-10-26T16:43:10.321Z",
+    "ExecutionElapsedTime": "PT56.742S",
+    "ExecutionEndDateTime": "2025-10-26T16:44:06.321Z",
+    "Status": "Success",
+    "StatusDetails": "Success",
+    "StandardOutputContent": 
+'charmap' codec can't encode characters in position 1236-1274: character maps to <undefined>

@@ -77,8 +77,8 @@ logger.info("JWT middleware configured - user_service compatible")
 
 # Configuration CORS - Activée en dev, ajoutée EN DERNIER (s'exécute en premier)
 # Les middlewares FastAPI sont exécutés dans l'ordre INVERSE de leur ajout
-ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
-if ENVIRONMENT == "dev":
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev").lower()
+if ENVIRONMENT in {"dev", "development", "local"}:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[

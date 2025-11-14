@@ -135,6 +135,11 @@ def upgrade() -> None:
                type_=sa.JSON(),
                existing_nullable=False)
 
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    existing_unique = {c["name"] for c in inspector.get_unique_constraints('conversations')}
+    existing_indexes = {ix["name"] for ix in inspector.get_indexes('conversations')}
+
     with op.batch_alter_table('conversations', schema=None) as batch_op:
         batch_op.alter_column('total_turns',
                existing_type=sa.INTEGER(),
@@ -144,8 +149,10 @@ def upgrade() -> None:
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.JSON(),
                existing_nullable=False)
-        batch_op.drop_constraint('conversations_conversation_id_key', type_='unique')
-        batch_op.drop_index('ix_conversations_conversation_id')
+        if 'conversations_conversation_id_key' in existing_unique:
+            batch_op.drop_constraint('conversations_conversation_id_key', type_='unique')
+        if 'ix_conversations_conversation_id' in existing_indexes:
+            batch_op.drop_index('ix_conversations_conversation_id')
         batch_op.create_index(batch_op.f('ix_conversations_conversation_id'), ['conversation_id'], unique=True)
 
     with op.batch_alter_table('raw_stocks', schema=None) as batch_op:
@@ -194,6 +201,9 @@ def upgrade() -> None:
                type_=sa.JSON(),
                existing_nullable=True)
 
+    user_unique = {c["name"] for c in inspector.get_unique_constraints('users')}
+    user_indexes = {ix["name"] for ix in inspector.get_indexes('users')}
+
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.alter_column('is_active',
                existing_type=sa.BOOLEAN(),
@@ -203,8 +213,10 @@ def upgrade() -> None:
                existing_type=sa.BOOLEAN(),
                server_default=None,
                existing_nullable=True)
-        batch_op.drop_constraint('users_email_key', type_='unique')
-        batch_op.drop_index('ix_users_email')
+        if 'users_email_key' in user_unique:
+            batch_op.drop_constraint('users_email_key', type_='unique')
+        if 'ix_users_email' in user_indexes:
+            batch_op.drop_index('ix_users_email')
         batch_op.create_index(batch_op.f('ix_users_email'), ['email'], unique=True)
 
     with op.batch_alter_table('webhook_events', schema=None) as batch_op:

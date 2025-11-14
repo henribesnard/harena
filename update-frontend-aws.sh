@@ -15,7 +15,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 INSTANCE_ID="i-0011b978b7cea66dc"
-FRONTEND_TAG="v4.0.1"
+FRONTEND_TAG="v4.1.11"
 HARENA_DIR="/home/ec2-user/harena"
 FRONTEND_DIR="${HARENA_DIR}/harena_front"
 
@@ -182,9 +182,9 @@ echo ""
 echo "🔍 Ou consultez Grafana pour le monitoring:"
 echo "  http://63.35.52.216:3033"
 echo ""
-echo "📝 Changements de cette version (v4.0.1):"
-echo "  • Interface unifiée avec sidebar de conversation fixe sur toutes les pages"
-echo "  • Amélioration du Dashboard utilisateur (layout horizontal)"
-echo "  • Correction du bug de la page Configuration"
-echo "  • Optimisation de l'affichage mobile"
+echo "📝 Changements de cette version (v4.1.11):"
+echo "  • Arrondi des montants (plus d'erreurs d'affichage: 16€ au lieu de 16.25999...€)"
+echo "  • Bouton d'envoi stabilisé sur mobile (ancré en bas, ne bouge plus)"
+echo "  • Meilleure expérience utilisateur sur tous les appareils"
+echo "  • Compatible avec backend v6.2.3"
 echo ""

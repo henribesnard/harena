@@ -66,7 +66,8 @@ L'application Harena est déployée sur AWS avec l'architecture suivante :
 | Ressource | Valeur | Description |
 |-----------|--------|-------------|
 | **Instance EC2** | `i-0011b978b7cea66dc` | Instance principale hébergeant les services Docker |
-| **IP Publique** | `63.35.52.216` | IP publique fixe (Elastic IP recommandée) |
+| **IP Publique** | `63.35.52.216` | IP publique fixe (Elastic IP) |
+| **URL Cloudflare** | `https://food-dining-email-riders.trycloudflare.com` | URL publique gratuite (temporaire, phase dev) |
 | **Région AWS** | `eu-west-1` | Europe (Irlande) |
 | **Zone** | `eu-west-1a` | Zone de disponibilité |
 | **Security Group** | `sg-0aa65b430c3e93bad` | Groupe de sécurité `harena-allinone-sg-dev` |
@@ -74,9 +75,55 @@ L'application Harena est déployée sur AWS avec l'architecture suivante :
 | **Base de données** | `63.35.52.216:5432` | PostgreSQL (RDS ou sur EC2) |
 | **Redis** | `63.35.52.216:6379` | Cache Redis |
 
+**Note** : L'URL Cloudflare est active uniquement quand le tunnel `cloudflared` est en cours d'exécution sur l'instance EC2.
+
 ---
 
 ## Accès à l'infrastructure
+
+### Accès public via Cloudflare Tunnel
+
+**URL publique** : `https://food-dining-email-riders.trycloudflare.com`
+
+Cloudflare Tunnel expose Harena sur internet de manière sécurisée (SSL automatique, protection DDoS) sans ouvrir de ports supplémentaires.
+
+**Vérifier si le tunnel est actif :**
+```bash
+aws ssm send-command \
+    --instance-ids i-0011b978b7cea66dc \
+    --document-name "AWS-RunShellScript" \
+    --parameters 'commands=["ps aux | grep cloudflared | grep -v grep"]' \
+    --region eu-west-1
+```
+
+**Voir l'URL actuelle du tunnel :**
+```bash
+aws ssm send-command \
+    --instance-ids i-0011b978b7cea66dc \
+    --document-name "AWS-RunShellScript" \
+    --parameters 'commands=["cat /home/ec2-user/cloudflare-tunnel.log | grep trycloudflare.com | tail -1"]' \
+    --region eu-west-1
+```
+
+**Redémarrer le tunnel (nouvelle URL générée) :**
+```bash
+aws ssm send-command \
+    --instance-ids i-0011b978b7cea66dc \
+    --document-name "AWS-RunShellScript" \
+    --parameters 'commands=["pkill cloudflared","nohup cloudflared tunnel --url http://localhost:80 > /home/ec2-user/cloudflare-tunnel.log 2>&1 &","sleep 5","cat /home/ec2-user/cloudflare-tunnel.log | grep trycloudflare.com"]' \
+    --region eu-west-1
+```
+
+**Arrêter le tunnel :**
+```bash
+aws ssm send-command \
+    --instance-ids i-0011b978b7cea66dc \
+    --document-name "AWS-RunShellScript" \
+    --parameters 'commands=["pkill cloudflared"]' \
+    --region eu-west-1
+```
+
+**Note** : L'URL générée change à chaque redémarrage du tunnel. Pour une URL fixe, il faudrait acheter un domaine et configurer un tunnel nommé Cloudflare.
 
 ### Prérequis
 
@@ -627,6 +674,14 @@ scp -i ~/.ssh/harena-deploy-key.pem \
 
 ## Changelog Infrastructure
 
+### 2025-11-06
+- ✅ Installation de Cloudflare Tunnel (cloudflared) sur EC2 (ARM64)
+  - **URL publique** : `https://food-dining-email-riders.trycloudflare.com`
+  - SSL automatique, protection DDoS gratuite
+  - Tunnel gratuit temporaire pour phase de développement
+  - Commandes de gestion documentées
+- ✅ Documentation complète de l'accès via Cloudflare Tunnel
+
 ### 2025-10-30
 - ✅ Correction critique du `DATABASE_URL` dans `.env` sur AWS (`63.35.52.216` → `harena_postgres`)
   - **Problème** : Les services essayaient de se connecter via l'IP publique au lieu du réseau Docker
@@ -657,4 +712,4 @@ scp -i ~/.ssh/harena-deploy-key.pem \
 ---
 
 **Document maintenu par** : Équipe Harena
-**Dernière mise à jour** : 2025-10-29
+**Dernière mise à jour** : 2025-11-06

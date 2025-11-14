@@ -72,7 +72,6 @@ services:
       - ./user_service:/app/user_service
       - ./db_service:/app/db_service
       - ./config_service:/app/config_service
-      - ./.env.dev:/app/.env
     networks:
       - harena-dev
     depends_on:
@@ -99,7 +98,6 @@ services:
       - ./search_service:/app/search_service
       - ./db_service:/app/db_service
       - ./config_service:/app/config_service
-      - ./.env.dev:/app/.env
     networks:
       - harena-dev
     depends_on:
@@ -124,53 +122,11 @@ services:
       - ./metric_service:/app/metric_service
       - ./db_service:/app/db_service
       - ./config_service:/app/config_service
-      - ./.env.dev:/app/.env
     networks:
       - harena-dev
     depends_on:
       postgres-dev:
         condition: service_healthy
-    restart: unless-stopped
-
-  conversation_service_v3:
-    build:
-      context: .
-      dockerfile: conversation_service_v3/Dockerfile
-    container_name: harena_conversation_v3_dev
-    ports:
-      - "3008:3008"
-    environment:
-      - SERVICE_NAME=conversation_service_v3
-      - SERVICE_VERSION=3.1.0
-      - HOST=0.0.0.0
-      - PORT=3008
-      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
-      - REDIS_URL=redis://redis-dev:6379/0
-      - SECRET_KEY=${SECRET_KEY}
-      - SEARCH_SERVICE_URL=http://harena_search_service_dev:3001
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LLM_MODEL=gpt-4o-mini
-      - LLM_RESPONSE_MODEL=gpt-4o
-      - LLM_TEMPERATURE=0.1
-      - MAX_CORRECTION_ATTEMPTS=2
-      - QUERY_TIMEOUT_SECONDS=30
-      - LOG_LEVEL=DEBUG
-      - API_V3_PREFIX=/api/v3
-      - ENVIRONMENT=development
-    volumes:
-      - ./conversation_service_v3:/app/conversation_service_v3
-      - ./db_service:/app/db_service
-      - ./config_service:/app/config_service
-      - ./.env.dev:/app/.env
-    networks:
-      - harena-dev
-    depends_on:
-      postgres-dev:
-        condition: service_healthy
-      redis-dev:
-        condition: service_healthy
-      search_service:
-        condition: service_started
     restart: unless-stopped
 
   budget_profiling_service:
@@ -192,12 +148,141 @@ services:
       - ./budget_profiling_service:/app/budget_profiling_service
       - ./db_service:/app/db_service
       - ./config_service:/app/config_service
-      - ./.env.dev:/app/.env
     networks:
       - harena-dev
     depends_on:
       postgres-dev:
         condition: service_healthy
+    restart: unless-stopped
+
+  sync_service:
+    build:
+      context: .
+      dockerfile: sync_service/Dockerfile
+    container_name: harena_sync_service_dev
+    ports:
+      - "3004:3004"
+    environment:
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - BRIDGE_CLIENT_ID=${BRIDGE_CLIENT_ID}
+      - BRIDGE_CLIENT_SECRET=${BRIDGE_CLIENT_SECRET}
+      - BRIDGE_API_URL=${BRIDGE_API_URL}
+      - BRIDGE_API_VERSION=${BRIDGE_API_VERSION}
+      - BRIDGE_WEBHOOK_SECRET=${BRIDGE_WEBHOOK_SECRET}
+      - SECRET_KEY=${SECRET_KEY}
+      - API_V1_STR=/api/v1
+      - ENVIRONMENT=development
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+    volumes:
+      - ./sync_service:/app/sync_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./user_service:/app/user_service
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+  enrichment_service:
+    build:
+      context: .
+      dockerfile: enrichment_service/Dockerfile
+    container_name: harena_enrichment_service_dev
+    ports:
+      - "3005:3005"
+    environment:
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - REDIS_URL=redis://redis-dev:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - API_V1_STR=/api/v1
+      - SEARCH_SERVICE_URL=http://harena_search_service_dev:3001
+      - ENVIRONMENT=development
+    volumes:
+      - ./enrichment_service:/app/enrichment_service
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+      search_service:
+        condition: service_started
+    restart: unless-stopped
+
+  dashboard_service:
+    build:
+      context: .
+      dockerfile: dashboard_service/Dockerfile
+    container_name: harena_dashboard_service_dev
+    ports:
+      - "3009:3009"
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=development
+      - DASHBOARD_SERVICE_PORT=3009
+    volumes:
+      - ./dashboard_service:/app/dashboard_service
+      - ./config_service:/app/config_service
+      - ./db_service:/app/db_service
+    networks:
+      - harena-dev
+    depends_on:
+      user_service:
+        condition: service_started
+    restart: unless-stopped
+
+  conversation_service_v3:
+    build:
+      context: .
+      dockerfile: conversation_service_v3/Dockerfile
+    container_name: harena_conversation_v3_dev
+    ports:
+      - "3008:3008"
+    environment:
+      - SERVICE_NAME=conversation_service_v3
+      - SERVICE_VERSION=3.1.0
+      - HOST=0.0.0.0
+      - PORT=3008
+      - DATABASE_URL=postgresql://harena_dev:dev_password_123@postgres-dev:5432/harena_dev
+      - REDIS_URL=redis://redis-dev:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - SEARCH_SERVICE_URL=http://harena_search_service_dev:3001
+      - ENRICHMENT_SERVICE_URL=http://harena_enrichment_service_dev:3005
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - LLM_PROVIDER_MODE=deepseek_api
+      - LLM_MODEL=gpt-4o-mini
+      - LLM_RESPONSE_MODEL=gpt-4o
+      - LLM_TEMPERATURE=0.1
+      - MAX_CORRECTION_ATTEMPTS=2
+      - QUERY_TIMEOUT_SECONDS=30
+      - LOG_LEVEL=DEBUG
+      - API_V3_PREFIX=/api/v3
+      - ENVIRONMENT=development
+    volumes:
+      - ./conversation_service_v3:/app/conversation_service_v3
+      - ./db_service:/app/db_service
+      - ./config_service:/app/config_service
+      - ./enrichment_service:/app/enrichment_service
+    networks:
+      - harena-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+      search_service:
+        condition: service_started
+      enrichment_service:
+        condition: service_started
     restart: unless-stopped
 
   # ============================================
@@ -217,6 +302,7 @@ services:
       - VITE_METRIC_SERVICE_URL=http://localhost:3002
       - VITE_CONVERSATION_SERVICE_URL=http://localhost:3008
       - VITE_BUDGET_PROFILING_API_URL=http://localhost:3006/api/v1/budget
+      - VITE_DASHBOARD_SERVICE_URL=http://localhost:3009
     volumes:
       - ./harena_front:/app
       - /app/node_modules

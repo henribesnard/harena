@@ -42,8 +42,8 @@ app = FastAPI(
 )
 
 # CORS - Activée en développement local, désactivée en prod (gérée par Nginx)
-ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
-if ENVIRONMENT == "dev":
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev").lower()
+if ENVIRONMENT in {"dev", "development", "local"}:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
